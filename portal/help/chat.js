@@ -38,7 +38,7 @@
   const WALL_OLD = "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><g fill="none" stroke="#d6cfc4" stroke-width="1.2" opacity=".55"><circle cx="18" cy="20" r="6"/><path d="M60 12l6 10H54z"/><rect x="94" y="14" width="12" height="9" rx="2"/><path d="M14 64c4-6 10-6 14 0"/><circle cx="62" cy="62" r="3"/><path d="M96 58l8 8M104 58l-8 8"/><rect x="12" y="98" width="10" height="10" rx="5"/><path d="M56 100h12M62 94v12"/><path d="M94 100q6-8 12 0"/></g></svg>`);
   const css = document.createElement("style");
   css.textContent = `
-  #chat-btn { position: relative; width: 38px; height: 38px; border-radius: 50%; border: 0; background: transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; color: #C0392B; }
+  #chat-btn { position: relative; width: 38px; height: 38px; border-radius: 50%; border: 0; background: transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; color: #54656F; }
   #chat-btn:hover { background: #F0F2F5; } #chat-btn svg { width: 25px; height: 25px; }
   #chat-btn .n { position: absolute; top: -1px; right: -3px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px; background: #C0392B; color: #fff; font: 700 11px/19px -apple-system, sans-serif; text-align: center; box-sizing: border-box; box-shadow: 0 0 0 2px #fff; }
   #wa { position: fixed; top: 70px; right: 14px; bottom: 14px; width: min(1180px, calc(100vw - 28px)); z-index: 6000; background: #fff; border-radius: 10px; box-shadow: 0 18px 50px rgba(11,20,26,.30); display: none; overflow: hidden;
@@ -141,14 +141,12 @@
   #wa .viewer .vb { height: 59px; display: flex; align-items: center; gap: 12px; padding: 0 16px; } #wa .viewer .vb b { flex: 1; } #wa .viewer .vi { flex: 1; display: flex; align-items: center; justify-content: center; padding: 10px 30px 30px; min-height: 0; }
   #wa .viewer img { max-width: 100%; max-height: 100%; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
   /* the Chat entry at the foot of the left menu */
-  .pg-side .pg-chat { display: flex; align-items: center; gap: 10px; margin: 14px 12px 6px !important; padding: 10px 12px !important; border-radius: 12px; color: #fff !important;
-    background: linear-gradient(135deg, rgba(192,57,43,.95), rgba(150,40,30,.95)); box-shadow: 0 6px 16px rgba(0,0,0,.25); font-weight: 700; }
-  .pg-side .pg-chat:hover { background: linear-gradient(135deg, #D0443A, #A93226) !important; }
-  .pg-side .pg-chat .ci svg { width: 22px; height: 22px; display: block; } .pg-side .pg-chat .cl { flex: 1; line-height: 1.15; }
-  .pg-side .pg-chat .cl small { display: block; font-size: 11px; font-weight: 600; color: #FFD9D3; } .pg-side .pg-chat .cl small i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #3DDC84; margin-right: 5px; vertical-align: 0; }
-  .pg-side .pg-chat .cn { min-width: 22px; height: 22px; border-radius: 11px; background: #fff; color: #C0392B; font-size: 12px; font-weight: 800; display: none; align-items: center; justify-content: center; padding: 0 6px; }
+  .pg-side .pg-chat { display: flex; align-items: center; gap: 10px; margin-top: 10px !important; border-top: 1px solid rgba(255,255,255,.12); }
+  .pg-side .pg-chat .ci svg { width: 19px; height: 19px; display: block; opacity: .9; } .pg-side .pg-chat .cl { flex: 1; line-height: 1.15; }
+  .pg-side .pg-chat .cl small { display: block; font-size: 11px; font-weight: 500; opacity: .7; } .pg-side .pg-chat .cl small i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #3DDC84; margin-right: 5px; vertical-align: 0; }
+  .pg-side .pg-chat .cn { min-width: 20px; height: 20px; border-radius: 10px; background: #C0392B; color: #fff; font-size: 11px; font-weight: 800; display: none; align-items: center; justify-content: center; padding: 0 6px; }
   @media (min-width: 901px) {
-    .pg-side { display: flex; flex-direction: column; } .pg-side .pg-chat { margin-top: auto !important; position: sticky; bottom: 14px; }
+    .pg-side { display: flex; flex-direction: column; } .pg-side .pg-chat { margin-top: auto !important; position: sticky; bottom: 0; background: inherit; }
     body:not(.pg-noside):not(.pg-full) #chat-btn { display: none; }
   }
   #wa .nbanner { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #FBE9E7; color: #3B4A54; font-size: 13.5px; cursor: pointer; border-bottom: 1px solid #F3D4CF; }
@@ -564,6 +562,14 @@
   async function pickFile(f) {
     if (!S.room) return;
     if (f.size > 25 * 1048576) { hint(new Error("Files up to 25 MB can be sent.")); return; }
+    // a photo opens in the editor first - draw, circle, arrow, write, stickers - as on WhatsApp
+    if (/^image\/(jpeg|png|webp|bmp)$/.test(f.type) && window.CHAT_DRAW) {
+      const room = S.room, cap = $in.value.trim();
+      const ok = await window.CHAT_DRAW.open(f, { name: f.name, caption: cap,
+        onSend: (ef, caption) => { if (S.room !== room) return; $in.value = ""; grow(); sendFile(ef, caption); },
+        onCancel: () => $in.focus() });
+      if (ok) return;
+    }
     S.file = await shrink(f); drawAtt(); grow(); $in.placeholder = "Add a caption"; $in.focus();
   }
   function drawAtt() {

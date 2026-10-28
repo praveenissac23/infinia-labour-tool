@@ -13,8 +13,8 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   await p.click('.pg-side .pg-chat'); await sleep(1200); await p.click('[data-room="all"]'); await sleep(800);
   // a photo
   await p.setInputFiles('[data-file]', PHOTO); await sleep(800);
-  ck('the photo waits above the box, made smaller', await p.evaluate(() => !!document.querySelector('.att img') && CHAT.state.file && CHAT.state.file.size < 900 * 1024), await p.evaluate(() => CHAT.state.file && CHAT.state.file.size));
-  await p.fill('[data-in]', 'Blockwork at 903 - finished today'); await p.click('[data-go]'); await sleep(2000);
+  ck('the photo opens in the editor first', await p.evaluate(() => document.getElementById('wa-draw').classList.contains('on')));
+  await p.fill('#wa-draw [data-cap]', 'Blockwork at 903 - finished today'); await p.click('#wa-draw [data-send]'); await sleep(2000);
   ck('sent: the picture shows in the chat', await p.evaluate(() => { const i = document.querySelector('#wa .ph img'); return i && i.complete && i.naturalWidth > 0; }));
   // a file
   await p.setInputFiles('[data-file]', { name: 'BOQ 914 rev2.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('PK' + 'x'.repeat(2000)) });
