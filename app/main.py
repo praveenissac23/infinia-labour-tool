@@ -2733,7 +2733,7 @@ def _with_day_sites(db, rows):
 
     A day saved with its site keeps it. A day saved without one - sick, medical, leave, absent, a rest day -
     is charged to the site the same worker was at nearest before it in that cycle (or, at the start of a
-    cycle, the first site after it), instead of a "No site" line at the foot of the report. A day after a
+    cycle, the first site after it; with no site in the cycle at all, his last site before it), instead of a "No site" line at the foot of the report. A day after a
     man's leaving date (Terminated) costs nothing and is left out. Only the report's copy changes;
     the attendance itself is never touched."""
     from collections import defaultdict
@@ -2752,7 +2752,7 @@ def _with_day_sites(db, rows):
                                          .order_by(models.DailyRow.full_date).all()):
         if (emp_no, cyc) in keys and (site or "").strip():
             known[(emp_no, cyc)].append((d, site.strip(), eng or ""))
-    out = []
+    out, far = [], {}
     for r in rows:
         if (r.site or "").strip() or (r.am or "") == "Terminated":
             out.append(r)
@@ -2760,6 +2760,18 @@ def _with_day_sites(db, rows):
         days = known.get((r.emp_no, r.month_year)) or []
         before = [x for x in days if x[0] <= r.full_date]
         pick = before[-1] if before else (days[0] if days else None)
+        if pick is None:
+            # no site at all in this cycle yet (on leave or absent from its first day): his last site before it,
+            # or failing that the first one after
+            k = (r.emp_no, r.full_date)
+            if k not in far:
+                D = models.DailyRow
+                x = (db.query(D.site, D.engineer).filter(D.emp_no == r.emp_no, D.full_date < r.full_date, D.site.isnot(None), D.site != "")
+                       .order_by(D.full_date.desc()).first()
+                     or db.query(D.site, D.engineer).filter(D.emp_no == r.emp_no, D.full_date > r.full_date, D.site.isnot(None), D.site != "")
+                       .order_by(D.full_date).first())
+                far[k] = (None, x[0].strip(), x[1] or "") if x and (x[0] or "").strip() else None
+            pick = far[k]
         out.append(_SitedDay(r, pick[1], r.engineer or pick[2]) if pick else r)
     return out
 
