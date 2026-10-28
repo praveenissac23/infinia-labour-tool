@@ -30,9 +30,12 @@ from database import Base, get_db
 router = APIRouter()
 ONLINE_FOR = 70          # seconds since a person's app last asked, to count as online
 EVERYONE = "all"
-# Files and voice messages are not kept: the server removes them KEEP_DAYS after they were sent, on its own
-# (whether anyone's computer is on or not). The message stays, saying the file is no longer kept.
-KEEP_DAYS = int(os.environ.get("INFINIA_CHAT_KEEP_DAYS", "7"))
+# Files, photos and voice messages are not kept: a file lives on the server only while the person who sent it
+# has the portal open. When he signs out, closes the portal, or his computer / phone goes off (no word from his
+# app for GONE_AFTER seconds), the server removes his files by itself - and in any case after KEEP_HOURS.
+# The message stays, saying the file is no longer available.
+KEEP_HOURS = int(os.environ.get("INFINIA_CHAT_KEEP_HOURS", "24"))
+GONE_AFTER = 180
 MAX_FILE = 25 * 1024 * 1024
 MAX_VOICE_SECONDS = 300
 
@@ -188,12 +191,12 @@ def _unread(db, user, people):
 
 
 def _seen(db, user):
-    """Note the person as here - written at most every 15 seconds."""
+    """Note the person as here - written at most every 5 seconds (it is also what turns one tick into two)."""
     s = db.query(ChatSeen).filter(ChatSeen.user_id == user.id).first()
     now = _now()
     if not s:
         db.add(ChatSeen(user_id=user.id, last_seen=now)); db.commit()
-    elif not s.last_seen or (now - s.last_seen).total_seconds() > 15:
+    elif not s.last_seen or (now - s.last_seen).total_seconds() > 5:
         s.last_seen = now; db.commit()
 
 
@@ -219,8 +222,14 @@ def chat_state(room: str = "", after: int = 0, db: Session = Depends(get_db), us
     for r, mid in (db.query(ChatMessage.room, func.max(ChatMessage.id)).filter(ChatMessage.room.in_(dms + [EVERYONE]))
                      .group_by(ChatMessage.room).all()):
         last[r] = mid
+    umap0 = {p.id: p for p in people}
+    prev = {}
+    if last:
+        for m in db.query(ChatMessage).filter(ChatMessage.id.in_(list(last.values()))).all():
+            prev[m.room] = {"id": m.id, "user_id": m.user_id, "name": _name(umap0.get(m.user_id)), "at": _iso(m.created_at), "deleted": bool(m.deleted),
+                            "text": "" if m.deleted else (m.text or "")[:120], "kind": m.file_kind or ""}
     out = {"me": user.id, "users": users, "unread": unread, "mentions": mentions,
-           "total": sum(unread.values()), "last": last}
+           "total": sum(unread.values()), "last": last, "previews": prev}
     if room:
         if not _in_room(room, user.id):
             raise HTTPException(status_code=403, detail="Not your conversation.")
@@ -238,7 +247,28 @@ def chat_state(room: str = "", after: int = 0, db: Session = Depends(get_db), us
             out["changed"] = [_msg(m, umap) for m in db.query(ChatMessage).filter(ChatMessage.room == room, ChatMessage.id <= after,
                               ChatMessage.edited_at != None, ChatMessage.edited_at >= since).all()]  # noqa: E711
         out["more"] = (not after) and len(rows) == 60
+        out["receipts"] = _receipts(db, room, user, seen)
     return out
+
+
+def _receipts(db, room, user, seen):
+    """For the ticks on my own messages: how far each other person in the room has read, and when his app last
+    picked up messages. One tick = on the server; two grey = reached their phone or computer; two blue = read.
+    In Everyone, the people counted are those who have opened the chat at least once."""
+    other = _other(room, user.id)
+    if other is not None:
+        who = [other]
+    else:
+        who = [uid for (uid,) in db.query(ChatRead.user_id).filter(ChatRead.room == "*", ChatRead.user_id != user.id).all()]
+        active = {u.id for u in _people(db)}
+        who = [u for u in who if u in active]
+    if not who:
+        return []
+    rows = db.query(ChatRead).filter(ChatRead.user_id.in_(who), ChatRead.room.in_([room, "*"])).all()
+    read, base = {}, {}
+    for r in rows:
+        (base if r.room == "*" else read)[r.user_id] = r.last_id or 0
+    return [{"user_id": u, "read": max(read.get(u, 0), base.get(u, 0)), "seen": _iso(seen.get(u))} for u in who]
 
 
 @router.get("/store/chat/history")
@@ -282,7 +312,7 @@ def chat_send(payload: dict = Body(...), db: Session = Depends(get_db), user: mo
 @router.post("/store/chat/upload")
 async def chat_upload(room: str = Form(...), file: UploadFile = File(...), text: str = Form(""), kind: str = Form(""),
                       duration: int = Form(0), db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
-    """A file, a photo or a voice message. Kept on the server for KEEP_DAYS days, then removed by itself."""
+    """A file, a photo or a voice message - kept only while the sender has the portal open (see GONE_AFTER)."""
     if not _in_room(room, user.id):
         raise HTTPException(status_code=403, detail="Not your conversation.")
     data = await file.read()
@@ -305,10 +335,26 @@ async def chat_upload(room: str = Form(...), file: UploadFile = File(...), text:
     m = ChatMessage(room=room, user_id=user.id, text=text, mentions=("," + ",".join(sorted(men)) + ",") if men else "",
                     file_kind=kind, file_name=name if kind != "voice" else "Voice message", file_path=path, file_mime=mime,
                     file_size=len(data), duration=max(0, min(int(duration or 0), MAX_VOICE_SECONDS)),
-                    expires_at=_now() + timedelta(days=KEEP_DAYS))
+                    expires_at=_now() + timedelta(hours=KEEP_HOURS))
     db.add(m); db.commit()
     _mark(db, user.id, room, m.id)
     return _msg(m, {p.id: p for p in db.query(models.User).all()})
+
+
+@router.post("/store/chat/bye")
+def chat_bye(payload: dict = Body(default={}), db: Session = Depends(get_db)):
+    """The portal is closing or signing out: his files go now, and he shows offline. Sent as the page closes
+    (navigator.sendBeacon cannot carry a sign-in header, so the sign-in comes in the body)."""
+    try:
+        user = auth.get_current_user(token=str(payload.get("token") or ""), db=db)
+    except Exception:
+        return {"ok": False}
+    s = db.query(ChatSeen).filter(ChatSeen.user_id == user.id).first()
+    if s:
+        s.last_seen = _now() - timedelta(seconds=ONLINE_FOR + 1)
+        db.commit()
+    remove_expired(db, only_user=user.id)
+    return {"ok": True}
 
 
 @router.get("/store/chat/file/{mid}/{sig}")
@@ -325,11 +371,19 @@ def chat_file(mid: int, sig: str, dl: int = 0, db: Session = Depends(get_db)):
                         headers={"Cache-Control": "private, max-age=86400"})
 
 
-def remove_expired(db):
-    """Every file whose time is up comes off the disk; the message stays and says so."""
+def remove_expired(db, only_user=None):
+    """Every file whose sender has left the portal (or whose time is up) comes off the disk; the message stays."""
     n = 0
-    for m in db.query(ChatMessage).filter(ChatMessage.file_path != "", ChatMessage.file_path.isnot(None),
-                                          ChatMessage.expires_at.isnot(None), ChatMessage.expires_at <= _now()).all():
+    now = _now()
+    seen = {s.user_id: s.last_seen for s in db.query(ChatSeen).all()}
+    q = db.query(ChatMessage).filter(ChatMessage.file_path != "", ChatMessage.file_path.isnot(None))
+    if only_user is not None:
+        q = q.filter(ChatMessage.user_id == only_user)
+    for m in q.all():
+        ls = seen.get(m.user_id)
+        left = only_user is not None or not ls or (now - ls).total_seconds() > GONE_AFTER
+        if not (left or (m.expires_at and m.expires_at <= now)):
+            continue
         try:
             os.remove(os.path.join(_dir(), m.file_path))
         except OSError:
@@ -341,7 +395,7 @@ def remove_expired(db):
 
 
 def start_cleaner(SessionLocal):
-    """Runs on the server every half hour - nobody has to have the app open."""
+    """Runs on the server every 30 seconds - nobody has to have the app open."""
     def loop():
         while True:
             try:
@@ -354,7 +408,7 @@ def start_cleaner(SessionLocal):
                     db.close()
             except Exception as e:
                 print("chat cleaner:", e)
-            time.sleep(1800)
+            time.sleep(30)
     threading.Thread(target=loop, daemon=True, name="chat-cleaner").start()
 
 

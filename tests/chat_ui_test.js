@@ -30,7 +30,7 @@ const login = async (b, u, pw, opts) => { const ctx = await b.newContext(opts ||
   ck('Amal\'s chat button shows 1 unread', b1 === '1', b1);
   await amal.click('#chat-btn'); await sleep(1500);
   await amal.click('[data-room="all"]'); await sleep(1500);
-  ck('he sees it, marked as naming him', await amal.evaluate(() => !!document.querySelector('#chat-pane .m.me-tag .tag.me')));
+  ck('he sees it, marked as naming him', await amal.evaluate(() => !!document.querySelector('#wa .ln.ment .tag.me')));
   // private chat
   const room = await amal.evaluate(() => CHAT.state.users.find(u => u.username === 'admin').room);
   await amal.click(`[data-room="${room}"]`); await sleep(800);
@@ -46,7 +46,7 @@ const login = async (b, u, pw, opts) => { const ctx = await b.newContext(opts ||
   await ph.screenshot({ path: OUT + '/chat-phone-list.png' });
   await ph.click(`[data-room="${room}"]`); await sleep(1500);
   await ph.screenshot({ path: OUT + '/chat-phone-conv.png' });
-  const fits = await ph.evaluate(() => document.getElementById('chat-pane').getBoundingClientRect().width <= innerWidth + 1);
+  const fits = await ph.evaluate(() => document.getElementById('wa').getBoundingClientRect().width <= innerWidth + 1);
   ck('phone: full screen, nothing off the side', fits);
   await b.close();
   console.log(bad ? `${bad} FAILED` : 'ALL PASS');

@@ -14,21 +14,24 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   // a photo
   await p.setInputFiles('[data-file]', PHOTO); await sleep(800);
   ck('the photo waits above the box, made smaller', await p.evaluate(() => !!document.querySelector('.att img') && CHAT.state.file && CHAT.state.file.size < 900 * 1024), await p.evaluate(() => CHAT.state.file && CHAT.state.file.size));
-  await p.fill('[data-in]', 'Blockwork at 903 - finished today'); await p.click('[data-send]'); await sleep(2000);
-  ck('sent: the picture shows in the chat', await p.evaluate(() => { const i = document.querySelector('#chat-pane .fimg'); return i && i.complete && i.naturalWidth > 0; }));
+  await p.fill('[data-in]', 'Blockwork at 903 - finished today'); await p.click('[data-go]'); await sleep(2000);
+  ck('sent: the picture shows in the chat', await p.evaluate(() => { const i = document.querySelector('#wa .ph img'); return i && i.complete && i.naturalWidth > 0; }));
   // a file
   await p.setInputFiles('[data-file]', { name: 'BOQ 914 rev2.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: Buffer.from('PK' + 'x'.repeat(2000)) });
-  await sleep(400); await p.keyboard.press('Enter'); await p.click('[data-send]'); await sleep(2000);
-  ck('a file shows as a card to download', await p.evaluate(() => [...document.querySelectorAll('#chat-pane .ffile b')].some(b => /BOQ 914/.test(b.textContent))));
+  await sleep(400); await p.click('[data-in]'); await p.keyboard.press('Enter'); await sleep(2000);
+  ck('a file shows as a card to download', await p.evaluate(() => [...document.querySelectorAll('#wa .doc .dn b')].some(b => /BOQ 914/.test(b.textContent))));
   // a voice message
-  await p.click('[data-mic]'); await sleep(3300);
-  ck('recording: the timer runs', await p.evaluate(() => document.querySelector('[data-rt]').textContent !== '0:00' && getComputedStyle(document.querySelector('[data-rec]')).display !== 'none'));
+  await p.click('[data-go]'); await sleep(3300);
+  ck('recording: the timer runs', await p.evaluate(() => document.querySelector('[data-rt]').textContent !== '0:00' && document.querySelector('[data-cmp]').classList.contains('recording')));
   await p.screenshot({ path: OUT + '/chat-recording.png' });
-  await p.click('[data-rsend]'); await sleep(2500);
-  const v = await p.evaluate(() => { const a = [...document.querySelectorAll('#chat-pane .fvoice audio')].pop(); return a ? { ok: true, src: a.src } : null; });
+  await p.click('[data-go]'); await sleep(2500);
+  const v = await p.evaluate(() => { const a = [...document.querySelectorAll('#wa .vn[data-src]')].pop(); return a ? { ok: true, src: a.dataset.src } : null; });
   ck('the voice message is in the chat, ready to play', v && v.ok, v);
-  const dur = await p.evaluate(async () => { const a = [...document.querySelectorAll('#chat-pane .fvoice audio')].pop(); const r = await fetch(a.src); return [r.status, r.headers.get('content-type'), (await r.arrayBuffer()).byteLength]; });
+  const dur = await p.evaluate(async () => { const a = [...document.querySelectorAll('#wa .vn[data-src]')].pop(); const r = await fetch(a.dataset.src); return [r.status, r.headers.get('content-type'), (await r.arrayBuffer()).byteLength]; });
   ck('and the server sends it back as audio', dur[0] === 200 && /audio/.test(dur[1]) && dur[2] > 1000, dur);
+  // play it: the waveform fills
+  await p.evaluate(() => [...document.querySelectorAll('#wa .vn [data-play]')].pop().click()); await sleep(1500);
+  ck('the voice note plays, the waveform fills', await p.evaluate(() => document.querySelectorAll('#wa .vn .bars i.p').length > 0));
   await p.screenshot({ path: OUT + '/chat-files.png' });
   ck('no script errors', !errs.length, errs);
   await b.close();
