@@ -335,7 +335,8 @@ _WRITE_GEN = [0]
 
 @app.middleware("http")
 async def count_writes(request, call_next):
-    if request.method not in ("GET", "HEAD", "OPTIONS"):
+    # the chat writes all day long and is never part of the worked-out bell (it is added fresh on top)
+    if request.method not in ("GET", "HEAD", "OPTIONS") and not request.url.path.startswith("/store/chat/"):
         _WRITE_GEN[0] += 1
         try:
             return await call_next(request)
@@ -13528,7 +13529,7 @@ def push_test(db: Session = Depends(get_db), user: models.User = Depends(auth.ge
 
 def _notes_for(db, user):
     """The bell's list for one login - what its phone is told about."""
-    return _work_out_notifications(db, user).get("notifications", [])
+    return _with_chat(db, user, _work_out_notifications(db, user)).get("notifications", [])
 
 
 @app.on_event("startup")
@@ -13649,14 +13650,32 @@ def get_notifications(db: Session = Depends(get_db),
     hit = _BELL_CACHE.get(key)
     now = _t.monotonic()
     if hit and hit[0] == _WRITE_GEN[0] and now - hit[1] < BELL_KEEP:
-        return hit[2]
+        return _with_chat(db, user, hit[2])
     gen = _WRITE_GEN[0]
     out = _work_out_notifications(db, user)
     if gen == _WRITE_GEN[0]:
         if len(_BELL_CACHE) > 300:
             _BELL_CACHE.clear()
         _BELL_CACHE[key] = (gen, now, out)
-    return out
+    return _with_chat(db, user, out)
+
+
+def _with_chat(db, user, out):
+    """Unread private messages and mentions, always fresh, on top of the bell."""
+    try:
+        import chat as _chat
+        items = _chat.bell_items(db, user)
+    except Exception as e:
+        print("chat bell:", e)
+        items = []
+    if not items:
+        return out
+    if isinstance(out, dict):
+        out = dict(out); out["notifications"] = items + list(out.get("notifications") or [])
+        if "count" in out:
+            out["count"] = len(out["notifications"])
+        return out
+    return items + list(out)
 
 
 def _work_out_notifications(db, user):
@@ -14092,6 +14111,14 @@ try:   # a column added after the table was first made
             _cx.execute(_text("ALTER TABLE credentials ADD COLUMN admin_only BOOLEAN DEFAULT FALSE"))
 except Exception as _e:
     print("credentials column:", _e)
+
+
+import chat  # noqa: E402  - in-app chat: who is online, Everyone, private chats
+app.include_router(chat.router)
+try:
+    chat.create_tables(engine)
+except Exception as _e:
+    print("chat tables:", _e)
 
 
 import boards  # noqa: E402  - Estimation > Trello: boards, lists and cards

@@ -8252,6 +8252,8 @@ function openNotification(id, screen, target, extra) {
   // A material request, whatever happened to it: the request itself,
   // opened, with what has arrived against it.
   // A Trello note: the board, and the card on it.
+  // A chat message: the chat, open on that conversation.
+  if (screen === "chat") { if (window.CHAT) CHAT.open(target); return; }
   if (screen === "pgboards") { if (typeof pgGo === "function") pgGo("estimation"); if (typeof pgBoardsFrame === "function") setTimeout(() => pgBoardsFrame(target), 50); return; }
   // A bill waiting for this person to check or approve: the project's Bills, the bill open on its approval step.
   // A subcontractor certificate waiting for the Managing Director: its approval page (the PDF, Approve / Reject).
