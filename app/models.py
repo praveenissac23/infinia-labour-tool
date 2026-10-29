@@ -1454,3 +1454,65 @@ class DocTransmittalLine(Base):
     remarks = Column(String, default="")
     movement_id = Column(Integer, nullable=True)     # the delivery it came from, when picked from Material arrived
     received = Column(Boolean, nullable=True)        # None = not checked yet
+
+
+# ---------------------------------------------------------------------
+# PAID STATUS AND PAYSLIPS (29 Oct 2026) - office and labour payroll alike.
+#
+# A payment is what was actually paid to one person for one month (office) or cycle (labour), and how:
+# regular, early full month, final settlement or a custom amount, by WPS / bank / cash / cheque. The figures
+# behind it are copied onto it as they stood, so the payslip printed from it a year later says what was paid.
+# A carry is what moved to the next month because the month changed after it was paid. A payslip is a version
+# of the slip for a payment - a new one is a new row, never written over the last.
+# ---------------------------------------------------------------------
+class PayPayment(Base):
+    __tablename__ = "pay_payments"
+    id = Column(Integer, primary_key=True)
+    kind = Column(String, nullable=False, index=True)          # office | labour
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    month_year = Column(String, nullable=False, index=True)    # "October 2026" - the month (office) or cycle (labour)
+    source_id = Column(Integer, nullable=True, index=True)     # payroll_lines.id (office) / employee_summaries.id (labour)
+    run_id = Column(Integer, nullable=True, index=True)        # payroll_runs.id (office)
+    pay_type = Column(String, default="regular")               # regular | balance | early_full | final | custom
+    amount = Column(Float, default=0.0)                        # paid now
+    due = Column(Float, default=0.0)                           # what the month came to when this was paid
+    paid_on = Column(Date, nullable=False)
+    mode = Column(String, default="wps")                       # wps | bank | cash | cheque
+    reference = Column(String, default="")
+    note = Column(Text, default="")
+    figures = Column(Text, default="")                         # JSON: the month's figures as they stood
+    loan_repaid = Column(Float, default=0.0)                   # loan instalments taken with this payment
+    void = Column(Boolean, default=False)
+    void_reason = Column(String, default="")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PayCarry(Base):
+    """A change to a month already paid in full, carried to the next month's additions & deductions."""
+    __tablename__ = "pay_carries"
+    id = Column(Integer, primary_key=True)
+    kind = Column(String, nullable=False, index=True)          # office | labour
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    payment_id = Column(Integer, ForeignKey("pay_payments.id"), nullable=True, index=True)
+    from_month = Column(String, default="")
+    to_month = Column(String, default="")
+    amount = Column(Float, default=0.0)                        # + owed to him, - owed by him
+    target_id = Column(Integer, nullable=True)                 # pay_items.id (office) / salary_adjustments.id (labour)
+    note = Column(String, default="")
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class Payslip(Base):
+    __tablename__ = "payslips"
+    id = Column(Integer, primary_key=True)
+    kind = Column(String, nullable=False, index=True)          # office | labour
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    payment_id = Column(Integer, ForeignKey("pay_payments.id"), nullable=False, index=True)
+    month_year = Column(String, default="", index=True)
+    version = Column(Integer, default=1)
+    slip_no = Column(String, default="")                       # PS-IC011-2026-10-v1
+    slip_type = Column(String, default="payslip")              # payslip | settlement
+    data = Column(Text, default="")                            # JSON: everything printed - so it never changes
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -761,13 +761,13 @@ function renderList() {
 }
 async function openPerson(code) {
   if (code !== P.focusFor) P.focusDoc = "";          // a document to show belongs to one person only
-  P.current = code;
+  P.current = code; P.slips = null;
   document.querySelectorAll("#list .person").forEach(el => el.classList.toggle("on", el.querySelector("b").textContent === code));
   try { P.file = await apiCall(`/employees/people/${encodeURIComponent(code)}`); }
   catch (e) { status("warn", errText(e)); P.file = null; }
   renderFile();
 }
-const SECTIONS = [["identity", "Identity"], ["employment", "Employment"], ["pay", "Pay"], ["documents", "Documents"], ["leave", "Leave"], ["money", "Money"], ["assets", "Assets & housing"], ["history", "History"]];
+const SECTIONS = [["identity", "Identity"], ["employment", "Employment"], ["pay", "Pay"], ["documents", "Documents"], ["leave", "Leave"], ["money", "Money"], ["payslips", "Payslips"], ["assets", "Assets & housing"], ["history", "History"]];
 function setSection(s) { P.section = s; renderFile(); }
 function f(lbl, val, alt) { return `<div class="f"><span class="lbl">${lbl}</span><div>${val === undefined ? "" : (typeof val === "string" && val.startsWith("<") ? val : or(val, alt))}</div></div>`; }
 function renderFile() {
@@ -833,6 +833,20 @@ function renderFile() {
       F.cycles.map(c => [c.month_year, c.present, c.absent_days, c.leave_days, c.ot, "$" + money(c.net)]), "No salary cards yet.");
     body += `<div class="sec-h"><span class="lbl">End of service</span></div><div class="grid">${f("Scheme", { gratuity: "Gratuity (UAE law)", pension: "GPSSA pension", none: "Not entitled" }[e.scheme] || e.scheme)}${f("Gratuity to date", F.gratuity.entitled ? `<b>${money(F.gratuity.amount)}</b>` : (F.gratuity.why || "—"))}${f("Working", F.gratuity.why && F.gratuity.entitled ? F.gratuity.why : "")}${f("Leave balance", `${lv.balance} days`)}</div>`;
   }
+  else if (P.section === "payslips") {
+    const S = P.slips && P.slips.emp_no === p.emp_no ? P.slips : null;
+    if (!S) { body = `<div class="muted" style="padding:8px 0;">Loading payslips...</div>`; loadSlips(p.emp_no); }
+    else if (S.error) body = `<div class="muted" style="padding:8px 0;">${esc(S.error)}</div>`;
+    else {
+      body = `<div class="sec-h"><span class="lbl">Payslips</span></div>` + table(["Month", "Slip no.", "Kind", "Version", "Payment", "Generated", ""],
+        S.payslips.map(x => [x.month_year, x.slip_no, x.type === "settlement" ? "Final settlement" : "Payslip", "v" + x.version,
+          `${money(x.payment.amount || 0)} · ${esc(x.payment.paid_on_text || "")} · ${esc(x.payment.type_label || "")} · ${esc(x.payment.mode_label || "")}${x.cancelled ? ' <span class="pill r">payment cancelled</span>' : ""}`,
+          x.created, `<button class="btn btn-gray btn-sm" onclick="openSlip(${x.id})">View</button><button class="btn btn-dark btn-sm" onclick="openSlip(${x.id}, true)">Download</button>`]), "No payslips generated yet.")
+        + `<div class="sec-h"><span class="lbl">Payments</span></div>` + table(["Month", "Date paid", "Kind", "Mode", "Reference", "Amount", ""],
+        S.payments.map(x => [x.month_year, x.paid_on_text, x.type_label, x.mode_label, x.reference, "$" + money(x.amount), x.cancelled ? '<span class="pill r">Cancelled</span>' : '<span class="pill g">Paid</span>']), "No payments recorded yet.")
+        + `<p class="muted">Every version is kept - a payslip generated again is a new version, never written over. Internal only; nothing is emailed.</p>`;
+    }
+  }
   else if (P.section === "assets") body = `<div class="grid">${f("Accommodation", pr.accommodation)}${f("Room / bed", pr.room)}${f("Transport", pr.transport)}</div>
       <div class="sec-h"><span class="lbl">Items issued</span><button class="btn btn-primary btn-sm" onclick="openAsset(null)">+ Issue an item</button></div>` + table(
       ["Item", "Tag / serial", "Issued", "Returned", "Condition", "Notes", ""], F.assets.map(a => [a.item, a.tag, a.issued_on ? dmy(a.issued_on) : "", a.returned_on ? dmy(a.returned_on) : '<span class="pill y">Out</span>', a.condition, a.notes,
@@ -853,6 +867,15 @@ function renderFile() {
     const on = document.querySelector("#list .person.on"); if (on) on.scrollIntoView({ block: "nearest" });
   }
 }
+async function loadSlips(code) {
+  if (P.slipsLoading === code) return;
+  P.slipsLoading = code;
+  try { P.slips = await apiCall(`/employees/pay/payslips?emp_no=${encodeURIComponent(code)}`); }
+  catch (e) { P.slips = { emp_no: code, error: errText(e) }; }
+  P.slipsLoading = "";
+  if (P.current === code && P.section === "payslips") renderFile();
+}
+async function openSlip(id, download) { window.open(`${API}/export/pay/payslip/${id}?token=${encodeURIComponent(await dl())}${download ? "&inline=false" : ""}`, "_blank"); }
 function age(iso) { const b = new Date(iso), t = new Date(); let a = t.getFullYear() - b.getFullYear(); if (t < new Date(t.getFullYear(), b.getMonth(), b.getDate())) a--; return a > 0 ? a : ""; }
 function table(head, rows, empty) {
   if (!rows.length) return `<div class="muted" style="padding:8px 0;">${empty}</div>`;

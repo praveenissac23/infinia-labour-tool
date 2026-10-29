@@ -2616,7 +2616,13 @@ def set_full_cycle(month_year: str, payload: dict = Body(...), db: Session = Dep
     put_setting(db, services.full_cycle_key(month_year),
                 max(_dubai_today(), cs).isoformat() if on else "")
     n = 0
+    import paystatus as _ps
+    paid_ids = {p.employee_id for p in db.query(models.PayPayment).filter(
+        models.PayPayment.kind == "labour", models.PayPayment.month_year == month_year, models.PayPayment.void == False).all()  # noqa: E712
+        if _ps.row_state(db, "labour", db.get(models.Employee, p.employee_id), month_year, 0)["locked"]}
     for e in db.query(models.Employee).filter(models.Employee.staff != True).all():  # noqa: E712
+        if e.id in paid_ids:
+            continue                        # paid already - his card is not repainted
         has = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.emp_no == e.emp_no,
                                                       models.EmployeeSummary.month_year == month_year).first()
         if has or (on and e.active and employed_during(e, cs, ce)):
@@ -12260,10 +12266,17 @@ def _refresh_run(db, r):
     if r.status == "approved":
         return
     a, b = _staff_month_bounds(r.month_year)
+    # A row paid in full keeps the figures it was paid on (it is locked); a change to the month afterwards is
+    # carried to next month's additions & deductions (paystatus).
+    try:
+        import paystatus as _ps
+        paid = _ps.paid_line_ids(db, r)
+    except Exception as ex:
+        print("paid rows:", ex); paid, _ps = set(), None
     # Someone moved to the other statement leaves this draft.
     for l in list(r.lines):
         e = db.get(models.Employee, l.employee_id)
-        if e and (e.pay_group or "staff") != r.group:
+        if e and (e.pay_group or "staff") != r.group and l.id not in paid:
             db.delete(l)
     db.flush(); db.refresh(r)
     have = {l.employee_id for l in r.lines}
@@ -12279,6 +12292,12 @@ def _refresh_run(db, r):
     emps = {e.id: e for e in db.query(models.Employee).filter(
         models.Employee.id.in_([l.employee_id for l in r.lines])).all()}
     for l in r.lines:
+        if l.id in paid:
+            try:
+                _ps.office_carry(db, r, l, emps[l.employee_id], a, b)
+            except Exception as ex:
+                print("carry:", ex)
+            continue
         _fill_line(db, l, emps[l.employee_id], r.month_year, a, b)
     db.commit(); db.refresh(r)
 
@@ -12516,6 +12535,13 @@ def _run_dict(r, db):
     # Paid early (the 1st is a holiday, or local staff before month end):
     # once "Pay full month" is pressed, or the sheet is approved, every
     # figure is the whole month's, never the salary to date.
+    try:
+        import paystatus as _ps
+        pay = _ps.office_rows(db, r)
+    except Exception as ex:
+        print("pay status:", ex); pay = {}
+    for l in lines:
+        l["pay"] = pay.get(l["id"]) or {"state": "none", "paid": 0, "balance": l["net_pay"], "payments": [], "slips": {}, "locked": False}
     full = bool(get_setting(db, _full_month_key(r.month_year, r.group or "staff"))) or r.status == "approved"
     progress = {"day": done, "days": days, "pct": round(done * 100 / days),
                 "running": 0 < done < days and not full, "full_month": full,
@@ -12713,8 +12739,11 @@ def approve_payroll_run(run_id: int, db: Session = Depends(get_db), user: models
         raise HTTPException(status_code=400, detail=f"{r.month_year} is already approved.")
     _refresh_run(db, r)
     _, month_end = _staff_month_bounds(r.month_year)
+    import paystatus as _ps
+    already = _ps.paid_line_ids(db, r) | {p.source_id for p in db.query(models.PayPayment).filter(
+        models.PayPayment.run_id == r.id, models.PayPayment.void == False, models.PayPayment.loan_repaid > 0).all()}  # noqa: E712
     for l in r.lines:
-        if l.held:
+        if l.held or l.id in already:      # paid already: its instalment went with the payment
             continue
         left = round(l.loan_deduction or 0, 2)
         if left <= 0.005:
@@ -14625,6 +14654,9 @@ try:   # a column added after the table was first made
 except Exception as _e:
     print("credentials column:", _e)
 
+
+import paystatus  # noqa: E402  - paid status and payslips, office and labour payroll
+app.include_router(paystatus.router)
 
 import chat  # noqa: E402  - in-app chat: who is online, Everyone, private chats
 app.include_router(chat.router)

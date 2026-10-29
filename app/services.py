@@ -98,6 +98,15 @@ def with_days_paid_in_advance(db, employee, month_year, rows):
     from datetime import timedelta as _td
     from types import SimpleNamespace
     start = full_cycle_from(db, month_year)
+    # One worker paid his whole cycle early (Mark paid > Early full month) - the same, for him alone.
+    own = db.query(models.Setting).filter(models.Setting.key == f"{full_cycle_key(month_year)}:{employee.emp_no}").first()
+    if own and own.value:
+        try:
+            from datetime import date as _date
+            d_own = _date.fromisoformat(own.value)
+            start = min(start, d_own) if start else d_own
+        except ValueError:
+            pass
     if not start or employee.staff or not employee.active:
         return rows
     try:
@@ -229,6 +238,16 @@ def recalculate_summary(db: Session, employee: models.Employee, month_year: str)
 
     db.commit()
     db.refresh(summary)
+    # A card already paid in full that changes now (attendance marked later): the difference goes to next cycle.
+    try:
+        if db.query(models.PayPayment.id).filter(models.PayPayment.kind == "labour", models.PayPayment.employee_id == employee.id,
+                                                 models.PayPayment.month_year == month_year,
+                                                 models.PayPayment.void == False).first():  # noqa: E712
+            import paystatus
+            paystatus.labour_carry(db, employee, month_year, summary)
+            db.commit()
+    except Exception as ex:
+        db.rollback(); print("labour carry:", ex)
     return summary
 
 
