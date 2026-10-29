@@ -621,6 +621,9 @@ class MaterialRequest(Base):
     # front of them instead of asking the office who bought it.
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     expected_on = Column(Date, nullable=True)
+    # Made by an LPO raised without a request (or for its extra lines): the order is chased and received
+    # through it. It follows the LPO - edited with it, closed when the LPO is cancelled.
+    lpo_id = Column(Integer, nullable=True, index=True)
     requested_on = Column(Date, nullable=False, index=True)
     closed_on = Column(Date, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)

@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import StreamingResponse, HTMLResponse
 from html import escape
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, object_session
 from sqlalchemy import and_, or_, func, text
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
@@ -239,10 +239,7 @@ def seed_on_startup():
             _fix_lpo_0153(db)
         except Exception as e:
             db.rollback(); print("LPO 0153 requests:", e)
-        try:
-            _hire_in_to_requests_once(db)
-        except Exception as e:
-            db.rollback(); print("hire-ins to requests:", e)
+        # _hire_in_to_requests_once(db) - the October data is put right once the purchaser's answers are in
         try:
             import zohoapi as _zn
             _zn.clear_not_vendor_todo(db)
@@ -5586,8 +5583,10 @@ def _hire_to_requests(db, sup, location, moves, order=None):
     ids = [int(x) for x in (getattr(order, "request_line_ids", "") or "").split(",") if x.strip().isdigit()] if order else []
     if ids:
         q = q.filter(models.MaterialRequestLine.id.in_(ids))
-    elif order is not None and order.request_id:
-        q = q.filter(models.MaterialRequestLine.request_id == order.request_id)
+    elif order is not None:
+        own = [m.id for m in _lpo_tracked_requests(db, order)] + ([order.request_id] if order.request_id else [])
+        if own:
+            q = q.filter(models.MaterialRequestLine.request_id.in_(own))
     loc = (location or "").strip().upper()
     cands = [l for l in q.all() if (l.status or "pending") != "rejected"
              and (l.qty_requested or 0) - (l.qty_received or 0) > 1e-9
@@ -8729,31 +8728,10 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
                 mr.status = "ordered"
             sup_ids = {x.supplier_id for x in mr.lines if (x.status or "") != "rejected"}
             mr.supplier_id = supplier.id if (supplier and sup_ids == {supplier.id}) else None
-    # An order raised on its own - stock for the store, nobody's request -
-    # still has to be chased and booked in when it comes. It gets a store
-    # top-up request of its own, already ordered from this supplier, so it
-    # is on Order Follow-up and Material Arrived like every other order,
-    # and closes itself when the delivery is recorded.
-    if not payload.request_id and not payload.request_line_ids:
-        stock_lines = [l for l in payload.lines if l.item_id and (l.qty or 0) > 0]
-        if stock_lines:
-            mr = models.MaterialRequest(
-                ref=_next_mr_ref(db), site="STORE",
-                requested_by=(user.full_name or user.username or "").strip(),
-                urgency="normal", status="ordered", requested_on=o.order_date or _dubai_today(),
-                expected_on=payload.delivery_date,
-                supplier_id=supplier.id if supplier else None,
-                notes=f"Stock for the store, ordered on {o.ref}", created_by=user.id)
-            db.add(mr); db.flush()
-            for l in stock_lines:
-                it = db.query(models.StoreItem).filter(models.StoreItem.id == l.item_id).first()
-                db.add(models.MaterialRequestLine(
-                    request_id=mr.id, item_id=l.item_id,
-                    description=(l.description or (it.name if it else "")),
-                    qty_requested=l.qty, qty_approved=l.qty, unit=(l.unit or (it.unit if it else "pcs")),
-                    status="approved", supplier_id=supplier.id if supplier else None,
-                    purpose=f"Store stock - {o.ref}"))
-            o.request_id = mr.id
+    # What the LPO orders beyond the requests it was raised from (all of it, when it was raised straight away)
+    # is still chased and booked in when it comes: a request of its own per site, already ordered from this
+    # supplier, on Order follow-up and Material arrived like every other order.
+    _track_lpo(db, o, user, creating=True)
     db.commit()
     db.refresh(o)
     log_action(db, user.id, "create_lpo",
@@ -8762,6 +8740,116 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
                + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else "")
                + (f"; added to the material list: {', '.join(new_items)}" if new_items else ""))
     return {**_lpo_dict(o), "supplier_updated": sup_changed, "materials_added": new_items}
+
+
+def _lpo_site_key(o, l=None):
+    """Where a line of this LPO is for: its own 'cost to' on a combined LPO, else the LPO's project location -
+    a site on the list, or the store."""
+    text = ((getattr(l, "cost_to", "") or "") if (l is not None and getattr(o, "combined", False)) else "") or (o.project_location or "")
+    if text.strip().upper() in ("STORE", "CENTRAL STORE", ""):
+        return "STORE"
+    codes = {x.lower(): x for (x,) in object_session(o).query(models.Site.code).all() if x}
+    toks = [t.strip() for t in re.split(r"[,/;&]+|\s+", text) if t.strip()]
+    for tok in toks:
+        if tok.lower() in codes:
+            return codes[tok.lower()]
+    # not on the site list yet (a site is often ordered for before it is added): as typed, like a delivery to it
+    return toks[0][:40] if len(toks) == 1 else "STORE"
+
+
+def _lpo_tracked_requests(db, o):
+    """The requests this LPO made for itself (and, for older LPOs, the store top-up it made)."""
+    rs = db.query(models.MaterialRequest).filter(models.MaterialRequest.lpo_id == o.id).all()
+    if not rs and o.request_id:
+        mr = db.get(models.MaterialRequest, o.request_id)
+        if mr and (mr.notes or "").startswith("Stock for the store, ordered on"):
+            mr.lpo_id = o.id
+            rs = [mr]
+    return rs
+
+
+def _settle_status(mr):
+    live = [x for x in mr.lines if (x.status or "pending") != "rejected"]
+    got = any((x.qty_received or 0) > 0 for x in mr.lines)
+    if not live:
+        mr.status = "delivered" if got else "closed"
+    elif all((x.qty_received or 0) >= (x.qty_requested or 0) - 1e-9 for x in live):
+        mr.status = "delivered"
+    elif got:
+        mr.status = "partial"
+    else:
+        mr.status = "ordered"
+    mr.closed_on = _dubai_today() if mr.status in ("delivered", "closed") else None
+
+
+def _track_lpo(db, o, user, creating=False):
+    """Keep the LPO's own requests in step with it: one per site, a line per material it orders that no site
+    request covers - added, changed and taken off as the LPO is raised and edited. What already arrived stays."""
+    db.flush()
+    covered = set()
+    ids = [int(x) for x in (o.request_line_ids or "").split(",") if x.strip().isdigit()]
+    if ids:
+        covered = {l.item_id for l in db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id.in_(ids)).all() if l.item_id}
+    elif o.request_id:
+        mr0 = db.get(models.MaterialRequest, o.request_id)
+        if mr0 and not (mr0.notes or "").startswith("Stock for the store, ordered on") and mr0.lpo_id != o.id:
+            covered = {l.item_id for l in mr0.lines if l.item_id}
+    if not creating and not ids and not _lpo_tracked_requests(db, o) and o.supplier_id:
+        # an LPO raised before the request lines were kept with it: what a site asked for from this supplier is
+        # that site's request - not to be made a second time
+        covered |= {l.item_id for l in db.query(models.MaterialRequestLine).join(models.MaterialRequest)
+                    .filter(models.MaterialRequestLine.supplier_id == o.supplier_id, models.MaterialRequest.lpo_id.is_(None),
+                            models.MaterialRequest.status.in_(["approved", "ordered", "partial", "delivered"])).all() if l.item_id}
+    want = {}                                   # site -> {item_id: [qty, description, unit]}
+    for l in o.lines:
+        if not l.item_id or (l.qty or 0) <= 0 or l.item_id in covered:
+            continue
+        w = want.setdefault(_lpo_site_key(o, l), {}).setdefault(l.item_id, [0.0, (l.description or "").strip(), l.unit or ""])
+        w[0] += float(l.qty or 0)
+    have = {mr.site: mr for mr in _lpo_tracked_requests(db, o) if mr.status != "closed" or any((x.qty_received or 0) > 0 for x in mr.lines)}
+    for site in set(want) | set(have):
+        mr = have.get(site)
+        items = want.get(site, {})
+        if mr is None:
+            if not items:
+                continue
+            mr = models.MaterialRequest(
+                ref=_next_mr_ref(db), site=site, lpo_id=o.id,
+                requested_by=((user.full_name or user.username or "").strip() if user else ""),
+                urgency="normal", status="ordered", requested_on=o.order_date or _dubai_today(),
+                needed_by=o.delivery_date, expected_on=o.delivery_date, supplier_id=o.supplier_id,
+                notes=(f"Stock for the store, ordered on {o.ref}" if site == "STORE" else f"Ordered direct on {o.ref}"),
+                created_by=user.id if user else None)
+            db.add(mr); db.flush()
+        mr.supplier_id, mr.expected_on = o.supplier_id, o.delivery_date or mr.expected_on
+        by_item = {x.item_id: x for x in mr.lines}
+        for item_id, (qty, desc, unit) in items.items():
+            x = by_item.get(item_id)
+            if x is None:
+                it = db.get(models.StoreItem, item_id)
+                db.add(models.MaterialRequestLine(
+                    request_id=mr.id, item_id=item_id, description=desc or (it.name if it else ""),
+                    qty_requested=qty, qty_approved=qty, unit=unit or (it.unit if it else "pcs"),
+                    status="approved", supplier_id=o.supplier_id,
+                    purpose=(f"Store stock - {o.ref}" if site == "STORE" else f"Direct order - {o.ref}")))
+            else:
+                q = max(qty, float(x.qty_received or 0))
+                x.qty_requested = x.qty_approved = q
+                x.status, x.supplier_id = "approved", o.supplier_id
+                x.description = desc or x.description
+        for x in list(mr.lines):
+            if x.item_id in items:
+                continue
+            if (x.qty_received or 0) > 0:           # taken off the LPO after some came: what came is what was had
+                x.qty_requested = x.qty_approved = x.qty_received
+            else:
+                mr.lines.remove(x); db.delete(x)
+        db.flush(); db.expire(mr, ["lines"])
+        if not mr.lines:
+            mr.status, mr.closed_on = "closed", _dubai_today()
+            mr.office_remark = f"{o.ref} no longer orders anything for {'the store' if site == 'STORE' else site}"
+        else:
+            _settle_status(mr)
 
 
 def _lpo_snap(o):
@@ -8923,6 +9011,18 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     new_items = []
     _lpo_lines_to_materials(db, o, new_items)
     db.flush(); db.expire(o, ["lines"])
+    # The requests follow the edit: a site's material taken off the LPO goes back to waiting to be ordered;
+    # what the LPO orders for itself is kept in step (added, changed, taken off).
+    on_lpo = {l.item_id for l in o.lines if l.item_id}
+    ids = [int(x) for x in (o.request_line_ids or "").split(",") if x.strip().isdigit()]
+    if ids:
+        gone = [l for l in db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id.in_(ids)).all()
+                if l.item_id not in on_lpo and (l.qty_received or 0) <= 0 and (l.status or "pending") != "rejected"]
+        if gone:
+            _settle_request_lines(db, o, gone, False, "")
+            keep = [i for i in ids if i not in {g.id for g in gone}]
+            o.request_line_ids = ("," + ",".join(map(str, keep)) + ",") if keep else ""
+    _track_lpo(db, o, user)
     changes = _lpo_changes(before, _lpo_snap(o))
     zoho = ""
     if changes and (o.zoho_status or "") in ("sent", "changed"):
@@ -8967,6 +9067,16 @@ def cancel_purchase_order(order_id: int, payload: dict = Body(default={}), db: S
     # The materials: no longer needed (the request closes - off Approvals and Order follow-up), or still
     # needed (back to waiting to be ordered from someone else).
     not_needed = bool((payload or {}).get("not_needed"))
+    # What the LPO ordered for itself (nobody's request) closes with it - it is not put back to be ordered.
+    for mr in _lpo_tracked_requests(db, o):
+        live = [x for x in mr.lines if (x.status or "pending") != "rejected" and (x.qty_received or 0) < (x.qty_requested or 0) - 1e-9]
+        for x in live:
+            if (x.qty_received or 0) > 0:
+                x.qty_requested = x.qty_approved = x.qty_received
+            else:
+                x.status, x.reject_reason = "rejected", f"{o.ref} cancelled: {reason}"[:300]
+        _settle_status(mr)
+        mr.office_remark = ((mr.office_remark + " | ") if (mr.office_remark or "").strip() else "") + f"{o.ref} cancelled - {reason}"
     freed = _release_lpo_lines(db, o, not_needed=not_needed, why=reason)
     db.commit()
     what = ("request line(s) closed - not needed" if not_needed else "request line(s) back to waiting for an order")
