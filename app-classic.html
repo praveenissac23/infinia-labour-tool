@@ -318,6 +318,25 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .inv-sum tr.t td { font-weight: 800; font-size: 15px; background: #FBF3F1; border-left: 3px solid #C0392B; }
   .inv-btns { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
   .inv-list td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  /* Combined LPO: who pays for each item (not printed) */
+  .cmb { margin-top:14px; border:1px solid #E6D3CF; border-radius:12px; background:#FFFBFA; overflow:hidden; }
+  .cmb-h { display:flex; align-items:center; gap:12px; padding:11px 16px; cursor:pointer; flex-wrap:wrap; margin:0; }
+  .cmb.on .cmb-h { background:#FBF0EE; border-bottom:1px solid #F0DDD9; }
+  .cmb-h input { position:absolute; opacity:0; width:0; height:0; }
+  .cmb-h b { font-size:14px; color:#2E3238; } .cmb-sub { font-size:12.5px; color:#777; }
+  .cmb-h .tg { width:40px; height:22px; border-radius:11px; background:#CFC7C4; position:relative; flex-shrink:0; transition:background .15s; }
+  .cmb-h .tg::after { content:''; position:absolute; left:3px; top:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition:left .15s; box-shadow:0 1px 2px rgba(0,0,0,.2); }
+  .cmb.on .cmb-h .tg { background:#C0392B; } .cmb.on .cmb-h .tg::after { left:21px; }
+  .cmb-h .note { margin-left:auto; font-size:11.5px; color:#8A6100; background:#FFF4D6; border:1px solid #F0D99A; padding:3px 9px; border-radius:12px; font-weight:600; }
+  .cmb:not(.on) .cmb-h .note { display:none; }
+  .cmb-sub.hot { color:#B26A00; font-weight:600; }
+  .cmb table { width:100%; border-collapse:collapse; font-size:13px; } .cmb td, .cmb th { padding:7px 12px; border-bottom:1px solid #F3E7E4; text-align:left; }
+  .cmb th { font-size:11px; color:#8b7f7a; text-transform:uppercase; letter-spacing:.4px; background:#fff; }
+  .cmb td.n, .cmb th.n { text-align:right; } .cmb select { padding:5px 8px; border:1px solid #D9C4BF; border-radius:6px; font:inherit; font-weight:600; min-width:150px; }
+  .cmb select.miss { border-color:#C0392B; background:#FFF3F1; }
+  .cmb .sum { display:flex; gap:10px; padding:12px 16px; flex-wrap:wrap; align-items:center; }
+  .cmb .chip { border-radius:10px; padding:7px 12px; background:#fff; border:1px solid #EAD9D5; font-size:12.5px; } .cmb .chip b { display:block; font-size:15px; }
+  .cmb .src { font-size:11px; color:#999; }
   /* a cancelled LPO stays on the register, struck through, never in the totals */
   tr.lpr-cxrow td { color: #9A9A9A; background: #FBF7F6; } tr.lpr-cxrow td .lpr-no, tr.lpr-cxrow td:not(:first-child) { text-decoration: line-through; text-decoration-color: #C0392B; }
   tr.lpr-cxrow td .lpr-cx, tr.lpr-cxrow td .lpr-why { text-decoration: none; display: inline-block; }
@@ -2939,6 +2958,15 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <button class="btn btn-gray" onclick="addLpoLine()">Add line</button>
               <div class="field"><label>Discount %</label><input type="text" id="lpo-discount" value="0" style="width:90px;" oninput="renderLpoTotals()"></div>
               <div id="lpo-totals" style="margin-left:auto; text-align:right; font-size:13px;"></div>
+            </div>
+            <!-- Combined LPO: one supplier, items for different sites. Switched on, each item says who pays -
+                 for accounts and site costs only; the printed LPO stays exactly as it is. -->
+            <div class="cmb" id="lpo-cmb">
+              <label class="cmb-h"><input type="checkbox" id="lpo-combined" onchange="onLpoCombined()">
+                <span class="tg"></span><b>Combined LPO - items for different sites</b>
+                <span class="cmb-sub" id="lpo-cmb-hint">Switch on when one supplier's items are for different sites - say who pays for each item.</span>
+                <span class="note">Not printed on the LPO</span></label>
+              <div id="lpo-cmb-body" style="display:none;"></div>
             </div>
 
             <div class="form-row" style="margin-top:10px; gap:10px; flex-wrap:wrap;">
@@ -12920,8 +12948,9 @@ async function lpoFromTicked() {
   lpoLines = [];
   picked.forEach(p => lpoLines.push({ item_id: p.item_id, description: p.description, description2: "",
                                       qty: String(p.qty), unit: p.unit || "", rate: "", tax_pct: 5,
-                                      last: null, times: 0 }));
+                                      last: null, times: 0, req_ref: p.ref || "", req_site: p.site || "" }));
   renderLpoLines();
+  lpoCmbHint();
   lpoLines.forEach((l, i) => lookupLpoRate(i));
   showStatus("lpo-status", "ok",
     `${picked.length} material(s) brought in from ${[...new Set(picked.map(p => p.ref))].join(", ")} - choose the supplier and enter the rates.`);
@@ -13218,6 +13247,7 @@ async function newLpo() {
   lpoFormRun += 1;
   lpoLines = [];
   lpoRequestLineIds = [];
+  lpoCmbReset(false);
   addLpoLine();
   window.scrollTo(0, 0);
 }
@@ -13275,9 +13305,10 @@ async function editLpo(id) {
     lpoRequestLineIds = [];
     (o.lines || []).forEach(l => addLpoLine({
       item_id: l.item_id, description: l.description, description2: l.description2 || "",
-      qty: l.qty, unit: l.unit, rate: l.rate, tax_pct: l.tax_pct,
+      qty: l.qty, unit: l.unit, rate: l.rate, tax_pct: l.tax_pct, cost_to: l.cost_to || "",
     }));
     if (!lpoLines.length) addLpoLine();
+    lpoCmbReset(!!o.combined); if (o.combined) renderLpoCombined();
     window.scrollTo(0, 0);
   } catch (e) {
     showStatus("lpo-status", "err", errText(e));
@@ -13821,6 +13852,59 @@ function matchKey(ev, box, i) {
   }
 }
 
+// ---- Combined LPO ---------------------------------------------------------------------------------------
+function lpoCmbOn() { const c = document.getElementById("lpo-combined"); return !!(c && c.checked); }
+function lpoCostOptions(sel) {
+  const isStore = c => /store/i.test(c || "");
+  const codes = [...new Set((sites || []).map(x => x.code).filter(c => c && !isStore(c)))];
+  if (sel && !isStore(sel) && !codes.includes(sel)) codes.unshift(sel);
+  const cur = isStore(sel) ? "STORE" : (sel || "");
+  return `<option value="" ${cur ? "" : "selected"}>Choose...</option><option value="STORE" ${cur === "STORE" ? "selected" : ""}>Store</option>`
+    + codes.map(c => `<option value="${escapeAttr(c)}" ${cur === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("");
+}
+function onLpoCombined() {
+  const on = lpoCmbOn();
+  document.getElementById("lpo-cmb").classList.toggle("on", on);
+  document.getElementById("lpo-cmb-body").style.display = on ? "block" : "none";
+  if (on) {
+    // the site each material was asked for comes in by itself
+    lpoLines.forEach(l => { if (!l.cost_to && l.req_site) l.cost_to = /store/i.test(l.req_site) ? "STORE" : l.req_site; });
+    // one location on the printed LPO: the store when it is one of them, else the first site
+    const loc = document.getElementById("lpo-location"), parts = (loc.value || "").split(",").map(x => x.trim()).filter(Boolean);
+    if (parts.length > 1) loc.value = parts.find(x => /store/i.test(x)) || parts[0];
+    renderLpoCombined();
+  }
+  lpoCmbHint();
+}
+function lpoCmbHint() {
+  const h = document.getElementById("lpo-cmb-hint"); if (!h) return;
+  const ss = [...new Set(lpoLines.map(l => l.req_site).filter(Boolean))];
+  if (lpoCmbOn()) { h.className = "cmb-sub"; h.textContent = "Who pays for each item. For accounts and site costs only."; }
+  else if (ss.length > 1) { h.className = "cmb-sub hot"; h.textContent = `These materials are for ${ss.length} sites (${ss.map(x => /store/i.test(x) ? "Store" : x).join(", ")}) - switch on to put each one's cost to its own site.`; }
+  else { h.className = "cmb-sub"; h.textContent = "Switch on when one supplier's items are for different sites - say who pays for each item."; }
+}
+function renderLpoCombined() {
+  const body = document.getElementById("lpo-cmb-body"); if (!body || !lpoCmbOn()) return;
+  const disc = parseFloat(document.getElementById("lpo-discount").value) || 0;
+  const amt = l => (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0) * (1 - disc / 100) * (1 + (parseFloat(l.tax_pct) || 0) / 100);
+  const rows = lpoLines.map((l, i) => ({ l, i })).filter(x => (x.l.description || "").trim());
+  const tot = {};
+  rows.forEach(({ l }) => { const k = l.cost_to || ""; tot[k] = (tot[k] || 0) + amt(l); });
+  const word = k => k === "STORE" ? "Store stock" : k ? "Site " + k : "Not chosen yet";
+  body.innerHTML = rows.length ? `<table><thead><tr><th style="width:4%;">#</th><th>Material</th><th>From request</th><th style="width:190px;">Cost to</th><th class="n" style="width:150px;">Amount incl. VAT</th></tr></thead><tbody>
+    ${rows.map(({ l, i }) => `<tr><td>${i + 1}</td><td>${escapeHtml(l.description)}</td><td class="src">${l.req_ref ? escapeHtml(l.req_ref + (l.req_site ? " · " + (/store/i.test(l.req_site) ? "Store" : l.req_site) : "")) : "-"}</td>
+      <td><select class="${l.cost_to ? "" : "miss"}" onchange="lpoLines[${i}].cost_to = this.value; renderLpoCombined()">${lpoCostOptions(l.cost_to)}</select></td><td class="n">${money(amt(l))}</td></tr>`).join("")}</tbody></table>
+    <div class="sum"><span style="font-size:12.5px;color:#666;margin-right:4px;">Accounts book it as:</span>${Object.entries(tot).sort((a, b) => (a[0] === "STORE" ? -1 : b[0] === "STORE" ? 1 : a[0].localeCompare(b[0])))
+      .map(([k, v]) => `<span class="chip"${k ? "" : ' style="border-color:#C0392B;color:#C0392B;"'}>${word(k)}<b>AED ${money(v)}</b></span>`).join("")}</div>`
+    : `<div style="padding:12px 16px;color:#888;font-size:13px;">Add the materials above first.</div>`;
+}
+function lpoCmbReset(on) {
+  const c = document.getElementById("lpo-combined"); if (c) c.checked = !!on;
+  const box = document.getElementById("lpo-cmb"); if (box) box.classList.toggle("on", !!on);
+  const b = document.getElementById("lpo-cmb-body"); if (b) b.style.display = on ? "block" : "none";
+  lpoCmbHint();
+}
+
 function renderLpoTotals() {
   const sub = lpoLines.reduce((s, l) => s + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0), 0);
   const disc = parseFloat(document.getElementById("lpo-discount").value) || 0;
@@ -13835,6 +13919,7 @@ function renderLpoTotals() {
     <div>VAT <strong style="margin-left:10px;">${money(vat)}</strong></div>
     <div style="font-size:15px; margin-top:4px;">Total <strong style="margin-left:10px;">AED ${money(net + vat)}</strong></div>`;
   if (lpoClSets.length) lpoClApply();          // a material on the lines brings its clauses
+  if (lpoCmbOn()) renderLpoCombined();
 }
 
 async function saveLpo() {
@@ -13847,7 +13932,12 @@ async function saveLpo() {
     .filter(l => (l.description || "").trim() && (parseFloat(l.qty) || 0) > 0)
     .map(l => ({ item_id: l.item_id, description: l.description.trim(), description2: (l.description2 || "").trim(),
                  qty: parseFloat(l.qty) || 0, unit: l.unit || "", rate: parseFloat(l.rate) || 0,
-                 tax_pct: parseFloat(l.tax_pct) || 0 }));
+                 tax_pct: parseFloat(l.tax_pct) || 0, cost_to: lpoCmbOn() ? (l.cost_to || "") : "" }));
+  if (lpoCmbOn() && lines.some(l => !l.cost_to)) {
+    if (tab) tab.close();
+    renderLpoCombined(); document.getElementById("lpo-cmb").scrollIntoView({ block: "center" });
+    showStatus("lpo-status", "warn", "Combined LPO: choose who pays (Store or a site) for every item."); return;
+  }
   if (!document.getElementById("lpo-supplier").value.trim()) {
     if (tab) tab.close();
     showStatus("lpo-status", "warn", "Enter the supplier."); return;
@@ -13877,6 +13967,7 @@ async function saveLpo() {
     notes: document.getElementById("lpo-notes").value.trim(),
     terms_text: document.getElementById("lpo-termstext").value,
     request_line_ids: lpoRequestLineIds,
+    combined: lpoCmbOn(),
     lines,
   };
   try {
@@ -18299,7 +18390,8 @@ function zhPosDraw() {
             ${it.zoho ? `<div style="margin-top:3px;font-size:12.5px;font-weight:600;color:${/automatically/.test(it.zoho) ? "#1E7A3C" : "#B03A2E"};">${/automatically/.test(it.zoho) ? "&#10003; " : "&#9888; "}${escapeHtml(it.zoho)}</div>` : ""}`).join("")}
           ${!items.length && o.err ? `<div style="margin-top:4px;"><span class="zx-tag zx-bad">${escapeHtml(o.err)}</span></div>` : ""}</div>
           <div style="white-space:nowrap;">${need ? `<button type="button" class="btn btn-primary btn-sm" onclick="zhPoDone(${o.id})">Done in Zoho</button>` : `<button type="button" class="btn btn-gray btn-sm" onclick="zhPoSeen(${o.id})">Seen</button>`}</div></div>`; }).join("")}</div>` : "";
-  zhList("lpo", wait.map(o => ({ id: o.id, date: o.date, main: o.ref + (o.site ? " · " + o.site : ""), sub: o.supplier, amount: o.total, out: true,
+  zhList("lpo", wait.map(o => ({ id: o.id, date: o.date, main: o.ref + ((o.split || []).length ? " · Combined" : (o.site ? " · " + o.site : "")),
+      sub: o.supplier + ((o.split || []).length ? " — cost to " + o.split.map(x => `${x.to} ${pcMoney(x.amount)}`).join(" · ") : ""), amount: o.total, out: true,
       err: o.err, acc: o.account, accPick: `zhPoAcc(${o.id},V)`, view: `zhPoView(${o.id})`, del: ZH.po_del ? `zhPoDelete(${o.id})` : "", block: !o.linked ? "Supplier not linked" : (!o.account ? "Pick account" : "") })),
     "zh-pos", "Purchase orders (LPOs)", "They go to Zoho as purchase orders with the portal's LPO number. Pick the Zoho account the bill will be booked to - next time the supplier's last account is filled in.", "No LPOs waiting - every LPO is in Zoho.", step, fl);
   if (ZH_PANE === "lpo") setTimeout(zhPoHint, 250);

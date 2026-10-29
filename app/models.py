@@ -465,6 +465,9 @@ class PurchaseOrder(Base):
     acc_note = Column(Text, default="")
     # The request lines this LPO was raised for (",12,15,"), so a cancel finds them for sure
     request_line_ids = Column(String, default="")
+    # Combined LPO: one order from one supplier, items for different sites. Each line says who pays
+    # (PurchaseOrderLine.cost_to) - for accounts and site costs only, never printed on the LPO.
+    combined = Column(Boolean, default=False)
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -487,6 +490,7 @@ class PurchaseOrderLine(Base):
     qty = Column(Float, default=0.0)
     unit = Column(String, default="")
     rate = Column(Float, default=0.0)
+    cost_to = Column(String, default="")             # combined LPO only: "STORE" or a site code - not printed
     tax_pct = Column(Float, default=5.0)
 
     order = relationship("PurchaseOrder", back_populates="lines")

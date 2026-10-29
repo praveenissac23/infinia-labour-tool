@@ -475,6 +475,7 @@ class PurchaseOrderLineIn(BaseModel):
     unit: str = ""
     rate: float = 0.0
     tax_pct: float = 5.0
+    cost_to: str = ""            # combined LPO: "STORE" or a site code
 
 
 class PurchaseOrderIn(BaseModel):
@@ -502,4 +503,5 @@ class PurchaseOrderIn(BaseModel):
     notes: str = ""
     terms_text: str = ""
     request_line_ids: list[int] = []
+    combined: bool = False       # items for different sites - the split is not printed
     lines: list[PurchaseOrderLineIn] = []

@@ -8470,10 +8470,28 @@ def _lpo_dict(o):
         "tax_pct": o.tax_pct, "notes": o.notes, "terms_text": o.terms_text, "status": o.status,
         "cancel_reason": getattr(o, "cancel_reason", "") or "",
         "cancelled_on": o.cancelled_at.strftime("%d %b %Y") if getattr(o, "cancelled_at", None) else "",
+        "combined": bool(getattr(o, "combined", False)),
         "lines": [{"id": l.id, "item_id": l.item_id, "description": l.description,
                    "description2": l.description2, "qty": l.qty, "unit": l.unit,
-                   "rate": l.rate, "tax_pct": l.tax_pct} for l in o.lines],
+                   "rate": l.rate, "tax_pct": l.tax_pct, "cost_to": getattr(l, "cost_to", "") or ""} for l in o.lines],
     }
+
+
+def _cost_to(payload, l):
+    """Combined LPO only: who pays for this line - "STORE" or a site code. Off: nothing."""
+    if not getattr(payload, "combined", False):
+        return ""
+    v = (getattr(l, "cost_to", "") or "").strip()
+    return "STORE" if v.lower() in ("store", "central store") else v[:40]
+
+
+def _check_combined(payload):
+    if getattr(payload, "combined", False):
+        missing = [(l.description or "").strip() or "a line" for l in payload.lines
+                   if ((l.description or "").strip() or l.item_id) and not (l.cost_to or "").strip()]
+        if missing:
+            raise HTTPException(status_code=400, detail="Combined LPO: say which site (or Store) pays for "
+                                + ", ".join(missing[:3]) + (" ..." if len(missing) > 3 else ""))
 
 
 @app.post("/store/purchase/orders")
@@ -8484,6 +8502,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
         raise HTTPException(status_code=400, detail="Enter the supplier.")
     if not payload.lines:
         raise HTTPException(status_code=400, detail="An order needs at least one line.")
+    _check_combined(payload)
 
     # Contact Person and Mobile on the order are OURS - the man on site
     # the supplier should call. Passing them in here wrote them onto the
@@ -8516,6 +8535,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
         discount_pct=payload.discount_pct or 0.0,
         notes=payload.notes or "",
         terms_text=(payload.terms_text or DEFAULT_LPO_TERMS),
+        combined=bool(payload.combined),
         created_by=user.id,
     )
     db.add(o)
@@ -8526,7 +8546,8 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
         db.add(models.PurchaseOrderLine(
             order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
             description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
-            rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0))
+            rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0,
+            cost_to=_cost_to(payload, l)))
     db.flush()
     new_items = []
     _lpo_lines_to_materials(db, o, new_items)
@@ -8599,12 +8620,31 @@ def _lpo_snap(o):
         vat = sum((l["qty"] or 0) * (l["rate"] or 0) * (1 - (disc or 0) / 100) * (l["tax"] or 0) / 100 for l in lines)
         return round(sub + vat, 2)
     lines = [{"desc": " - ".join(x for x in ((l.description or "").strip(), (l.description2 or "").strip()) if x) or "(no description)",
-              "qty": round(l.qty or 0, 3), "unit": l.unit or "", "rate": round(l.rate or 0, 2), "tax": round(l.tax_pct or 0, 2)}
+              "qty": round(l.qty or 0, 3), "unit": l.unit or "", "rate": round(l.rate or 0, 2), "tax": round(l.tax_pct or 0, 2),
+              "to": (getattr(l, "cost_to", "") or "") if getattr(o, "combined", False) else ""}
              for l in o.lines]
     return {"supplier": o.supplier_name or "", "date": o.order_date.strftime("%d %b %Y") if o.order_date else "",
             "delivery": o.delivery_date.strftime("%d %b %Y") if o.delivery_date else (getattr(o, "delivery_note", "") or ""),
             "discount": round(o.discount_pct or 0, 2), "supplier_ref": o.supplier_ref or "", "site": o.project_location or "",
-            "terms": o.terms or "", "lines": lines, "total": tot(lines, o.discount_pct)}
+            "terms": o.terms or "", "lines": lines, "total": tot(lines, o.discount_pct),
+            "combined": bool(getattr(o, "combined", False))}
+
+
+def _to_word(v):
+    v = (v or "").strip()
+    return "-" if not v else ("Store" if v.upper() == "STORE" else v)
+
+
+def lpo_split(o):
+    """Combined LPO: [(cost_to, net, vat)] - each line's share, discount applied. [] for an ordinary LPO."""
+    if not getattr(o, "combined", False):
+        return []
+    disc, acc = float(o.discount_pct or 0), {}
+    for l in o.lines:
+        k = (getattr(l, "cost_to", "") or "").strip() or "?"
+        net = float(l.qty or 0) * float(l.rate or 0) * (1 - disc / 100.0)
+        a = acc.setdefault(k, [0.0, 0.0]); a[0] += net; a[1] += net * float(l.tax_pct or 0) / 100.0
+    return [(k, round(v[0], 2), round(v[1], 2)) for k, v in sorted(acc.items(), key=lambda kv: (kv[0] != "STORE", kv[0]))]
 
 
 def _lpo_changes(a, b):
@@ -8618,6 +8658,8 @@ def _lpo_changes(a, b):
             out.append(f"{lab}: {a[k] or '-'} -> {b[k] or '-'}")
     if a["discount"] != b["discount"]:
         out.append(f"Discount: {n(a['discount'])}% -> {n(b['discount'])}%")
+    if a.get("combined") != b.get("combined"):
+        out.append("Made a combined LPO (items for different sites)" if b.get("combined") else "No longer a combined LPO")
     left = list(enumerate(a["lines"], 1))
     used = set()
     for j, lb in enumerate(b["lines"], 1):
@@ -8638,6 +8680,8 @@ def _lpo_changes(a, b):
             bits.append(f"rate {m(la['rate'])} -> {m(lb['rate'])}")
         if la["tax"] != lb["tax"]:
             bits.append(f"VAT {n(la['tax'])}% -> {n(lb['tax'])}%")
+        if la.get("to", "") != lb.get("to", "") and (la.get("to") or lb.get("to")):
+            bits.append(f"cost to {_to_word(la.get('to'))} -> {_to_word(lb.get('to'))}")
         if bits:
             out.append(f"Line {j} {lb['desc']}: " + ", ".join(bits))
     for i, la in left:
@@ -8677,6 +8721,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
         raise HTTPException(status_code=400, detail="Enter the supplier.")
     if not payload.lines:
         raise HTTPException(status_code=400, detail="An order needs at least one line.")
+    _check_combined(payload)
     _lpo_amt = lambda lines: round(sum((l.qty or 0) * (l.rate or 0) for l in lines), 2)
     amount_was = _lpo_amt(o.lines)
     before = _lpo_snap(o)
@@ -8706,6 +8751,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     o.discount_pct = payload.discount_pct or 0.0
     o.notes = payload.notes or ""
     o.terms_text = payload.terms_text or DEFAULT_LPO_TERMS
+    o.combined = bool(payload.combined)
 
     # Lines are replaced wholesale rather than matched and patched - the
     # same as any other document correction, and simpler than reconciling
@@ -8719,7 +8765,8 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
         db.add(models.PurchaseOrderLine(
             order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
             description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
-            rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0))
+            rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0,
+            cost_to=_cost_to(payload, l)))
     db.flush()
     db.expire(o, ["lines"])          # the collection still held the lines just deleted
     new_items = []

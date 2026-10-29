@@ -101,7 +101,10 @@ def _body(db, o):
         t = "" if no_vat else (v5 if round(l.tax_pct or 0, 2) == 5 else v0)
         if not t and not no_vat:
             raise Z.ZohoError(400, f"Zoho has no {'5% Standard Rate' if round(l.tax_pct or 0, 2) == 5 else 'Zero Rate'} tax - nothing sent")
-        desc = " - ".join(x for x in ((l.description or "").strip(), (l.description2 or "").strip()) if x)[:2000]
+        desc = " - ".join(x for x in ((l.description or "").strip(), (l.description2 or "").strip()) if x)[:1900]
+        if getattr(o, "combined", False) and (l.cost_to or "").strip():
+            # combined LPO: whose cost each line is, for the chief accountant (not on the printed LPO)
+            desc += f" | Cost to: {'Store' if l.cost_to.upper() == 'STORE' else l.cost_to}"
         # No catalogue item: Zoho needs the account on each line (as the
         # chief accountant enters them), else "non-purchase item".
         it = {"description": desc or "Item", "quantity": round(l.qty or 0, 3), "rate": round(l.rate or 0, 2),
@@ -112,6 +115,8 @@ def _body(db, o):
     if not items:
         raise Z.ZohoError(400, "The LPO has no lines")
     site = _site(db, o)
+    if getattr(o, "combined", False):
+        site = "Combined: " + ", ".join("Store" if k == "STORE" else k for k, _, _ in M.lpo_split(o))
     body = {"vendor_id": vendor, "purchaseorder_number": o.ref, "date": o.order_date.isoformat(),
             "reference_number": " · ".join(x for x in (site, (o.supplier_ref or "").strip()) if x)[:100],
             "line_items": items, "is_inclusive_tax": False, **extra,
@@ -259,6 +264,7 @@ def pos(db: Session = Depends(get_db), user: models.User = ZG):
                      "total": _total(o), "site": _site(db, o), "linked": bool(_vendor(db, o)), "status": st,
                      "cancelled": o.status == "cancelled", "cancel_reason": o.cancel_reason or "",
                      "note": nt.get("items") if fresh else [],
+                     "split": [{"to": "Store" if k == "STORE" else k, "amount": round(n_ + v_, 2)} for k, n_, v_ in M.lpo_split(o)],
                      "err": "" if (o.zoho_err or "").startswith("sending@") else (o.zoho_err or "")})
     return {"rows": rows, "hint": not M.get_setting(db, f"hint_lpo_open:{user.id}"), "may_delete": (user.role or "") == "admin"}
 

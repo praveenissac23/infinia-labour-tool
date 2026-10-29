@@ -155,6 +155,16 @@ def _lpos(db, match, d1, d2):
         disc = float(o.discount_pct or 0)
         net = gross * (1 - disc / 100.0)
         vat = sum(float(l.qty or 0) * float(l.rate or 0) * float(l.tax_pct or 0) / 100.0 for l in lines) * (1 - disc / 100.0)
+        items = lambda ls: ", ".join((l.description or "")[:40] for l in ls[:4]) + (" ..." if len(ls) > 4 else "")
+        if getattr(o, "combined", False):
+            # Combined LPO: each site pays for its own lines; the store's lines are stock
+            for to, n_, v_ in M.lpo_split(o):
+                mine = [l for l in lines if ((l.cost_to or "").strip() or "?") == to]
+                st = to.upper() == "STORE"
+                out.append({"sites": [] if st else match(to), "to_store": st, "date": o.order_date,
+                            "ref": (o.ref or f"LPO {o.po_no}") + " (combined)", "supplier": o.supplier_name or "",
+                            "location": "Store" if st else to, "items": items(mine), "net": n_, "vat": v_, "id": o.id})
+            continue
         to_store = req_site.upper() == "STORE"
         sites = [] if to_store else (match(o.project_location, o.plot_no, o.job_scope) or match(req_site))
         out.append({"sites": sites, "to_store": to_store, "date": o.order_date, "ref": o.ref or f"LPO {o.po_no}",
