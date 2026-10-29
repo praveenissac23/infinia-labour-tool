@@ -1477,7 +1477,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .nb-words { margin-top: 10px; padding: 8px 10px; background: #fff; border: 1px solid #ECE7E2; border-radius: 8px; font-size: 13px;
               color: #33383D; line-height: 1.45; white-space: pre-wrap; word-break: break-word; max-height: 130px; overflow: auto; }
   .notif-rule.late { background: #C0392B; } .notif-rule.request { background: #1565C0; }
-  .notif-rule.low, .notif-rule.rental { background: #B26A00; }
+  .notif-rule.low, .notif-rule.rental { background: #B26A00; } .notif-rule.zoho { background: #E0A100; }
   .notif-rule.status, .notif-rule.attendance { background: #6B7280; }
   /* What a site already holds, shown when it is chosen - so nobody
      sends forty bags to a site that is sitting on thirty. */
@@ -8001,8 +8001,10 @@ async function loadNotifications() {
     // up - except anything genuinely urgent, which is worth saying at
     // once.
     toastReady = true;
-    const urgent = fresh.filter(n => n.kind === "late" || n.kind === "expiry");
-    markSeen(fresh.filter(n => n.kind !== "late" && n.kind !== "expiry").map(n => n.id));
+    // an LPO edited or cancelled by purchasing pops up for accounts even if it happened while they were away
+    const urgentOf = n => n.kind === "late" || n.kind === "expiry" || n.lpo_change;
+    const urgent = fresh.filter(urgentOf).sort((a, b) => (b.lpo_change ? 1 : 0) - (a.lpo_change ? 1 : 0));   // LPO changes first
+    markSeen(fresh.filter(n => !urgentOf(n)).map(n => n.id));
     if (urgent.length) showToasts(urgent);
     return;
   }
@@ -8089,6 +8091,23 @@ function showNextNotification() {
       <button class="btn btn-gray" id="notif-close">Close</button>
       <button class="btn btn-primary" id="notif-go">${n.card ? "Open card" : "Open board"}</button>
     </div>`;
+  else if (n.lpo_change) box.innerHTML = `
+    <div class="notif-rule zoho"></div>
+    <div class="notif-top">
+      <span class="notif-icon">${n.cancelled ? "\u{1F6AB}" : "\u270F\uFE0F"}</span>
+      <div style="flex:1;">
+        <div class="notif-title">${esc_(n.title)}</div>
+        <div class="notif-detail">${n.cancelled ? "The LPO was cancelled by purchasing." : "Purchasing changed this LPO - here is exactly what changed:"}</div>
+      </div>
+    </div>
+    <div class="notif-lines lpo-chg-pop"><ul style="margin:8px 0 0 18px;padding:0;font-size:13.5px;line-height:1.6;">${(n.changes || []).map(c => `<li>${esc_(c)}</li>`).join("")}</ul>
+      ${n.zoho_result ? `<div style="margin-top:10px;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:600;${n.by_hand ? "background:#FDECEA;color:#B03A2E;" : "background:#E8F5EC;color:#1E7A3C;"}">${n.by_hand ? "\u26A0 " : "\u2713 "}${esc_(n.zoho_result)}</div>` : ""}</div>
+    <div class="notif-foot">
+      <span class="notif-count">${left ? `${left} more waiting` : ""}</span>
+      <button class="btn btn-gray" id="notif-close">Close</button>
+      ${n.by_hand ? "" : `<button class="btn btn-gray" id="notif-seen">Seen</button>`}
+      <button class="btn btn-primary" id="notif-go">Open Send to Zoho</button>
+    </div>`;
   else box.innerHTML = `
     <div class="notif-rule ${n.kind || ""}"></div>
     <div class="notif-top">
@@ -8112,6 +8131,8 @@ function showNextNotification() {
   // Close shows the next one - that is working through them, which is
   // what Close is for.
   document.getElementById("notif-close").onclick = () => { read(); showNextNotification(); };
+  const seenB = document.getElementById("notif-seen");      // an LPO change Zoho already matches: noted, off the list
+  if (seenB) seenB.onclick = async () => { read(); try { await apiCall(`/store/zoho/pos/${n.lpo_id}/seen`, { method: "POST" }); } catch (e) {} showNextNotification(); loadNotifications(); };
   document.getElementById("notif-go").onclick = () => {
     read();
     // Go where the button says, and close the window. Anything still

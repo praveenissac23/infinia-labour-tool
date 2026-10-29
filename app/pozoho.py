@@ -381,7 +381,10 @@ def bell(db):
         lines = [x for it in d["items"] for x in (it.get("changes") or [])][:8]
         if last.get("zoho"):
             lines.append(last["zoho"])
-        out.append({"id": f"lpochg-{o.id}-{d.get('seq', 1)}", "kind": "zoho", "screen": "zoho",
+        hand = (o.zoho_status or "") == "changed" or (o.status == "cancelled" and bool(o.zoho_err))
+        out.append({"id": f"lpochg-{o.id}-{d.get('seq', 1)}", "kind": "zoho", "screen": "zoho", "lpo_change": True,
+                    "lpo_id": o.id, "ref": o.ref, "cancelled": cancel, "by_hand": hand,
+                    "changes": [x for it in d["items"] for x in (it.get("changes") or [])][:30], "zoho_result": last.get("zoho") or "",
                     "title": f"{o.ref} {'cancelled' if cancel else 'edited'} by {last.get('who') or 'purchasing'}"
                              + (f" - {o.supplier_name}" if o.supplier_name else ""),
                     "detail": "; ".join(lines)[:300], "lines": lines,
