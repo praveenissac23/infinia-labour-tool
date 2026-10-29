@@ -1491,6 +1491,7 @@ ACTION_GROUPS = {
                                         "register_open", "register_password", "credential_added", "credential_changed",
                                         "credential_deleted", "credential_shown", "credentials_exported", "seccheque_added",
                                         "seccheque_changed", "seccheque_returned", "seccheque_deleted"]),
+    "chat": ("Chat", ["chat_sent", "chat_file", "chat_voice", "chat_edited", "chat_deleted"]),
     "admin": ("Settings & access", ["create_user", "user_created", "delete_user", "set_permissions", "role_saved",
                                     "role_deleted", "role_assigned", "save_company_settings", "upload_signature",
                                     "create_backup", "download_backup", "restore_backup", "delete_backup",
@@ -1535,6 +1536,8 @@ ACTION_LABELS = {
     "invoice_add": "Invoice raised", "invoice_edit": "Invoice changed", "invoice_cancel": "Invoice cancelled",
     "project_payment": "Project payment", "register_entry": "Cash register entry", "register_wrong_password": "Cash register - wrong password",
     "labour_increment": "Labour increment", "labour_rate": "Labour rate changed", "labour_rate_corrected": "Labour rate corrected",
+    "chat_sent": "Chat message", "chat_file": "Chat photo / file", "chat_voice": "Chat voice message",
+    "chat_edited": "Chat message edited", "chat_deleted": "Chat message deleted",
     "push_on": "Phone notifications turned on", "made_admin": "Made admin", "expiry_saved": "Expiry saved", "expiry_deleted": "Expiry removed",
 }
 _ACTION_GROUP = {a: g for g, (_, acts) in ACTION_GROUPS.items() for a in acts}
@@ -14118,6 +14121,7 @@ import chat  # noqa: E402  - in-app chat: who is online, Everyone, private chats
 app.include_router(chat.router)
 try:
     chat.create_tables(engine)
+    chat.backfill_audit(SessionLocal)    # chat messages sent before the Activity Monitor logged them
     chat.start_cleaner(SessionLocal)      # files and voice messages are removed after chat.KEEP_DAYS days
 except Exception as _e:
     print("chat tables:", _e)

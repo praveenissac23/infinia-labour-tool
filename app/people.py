@@ -824,7 +824,7 @@ def person_file(emp_no: str, db: Session = Depends(get_db), user: models.User = 
                                   "net": round(s.final_salary or 0, 2)})
         out["cycles"].sort(key=lambda c: M._staff_month_bounds(c["month_year"])[0] if c["month_year"] else date.min, reverse=True)
     # What changed, for this person: the app's own log filtered by his code.
-    logs = (db.query(models.AuditLog).filter(models.AuditLog.details.like(f"%{e.emp_no}%"))
+    logs = (db.query(models.AuditLog).filter(models.AuditLog.details.like(f"%{e.emp_no}%"), ~models.AuditLog.action.like("chat%"))
               .order_by(models.AuditLog.id.desc()).limit(60).all())
     users = {u.id: u.full_name or u.username for u in db.query(models.User).all()}
     out["history"] = [{"when": l.created_at.isoformat() if getattr(l, "created_at", None) else "",

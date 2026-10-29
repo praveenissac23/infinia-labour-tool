@@ -143,6 +143,54 @@ def _iso(d):
     return (d.replace(tzinfo=timezone.utc).isoformat() if d else None)
 
 
+# ---- the Activity Monitor sees the chat too: every message, edit and delete, with what it said -------------------
+def _where(db, room, uid):
+    if room == EVERYONE:
+        return "Everyone"
+    o = _other(room, uid)
+    u = db.query(models.User).filter(models.User.id == o).first() if o is not None else None
+    return f"Private to {(u.full_name or u.username) if u else 'a removed login'}"
+
+
+def _says(m):
+    if m.file_kind == "voice":
+        d = m.duration or 0
+        return f"voice message {d // 60}:{d % 60:02d}" + (f" - {m.text}" if m.text else "")
+    if m.file_kind:
+        return ("photo" if m.file_kind == "image" else "file") + f" {m.file_name}" + (f" - {m.text}" if m.text else "")
+    return m.text or ""
+
+
+def _action(m):
+    return "chat_voice" if m.file_kind == "voice" else "chat_file" if m.file_kind else "chat_sent"
+
+
+def _audit(db, uid, action, details, at=None):
+    try:
+        row = models.AuditLog(user_id=uid, action=action, details=details[:4000])
+        if at is not None:
+            row.created_at = at
+        db.add(row); db.commit()
+    except Exception as e:          # the log never stops a message going
+        db.rollback(); print("chat audit:", e)
+
+
+def backfill_audit(SessionLocal):
+    """Messages sent before the chat was logged, once, so the Activity Monitor has the whole chat."""
+    db = SessionLocal()
+    try:
+        if db.query(models.AuditLog).filter(models.AuditLog.action.like("chat\\_%", escape="\\")).first():
+            return
+        for m in db.query(ChatMessage).filter(ChatMessage.deleted == False).order_by(ChatMessage.id).all():  # noqa: E712
+            db.add(models.AuditLog(user_id=m.user_id, action=_action(m), details=f"{_where(db, m.room, m.user_id)}: {_says(m)}"[:4000],
+                                   created_at=m.created_at.replace(tzinfo=timezone.utc) if m.created_at else None))
+        db.commit()
+    except Exception as e:
+        db.rollback(); print("chat audit backfill:", e)
+    finally:
+        db.close()
+
+
 def _sig(mid, path):
     return hmac.new(auth.SECRET_KEY.encode(), f"chat:{mid}:{path}".encode(), hashlib.sha256).hexdigest()[:28]
 
@@ -305,6 +353,7 @@ def chat_send(payload: dict = Body(...), db: Session = Depends(get_db), user: mo
     m = ChatMessage(room=room, user_id=user.id, text=text, mentions=("," + ",".join(sorted(men)) + ",") if men else "")
     db.add(m); db.commit()
     _mark(db, user.id, room, m.id)
+    _audit(db, user.id, "chat_sent", f"{_where(db, room, user.id)}: {text}")
     _notify(db, m)
     umap = {p.id: p for p in db.query(models.User).all()}
     return _msg(m, umap)
@@ -339,6 +388,7 @@ async def chat_upload(room: str = Form(...), file: UploadFile = File(...), text:
                     expires_at=_now() + timedelta(hours=KEEP_HOURS))
     db.add(m); db.commit()
     _mark(db, user.id, room, m.id)
+    _audit(db, user.id, _action(m), f"{_where(db, room, user.id)}: {_says(m)}")
     _notify(db, m)
     return _msg(m, {p.id: p for p in db.query(models.User).all()})
 
@@ -425,7 +475,10 @@ def chat_edit(mid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     text = str(payload.get("text") or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="An empty message - delete it instead.")
+    was = m.text or ""
     m.text = text[:4000]; m.edited_at = _now(); db.commit()
+    if was != m.text:
+        _audit(db, user.id, "chat_edited", f"{_where(db, m.room, m.user_id)}: \"{was}\" changed to \"{m.text}\"")
     return _msg(m, {p.id: p for p in db.query(models.User).all()})
 
 
@@ -436,6 +489,10 @@ def chat_delete(mid: int, db: Session = Depends(get_db), user: models.User = Dep
         raise HTTPException(status_code=404, detail="Message not found.")
     if m.user_id != user.id and user.role != "admin":
         raise HTTPException(status_code=403, detail="Only the person who wrote it can delete it.")
+    if not m.deleted:
+        whose = "" if m.user_id == user.id else (lambda u: f"{(u.full_name or u.username) if u else 'someone'}'s message - ")(
+            db.query(models.User).filter(models.User.id == m.user_id).first())
+        _audit(db, user.id, "chat_deleted", f"{_where(db, m.room, m.user_id)}: {whose}{_says(m)}")
     if m.file_path:
         try:
             os.remove(os.path.join(_dir(), m.file_path))
