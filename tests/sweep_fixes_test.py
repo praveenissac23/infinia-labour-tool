@@ -38,7 +38,7 @@ c.post(f"/store/requests/{rid}/status", headers=O, json={"status": "approved"})
 po = c.post("/store/purchase/orders", headers=O, json={"supplier_name": "Al Noor Building Materials Trading LLC", "order_date": "2026-10-20",
             "request_id": rid, "request_line_ids": [lid], "lines": [{"item_id": items["CEM-OPC50"]["id"], "description": "Cement OPC 50kg",
             "qty": 30, "unit": "bag", "rate": 17.5, "tax_pct": 5}]}).json()
-c.post(f"/store/purchase/orders/{po['id']}/cancel", headers=O)
+c.post(f"/store/purchase/orders/{po['id']}/cancel", json={'reason': 'not needed'}, headers=O)
 mr = next(x for x in c.get("/store/requests", headers=A).json() if x["id"] == rid)
 ck("cancelling an LPO puts its materials back to waiting for an order", mr["status"] == "approved" and not mr["lines"][0]["supplier"], mr)
 ck("...and they are on the to-order list again", any(x["line_id"] == lid for x in c.get("/store/purchase/pending", headers=O).json()))

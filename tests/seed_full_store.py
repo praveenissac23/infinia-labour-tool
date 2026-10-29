@@ -418,7 +418,7 @@ def run(c, H):
     call("POST", f"/store/requests/{REQ['MR5']['id']}/status", H_=OFFICE, json={"status": "approved"})
     lpo("LPO7", "noor", "2026-10-02", "2026-10-05", [("CEM-SRC50", 60, 21.00), ("AGG-20", 8, 118.00)],
         req="MR5", job="Substructure - footings", quote="ANB/Q/2388")
-    call("POST", f"/store/purchase/orders/{LPO['LPO7']['id']}/cancel", H_=OFFICE)
+    call("POST", f"/store/purchase/orders/{LPO['LPO7']['id']}/cancel", json={'reason': 'Site says material no longer needed'}, H_=OFFICE)
     LPO["LPO7"]["status"] = "cancelled"
     lpo("LPO8", "hamad", "2026-10-04", "2026-10-07", [("CEM-SRC50", 60, 19.00), ("AGG-20", 8, 110.00)],
         req="MR5", job="Substructure - footings", quote="BH-2026-771",

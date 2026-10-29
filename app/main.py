@@ -1521,7 +1521,7 @@ ACTION_LABELS = {
     "material_request": "Material request raised", "material_request_status": "Request status changed",
     "material_request_receive": "Delivery received", "material_request_delete": "Request deleted",
     "request_line_decision": "Request line decided", "create_lpo": "Purchase order raised", "edit_lpo": "Purchase order edited",
-    "cancel_lpo": "Purchase order cancelled", "import_suppliers": "Suppliers imported", "create_user": "Login created",
+    "cancel_lpo": "Purchase order cancelled", "zoho_pos": "LPO and Zoho", "import_suppliers": "Suppliers imported", "create_user": "Login created",
     "user_created": "Login created", "delete_user": "Login deleted", "set_permissions": "Rights changed",
     "role_saved": "Role saved", "role_deleted": "Role deleted", "role_assigned": "Role assigned",
     "save_company_settings": "Purchase settings saved", "upload_signature": "Signature uploaded",
@@ -8282,6 +8282,10 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
     """
     q = (db.query(models.PurchaseOrder)
            .options(joinedload(models.PurchaseOrder.lines)))
+    # "all" (the default): one order per row shows the cancelled ones too, struck through, never in the totals;
+    # totalled by supplier / site / material they are left out.
+    if status == "all" and group_by != "order":
+        status = "issued"
     if status and status != "all":
         q = q.filter(models.PurchaseOrder.status == status)
     try:
@@ -8330,7 +8334,9 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
                                       # register shows the change on the order itself
                                       # rather than leaving it to look untouched.
                                       "edited": bool(o.updated_at),
-                                      "edited_on": o.updated_at.strftime("%d %b %Y") if o.updated_at else ""})
+                                      "edited_on": o.updated_at.strftime("%d %b %Y") if o.updated_at else "",
+                                      "cancel_reason": o.cancel_reason or "",
+                                      "cancelled_on": o.cancelled_at.strftime("%d %b %Y") if o.cancelled_at else ""})
             r["orders"].add(o.po_no)
             r["lines"] += 1
             r["qty"] += (l.qty or 0)
@@ -8346,7 +8352,9 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
         out.append(r)
     out.sort(key=lambda x: (-x["total"]) if group_by != "order" else x["label"], reverse=(group_by == "order"))
 
-    totals = {m: round(sum(r[m] for r in out), 2) for m in wanted}
+    counts = [r for r in out if r["status"] != "cancelled" or status == "cancelled"]
+    totals = {m: round(sum(r[m] for r in counts), 2) for m in wanted}
+    counted_orders = {o.po_no for o in orders if o.ref in {r["label"] for r in counts}} if group_by == "order" else counted_orders
     if "orders" in totals:
         # Count the orders actually behind the rows shown. Counting every
         # order that passed the supplier filter ignored the rest of them,
@@ -8376,11 +8384,13 @@ def export_lpo_report(token: str, format: str = "excel", group_by: str = "order"
     for r in data["rows"]:
         row = {data["group_label"]: r["label"]}
         if group_by == "order":
+            if r.get("status") == "cancelled":
+                row[data["group_label"]] = f"{r['label']} - CANCELLED" + (f" ({r['cancel_reason']})" if r.get("cancel_reason") else "")
             row["Date"] = r["date"]
             row["Supplier"] = r["supplier"]
             row["Project location"] = r["site"]
         for m in data["measures"]:
-            row[m["label"]] = r[m["key"]]
+            row[m["label"]] = r[m["key"]] if r.get("status") != "cancelled" or status == "cancelled" else 0
         rows.append(row)
     bits = []
     if date_from or date_to:
@@ -8454,6 +8464,8 @@ def _lpo_dict(o):
         "mobile": o.mobile, "email": o.email, "job_scope": o.job_scope,
         "project_location": o.project_location, "discount_pct": o.discount_pct,
         "tax_pct": o.tax_pct, "notes": o.notes, "terms_text": o.terms_text, "status": o.status,
+        "cancel_reason": getattr(o, "cancel_reason", "") or "",
+        "cancelled_on": o.cancelled_at.strftime("%d %b %Y") if getattr(o, "cancelled_at", None) else "",
         "lines": [{"id": l.id, "item_id": l.item_id, "description": l.description,
                    "description2": l.description2, "qty": l.qty, "unit": l.unit,
                    "rate": l.rate, "tax_pct": l.tax_pct} for l in o.lines],
@@ -8575,6 +8587,72 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     return {**_lpo_dict(o), "supplier_updated": sup_changed, "materials_added": new_items}
 
 
+def _lpo_snap(o):
+    """What an LPO says, for telling accounts what an edit changed."""
+    def tot(lines, disc):
+        sub = sum((l["qty"] or 0) * (l["rate"] or 0) for l in lines) * (1 - (disc or 0) / 100)
+        vat = sum((l["qty"] or 0) * (l["rate"] or 0) * (1 - (disc or 0) / 100) * (l["tax"] or 0) / 100 for l in lines)
+        return round(sub + vat, 2)
+    lines = [{"desc": " - ".join(x for x in ((l.description or "").strip(), (l.description2 or "").strip()) if x) or "(no description)",
+              "qty": round(l.qty or 0, 3), "unit": l.unit or "", "rate": round(l.rate or 0, 2), "tax": round(l.tax_pct or 0, 2)}
+             for l in o.lines]
+    return {"supplier": o.supplier_name or "", "date": o.order_date.strftime("%d %b %Y") if o.order_date else "",
+            "delivery": o.delivery_date.strftime("%d %b %Y") if o.delivery_date else (getattr(o, "delivery_note", "") or ""),
+            "discount": round(o.discount_pct or 0, 2), "supplier_ref": o.supplier_ref or "", "site": o.project_location or "",
+            "terms": o.terms or "", "lines": lines, "total": tot(lines, o.discount_pct)}
+
+
+def _lpo_changes(a, b):
+    """Before -> after, said the way accounts read it: 'Line 2 Ledger 2.0M: qty 50 -> 40'."""
+    out = []
+    n = lambda v: f"{v:g}" if isinstance(v, (int, float)) else str(v)
+    m = lambda v: f"{v:,.2f}"
+    for k, lab in (("supplier", "Supplier"), ("date", "LPO date"), ("delivery", "Delivery"), ("supplier_ref", "Supplier's quote ref"),
+                   ("site", "Project location"), ("terms", "Payment terms")):
+        if (a[k] or "") != (b[k] or ""):
+            out.append(f"{lab}: {a[k] or '-'} -> {b[k] or '-'}")
+    if a["discount"] != b["discount"]:
+        out.append(f"Discount: {n(a['discount'])}% -> {n(b['discount'])}%")
+    left = list(enumerate(a["lines"], 1))
+    used = set()
+    for j, lb in enumerate(b["lines"], 1):
+        hit = next((i for i, la in left if i not in used and la["desc"].lower() == lb["desc"].lower()), None)
+        if hit is None:
+            hit = next((i for i, la in left if i not in used and i == j and not any(lb2["desc"].lower() == la["desc"].lower() for lb2 in b["lines"])), None)
+        if hit is None:
+            out.append(f"Added line {j}: {lb['desc']} - {n(lb['qty'])} {lb['unit']} @ {m(lb['rate'])}" + (f" (VAT {n(lb['tax'])}%)" if lb["tax"] != 5 else ""))
+            continue
+        used.add(hit)
+        la = a["lines"][hit - 1]
+        bits = []
+        if la["desc"] != lb["desc"]:
+            bits.append(f'description "{la["desc"]}" -> "{lb["desc"]}"')
+        if la["qty"] != lb["qty"] or la["unit"] != lb["unit"]:
+            bits.append(f"qty {n(la['qty'])} {la['unit']} -> {n(lb['qty'])} {lb['unit']}".replace("  ", " "))
+        if la["rate"] != lb["rate"]:
+            bits.append(f"rate {m(la['rate'])} -> {m(lb['rate'])}")
+        if la["tax"] != lb["tax"]:
+            bits.append(f"VAT {n(la['tax'])}% -> {n(lb['tax'])}%")
+        if bits:
+            out.append(f"Line {j} {lb['desc']}: " + ", ".join(bits))
+    for i, la in left:
+        if i not in used:
+            out.append(f"Removed: {la['desc']} - {n(la['qty'])} {la['unit']} @ {m(la['rate'])}")
+    if out or a["total"] != b["total"]:
+        if a["total"] != b["total"]:
+            out.append(f"Total incl. VAT: AED {m(a['total'])} -> AED {m(b['total'])}")
+    return out
+
+
+def _tell_accounts(db, o, kind, changes, zoho, user):
+    """Accounts hear of every edit and every cancel of an LPO: what changed, and whether Zoho was kept in step."""
+    try:
+        import pozoho
+        pozoho.add_note(db, o, kind, changes, zoho, (user.full_name or user.username) if user else "")
+    except Exception as e:
+        print("lpo note:", e)
+
+
 @app.put("/store/purchase/orders/{order_id}")
 def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: Session = Depends(get_db),
                            user: models.User = Depends(require_screen("approvals"))):
@@ -8596,6 +8674,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
         raise HTTPException(status_code=400, detail="An order needs at least one line.")
     _lpo_amt = lambda lines: round(sum((l.qty or 0) * (l.rate or 0) for l in lines), 2)
     amount_was = _lpo_amt(o.lines)
+    before = _lpo_snap(o)
 
     supplier = _find_or_create_supplier(db, payload.supplier_name)
     sup_changed = _supplier_from_lpo(db, supplier, payload)
@@ -8640,35 +8719,55 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     db.expire(o, ["lines"])          # the collection still held the lines just deleted
     new_items = []
     _lpo_lines_to_materials(db, o, new_items)
-    if (o.zoho_status or "") == "sent":
-        # Already a purchase order in Zoho: flagged so it is changed there too.
-        o.zoho_status, o.zoho_err = "changed", "Changed here after it went to Zoho - change the PO in Zoho"
+    db.flush(); db.expire(o, ["lines"])
+    changes = _lpo_changes(before, _lpo_snap(o))
+    zoho = ""
+    if changes and (o.zoho_status or "") in ("sent", "changed"):
+        # Already a purchase order in Zoho: updated there to match; if Zoho refuses, flagged for accounts.
+        import pozoho
+        zoho = pozoho.zoho_edit(db, o)
+    if changes:
+        _tell_accounts(db, o, "edit", changes, zoho, user)
     db.commit()
     db.refresh(o)
     log_action(db, user.id, "edit_lpo", f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s)), "
                f"amount before tax {amount_was:,.2f} -> {_lpo_amt(o.lines):,.2f}"
+               + (f"; changed: {'; '.join(changes)}" if changes else "; nothing changed")
+               + (f"; {zoho}" if zoho else "")
                + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else "")
                + (f"; added to the material list: {', '.join(new_items)}" if new_items else ""))
     return {**_lpo_dict(o), "supplier_updated": sup_changed, "materials_added": new_items}
 
 
 @app.post("/store/purchase/orders/{order_id}/cancel")
-def cancel_purchase_order(order_id: int, db: Session = Depends(get_db),
+def cancel_purchase_order(order_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
                            user: models.User = Depends(require_screen("approvals"))):
     """Cancelled, never deleted - the number stays used and the paper
-    that went out is still on the register."""
+    that went out is still on the register, struck through, with the reason.
+    In Zoho it is marked cancelled too; accounts are told either way."""
     o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == order_id).first()
     if not o:
         raise HTTPException(status_code=404, detail="Purchase order not found.")
     if o.status == "cancelled":
         return {"ok": True, "detail": f"{o.ref} was already cancelled."}
+    reason = " ".join(str((payload or {}).get("reason") or "").split())[:200]
+    if not reason:
+        raise HTTPException(status_code=400, detail="Say why it is cancelled - for example: site says the material is no longer needed.")
     o.status = "cancelled"
+    o.cancel_reason, o.cancelled_at, o.cancelled_by = reason, datetime.now(timezone.utc), user.id
+    zoho = ""
     if (o.zoho_status or "") in ("sent", "changed"):
-        o.zoho_err = "Cancelled here - cancel the PO in Zoho too"
+        import pozoho
+        zoho = pozoho.zoho_cancel(db, o)
+    total = _lpo_snap(o)["total"]
+    _tell_accounts(db, o, "cancel", [f"Cancelled - {reason}", f"Total was AED {total:,.2f}"], zoho, user)
     freed = _release_lpo_lines(db, o)
     db.commit()
-    log_action(db, user.id, "cancel_lpo", o.ref + (f" - {freed} request line(s) back to waiting for an order" if freed else ""))
-    return {"ok": True, "detail": f"{o.ref} cancelled." + (f" {freed} material(s) are back on the list waiting to be ordered." if freed else "")}
+    log_action(db, user.id, "cancel_lpo", f"{o.ref} ({o.supplier_name}) - {reason}"
+               + (f" - {freed} request line(s) back to waiting for an order" if freed else "") + (f"; {zoho}" if zoho else ""))
+    return {"ok": True, "zoho": zoho,
+            "detail": f"{o.ref} cancelled." + (f" {freed} material(s) are back on the list waiting to be ordered." if freed else "")
+                      + (f" {zoho}." if zoho else "") + " Accounts have been told."}
 
 
 def _release_lpo_lines(db, o):
@@ -8855,7 +8954,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     {map_btn}
   </div>
   <div class="hint" id="wa-hint"></div>
-  <div class="sheet">{_lpo_html(o)}</div>
+  <div class="sheet" style="position:relative;">{_lpo_html(o)}{_cx_stamp(o)}</div>
 <script>
   // Share the file itself. The browser's share sheet takes a PDF and
   // hands it straight to WhatsApp - no message to delete, just the
@@ -8965,6 +9064,17 @@ def _sig_img(at=None):
                 f'style="max-height:48px; max-width:150px; display:block; margin:2px auto;">')
     except Exception:
         return ""
+
+
+def _cx_stamp(o):
+    if o.status != "cancelled":
+        return ""
+    import html as _h
+    why = _h.escape(((o.cancelled_at.strftime("%d %b %Y") + " - ") if o.cancelled_at else "") + (o.cancel_reason or ""))
+    return ('<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">'
+            '<div style="transform:rotate(-35deg);text-align:center;color:rgba(192,33,28,.28);font-weight:800;">'
+            '<div style="font-size:110px;letter-spacing:6px;border:8px solid rgba(192,33,28,.25);padding:0 26px;border-radius:14px;">CANCELLED</div>'
+            f'<div style="font-size:18px;margin-top:10px;color:rgba(192,33,28,.55);">{why}</div></div></div>')
 
 
 def _lpo_html(o):
@@ -13883,6 +13993,11 @@ def _work_out_notifications(db, user):
                 out.append(n)
         except Exception:
             pass
+        try:                         # LPOs edited or cancelled by purchasing - what changed, for accounts
+            import pozoho as _pz
+            out.extend(_pz.bell(db))
+        except Exception as e:
+            print("lpo change notices:", e)
 
     if "pdc" in allowed:
         try:

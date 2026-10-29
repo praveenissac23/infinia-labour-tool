@@ -66,6 +66,14 @@ def push(db, o):
     for po in d.get("purchaseorders", []):
         if (po.get("purchaseorder_number") or "").strip() == o.ref:
             return po["purchaseorder_id"], "Found in Zoho"
+    body = _body(db, o)
+    d = Z.call(db, "POST", "purchaseorders", {"ignore_auto_number_generation": "true"}, body=body)
+    return d["purchaseorder"]["purchaseorder_id"], "Purchase order"
+
+
+def _body(db, o):
+    """The Zoho purchase order for this LPO - the same for a first send and for an update."""
+    import zohoapi as Z
     vendor = _vendor(db, o)
     if not vendor:
         raise Z.ZohoError(400, f"Link {o.supplier_name or 'the supplier'} to its Zoho vendor first (Suppliers in Zoho) - a PO needs one")
@@ -120,8 +128,73 @@ def push(db, o):
         body["discount"] = f"{round(o.discount_pct, 2)}%"
         body["is_discount_before_tax"] = True
         body["discount_account_id"] = dacc
-    d = Z.call(db, "POST", "purchaseorders", {"ignore_auto_number_generation": "true"}, body=body)
-    return d["purchaseorder"]["purchaseorder_id"], "Purchase order"
+    return body
+
+
+# ---- an LPO changed or cancelled here: Zoho kept in step, accounts told what changed ----------------------
+def _zid(o):
+    z = (o.zoho_id or "").strip()
+    return z.split(":", 1)[1] if z.startswith("purchaseorder:") else ""
+
+
+def note_of(o):
+    import json
+    try:
+        d = json.loads(o.acc_note or "") if (o.acc_note or "").strip() else {}
+    except Exception:
+        d = {}
+    return d if isinstance(d, dict) else {}
+
+
+def add_note(db, o, kind, changes, zoho, who_name):
+    """Kept until accounts press Seen: a second change before then is added under the first."""
+    import json
+    from datetime import datetime, timedelta, timezone
+    d = note_of(o)
+    items = [] if d.get("seen", True) else list(d.get("items") or [])
+    now = datetime.now(timezone.utc) + timedelta(hours=4)          # Dubai
+    items.append({"kind": kind, "when": now.strftime("%d %b %Y %H:%M"), "who": who_name, "changes": changes[:40], "zoho": zoho})
+    d = {"items": items[-10:], "seen": False, "seq": int(d.get("seq") or 0) + 1}
+    o.acc_note = json.dumps(d)
+
+
+def zoho_edit(db, o):
+    """An LPO already in Zoho was edited here: the PO in Zoho is updated to match.
+    Returns what happened, said for accounts."""
+    import zohoapi as Z
+    zid = _zid(o)
+    if not zid:
+        return ""
+    try:
+        if not Z.connected(db):
+            raise Z.ZohoError(400, "Zoho is not connected")
+        with Z.about("lpo", o.id, o.ref, None):
+            Z.call(db, "PUT", f"purchaseorders/{zid}", {"ignore_auto_number_generation": "true"}, body=_body(db, o))
+        o.zoho_status, o.zoho_err = "sent", ""
+        return "Updated in Zoho automatically"
+    except Exception as e:
+        why = Z.fail_text(e) if hasattr(Z, "fail_text") else str(e)
+        o.zoho_status, o.zoho_err = "changed", f"Changed here after it went to Zoho - change the PO in Zoho ({why})"[:300]
+        return f"Zoho could not be updated ({why}) - change the PO in Zoho by hand, then press Done"
+
+
+def zoho_cancel(db, o):
+    """An LPO already in Zoho was cancelled here: marked cancelled in Zoho too."""
+    import zohoapi as Z
+    zid = _zid(o)
+    if not zid:
+        return ""
+    try:
+        if not Z.connected(db):
+            raise Z.ZohoError(400, "Zoho is not connected")
+        with Z.about("lpo", o.id, o.ref, None):
+            Z.call(db, "POST", f"purchaseorders/{zid}/status/cancelled")
+        o.zoho_status, o.zoho_err = "sent", ""
+        return "Cancelled in Zoho automatically"
+    except Exception as e:
+        why = Z.fail_text(e) if hasattr(Z, "fail_text") else str(e)
+        o.zoho_err = f"Cancelled here - cancel the PO in Zoho too ({why})"[:300]
+        return f"Zoho could not cancel it ({why}) - cancel the PO in Zoho by hand, then press Done"
 
 
 def _start(db):
@@ -170,9 +243,11 @@ def pos(db: Session = Depends(get_db), user: models.User = ZG):
     rows = []
     for o in q:
         st = o.zoho_status or ""
-        if o.status == "cancelled" and st not in ("sent", "changed"):
+        nt = note_of(o)
+        fresh = bool(nt.get("items")) and not nt.get("seen", True)
+        if o.status == "cancelled" and st not in ("sent", "changed") and not fresh:
             continue
-        if st == "sent" and not (o.zoho_err or ""):
+        if st == "sent" and not (o.zoho_err or "") and not fresh:
             continue
         if not (o.zoho_account or "") and not st and o.status != "cancelled":
             sug = _last_account(db, o)
@@ -182,7 +257,8 @@ def pos(db: Session = Depends(get_db), user: models.User = ZG):
         rows.append({"id": o.id, "ref": o.ref, "date": o.order_date.isoformat(), "supplier": o.supplier_name or "",
                      "account": o.zoho_account or "",
                      "total": _total(o), "site": _site(db, o), "linked": bool(_vendor(db, o)), "status": st,
-                     "cancelled": o.status == "cancelled",
+                     "cancelled": o.status == "cancelled", "cancel_reason": o.cancel_reason or "",
+                     "note": nt.get("items") if fresh else [],
                      "err": "" if (o.zoho_err or "").startswith("sending@") else (o.zoho_err or "")})
     return {"rows": rows, "hint": not M.get_setting(db, f"hint_lpo_open:{user.id}"), "may_delete": (user.role or "") == "admin"}
 
@@ -263,15 +339,54 @@ def send(payload: dict = Body(default={}), db: Session = Depends(get_db), user: 
     return {"ok": True, "sent": sent, "failed": failed}
 
 
+def _seen(o):
+    import json
+    d = note_of(o)
+    if d:
+        d["seen"] = True; o.acc_note = json.dumps(d)
+
+
 @router.post("/store/zoho/pos/corrected")
 def corrected(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = ZG):
     """The change (or the cancellation) has been made in Zoho too."""
     o = db.get(models.PurchaseOrder, int(payload.get("id") or 0))
     if o and (o.zoho_status or "") in ("sent", "changed"):
         o.zoho_status, o.zoho_err = "sent", ""
+        _seen(o)
         db.commit()
         M.log_action(db, user.id, "zoho_pos", f"{o.ref} confirmed matching in Zoho")
     return {"ok": True}
+
+
+@router.post("/store/zoho/pos/{oid}/seen")
+def note_seen(oid: int, db: Session = Depends(get_db), user: models.User = ZG):
+    """Accounts have read what the purchaser changed (Zoho already matches, or it is not in Zoho yet)."""
+    o = db.get(models.PurchaseOrder, oid)
+    if not o:
+        raise HTTPException(status_code=404, detail="No such LPO.")
+    _seen(o); db.commit()
+    M.log_action(db, user.id, "zoho_pos", f"{o.ref}: change noted by accounts")
+    return {"ok": True}
+
+
+def bell(db):
+    """One notice per LPO changed or cancelled that accounts have not seen yet - new id for each change."""
+    out = []
+    for o in db.query(models.PurchaseOrder).filter(models.PurchaseOrder.acc_note != "", models.PurchaseOrder.acc_note.isnot(None)).all():
+        d = note_of(o)
+        if not d.get("items") or d.get("seen", True):
+            continue
+        last = d["items"][-1]
+        cancel = last.get("kind") == "cancel"
+        lines = [x for it in d["items"] for x in (it.get("changes") or [])][:8]
+        if last.get("zoho"):
+            lines.append(last["zoho"])
+        out.append({"id": f"lpochg-{o.id}-{d.get('seq', 1)}", "kind": "zoho", "screen": "zoho",
+                    "title": f"{o.ref} {'cancelled' if cancel else 'edited'} by {last.get('who') or 'purchasing'}"
+                             + (f" - {o.supplier_name}" if o.supplier_name else ""),
+                    "detail": "; ".join(lines)[:300], "lines": lines,
+                    "when": M._dubai_today().isoformat(), "level": "warn"})
+    return out
 
 
 # LPOs Praveen asked to delete everywhere (made on the admin login on

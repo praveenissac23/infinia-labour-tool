@@ -456,6 +456,13 @@ class PurchaseOrder(Base):
     zoho_status = Column(String, default="")         # "" | sending | sent | changed
     zoho_id = Column(String, default="")
     zoho_err = Column(String, default="")
+    # Cancelled: why, when and by whom - printed in the register and told to accounts
+    cancel_reason = Column(String, default="")
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_by = Column(Integer, nullable=True)
+    # What accounts are told about an LPO already in Zoho that was changed or cancelled here:
+    # JSON {"items": [{"kind", "when", "who", "changes": [...], "zoho": "..."}], "seen": false}
+    acc_note = Column(Text, default="")
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

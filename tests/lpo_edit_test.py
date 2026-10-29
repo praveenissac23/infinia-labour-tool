@@ -103,7 +103,7 @@ ck('an edit with no lines is refused', bad2.status_code == 400, bad2.status_code
 po2 = c.post('/store/purchase/orders', json={
     'order_date': '2026-09-02', 'supplier_name': 'Gateway Trading',
     'lines': [{'description': 'Plywood', 'qty': 10, 'unit': 'sheet', 'rate': 45}]}, headers=H).json()
-c.post(f"/store/purchase/orders/{po2['id']}/cancel", headers=H)
+c.post(f"/store/purchase/orders/{po2['id']}/cancel", json={'reason': 'site says not needed'}, headers=H)
 blocked = c.put(f"/store/purchase/orders/{po2['id']}", json={
     'order_date': '2026-09-02', 'supplier_name': 'Gateway Trading',
     'lines': [{'description': 'Plywood', 'qty': 20, 'unit': 'sheet', 'rate': 45}]}, headers=H)

@@ -2409,7 +2409,23 @@ def build_lpo_pdf(po: dict):
         filled.setStyle(TableStyle(line_style))
         el[lines_at] = filled
 
-    doc.build(el)
+    # A cancelled order still opens and prints - stamped across every page, so an old copy
+    # can never be used with the supplier.
+    def stamp(canv, _doc):
+        canv.saveState()
+        canv.setFillColor(colors.Color(0.75, 0.13, 0.11, alpha=0.22))
+        canv.setStrokeColor(colors.Color(0.75, 0.13, 0.11, alpha=0.35))
+        canv.translate(A4[0] / 2, A4[1] / 2); canv.rotate(35)
+        canv.setFont("Helvetica-Bold", 92); canv.drawCentredString(0, -20, "CANCELLED")
+        why = (po.get("cancel_reason") or "").strip()
+        if why:
+            canv.setFont("Helvetica-Bold", 15)
+            canv.drawCentredString(0, -55, (f"{po.get('cancelled_on') or ''} - {why}").strip(" -")[:90])
+        canv.restoreState()
+    if po.get("status") == "cancelled":
+        doc.build(el, onFirstPage=stamp, onLaterPages=stamp)
+    else:
+        doc.build(el)
     buf.seek(0)
     return buf
 

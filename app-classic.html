@@ -318,6 +318,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .inv-sum tr.t td { font-weight: 800; font-size: 15px; background: #FBF3F1; border-left: 3px solid #C0392B; }
   .inv-btns { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
   .inv-list td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  /* a cancelled LPO stays on the register, struck through, never in the totals */
+  tr.lpr-cxrow td { color: #9A9A9A; background: #FBF7F6; } tr.lpr-cxrow td .lpr-no, tr.lpr-cxrow td:not(:first-child) { text-decoration: line-through; text-decoration-color: #C0392B; }
+  tr.lpr-cxrow td .lpr-cx, tr.lpr-cxrow td .lpr-why { text-decoration: none; display: inline-block; }
+  #lpo-cx-modal { position: fixed; inset: 0; background: rgba(20,24,28,.45); z-index: 5000; display: none; align-items: center; justify-content: center; }
+  #lpo-cx-modal.on { display: flex; } #lpo-cx-modal .box { background: #fff; border-radius: 12px; padding: 22px 24px; width: min(460px, 92vw); box-shadow: 0 20px 50px rgba(0,0,0,.3); }
+  #lpo-cx-modal h3 { margin: 0 0 6px; } #lpo-cx-modal textarea { width: 100%; box-sizing: border-box; min-height: 78px; margin-top: 10px; font: inherit; padding: 8px 10px; }
+  #lpo-cx-modal .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; } #lpo-cx-modal .chips button { border: 1px solid #E2C9C5; background: #FDF6F5; border-radius: 14px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; }
   .inv-list tr.cx td { color: #999; } .inv-list tr.cx td.num { text-decoration: line-through; }
   .inv-list tr.edit td { background: #FFF6DA; }
   .inv-list tfoot td { font-weight: 800; background: #F3F1EF; border-top: 2px solid #333; }
@@ -3838,9 +3845,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <select id="lpr-group" onchange="loadLpoReport()" style="width:170px;"></select>
             <label>From:</label><input type="date" id="lpr-from" onchange="loadLpoReport()" style="width:150px;">
             <label>To:</label><input type="date" id="lpr-to" onchange="loadLpoReport()" style="width:150px;">
-            <select id="lpr-show" onchange="loadLpoReport()" style="width:130px;">
+            <select id="lpr-show" onchange="loadLpoReport()" style="width:210px;">
+              <option value="all">All (cancelled struck through)</option>
               <option value="issued">Issued only</option>
-              <option value="all">Including cancelled</option>
               <option value="cancelled">Cancelled only</option>
             </select>
             <button class="btn btn-dark" onclick="exportLpoReport('view')">Preview</button>
@@ -12968,8 +12975,8 @@ async function loadLpoReport() {
     body.innerHTML = r.rows.map(row => {
       const cells = [];
       if (r.group_by === "order") {
-        cells.push(`<td style="text-align:left;"><strong>${row.label}</strong>${
-          row.status === "cancelled" ? ' <span class="pill" style="background:#FBE0DE; color:#C0392B;">cancelled</span>' : ""}${
+        cells.push(`<td style="text-align:left;"><strong class="lpr-no">${row.label}</strong>${
+          row.status === "cancelled" ? ` <span class="pill lpr-cx" style="background:#FBE0DE; color:#C0392B; font-weight:700;">CANCELLED</span>${row.cancel_reason ? `<div class="lpr-why" style="font-size:11.5px;color:#B03A2E;margin-top:2px;">${row.cancelled_on ? escapeHtml(row.cancelled_on) + " - " : ""}${escapeHtml(row.cancel_reason)}</div>` : ""}` : ""}${
           row.edited && row.status !== "cancelled"
             ? ` <span class="pill" style="background:#FDF0D5; color:#8A6100;" title="Corrected on ${row.edited_on}">edited</span>` : ""}</td>`);
         cells.push(`<td style="text-align:left;">${row.date || "-"}</td>`);
@@ -12985,14 +12992,15 @@ async function loadLpoReport() {
       // Add another item, fix a line, redo a save made too soon - opens
       // the same order back in the form rather than raising a new one.
       if (r.group_by === "order") {
-        cells.push(`<td style="text-align:right;">${row.status === "cancelled" ? "" :
-          `<button class="btn btn-gray" onclick="event.stopPropagation(); editLpo(${row.id})">Edit</button>`}</td>`);
+        cells.push(`<td style="text-align:right; white-space:nowrap;">${row.status === "cancelled" ? "" :
+          `<button class="btn btn-gray" onclick="event.stopPropagation(); editLpo(${row.id})">Edit</button>
+           <button class="btn btn-gray lpr-cancel" style="color:#B03A2E;" onclick="event.stopPropagation(); cancelLpo(${row.id}, ${escapeAttr(jsq(row.label))})">Cancel</button>`}</td>`);
       }
       // The tab is claimed in the click itself - asking for it after the
       // token fetch makes it a pop-up, which the browser blocks.
       const open = r.group_by === "order"
         ? ` onclick="openLpo(${row.id}, window.open('', '_blank'))" style="cursor:pointer;" title="Open the order"` : "";
-      return `<tr${open}>${cells.join("")}</tr>`;
+      return `<tr${open}${r.group_by === "order" && row.status === "cancelled" ? ' class="lpr-cxrow"' : ""}>${cells.join("")}</tr>`;
     }).join("");
 
     const tcells = [`<td style="text-align:left;">TOTAL</td>`];
@@ -13098,6 +13106,35 @@ async function exportLpoReport(fmt) {
 
 
 // Opening an order shows it in a new tab, with the downloads on it.
+// Cancel an LPO: never deleted - struck through on the register with the reason, stamped CANCELLED,
+// cancelled in Zoho too, and accounts told.
+function cancelLpo(id, ref) {
+  let m = document.getElementById("lpo-cx-modal");
+  if (!m) { m = document.createElement("div"); m.id = "lpo-cx-modal"; document.body.appendChild(m); }
+  const chips = ["Site says material no longer needed", "Supplier cannot supply", "Wrong supplier - new LPO raised", "Duplicate LPO", "Price changed - new LPO raised"];
+  m.innerHTML = `<div class="box"><h3>Cancel ${escapeHtml(ref)}?</h3>
+    <div style="font-size:13px;color:#555;line-height:1.5;">It stays on the register struck through, with the reason, and prints stamped CANCELLED. The materials go back to waiting to be ordered. If it is in Zoho it is cancelled there too, and accounts are told.</div>
+    <div class="chips">${chips.map(c => `<button type="button" data-c="${escapeAttr(c)}">${escapeHtml(c)}</button>`).join("")}</div>
+    <textarea id="lpo-cx-why" placeholder="Why is it cancelled? (required)"></textarea>
+    <div class="status-msg" id="lpo-cx-status"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;"><button type="button" class="btn btn-gray" data-x>Keep the LPO</button><button type="button" class="btn btn-primary" data-go style="background:#C0392B;border-color:#C0392B;">Cancel LPO</button></div></div>`;
+  m.classList.add("on");
+  const why = m.querySelector("#lpo-cx-why"); setTimeout(() => why.focus(), 30);
+  m.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { why.value = b.dataset.c; why.focus(); });
+  m.querySelector("[data-x]").onclick = () => m.classList.remove("on");
+  m.onclick = e => { if (e.target === m) m.classList.remove("on"); };
+  m.querySelector("[data-go]").onclick = async () => {
+    const reason = why.value.trim();
+    if (!reason) { showStatus("lpo-cx-status", "err", "Say why it is cancelled."); why.focus(); return; }
+    const go = m.querySelector("[data-go]"); go.disabled = true;
+    try {
+      const r = await apiCall(`/store/purchase/orders/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) });
+      m.classList.remove("on"); lprFlash = r.detail || `${ref} cancelled.`;
+      if (typeof loadLpoReport === "function") loadLpoReport();
+      if (typeof lpoEditingId !== "undefined" && lpoEditingId === id && typeof resetLpoForm === "function") resetLpoForm();
+    } catch (e) { go.disabled = false; showStatus("lpo-cx-status", "err", errText(e)); }
+  };
+}
 async function openLpo(id, tab) {
   if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
   if (!cachedDownloadToken) {
@@ -18222,8 +18259,19 @@ function zhPosDraw() {
   const unl = wait.filter(o => !o.linked), sups = [...new Set(unl.map(o => o.supplier))];
   const step = unl.length ? `<div class="zh-step"><b>First:</b> ${unl.length} LPO${unl.length === 1 ? "" : "s"} wait because ${sups.length} supplier${sups.length === 1 ? " is" : "s are"} not linked to Zoho yet (${escapeHtml(sups.slice(0, 3).join(", "))}${sups.length > 3 ? "..." : ""}). Linking creates or changes nothing in Zoho.
       <button type="button" class="btn btn-primary btn-sm" onclick="zhLinkSuppliers(this)" ${ZH.connected ? "" : "disabled"}>Link suppliers now</button></div>` : "";
-  const fl = flag.length ? `<div class="zh-step" style="border-color:#E8C27A;background:#FFF9EE;"><b>${flag.length} LPO${flag.length === 1 ? "" : "s"} changed or cancelled here after going to Zoho</b> - make the same change in Zoho, then press Done.
-      <table class="zh-oct-t" style="margin-top:6px;width:100%;"><tbody>${flag.map(o => `<tr><td style="width:150px;"><b>${escapeHtml(o.ref)}</b></td><td>${escapeHtml(o.supplier)}</td><td class="n" style="width:110px;">${pcMoney(o.total)}</td><td><span class="zx-tag zx-bad">${escapeHtml(o.err)}</span></td><td style="width:110px;text-align:right;"><button type="button" class="btn btn-gray btn-sm" onclick="zhPoDone(${o.id})">Done in Zoho</button></td></tr>`).join("")}</tbody></table></div>` : "";
+  // LPOs changed or cancelled by purchasing: exactly what changed, and whether Zoho was kept in step
+  const told = L.filter(o => (o.note || []).length || o.status === "changed" || (o.cancelled && o.err));
+  const fl = told.length ? `<div class="zh-step zh-lpochg" style="border-color:#E8C27A;background:#FFF9EE;display:block;"><b>${told.length} LPO${told.length === 1 ? "" : "s"} edited or cancelled by purchasing</b> - what changed is listed. Where Zoho could not be updated, make the same change in Zoho, then press Done.
+      ${told.map(o => { const need = o.status === "changed" || (o.cancelled && o.err && !/automatically/.test(o.err));
+        const items = (o.note || []);
+        return `<div class="zh-chg" data-chg="${o.id}" style="border-top:1px solid #F0DDB5;margin-top:8px;padding-top:8px;display:flex;gap:12px;align-items:flex-start;">
+          <div style="flex:1;min-width:0;"><div><a href="#" class="zh-open" onclick="event.preventDefault(); zhPoView(${o.id})"><b>${escapeHtml(o.ref)}</b></a> · ${escapeHtml(o.supplier)} · AED ${pcMoney(o.total)}
+            ${o.cancelled ? `<span class="zx-tag zx-bad">Cancelled</span>` : `<span class="zx-tag" style="background:#FDF0D5;color:#8A6100;">Edited</span>`}</div>
+          ${items.map(it => `<div class="sub" style="display:block;margin-top:4px;color:#6b625a;">${escapeHtml(it.when || "")} · ${escapeHtml(it.who || "")}</div>
+            <ul style="margin:3px 0 0 18px;padding:0;font-size:13px;line-height:1.5;">${(it.changes || []).map(c => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
+            ${it.zoho ? `<div style="margin-top:3px;font-size:12.5px;font-weight:600;color:${/automatically/.test(it.zoho) ? "#1E7A3C" : "#B03A2E"};">${/automatically/.test(it.zoho) ? "&#10003; " : "&#9888; "}${escapeHtml(it.zoho)}</div>` : ""}`).join("")}
+          ${!items.length && o.err ? `<div style="margin-top:4px;"><span class="zx-tag zx-bad">${escapeHtml(o.err)}</span></div>` : ""}</div>
+          <div style="white-space:nowrap;">${need ? `<button type="button" class="btn btn-primary btn-sm" onclick="zhPoDone(${o.id})">Done in Zoho</button>` : `<button type="button" class="btn btn-gray btn-sm" onclick="zhPoSeen(${o.id})">Seen</button>`}</div></div>`; }).join("")}</div>` : "";
   zhList("lpo", wait.map(o => ({ id: o.id, date: o.date, main: o.ref + (o.site ? " · " + o.site : ""), sub: o.supplier, amount: o.total, out: true,
       err: o.err, acc: o.account, accPick: `zhPoAcc(${o.id},V)`, view: `zhPoView(${o.id})`, del: ZH.po_del ? `zhPoDelete(${o.id})` : "", block: !o.linked ? "Supplier not linked" : (!o.account ? "Pick account" : "") })),
     "zh-pos", "Purchase orders (LPOs)", "They go to Zoho as purchase orders with the portal's LPO number. Pick the Zoho account the bill will be booked to - next time the supplier's last account is filled in.", "No LPOs waiting - every LPO is in Zoho.", step, fl);
@@ -18252,6 +18300,10 @@ function zhList(kind, rows, elId, title, intro, empty, before, after) {
         <span style="display:flex;gap:8px;"><button type="button" class="btn btn-gray" onclick="zhSelAll('${kind}',${n === ok.length ? "false" : "true"})" ${ok.length ? "" : "disabled"}>${n && n === ok.length ? "Untick all" : `Tick all ${ok.length}`}</button>
         <button type="button" class="btn btn-primary" onclick="zhSendIds('${kind}',[...ZH_SEL.${kind}],this)" ${n && can ? "" : "disabled"}>Send ${n || ""} ticked to Zoho</button></span></div>`
       : `<div class="zh-none">${empty}</div>`}${after || ""}`;
+}
+async function zhPoSeen(id) {
+  try { await apiCall(`/store/zoho/pos/${id}/seen`, { method: "POST" }); ZH.pos = (ZH.pos || []).map(o => o.id === id ? Object.assign({}, o, { note: [] }) : o).filter(o => !(o.id === id && o.status === "sent" && !o.err));
+    zhPosDraw(); zhTabsDraw(); } catch (e) { showStatus("zh-status", "err", errText(e)); }
 }
 function zhSel(kind, id, on) { on ? ZH_SEL[kind].add(id) : ZH_SEL[kind].delete(id); zhRedraw(kind); }
 function zhSelAll(kind, on) { ZH_SEL[kind].clear(); if (on) (ZH[kind + "_rows"] || []).filter(r => !r.block).forEach(r => ZH_SEL[kind].add(r.id)); zhRedraw(kind); }
@@ -18296,7 +18348,7 @@ function zhTabsSkeleton() {
 }
 function zhTabsDraw() {
   const el = document.getElementById("zh-tabs"); if (!el || !ZH) return;
-  const lpoWait = (ZH.pos || []).filter(o => !o.status && !o.cancelled).length, lpoFlag = (ZH.pos || []).filter(o => o.status === "changed" || (o.cancelled && o.err)).length;
+  const lpoWait = (ZH.pos || []).filter(o => !o.status && !o.cancelled).length, lpoFlag = (ZH.pos || []).filter(o => (o.note || []).length || o.status === "changed" || (o.cancelled && o.err)).length;
   const attn = (ZH.pending || []).length + (ZH.todo || []).length;
   const T = [["petty", "Petty cash", (ZH.rows || []).length], ["bank", "Bank", (ZH.bank || []).length], ["lpo", "LPOs", lpoWait + lpoFlag],
              ["loans", "Staff loans", (ZH.loans || []).length], ["attention", "Needs attention", attn, attn ? "bad" : ""], ["october", "October check", ""], ["suppliers", "Suppliers", ""], ["sent", "Sent to Zoho", ""]];
