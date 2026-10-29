@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import StreamingResponse, HTMLResponse
 from html import escape
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, object_session
 from sqlalchemy import and_, or_, func, text
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
@@ -239,6 +239,7 @@ def seed_on_startup():
             _fix_lpo_0153(db)
         except Exception as e:
             db.rollback(); print("LPO 0153 requests:", e)
+        # _hire_in_to_requests_once(db) - the October data is put right once the purchaser's answers are in
         try:
             import zohoapi as _zn
             _zn.clear_not_vendor_todo(db)
@@ -5512,7 +5513,7 @@ def store_hire_in(payload: schemas.HireInIn, db: Session = Depends(get_db),
         if not o:
             raise HTTPException(status_code=400, detail="That purchase order was not found.")
         reference = reference or o.ref
-    booked = []
+    booked, moves = [], []
     for l in payload.lines:
         if (l.qty or 0) <= 0:
             continue
@@ -5528,15 +5529,137 @@ def store_hire_in(payload: schemas.HireInIn, db: Session = Depends(get_db),
             moved_on=payload.received_on, created_by=user.id)
         db.add(m)
         booked.append(f"{l.qty} {item.unit} {item.code}")
+        moves.append((m, item))
     if not booked:
         raise HTTPException(status_code=400, detail="Every line was blank.")
+    db.flush()
+    # The order it came on moves too: what arrived is taken off the request, so Order follow-up stops
+    # showing it as still to arrive.
+    met = _hire_to_requests(db, sup, payload.location or CENTRAL, moves,
+                            o if payload.order_id else None)
     db.commit()
     log_action(db, user.id, "hire_in",
                f"from {sup.name}: " + ", ".join(booked[:6])
-               + (f" and {len(booked) - 6} more" if len(booked) > 6 else ""))
+               + (f" and {len(booked) - 6} more" if len(booked) > 6 else "")
+               + (f"; received on {', '.join(sorted({r for r, _, _ in met}))}" if met else ""))
     return {"ok": True, "supplier": sup.name, "supplier_id": sup.id,
-            "lines": len(booked),
-            "detail": f"{len(booked)} material(s) booked in on hire from {sup.name}."}
+            "lines": len(booked), "requests": sorted({r for r, _, _ in met}),
+            "detail": f"{len(booked)} material(s) booked in on hire from {sup.name}."
+                      + (f" Received on {', '.join(sorted({r for r, _, _ in met}))}." if met else "")}
+
+
+# ---- hired material booked in: the request it was ordered on is received too --------------------------------
+_UNIT_WORDS = {"m", "mm", "cm", "mtr", "mtrs", "nos", "no", "pcs", "pc", "set", "sets", "rental", "hire", "hired", "x"}
+
+
+def _name_key(name):
+    """'Rental Aluminium Beam 3.5M' and 'ALUMINIUM BEAM 3.5m' -> ({aluminium, beam}, {3.5})."""
+    t = re.sub(r"(\d)\s*(mm|cm|m|mtrs?)\b", r"\1 ", (name or "").lower())
+    nums = set()
+    for n in re.findall(r"\d+(?:\.\d+)?", t):
+        try:
+            nums.add(round(float(n), 3))
+        except ValueError:
+            pass
+    words = {w for w in re.findall(r"[a-z]+", t) if w not in _UNIT_WORDS and len(w) > 0}
+    return words, nums
+
+
+def _same_material(a, b):
+    (wa, na), (wb, nb) = _name_key(a), _name_key(b)
+    if na != nb or not wa or not wb:
+        return False
+    return wa <= wb or wb <= wa or len(wa & wb) / len(wa | wb) >= 0.5
+
+
+def _hire_to_requests(db, sup, location, moves, order=None):
+    """Hired material just booked in (moves = [(movement, item)]): each line is received on the open request it
+    was ordered on - same supplier, same material (by item or by name: 'Rental Ledger 1.2M' is the request's
+    'Ledger 1.2m'), for this site or the store. The request whose materials match most of this delivery is
+    taken first, so one delivery note lands on one order. Returns [(request ref, material, qty)]."""
+    q = (db.query(models.MaterialRequestLine).join(models.MaterialRequest)
+           .filter(models.MaterialRequest.status.in_(["approved", "ordered", "partial"]))
+           .filter(or_(models.MaterialRequestLine.supplier_id == sup.id, models.MaterialRequest.supplier_id == sup.id)))
+    ids = [int(x) for x in (getattr(order, "request_line_ids", "") or "").split(",") if x.strip().isdigit()] if order else []
+    if ids:
+        q = q.filter(models.MaterialRequestLine.id.in_(ids))
+    elif order is not None:
+        own = [m.id for m in _lpo_tracked_requests(db, order)] + ([order.request_id] if order.request_id else [])
+        if own:
+            q = q.filter(models.MaterialRequestLine.request_id.in_(own))
+    loc = (location or "").strip().upper()
+    cands = [l for l in q.all() if (l.status or "pending") != "rejected"
+             and (l.qty_requested or 0) - (l.qty_received or 0) > 1e-9
+             and ((l.request.site or "").strip().upper() in ("", "STORE", "CENTRAL", loc) or ids)]
+    if not cands:
+        return []
+    name = lambda l: (l.item.name if l.item else "") or l.description or ""
+    fits = lambda l, item: (l.item_id and l.item_id == item.id) or _same_material(name(l), item.name) \
+        or _same_material(l.description or "", item.name)
+    by_req = {}
+    for l in cands:
+        by_req.setdefault(l.request_id, []).append(l)
+    due = lambda l: (l.qty_requested or 0) - (l.qty_received or 0)
+    score = {r: sum(1 for m, it in moves if any(due(l) > 1e-9 and fits(l, it) for l in ls)) for r, ls in by_req.items()}
+    # a tie: the order already arriving at this site, then the one whose quantities are exactly these
+    here = {r: (db.query(models.StoreMovement).filter(models.StoreMovement.request_id == r,
+                                                      func.upper(func.coalesce(models.StoreMovement.location, "")) == loc).count())
+            for r in by_req}
+    exact = {r: sum(1 for m, it in moves if any(fits(l, it) and abs(due(l) - float(m.qty or 0)) < 1e-9 for l in ls)) for r, ls in by_req.items()}
+    order_reqs = sorted(by_req, key=lambda r: (-score[r], -here[r], -exact[r], by_req[r][0].request.created_at or datetime.min, r))
+    met, touched = [], set()
+    for m, it in moves:
+        left = float(m.qty or 0)
+        for r in order_reqs:
+            if left <= 1e-9:
+                break
+            for l in by_req[r]:
+                due = (l.qty_requested or 0) - (l.qty_received or 0)
+                if due <= 1e-9 or not fits(l, it):
+                    continue
+                take = min(due, left)
+                l.qty_received = (l.qty_received or 0) + take
+                left -= take
+                if not m.request_id:
+                    m.request_id = l.request_id
+                met.append((l.request.ref, l.description or name(l), take)); touched.add(l.request)
+                if left <= 1e-9:
+                    break
+    for mr in touched:
+        live = [x for x in mr.lines if (x.status or "pending") != "rejected"]
+        done = all((x.qty_received or 0) >= (x.qty_requested or 0) - 1e-9 for x in live)
+        mr.status = "delivered" if done else "partial"
+        if done:
+            mr.closed_on = _dubai_today()
+    return met
+
+
+def _hire_in_to_requests_once(db):
+    """Hired material booked in before it reached the request (MR-0036 / MR-0037, 26-27 Oct 2026): still showed
+    as 'to arrive' on Order follow-up. Every hire-in since 1 Oct not yet on a request is matched once, in date order,
+    a delivery note at a time."""
+    key = "hire_in_to_requests_once"
+    if db.query(models.Setting).filter(models.Setting.key == key).first():
+        return
+    rows = (db.query(models.StoreMovement).filter(models.StoreMovement.kind == "in", models.StoreMovement.owner_id.isnot(None),
+                                                  models.StoreMovement.request_id.is_(None),
+                                                  models.StoreMovement.moved_on >= date(2026, 10, 1))
+              .order_by(models.StoreMovement.moved_on, models.StoreMovement.id).all())
+    groups = {}
+    for m in rows:
+        groups.setdefault((m.owner_id, m.reference or "", m.location or "", m.moved_on), []).append(m)
+    n = 0
+    for (owner, ref, loc, on), ms in groups.items():
+        sup = db.get(models.Supplier, owner)
+        if not sup:
+            continue
+        moves = [(m, db.get(models.StoreItem, m.item_id)) for m in ms]
+        moves = [(m, it) for m, it in moves if it]
+        n += len(_hire_to_requests(db, sup, loc, moves))
+    put_setting(db, key, "done")
+    db.commit()
+    if n:
+        print(f"hire-ins put on their requests: {n} line(s)")
 
 
 SHORT_REASONS = ("lost", "damaged", "on site")
@@ -7146,6 +7269,33 @@ def receive_against_request(req_id: int, line_id: int, qty: float, supplier: str
     return {"ok": True, "status": mr.status, "qty_received": line.qty_received}
 
 
+@app.post("/store/requests/{req_id}/lines/{line_id}/arrived")
+def mark_line_arrived(req_id: int, line_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
+                      user: models.User = Depends(require_any_screen("requests", "approvals", "store"))):
+    """Arrived, and already booked in another way (on Rentals, on a site's delivery): the request line is marked
+    received - no stock moved, so nothing is counted twice. Off Order follow-up."""
+    mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.id == req_id).first()
+    line = db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id == line_id,
+                                                      models.MaterialRequestLine.request_id == req_id).first()
+    if not mr or not line:
+        raise HTTPException(status_code=404, detail="Request line not found.")
+    due = (line.qty_requested or 0) - (line.qty_received or 0)
+    if due <= 1e-9:
+        return {"ok": True, "status": mr.status}
+    line.qty_received = line.qty_requested
+    note = " ".join(str((payload or {}).get("note") or "").split())[:200]
+    live = [x for x in mr.lines if (x.status or "pending") != "rejected"]
+    done = all((x.qty_received or 0) >= (x.qty_requested or 0) - 1e-9 for x in live)
+    mr.status = "delivered" if done else "partial"
+    if done:
+        mr.closed_on = _dubai_today()
+    db.commit()
+    log_action(db, user.id, "material_request_receive",
+               f"{mr.ref}: {line.description or (line.item.name if line.item else '')} {due:g} {line.unit or ''} marked arrived "
+               f"(booked in already{' - ' + note if note else ''})")
+    return {"ok": True, "status": mr.status}
+
+
 MR_WORDS = {"pending": "Waiting on office", "approved": "Office approved", "ordered": "Ordered from supplier",
             "partial": "Part delivered", "delivered": "Delivered to store", "closed": "Closed",
             "rejected": "Rejected by office", "arranging": "Ordered from supplier", "lpo_sent": "Ordered from supplier",
@@ -8578,31 +8728,10 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
                 mr.status = "ordered"
             sup_ids = {x.supplier_id for x in mr.lines if (x.status or "") != "rejected"}
             mr.supplier_id = supplier.id if (supplier and sup_ids == {supplier.id}) else None
-    # An order raised on its own - stock for the store, nobody's request -
-    # still has to be chased and booked in when it comes. It gets a store
-    # top-up request of its own, already ordered from this supplier, so it
-    # is on Order Follow-up and Material Arrived like every other order,
-    # and closes itself when the delivery is recorded.
-    if not payload.request_id and not payload.request_line_ids:
-        stock_lines = [l for l in payload.lines if l.item_id and (l.qty or 0) > 0]
-        if stock_lines:
-            mr = models.MaterialRequest(
-                ref=_next_mr_ref(db), site="STORE",
-                requested_by=(user.full_name or user.username or "").strip(),
-                urgency="normal", status="ordered", requested_on=o.order_date or _dubai_today(),
-                expected_on=payload.delivery_date,
-                supplier_id=supplier.id if supplier else None,
-                notes=f"Stock for the store, ordered on {o.ref}", created_by=user.id)
-            db.add(mr); db.flush()
-            for l in stock_lines:
-                it = db.query(models.StoreItem).filter(models.StoreItem.id == l.item_id).first()
-                db.add(models.MaterialRequestLine(
-                    request_id=mr.id, item_id=l.item_id,
-                    description=(l.description or (it.name if it else "")),
-                    qty_requested=l.qty, qty_approved=l.qty, unit=(l.unit or (it.unit if it else "pcs")),
-                    status="approved", supplier_id=supplier.id if supplier else None,
-                    purpose=f"Store stock - {o.ref}"))
-            o.request_id = mr.id
+    # What the LPO orders beyond the requests it was raised from (all of it, when it was raised straight away)
+    # is still chased and booked in when it comes: a request of its own per site, already ordered from this
+    # supplier, on Order follow-up and Material arrived like every other order.
+    _track_lpo(db, o, user, creating=True)
     db.commit()
     db.refresh(o)
     log_action(db, user.id, "create_lpo",
@@ -8611,6 +8740,116 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
                + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else "")
                + (f"; added to the material list: {', '.join(new_items)}" if new_items else ""))
     return {**_lpo_dict(o), "supplier_updated": sup_changed, "materials_added": new_items}
+
+
+def _lpo_site_key(o, l=None):
+    """Where a line of this LPO is for: its own 'cost to' on a combined LPO, else the LPO's project location -
+    a site on the list, or the store."""
+    text = ((getattr(l, "cost_to", "") or "") if (l is not None and getattr(o, "combined", False)) else "") or (o.project_location or "")
+    if text.strip().upper() in ("STORE", "CENTRAL STORE", ""):
+        return "STORE"
+    codes = {x.lower(): x for (x,) in object_session(o).query(models.Site.code).all() if x}
+    toks = [t.strip() for t in re.split(r"[,/;&]+|\s+", text) if t.strip()]
+    for tok in toks:
+        if tok.lower() in codes:
+            return codes[tok.lower()]
+    # not on the site list yet (a site is often ordered for before it is added): as typed, like a delivery to it
+    return toks[0][:40] if len(toks) == 1 else "STORE"
+
+
+def _lpo_tracked_requests(db, o):
+    """The requests this LPO made for itself (and, for older LPOs, the store top-up it made)."""
+    rs = db.query(models.MaterialRequest).filter(models.MaterialRequest.lpo_id == o.id).all()
+    if not rs and o.request_id:
+        mr = db.get(models.MaterialRequest, o.request_id)
+        if mr and (mr.notes or "").startswith("Stock for the store, ordered on"):
+            mr.lpo_id = o.id
+            rs = [mr]
+    return rs
+
+
+def _settle_status(mr):
+    live = [x for x in mr.lines if (x.status or "pending") != "rejected"]
+    got = any((x.qty_received or 0) > 0 for x in mr.lines)
+    if not live:
+        mr.status = "delivered" if got else "closed"
+    elif all((x.qty_received or 0) >= (x.qty_requested or 0) - 1e-9 for x in live):
+        mr.status = "delivered"
+    elif got:
+        mr.status = "partial"
+    else:
+        mr.status = "ordered"
+    mr.closed_on = _dubai_today() if mr.status in ("delivered", "closed") else None
+
+
+def _track_lpo(db, o, user, creating=False):
+    """Keep the LPO's own requests in step with it: one per site, a line per material it orders that no site
+    request covers - added, changed and taken off as the LPO is raised and edited. What already arrived stays."""
+    db.flush()
+    covered = set()
+    ids = [int(x) for x in (o.request_line_ids or "").split(",") if x.strip().isdigit()]
+    if ids:
+        covered = {l.item_id for l in db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id.in_(ids)).all() if l.item_id}
+    elif o.request_id:
+        mr0 = db.get(models.MaterialRequest, o.request_id)
+        if mr0 and not (mr0.notes or "").startswith("Stock for the store, ordered on") and mr0.lpo_id != o.id:
+            covered = {l.item_id for l in mr0.lines if l.item_id}
+    if not creating and not ids and not _lpo_tracked_requests(db, o) and o.supplier_id:
+        # an LPO raised before the request lines were kept with it: what a site asked for from this supplier is
+        # that site's request - not to be made a second time
+        covered |= {l.item_id for l in db.query(models.MaterialRequestLine).join(models.MaterialRequest)
+                    .filter(models.MaterialRequestLine.supplier_id == o.supplier_id, models.MaterialRequest.lpo_id.is_(None),
+                            models.MaterialRequest.status.in_(["approved", "ordered", "partial", "delivered"])).all() if l.item_id}
+    want = {}                                   # site -> {item_id: [qty, description, unit]}
+    for l in o.lines:
+        if not l.item_id or (l.qty or 0) <= 0 or l.item_id in covered:
+            continue
+        w = want.setdefault(_lpo_site_key(o, l), {}).setdefault(l.item_id, [0.0, (l.description or "").strip(), l.unit or ""])
+        w[0] += float(l.qty or 0)
+    have = {mr.site: mr for mr in _lpo_tracked_requests(db, o) if mr.status != "closed" or any((x.qty_received or 0) > 0 for x in mr.lines)}
+    for site in set(want) | set(have):
+        mr = have.get(site)
+        items = want.get(site, {})
+        if mr is None:
+            if not items:
+                continue
+            mr = models.MaterialRequest(
+                ref=_next_mr_ref(db), site=site, lpo_id=o.id,
+                requested_by=((user.full_name or user.username or "").strip() if user else ""),
+                urgency="normal", status="ordered", requested_on=o.order_date or _dubai_today(),
+                needed_by=o.delivery_date, expected_on=o.delivery_date, supplier_id=o.supplier_id,
+                notes=(f"Stock for the store, ordered on {o.ref}" if site == "STORE" else f"Ordered direct on {o.ref}"),
+                created_by=user.id if user else None)
+            db.add(mr); db.flush()
+        mr.supplier_id, mr.expected_on = o.supplier_id, o.delivery_date or mr.expected_on
+        by_item = {x.item_id: x for x in mr.lines}
+        for item_id, (qty, desc, unit) in items.items():
+            x = by_item.get(item_id)
+            if x is None:
+                it = db.get(models.StoreItem, item_id)
+                db.add(models.MaterialRequestLine(
+                    request_id=mr.id, item_id=item_id, description=desc or (it.name if it else ""),
+                    qty_requested=qty, qty_approved=qty, unit=unit or (it.unit if it else "pcs"),
+                    status="approved", supplier_id=o.supplier_id,
+                    purpose=(f"Store stock - {o.ref}" if site == "STORE" else f"Direct order - {o.ref}")))
+            else:
+                q = max(qty, float(x.qty_received or 0))
+                x.qty_requested = x.qty_approved = q
+                x.status, x.supplier_id = "approved", o.supplier_id
+                x.description = desc or x.description
+        for x in list(mr.lines):
+            if x.item_id in items:
+                continue
+            if (x.qty_received or 0) > 0:           # taken off the LPO after some came: what came is what was had
+                x.qty_requested = x.qty_approved = x.qty_received
+            else:
+                mr.lines.remove(x); db.delete(x)
+        db.flush(); db.expire(mr, ["lines"])
+        if not mr.lines:
+            mr.status, mr.closed_on = "closed", _dubai_today()
+            mr.office_remark = f"{o.ref} no longer orders anything for {'the store' if site == 'STORE' else site}"
+        else:
+            _settle_status(mr)
 
 
 def _lpo_snap(o):
@@ -8772,6 +9011,18 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     new_items = []
     _lpo_lines_to_materials(db, o, new_items)
     db.flush(); db.expire(o, ["lines"])
+    # The requests follow the edit: a site's material taken off the LPO goes back to waiting to be ordered;
+    # what the LPO orders for itself is kept in step (added, changed, taken off).
+    on_lpo = {l.item_id for l in o.lines if l.item_id}
+    ids = [int(x) for x in (o.request_line_ids or "").split(",") if x.strip().isdigit()]
+    if ids:
+        gone = [l for l in db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id.in_(ids)).all()
+                if l.item_id not in on_lpo and (l.qty_received or 0) <= 0 and (l.status or "pending") != "rejected"]
+        if gone:
+            _settle_request_lines(db, o, gone, False, "")
+            keep = [i for i in ids if i not in {g.id for g in gone}]
+            o.request_line_ids = ("," + ",".join(map(str, keep)) + ",") if keep else ""
+    _track_lpo(db, o, user)
     changes = _lpo_changes(before, _lpo_snap(o))
     zoho = ""
     if changes and (o.zoho_status or "") in ("sent", "changed"):
@@ -8816,6 +9067,16 @@ def cancel_purchase_order(order_id: int, payload: dict = Body(default={}), db: S
     # The materials: no longer needed (the request closes - off Approvals and Order follow-up), or still
     # needed (back to waiting to be ordered from someone else).
     not_needed = bool((payload or {}).get("not_needed"))
+    # What the LPO ordered for itself (nobody's request) closes with it - it is not put back to be ordered.
+    for mr in _lpo_tracked_requests(db, o):
+        live = [x for x in mr.lines if (x.status or "pending") != "rejected" and (x.qty_received or 0) < (x.qty_requested or 0) - 1e-9]
+        for x in live:
+            if (x.qty_received or 0) > 0:
+                x.qty_requested = x.qty_approved = x.qty_received
+            else:
+                x.status, x.reject_reason = "rejected", f"{o.ref} cancelled: {reason}"[:300]
+        _settle_status(mr)
+        mr.office_remark = ((mr.office_remark + " | ") if (mr.office_remark or "").strip() else "") + f"{o.ref} cancelled - {reason}"
     freed = _release_lpo_lines(db, o, not_needed=not_needed, why=reason)
     db.commit()
     what = ("request line(s) closed - not needed" if not_needed else "request line(s) back to waiting for an order")

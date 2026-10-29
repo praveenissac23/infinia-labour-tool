@@ -10655,6 +10655,12 @@ async function loadFollowUp() {
   } catch (e) { box.innerHTML = `<div class="empty-note">Could not load: ${errText(e)}</div>`; }
 }
 
+// Came and already booked in another way (Rentals > hire in, or at the site): off the list, no stock moved again.
+async function fuBooked(rid, lid, name) {
+  if (!confirm(`${name}: it arrived and is already booked in (on Rentals or at the site)?\n\nIt comes off Order follow-up. No stock is added again.`)) return;
+  try { await apiCall(`/store/requests/${rid}/lines/${lid}/arrived`, { method: "POST", body: JSON.stringify({}) }); await loadFollowUp(); }
+  catch (e) { alert(errText(e)); }
+}
 // Edit from the follow-up list: the request opens in the raise form
 async function fuEditReq(id) { switchScreen("requests"); for (let i = 0; i < 30 && !document.getElementById("mr-lines"); i++) await new Promise(r => setTimeout(r, 100)); await new Promise(r => setTimeout(r, 400)); mrEdit(id); }
 // "01-Oct-26 09:12" - the day and minute a request was raised.
@@ -10679,7 +10685,7 @@ function renderFollowUp() {
     const sup = l.supplier || r.supplier || null;
     const contact = sup ? ((suppliers || []).find(s => s.id === sup.id) || sup) : null;
     rows.push({
-      rid: r.id, supId: sup ? sup.id : 0,
+      rid: r.id, supId: sup ? sup.id : 0, lid: l.id,
       ref: r.ref, site: r.site || "", needed: r.needed_by || "", expected: r.expected_on || "",
       raised: r.created_at || "", by: r.requested_by || "",
       late: !!(r.needed_by && r.needed_by < today),
@@ -10742,7 +10748,9 @@ function renderFollowUp() {
           <td>${x.expected || "-"}</td>
           <td><span style="color:${MR_COLOUR[x.status] || "#777"}; font-weight:600; font-size:12px;">${MR_LABEL[x.status] || x.status}</span>
             ${x.sup && MY_SCREENS.includes("store")
-              ? `<div><button class="btn btn-dark" style="margin-top:4px;" onclick="openReceive(${x.rid}, ${x.supId})">It arrived</button></div>` : ""}
+              ? `<div><button class="btn btn-dark" style="margin-top:4px;" onclick="openReceive(${x.rid}, ${x.supId})">It arrived</button></div>
+                 <div><a href="#" class="fu-booked" style="font-size:11px; color:#1565C0;" title="It came and is already booked in (on Rentals, or at the site) - take it off this list without moving stock again"
+                    onclick="event.preventDefault(); fuBooked(${x.rid}, ${x.lid}, ${escapeAttr(jsq(x.name))})">Already booked in</a></div>` : ""}
             ${x.canEdit && MY_SCREENS.includes("requests") ? `<div style="margin-top:4px; white-space:nowrap;"><button class="btn btn-gray btn-sm" title="Not yet taken up by the office - correct it" onclick="fuEditReq(${x.rid})">Edit</button> <button class="btn btn-gray btn-sm" onclick="mrDelete(${x.rid}).then(loadFollowUp)">Delete</button></div>` : ""}</td>
         </tr>`).join("")}</tbody>
     </table></div>
