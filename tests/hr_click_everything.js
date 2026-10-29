@@ -159,6 +159,8 @@ const ck = (m, cond, ctx) => {
       if (await p.locator('.hr-ask').count()) await p.click('.hr-ask [data-a="no"]');
       // The staff dialog is closed the way a person would close it.
       if (await p.locator('#hr-dlg').isVisible()) { await p.evaluate('hrCloseDlg()'); await p.waitForTimeout(200); }
+      // The Mark paid dialog is left with Cancel - nothing is paid by the sweep.
+      if (await p.locator('#pay-modal').isVisible()) { await p.click('#pay-modal button:has-text("Cancel")'); await p.waitForTimeout(200); }
       await drain();
       if (refused.length > refusedBefore) {
         const said = (await p.locator('#hr-status').textContent()).trim();

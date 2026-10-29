@@ -261,6 +261,34 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               border-radius: 10px; vertical-align: 2px; font-weight: 600; }
   .hr-badge.ok { background: #E3F1E5; color: #2E7D32; }
   .hr-badge.draft { background: #FFF3CD; color: #8a6d1a; }
+  /* Paid status and payslips - office and labour */
+  .pay-cell { text-align: left !important; white-space: normal; font-size: 11.5px; line-height: 1.35; }
+  .pay-cell .pay-pick { width: auto; margin: 0 4px 0 0; vertical-align: -2px; }
+  .pay-btn { border: 1px solid #C9A227; background: #FFF8E1; color: #6d5410; border-radius: 4px; padding: 2px 7px;
+             font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .pay-btn:hover { background: #FBEFC5; }
+  .pay-ok { display: inline-block; padding: 1px 7px; border-radius: 9px; background: #E3F1E5; color: #2E7D32; font-weight: 700; font-size: 11px; }
+  .pay-part { display: inline-block; padding: 1px 7px; border-radius: 9px; background: #FFF3CD; color: #8a6d1a; font-weight: 700; font-size: 11px; }
+  .pay-fin { display: inline-block; padding: 1px 7px; border-radius: 9px; background: #E3F0F7; color: #1F5F80; font-weight: 700; font-size: 11px; }
+  .pay-meta { color: #6B7075; font-size: 10.5px; white-space: normal; margin-top: 1px; }
+  .pay-meta a, .pay-link { color: #8a6d1a; cursor: pointer; text-decoration: underline; }
+  .pay-x { color: #B03A2E; cursor: pointer; margin-left: 3px; font-size: 10px; }
+  .pay-carry { color: #1F5F80; font-size: 10.5px; }
+  .pay-slip a { color: #1F5F80; cursor: pointer; text-decoration: underline; }
+  .pay-slip .v { color: #888; font-size: 10px; }
+  tr.pay-locked td { background: #F6FBF6; }
+  .pay-bulk { display: inline-flex; gap: 6px; margin-left: 10px; vertical-align: 1px; flex-wrap: wrap; }
+  #pay-modal .pay-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 14px; }
+  #pay-modal label.pl { display: block; font-size: 11px; font-weight: 700; color: #6B7075; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 3px; }
+  #pay-modal input, #pay-modal select { width: 100%; }
+  #pay-modal .pay-types { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  #pay-modal .pay-types label { border: 1px solid #DDD; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 12.5px; }
+  #pay-modal .pay-types label.on { border-color: #C9A227; background: #FFF8E1; font-weight: 700; }
+  #pay-modal .pay-types input { width: auto; margin-right: 5px; }
+  #pay-preview { margin: 14px 0 4px; padding: 10px 12px; background: #F7F4EE; border-radius: 6px; font-size: 12.5px; }
+  #pay-preview table { width: 100%; border-collapse: collapse; }
+  #pay-preview td { padding: 2px 0; } #pay-preview td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  #pay-preview .big { font-size: 16px; font-weight: 700; }
   .hr-route { display: inline-block; margin-right: 26px; }
   .hr-route b { font-size: 11.5px; letter-spacing: .3px; color: #6B7075; margin-right: 4px; }
   tr.hr-foot td { background: #F7F4EE !important; font-weight: 700; border-top: 2px solid #E6E2DA;
@@ -2284,6 +2312,41 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           </div>
         </div>
 
+        <!-- Mark paid - office payroll and labour payroll share it -->
+        <div id="pay-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:120; align-items:center; justify-content:center;">
+          <div style="background:white; border-radius:12px; padding:24px 28px; width:640px; max-width:94vw; max-height:90vh; overflow-y:auto; box-shadow:0 8px 30px rgba(0,0,0,0.3);">
+            <h2 style="margin:0 0 2px;" id="pay-title">Mark paid</h2>
+            <p style="font-size:12.5px; color:#888; margin:0 0 14px;" id="pay-sub"></p>
+            <div class="pay-types" id="pay-types"></div>
+            <div id="pay-final" class="pay-grid" style="display:none; margin-bottom:12px;">
+              <div><label class="pl">Last working day</label><input type="date" id="pay-last" onchange="payPreview()"></div>
+              <div><label class="pl">Reason</label><select id="pay-reason" onchange="payPreview()">
+                <option value="resignation">Resignation</option><option value="termination">Termination by the company</option>
+                <option value="end_of_contract">End of contract</option><option value="art44">Dismissal under Article 44</option>
+                <option value="retirement">Retirement</option><option value="death">Death</option></select></div>
+              <div><label class="pl">Notice served (days)</label><input type="number" id="pay-notice" placeholder="Full notice" onchange="payPreview()"></div>
+              <div><label class="pl">Leave days owed</label><input type="number" id="pay-leave" placeholder="From the leave record" onchange="payPreview()"></div>
+            </div>
+            <div id="pay-custom" style="display:none; margin-bottom:12px; max-width:220px;">
+              <label class="pl">Amount paid (AED)</label><input type="text" inputmode="decimal" id="pay-amount" oninput="payPreview()">
+            </div>
+            <div class="pay-grid">
+              <div><label class="pl">Date paid</label><input type="date" id="pay-date"></div>
+              <div><label class="pl">Mode</label><select id="pay-mode"></select></div>
+              <div><label class="pl">Reference no.</label><input type="text" id="pay-ref" placeholder="WPS / cheque / transfer no."></div>
+            </div>
+            <div style="margin-top:10px;"><label class="pl">Note</label><input type="text" id="pay-note" placeholder="Optional"></div>
+            <div id="pay-preview"></div>
+            <label style="display:block; font-size:12.5px; margin-top:8px; cursor:pointer;" id="pay-slip-wrap">
+              <input type="checkbox" id="pay-slip" checked style="width:auto; margin-right:6px;">Generate the payslip now</label>
+            <div class="status-msg" id="pay-status"></div>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+              <button class="btn btn-gray" onclick="payClose()">Cancel</button>
+              <button class="btn btn-primary" id="pay-go" onclick="paySave()">Mark paid</button>
+            </div>
+          </div>
+        </div>
+
         <!-- ============ MASTER DATA SCREEN ============ -->
         <div class="screen" id="screen-masterdata">
           <div class="status-msg" id="md-status"></div>
@@ -2529,6 +2592,19 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             </div>
           </div>
 
+
+          <!-- Paid status and payslips for the cycle, company by company. -->
+          <div class="card" id="lab-pay-card">
+            <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:4px;">
+              <div style="flex:1 1 300px;"><h2 style="margin:0;">Paid status &amp; payslips</h2>
+                <div id="lab-pay-sub" style="font-size:12px; color:#888; margin-top:2px;"></div></div>
+              <button class="btn btn-gray" onclick="payLabLoad()">Refresh</button>
+              <button class="btn btn-gray" onclick="payZipLabour()">Download all payslips (ZIP)</button>
+            </div>
+            <p style="font-size:12px; color:#888; margin:4px 0 0;">Mark paid any time in the cycle. A worker paid in full is locked; attendance marked after an early payment is carried to the next cycle's adjustments. Payslips are internal - view or download them here.</p>
+            <div class="status-msg" id="lab-pay-status"></div>
+            <div id="lab-pay-body" style="margin-top:10px;"></div>
+          </div>
 
           <!-- Adjustments sit with the cards they change: same cycle, same
                workers, and the card above shows the effect. -->
@@ -4721,6 +4797,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                   <div id="hr-all-sub" style="font-size:12px; color:#888; min-height:16px; margin-top:2px;"></div>
                 </div>
                 <button class="btn btn-primary hr-full-btn" style="display:none;" onclick="hrFullMonth()">Pay full month now</button>
+                <button class="btn btn-gray" onclick="payZipOffice(Object.keys(HR_ALL_RUNS))">Download all payslips (ZIP)</button>
                 <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="previewConsolidated()">Preview</button><button type="button" class="btn btn-dark" onclick="downloadConsolidated('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="downloadConsolidated('excel')">Export Excel</button><button type="button" class="btn btn-gray" onclick="previewConsolidated(true)">Consolidated statement (office + local)</button></div>
               </div>
               <p style="font-size:12px; color:#888; margin:6px 0 0;">Type loan instalments and remarks straight into any company's sheet - each saves on its own. Absence and additions come from their registers.</p>
@@ -4737,24 +4814,20 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <button class="btn btn-gray" id="hr-approve-btn" onclick="approvePayrollRun()">Approve &amp; lock</button>
                 <button class="btn btn-danger" id="hr-reopen-btn" onclick="reopenPayrollRun()" style="display:none;">Reopen</button>
                 <button class="btn btn-primary hr-full-btn" style="display:none;" onclick="hrFullMonth()">Pay full month now</button>
+                <button class="btn btn-gray" id="hr-pay-sel" onclick="payBulkOffice(HR_RUN && HR_RUN.id, 'mark')" title="Tick people in the Paid column first">Mark selected as paid</button>
+                <button class="btn btn-gray" id="hr-pay-slips" onclick="payBulkOffice(HR_RUN && HR_RUN.id, 'payslips')">Generate payslips</button>
+                <button class="btn btn-gray" onclick="payZipOffice([HR_RUN && HR_RUN.id])">Download all payslips (ZIP)</button>
                 <div class="hr-cb-spacer"></div>
                 <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="previewStatement()">Preview</button><button type="button" class="btn btn-dark" onclick="downloadStatement('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="downloadStatement('excel')">Export Excel</button><button type="button" class="btn btn-gray" onclick="previewConsolidated(true)">Consolidated statement (office + local)</button><button type="button" class="btn btn-gray" style="color:#B7322A;" onclick="dropPayrollRun()">Discard this draft</button></div>
                 <button class="btn btn-gray" id="hr-drop-btn" onclick="dropPayrollRun()" hidden>Discard draft</button>
               </div>
               <div class="grid-wrap" style="max-height:56vh;">
                 <table id="hr-run-table" class="hr-grid hr-cycle">
-                  <thead><tr>
-                    <th style="width:4%;" title="Include on this cycle">Pay</th>
-                    <th style="width:5%;">Code</th>
-                    <th class="txt" style="width:14%;">Employee</th>
-                    <th class="num" style="width:7%;">Basic</th>
-                    <th class="num" style="width:7%;">Fix Allown.</th>
-                    <th class="num" style="width:9%;">Add / Ded.</th>
-                    <th class="num" style="width:8.5%;">Absent Ded.</th>
-                    <th class="num" style="width:9%;">Loan</th>
-                    <th class="num" style="width:10.5%;" id="hr-th-net">Net Pay</th>
-                    <th class="num" id="hr-run-pension-h" style="width:6%; display:none;">Pension</th>
-                    <th class="txt" style="width:24%;">Remark</th>
+                  <thead id="hr-run-head"><tr>
+                    <th>Pay</th><th>Code</th><th class="txt">Employee</th><th class="num">Basic</th><th class="num">Fix Allown.</th>
+                    <th class="num">Add / Ded.</th><th class="num">Absent Ded.</th><th class="num">Loan</th>
+                    <th class="num" id="hr-th-net">Net Pay</th><th class="num" id="hr-run-pension-h" style="display:none;">Pension</th>
+                    <th class="txt">Remark</th>
                   </tr></thead>
                   <tbody id="hr-run-body"></tbody>
                   <tfoot id="hr-run-foot"></tfoot>
@@ -5765,8 +5838,9 @@ async function labFullSync() {
   const cyc = (document.getElementById("combine-cycle") || {}).value;
   if (!btn || !cyc) return;
   let st;
-  try { st = await apiCall(`/summaries/${encodeURIComponent(cyc)}/full-cycle`); } catch (e) { btn.style.display = "none"; return; }
+  try { st = await apiCall(`/summaries/${encodeURIComponent(cyc)}/full-cycle`); } catch (e) { btn.style.display = "none"; payLabLoad(); return; }
   if (document.getElementById("combine-cycle").value !== cyc) return;
+  payLabLoad();
   btn.style.display = st.early || st.on ? "" : "none";
   btn.dataset.on = st.on ? "1" : "";
   btn.textContent = st.on ? "Back to salary to date" : "Pay full salary now";
@@ -15099,23 +15173,39 @@ function renderRun() {
   const notice = document.getElementById("hr-run-notice");
   if (r.notice) { notice.textContent = r.notice; notice.style.display = "block"; }
   else notice.style.display = "none";
-  const pension = r.lines.some(l => l.pension);
-  document.getElementById("hr-run-pension-h").style.display = pension ? "" : "none";
-
+  document.getElementById("hr-run-head").innerHTML = hrRunHead(r, true);
   document.getElementById("hr-run-body").innerHTML = hrRunRows(r);
   renderRunFoot();
-  document.getElementById("hr-th-net").textContent = r.progress && r.progress.running ? "Salary To Date" : "Net Pay";
   document.getElementById("hr-run-routes").innerHTML = hrRoutes(r.by_route, r.progress && r.progress.running);
   document.getElementById("hr-run-progress").style.display = "none";
   document.querySelectorAll("#hr-run-body textarea.hr-rem").forEach(hrGrow);
 }
+// The sheet's heading - the one-company sheet and every company in the
+// all-companies view use the same columns. Paid sits after the salary
+// (to date), the payslip is the last column.
+function hrRunHead(run, sheet) {
+  const pension = run.lines.some(l => l.pension);
+  const running = run.progress && run.progress.running;
+  return `<tr><th style="width:3.5%;" title="Include on this cycle">Pay</th><th style="width:4.5%;">Code</th><th class="txt" style="width:12%;">Employee</th>
+    <th class="num" style="width:6.5%;">Basic</th><th class="num" style="width:6.5%;">Fix Allown.</th><th class="num" style="width:7.5%;">Add / Ded.</th>
+    <th class="num" style="width:7%;">Absent Ded.</th><th class="num" style="width:8%;">Loan</th>
+    <th class="num" style="width:9%;"${sheet ? ' id="hr-th-net"' : ""}>${running ? "Salary To Date" : "Net Pay"}</th>
+    <th class="txt" style="width:13%;" title="Tick people here, then Mark selected as paid"><input type="checkbox" class="pay-pick-all" style="width:auto; margin:0 4px 0 0; vertical-align:-2px;"
+        onclick="payPickAll(this)" title="Tick everyone not yet paid">Paid</th>
+    ${pension ? `<th class="num" style="width:5%;"${sheet ? ' id="hr-run-pension-h"' : ""}>Pension</th>` : ""}
+    <th class="txt" style="width:${pension ? 9 : 14}%;">Remark</th><th class="txt" style="width:9%;">Payslip</th></tr>`;
+}
 function hrRunRows(r) {
-  const locked = r.status === "approved";
+  const approved = r.status === "approved";
   const pension = r.lines.some(l => l.pension);
   return r.lines.map(l => {
     const remark = l.remarks || l.deduction_note || "";
+    const pay = l.pay || { state: "none", payments: [], slips: {} };
+    // A row paid in full keeps the figures it was paid on: nothing on it is typed any more.
+    const locked = approved || !!pay.locked;
+    payRemember("office", l.id, { name: l.name, emp_no: l.emp_no, pay, route: l.pay_route, held: l.held, month: r.month_year });
     return `
-    <tr data-line="${l.id}"${l.held ? ' class="hr-held"' : ""}>
+    <tr data-line="${l.id}" class="${l.held ? "hr-held" : ""}${pay.locked ? " pay-locked" : ""}">
       <td>${locked ? (l.held ? '<span class="hr-nil">held</span>' : "&#10003;") :
         `<input type="checkbox" ${l.held ? "" : "checked"} title="Untick to hold this salary over to a later month"
                 onchange="hrHold(${l.id}, !this.checked)">`}</td>
@@ -15129,10 +15219,12 @@ function hrRunRows(r) {
       ${hrLoanCell(l, locked)}
       <td class="num net" id="hr-net-${l.id}" title="${r.progress && r.progress.running ? `Earned to ${hrDate(r.progress.as_of)}; ${hrMoney(l.net_pay)} for the full month` : ""}">${
         r.progress && r.progress.running ? `<span class="hr-todate">${hrMoney(l.to_date)}</span>` : hrMoney(l.net_pay)}</td>
+      <td class="pay-cell">${payCell("office", l.id)}</td>
       ${pension ? `<td class="num">${l.pension ? hrMoney(l.pension) : '<span class="hr-nil">-</span>'}</td>` : ""}
       <td class="txt">${locked ? `<span class="hr-remark">${escapeHtml(remark)}</span>` :
         `<textarea class="hr-cell hr-rem" data-line="${l.id}" data-field="remarks" rows="1"
                 oninput="recalcLine(${l.id}); hrGrow(this)" onchange="hrAutoSave()">${escapeHtml(remark)}</textarea>`}</td>
+      <td class="pay-cell pay-slip">${payslipCell("office", l.id)}</td>
     </tr>`; }).join("");
 }
 
@@ -15149,12 +15241,14 @@ function hrRunFootHtml(R) {
   const pension = R.lines.some(l => l.pension);
   const tot = fn => paid.reduce((a, l) => a + fn(l), 0);
   const cells = [sum("basic"), sum("allowance"), tot(hrAdjust), sum("deduction"),
-                 sum("loan_deduction"), sum("net_pay")]
-                .concat(pension ? [sum("pension")] : []);
+                 sum("loan_deduction"), sum("net_pay")];
+  const paidOut = R.lines.reduce((a, l) => a + Number((l.pay && l.pay.paid) || 0), 0);
   return `<tr class="hr-foot">
        <td colspan="3" class="txt">TOTAL - ${R.lines.filter(l => !l.held).length} staff${R.lines.some(l => l.held) ? `, ${R.lines.filter(l => l.held).length} held over` : ""}</td>
        ${cells.map(v => `<td class="num">${hrMoney(v)}</td>`).join("")}
-       <td></td></tr>`;
+       <td class="txt" title="Paid so far">${paidOut ? hrMoney(paidOut) + " paid" : ""}</td>
+       ${pension ? `<td class="num">${hrMoney(sum("pension"))}</td>` : ""}
+       <td></td><td></td></tr>`;
 }
 
 // Net pay is never typed and never guessed: it is the same sum the
@@ -15243,6 +15337,284 @@ async function reopenPayrollRun() {
     await loadRunList();
     hrMsg("ok", `${HR_RUN.month_year} is open again.`);
   } catch (e) { hrMsg("err", errText(e)); }
+}
+
+// ---- Paid status and payslips ----------------------------------------
+// One set of cells, one dialog and one set of bulk actions for office
+// payroll (the one-company sheet and All companies) and labour payroll
+// (Salary cards). Payslips are internal: viewed and downloaded here,
+// never emailed.
+const PAY_ROWS = {};          // "office:12" -> { name, emp_no, pay, route, held, month }
+const PAY_MODES = { wps: "WPS", bank: "Bank transfer", cash: "Cash", cheque: "Cheque" };
+let PAY_DLG = null;           // the row the dialog is open for
+let PAY_PREV_T = null;
+function payRemember(kind, id, row) { PAY_ROWS[`${kind}:${id}`] = row; }
+function payRow(kind, id) { return PAY_ROWS[`${kind}:${id}`] || { pay: { state: "none", payments: [], slips: {} } }; }
+function payShortDate(t) { return String(t || "").replace(/ \d{4}$/, ""); }
+
+// The PAID cell: a tick box and Mark paid while nothing is paid; once paid,
+// the badge with date, kind and mode; part paid shows paid / balance and
+// Pay balance; anything changed after an early payment shows where it went.
+function payCell(kind, id) {
+  const r = payRow(kind, id), p = r.pay || {};
+  // One payment for the whole amount needs no figure; several show what each one was.
+  const many = (p.payments || []).length > 1 || p.state === "partial" || p.state === "todate";
+  const lines = (p.payments || []).map(x => `<div class="pay-meta" title="${escapeAttr(hrMoney(x.amount) + (x.reference ? " - ref " + x.reference : "") + (x.note ? " - " + x.note : ""))}">` +
+      `${many ? hrMoney(x.amount) + " &middot; " : ""}${escapeHtml(payShortDate(x.paid_on_text))} &middot; ${escapeHtml(x.type_label)} &middot; ${escapeHtml(x.mode_label)}` +
+      `<span class="pay-x" title="Cancel this payment (entered by mistake)" onclick="payCancel(${x.id})">&#10005;</span></div>`).join("");
+  const carry = p.carry ? `<div class="pay-carry" title="Changed after it was paid - carried to Additions &amp; Deductions">` +
+      `${p.carry > 0 ? "+" : "-"}${hrMoney(Math.abs(p.carry))} to ${escapeHtml(p.carry_to)}</div>` : "";
+  if (!p.payments || !p.payments.length) {
+    if (r.held) return '<span class="hr-nil">-</span>';
+    return `<input type="checkbox" class="pay-pick" data-kind="${kind}" data-id="${id}" title="Tick to pay with Mark selected as paid">` +
+           `<button class="pay-btn" onclick="payOpen('${kind}', ${id})">Mark paid</button>`;
+  }
+  if (p.state === "settled") return `<span class="pay-fin">Settled</span>${lines}${carry}`;
+  if (p.state === "paid") return `<span class="pay-ok">&#10003; Paid</span>${lines}${carry}`;
+  const bal = p.balance > 0.005 ? `<div class="pay-meta">Balance <b>${hrMoney(p.balance)}</b> &middot; <a onclick="payOpen('${kind}', ${id}, 'balance')">Pay balance</a></div>` : "";
+  const head = p.state === "todate" ? `<span class="pay-ok" title="Paid up to today - the card grows until the cycle ends">Paid to date</span>`
+                                    : `<span class="pay-part">Part paid ${hrMoney(p.paid)}</span>`;
+  return `<input type="checkbox" class="pay-pick" data-kind="${kind}" data-id="${id}" title="Tick to pay the balance with Mark selected as paid">${head}${lines}${bal}${carry}`;
+}
+
+// The PAYSLIP cell: Generate once paid; then View / Download of the latest
+// version, and Regenerate for a new version (the old ones are kept).
+function payslipCell(kind, id) {
+  const p = payRow(kind, id).pay || {};
+  if (!p.payments || !p.payments.length) return '<span class="hr-nil">-</span>';
+  return p.payments.map(x => {
+    const v = (p.slips || {})[String(x.id)] || [];
+    if (!v.length) return `<div><button class="pay-btn" onclick="payGenerate(${x.id}, '${kind}')">Generate</button></div>`;
+    const s = v[v.length - 1];
+    return `<div><a onclick="payslipOpen(${s.id})">View</a> &middot; <a onclick="payslipOpen(${s.id}, true)">Download</a>` +
+           ` <span class="v" title="${escapeAttr(s.slip_no)} - ${escapeAttr(s.created)}">${s.type === "settlement" ? "settlement " : ""}v${s.version}</span>` +
+           ` <a class="v" title="A new version - earlier versions are kept" onclick="payGenerate(${x.id}, '${kind}')">&#8635;</a></div>`;
+  }).join("");
+}
+
+async function payslipOpen(sid, download) {
+  window.open(`${API}/export/pay/payslip/${sid}?token=${await hrToken()}${download ? "&inline=false" : ""}`, "_blank");
+}
+function payMsg(kind, cls, text) {
+  if (kind === "office") hrMsg(cls, text); else showStatus("lab-pay-status", cls, text);
+}
+async function payReload(kind) {
+  if (kind === "office") {
+    HR_OPENING = HR_OPENING.then(() => hrOpenNow(true), () => hrOpenNow(true));
+    await HR_OPENING;
+  } else await payLabLoad();
+}
+async function payGenerate(pid, kind) {
+  try {
+    const r = await apiCall(`/employees/pay/${pid}/payslip`, { method: "POST" });
+    payMsg(kind, "ok", `Payslip ${r.slip_no} generated.`);
+    await payReload(kind);
+  } catch (e) { payMsg(kind, "err", errText(e)); }
+}
+async function payCancel(pid) {
+  const why = window.prompt("Cancel this payment? Its loan recovery and anything carried forward are put back, and its payslips are marked cancelled.\n\nWhy is it cancelled?");
+  if (!why || !why.trim()) return;
+  const kind = Object.keys(PAY_ROWS).find(k => (PAY_ROWS[k].pay.payments || []).some(x => x.id === pid))?.split(":")[0] || "office";
+  try {
+    await apiCall(`/employees/pay/${pid}/cancel`, { method: "POST", body: JSON.stringify({ reason: why.trim() }) });
+    payMsg(kind, "ok", "Payment cancelled.");
+    await payReload(kind);
+  } catch (e) { payMsg(kind, "err", errText(e)); }
+}
+
+// ---- the Mark paid dialog
+function payOpen(kind, id, type) {
+  const r = payRow(kind, id), p = r.pay || {};
+  PAY_DLG = { kind, id, bulk: null };
+  const paid = (p.payments || []).length > 0;
+  const types = paid ? [["balance", `Pay balance${p.balance ? " (" + hrMoney(p.balance) + ")" : ""}`], ["final", "Final settlement"], ["custom", "Custom"]]
+                     : [["regular", kind === "office" ? "Regular (salary to date)" : "Regular (salary to date)"],
+                        ["early_full", kind === "office" ? "Early full month" : "Early full cycle"], ["final", "Final settlement"], ["custom", "Custom"]];
+  payFillDialog(`Mark paid - ${r.name || ""}`, `${r.emp_no || ""} · ${r.month || ""}${paid ? ` · already paid ${hrMoney(p.paid)}` : ""}`,
+                types, type && types.some(t => t[0] === type) ? type : types[0][0], r.route);
+}
+function payFillDialog(title, sub, types, pick, route) {
+  document.getElementById("pay-title").textContent = title;
+  document.getElementById("pay-sub").textContent = sub;
+  document.getElementById("pay-types").innerHTML = types.map(([v, t]) =>
+    `<label class="${v === pick ? "on" : ""}"><input type="radio" name="pay-type" value="${v}" ${v === pick ? "checked" : ""} onchange="payTypeChanged()">${escapeHtml(t)}</label>`).join("");
+  const modes = (PAY_DLG.bulk ? [["", "Their own route"]] : []).concat(Object.entries(PAY_MODES));
+  document.getElementById("pay-mode").innerHTML = modes.map(([v, t]) => `<option value="${v}">${t}</option>`).join("");
+  document.getElementById("pay-mode").value = PAY_DLG.bulk ? "" : (PAY_MODES[route] ? route : "wps");
+  document.getElementById("pay-date").value = hrToday();
+  ["pay-ref", "pay-note", "pay-amount", "pay-notice", "pay-leave"].forEach(x => document.getElementById(x).value = "");
+  document.getElementById("pay-last").value = hrToday();
+  document.getElementById("pay-reason").value = "resignation";
+  document.getElementById("pay-slip").checked = true;
+  document.getElementById("pay-slip-wrap").style.display = PAY_DLG.bulk ? "none" : "";
+  showStatus("pay-status", "", "");
+  document.getElementById("pay-modal").style.display = "flex";
+  payTypeChanged();
+}
+function payType() { const r = document.querySelector('input[name="pay-type"]:checked'); return r ? r.value : "regular"; }
+function payTypeChanged() {
+  const t = payType();
+  document.querySelectorAll("#pay-types label").forEach(l => l.classList.toggle("on", l.querySelector("input").checked));
+  document.getElementById("pay-final").style.display = t === "final" ? "" : "none";
+  document.getElementById("pay-custom").style.display = t === "custom" ? "" : "none";
+  document.getElementById("pay-go").textContent = PAY_DLG && PAY_DLG.bulk ? `Mark ${PAY_DLG.bulk.ids.length} as paid` : (t === "final" ? "Pay final settlement" : "Mark paid");
+  payPreview();
+}
+function payClose() { document.getElementById("pay-modal").style.display = "none"; PAY_DLG = null; }
+// Escape or a click outside the box leaves it, the same as Cancel.
+document.addEventListener("keydown", ev => { if (ev.key === "Escape" && PAY_DLG && document.getElementById("pay-modal").style.display === "flex") payClose(); });
+document.addEventListener("click", ev => { if (ev.target && ev.target.id === "pay-modal") payClose(); });
+function payBody() {
+  const t = payType(), v = id => document.getElementById(id).value.trim();
+  const b = { kind: PAY_DLG.kind, source_id: PAY_DLG.id, type: t, paid_on: v("pay-date"), mode: v("pay-mode"), reference: v("pay-ref"), note: v("pay-note") };
+  if (t === "custom") b.amount = hrNum(v("pay-amount"));
+  if (t === "final") { b.last_day = v("pay-last"); b.reason = v("pay-reason"); if (v("pay-notice") !== "") b.notice_served = v("pay-notice"); if (v("pay-leave") !== "") b.leave_days = v("pay-leave"); }
+  return b;
+}
+function payPreview() {
+  clearTimeout(PAY_PREV_T);
+  PAY_PREV_T = setTimeout(payPreviewNow, 200);
+}
+async function payPreviewNow() {
+  const box = document.getElementById("pay-preview");
+  if (!PAY_DLG) return;
+  if (PAY_DLG.bulk) {
+    const t = payType();
+    box.innerHTML = `<b>${PAY_DLG.bulk.ids.length}</b> ${PAY_DLG.bulk.ids.length === 1 ? "person" : "people"} ticked. Each is paid ` +
+      (t === "early_full" ? "the whole month / cycle" : "the salary to date (or the balance still owed)") + ". Payslips can be generated after.";
+    return;
+  }
+  const b = payBody(), at = JSON.stringify(b);
+  box.innerHTML = '<span class="hr-nil">Working it out...</span>';
+  try {
+    const w = await apiCall("/employees/pay/preview", { method: "POST", body: JSON.stringify(b) });
+    if (!PAY_DLG || JSON.stringify(payBody()) !== at) return;
+    const rows = [];
+    if (w.type === "final") (w.lines || []).forEach(([k, a]) => rows.push([k, a]));
+    else {
+      rows.push([w.type === "early_full" ? "Full month / cycle salary" : "Salary due for the month", w.due]);
+      if (w.to_date !== undefined && w.type === "regular") rows.push(["Earned to date", w.to_date]);
+    }
+    if (w.paid_before) rows.push(["Paid before", -w.paid_before]);
+    box.innerHTML = `<table>${rows.map(([k, a]) => `<tr><td>${escapeHtml(k)}</td><td class="n">${hrMoney(a)}</td></tr>`).join("")}
+      <tr><td class="big">To pay now</td><td class="n big">AED ${hrMoney(w.amount)}</td></tr></table>` +
+      (w.type === "final" ? `<div style="font-size:11.5px; color:#8A8178; margin-top:6px;">From the Gratuity working - the whole loan balance comes off and the person is made inactive once paid.</div>` : "");
+  } catch (e) { box.innerHTML = `<span style="color:#B03A2E;">${escapeHtml(errText(e))}</span>`; }
+}
+async function paySave() {
+  if (!PAY_DLG) return;
+  const d = PAY_DLG, btn = document.getElementById("pay-go");
+  btn.disabled = true;
+  try {
+    if (d.bulk) {
+      const b = payBody();
+      const r = await apiCall("/employees/pay/bulk", { method: "POST", body: JSON.stringify({ kind: d.kind, action: "mark", source_ids: d.bulk.ids,
+                type: b.type, paid_on: b.paid_on, mode: b.mode, reference: b.reference, note: b.note }) });
+      payClose();
+      payMsg(d.kind, r.skipped.length ? "warn" : "ok", `${r.paid} marked paid.` + (r.skipped.length ? ` ${r.skipped.length} skipped: ${r.skipped.map(x => x.why).join("; ")}` : ""));
+    } else {
+      const b = payBody(); b.payslip = document.getElementById("pay-slip").checked;
+      if (b.type === "final" && !await hrAsk(`Pay the final settlement and make ${payRow(d.kind, d.id).name} inactive? The whole loan balance comes off.`, "Pay final settlement")) { btn.disabled = false; return; }
+      const r = await apiCall("/employees/pay/mark", { method: "POST", body: JSON.stringify(b) });
+      payClose();
+      payMsg(d.kind, "ok", `Paid ${hrMoney(r.payment.amount)} (${r.payment.type_label}, ${r.payment.mode_label}).${r.payslip_id ? " Payslip generated." : ""}`);
+    }
+    await payReload(d.kind);
+  } catch (e) { showStatus("pay-status", "err", errText(e)); }
+  btn.disabled = false;
+}
+
+// ---- bulk: tick in the Paid column, then Mark selected as paid; Generate
+// payslips does everyone paid in that company who has none yet.
+function payPickAll(el) {
+  const scope = el.closest("table");
+  scope.querySelectorAll("input.pay-pick").forEach(x => { x.checked = el.checked; });
+}
+function payPicked(scope) { return [...scope.querySelectorAll("input.pay-pick:checked")].map(x => Number(x.dataset.id)); }
+function payBulkOpen(kind, ids, title) {
+  PAY_DLG = { kind, id: 0, bulk: { ids } };
+  payFillDialog(title, "Each row gets its own payment; the rows already paid in full are left alone.",
+                [["regular", "Regular (salary to date)"], ["early_full", kind === "office" ? "Early full month" : "Early full cycle"]], "regular", "");
+}
+async function payBulkSlips(kind, ids) {
+  if (!ids.length) { payMsg(kind, "warn", "Nobody paid there yet."); return; }
+  try {
+    const r = await apiCall("/employees/pay/bulk", { method: "POST", body: JSON.stringify({ kind, action: "payslips", source_ids: ids }) });
+    payMsg(kind, "ok", r.payslips ? `${r.payslips} payslip${r.payslips === 1 ? "" : "s"} generated.` : "Every payment there already has its payslip.");
+    await payReload(kind);
+  } catch (e) { payMsg(kind, "err", errText(e)); }
+}
+function payBulkOffice(runId, action) {
+  if (!runId) return;
+  const run = HR_ALL_MODE ? HR_ALL_RUNS[runId] : HR_RUN;
+  const scope = HR_ALL_MODE ? document.querySelector(`#hr-all-body [data-run="${runId}"]`) : document.getElementById("hr-run-card");
+  if (!run || !scope) return;
+  if (action === "payslips") return payBulkSlips("office", run.lines.filter(l => l.pay && l.pay.payments && l.pay.payments.length).map(l => l.id));
+  const ids = payPicked(scope);
+  if (!ids.length) { hrMsg("warn", "Tick the people to pay in the Paid column first."); return; }
+  payBulkOpen("office", ids, `Mark selected as paid - ${run.company_short} · ${run.month_year}`);
+}
+async function payZipOffice(runIds) {
+  runIds = (runIds || []).filter(Boolean);
+  const month = hrCycleName(document.getElementById("hr-run-month").value);
+  if (!runIds.length || !month) { hrMsg("warn", "Open a month first."); return; }
+  payZip("office", month, `&run_ids=${runIds.join(",")}`, "hr-status");
+}
+async function payZip(kind, month, extra, statusId) {
+  const url = `${API}/export/pay/payslips.zip?token=${await hrToken()}&kind=${kind}&month_year=${encodeURIComponent(month)}${extra || ""}`;
+  // A month with no payslips answers with a message, not an empty ZIP.
+  try {
+    const res = await fetch(url);
+    if (!res.ok) { const j = await res.json().catch(() => ({})); showStatus(statusId, "warn", j.detail || "No payslips yet."); return; }
+    const blob = await res.blob(), a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `Payslips_${kind}_${month.replace(/ /g, "_")}.zip`;
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { showStatus(statusId, "err", errText(e)); }
+}
+
+// ---- labour: Salary cards > Paid status & payslips
+let PAY_LAB = null;
+async function payLabLoad() {
+  const box = document.getElementById("lab-pay-body"), cyc = (document.getElementById("combine-cycle") || {}).value;
+  if (!box || !cyc) return;
+  let d;
+  try { d = await apiCall(`/employees/pay/labour?month_year=${encodeURIComponent(cyc)}`); }
+  catch (e) { box.innerHTML = `<p class="hr-nil">${escapeHtml(errText(e))}</p>`; return; }
+  if (document.getElementById("combine-cycle").value !== cyc) return;
+  PAY_LAB = d;
+  document.getElementById("lab-pay-sub").textContent = `${cycleLabel(cyc)} · ${d.closed ? "cycle closed" : "cycle running - figures are salary to date"}`;
+  if (!d.groups.length) { box.innerHTML = '<p class="hr-nil">No salary cards for this cycle yet.</p>'; return; }
+  box.innerHTML = d.groups.map((g, gi) => {
+    g.rows.forEach(x => payRemember("labour", x.source_id, { name: x.name, emp_no: x.emp_no, pay: x.pay, route: x.pay_route, month: cyc }));
+    return `<div class="hr-all-co" data-labco="${gi}"><h3>${escapeHtml(g.company)} <span class="hr-nil" style="font-weight:400;">${g.rows.length} worker${g.rows.length === 1 ? "" : "s"} · ${hrMoney(g.net)} · ${hrMoney(g.paid)} paid</span>
+      <span class="pay-bulk"><button class="btn btn-gray btn-sm" onclick="payLabBulk(${gi}, 'mark')">Mark selected as paid</button>
+        <button class="btn btn-gray btn-sm" onclick="payLabBulk(${gi}, 'payslips')">Generate payslips</button></span></h3>
+      <div class="grid-wrap" style="max-height:60vh;"><table class="hr-grid hr-cycle"><thead><tr>
+        <th style="width:6%;">Code</th><th class="txt" style="width:18%;">Worker</th><th class="txt" style="width:11%;">Trade</th>
+        <th class="num" style="width:6%;">Days</th><th class="num" style="width:6%;">OT hrs</th><th class="num" style="width:9%;">Card salary</th>
+        <th class="num" style="width:8%;">Add / Ded.</th><th class="num" style="width:10%;">${d.closed ? "Net Pay" : "Salary To Date"}</th>
+        <th class="txt" style="width:15%;"><input type="checkbox" style="width:auto; margin:0 4px 0 0; vertical-align:-2px;" onclick="payPickAll(this)" title="Tick everyone not yet paid">Paid</th>
+        <th class="txt" style="width:11%;">Payslip</th></tr></thead><tbody>
+      ${g.rows.map(x => `<tr class="${x.pay.locked ? "pay-locked" : ""}"><td>${escapeHtml(x.emp_no)}</td><td class="txt">${escapeHtml(x.name)}${x.pay_route !== "wps" ? `<span class="hr-tag">${x.pay_route === "bank" ? "Bank" : "Cash"}</span>` : ""}${x.active ? "" : ' <span class="hr-tag">inactive</span>'}</td>
+        <td class="txt">${escapeHtml(x.trade)}</td><td class="num">${num(x.days)}</td><td class="num">${x.ot ? num(x.ot) : '<span class="hr-nil">-</span>'}</td>
+        <td class="num">${hrMoney(x.salary)}</td><td class="num">${x.adjust ? `<span style="color:${x.adjust > 0 ? "#2E7D32" : "#B03A2E"}">${x.adjust > 0 ? "+" : "-"}${hrMoney(Math.abs(x.adjust))}</span>` : '<span class="hr-nil">-</span>'}</td>
+        <td class="num net">${hrMoney(x.net)}</td><td class="pay-cell">${payCell("labour", x.source_id)}</td><td class="pay-cell pay-slip">${payslipCell("labour", x.source_id)}</td></tr>`).join("")}
+      </tbody><tfoot><tr class="hr-foot"><td colspan="7" class="txt">TOTAL - ${g.rows.length} worker${g.rows.length === 1 ? "" : "s"}</td><td class="num">${hrMoney(g.net)}</td>
+        <td class="txt">${g.paid ? hrMoney(g.paid) + " paid" : ""}</td><td></td></tr></tfoot></table></div></div>`;
+  }).join("");
+}
+function payLabBulk(gi, action) {
+  const g = PAY_LAB && PAY_LAB.groups[gi], scope = document.querySelector(`#lab-pay-body [data-labco="${gi}"]`);
+  if (!g || !scope) return;
+  if (action === "payslips") return payBulkSlips("labour", g.rows.filter(x => x.pay.payments.length).map(x => x.source_id));
+  const ids = payPicked(scope);
+  if (!ids.length) { showStatus("lab-pay-status", "warn", "Tick the workers to pay in the Paid column first."); return; }
+  payBulkOpen("labour", ids, `Mark selected as paid - ${g.company} · ${PAY_LAB.month_year}`);
+}
+function payZipLabour() {
+  const cyc = document.getElementById("combine-cycle").value;
+  payZip("labour", cyc, "", "lab-pay-status");
 }
 
 // ---- The papers ------------------------------------------------------
@@ -15883,14 +16255,12 @@ function hrAllRenderSection(run) {
       <span class="hr-badge ${locked ? "ok" : "draft"}">${locked ? "Approved - locked" : "Draft"}</span>
       ${locked ? `<button class="btn btn-danger btn-sm" style="margin-left:10px;" onclick="hrAllUse(${run.id}); reopenPayrollRun()">Reopen</button>`
                : `<button class="btn btn-gray btn-sm" style="margin-left:10px;" onclick="hrAllUse(${run.id}); approvePayrollRun()">Approve &amp; lock</button>`}
+      <span class="pay-bulk"><button class="btn btn-gray btn-sm" onclick="payBulkOffice(${run.id}, 'mark')" title="Tick people in the Paid column first">Mark selected as paid</button>
+        <button class="btn btn-gray btn-sm" onclick="payBulkOffice(${run.id}, 'payslips')">Generate payslips</button></span>
     </h3>
     ${run.notice ? `<div class="status-msg warn" style="display:block;">${escapeHtml(run.notice)}</div>` : ""}
     <div class="grid-wrap"><table class="hr-grid hr-cycle">
-      <thead><tr><th style="width:4%;" title="Include on this cycle">Pay</th><th style="width:5%;">Code</th><th class="txt" style="width:14%;">Employee</th>
-        <th class="num" style="width:7%;">Basic</th><th class="num" style="width:7%;">Fix Allown.</th><th class="num" style="width:9%;">Add / Ded.</th>
-        <th class="num" style="width:8.5%;">Absent Ded.</th><th class="num" style="width:9%;">Loan</th>
-        <th class="num" style="width:10.5%;">${running ? "Salary To Date" : "Net Pay"}</th>${pension ? '<th class="num" style="width:6%;">Pension</th>' : ""}
-        <th class="txt" style="width:24%;">Remark</th></tr></thead>
+      <thead>${hrRunHead(run, false)}</thead>
       <tbody>${hrRunRows(run)}</tbody>
       <tfoot id="hr-all-foot-${run.id}">${hrRunFootHtml(run)}</tfoot>
     </table></div>`;
@@ -15909,11 +16279,13 @@ function hrAllRenderGrand() {
   if (!paid.length) { el.innerHTML = ""; return; }
   const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
   const adj = paid.reduce((a, l) => a + hrAdjust(l), 0);
+  const out = all.flatMap(r => r.lines).reduce((a, l) => a + Number((l.pay && l.pay.paid) || 0), 0);
   el.innerHTML = `<table class="hr-grid"><tfoot><tr class="hr-foot">
-      <td class="txt" style="width:23%;">GRAND TOTAL - ${paid.length} staff${held ? `, ${held} held over` : ""}</td>
-      <td class="num" style="width:7%;">${hrMoney(sum("basic"))}</td><td class="num" style="width:7%;">${hrMoney(sum("allowance"))}</td>
-      <td class="num" style="width:9%;">${adj ? hrMoney(adj) : "-"}</td><td class="num" style="width:8.5%;">${hrMoney(sum("deduction"))}</td>
-      <td class="num" style="width:9%;">${hrMoney(sum("loan_deduction"))}</td><td class="num" style="width:10.5%;">${hrMoney(sum("net_pay"))}</td>
+      <td class="txt" style="width:20%;">GRAND TOTAL - ${paid.length} staff${held ? `, ${held} held over` : ""}</td>
+      <td class="num" style="width:6.5%;">${hrMoney(sum("basic"))}</td><td class="num" style="width:6.5%;">${hrMoney(sum("allowance"))}</td>
+      <td class="num" style="width:7.5%;">${adj ? hrMoney(adj) : "-"}</td><td class="num" style="width:7%;">${hrMoney(sum("deduction"))}</td>
+      <td class="num" style="width:8%;">${hrMoney(sum("loan_deduction"))}</td><td class="num" style="width:9%;">${hrMoney(sum("net_pay"))}</td>
+      <td class="txt" style="width:12%;">${out ? hrMoney(out) + " paid" : ""}</td>
       <td style="width:24%;"></td></tr></tfoot></table>`;
 }
 // Opening an earlier month for one company from the all-companies view.
