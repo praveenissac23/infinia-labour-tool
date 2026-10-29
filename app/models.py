@@ -463,6 +463,8 @@ class PurchaseOrder(Base):
     # What accounts are told about an LPO already in Zoho that was changed or cancelled here:
     # JSON {"items": [{"kind", "when", "who", "changes": [...], "zoho": "..."}], "seen": false}
     acc_note = Column(Text, default="")
+    # The request lines this LPO was raised for (",12,15,"), so a cancel finds them for sure
+    request_line_ids = Column(String, default="")
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -236,6 +236,10 @@ def seed_on_startup():
             db.rollback(); print("drop LPOs:", e)
         _docs_office_full_for_assistant(db)
         try:
+            _fix_lpo_0153(db)
+        except Exception as e:
+            db.rollback(); print("LPO 0153 requests:", e)
+        try:
             import zohoapi as _zn
             _zn.clear_not_vendor_todo(db)
         except Exception as e:
@@ -8545,6 +8549,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
             l.supplier_id = supplier.id if supplier else None
             l.status = "approved"
             placed.append(l)
+        o.request_line_ids = "," + ",".join(str(l.id) for l in lines) + "," if lines else ""
         for mr in {l.request for l in lines if l.request}:
             if payload.delivery_date:
                 mr.expected_on = payload.delivery_date
@@ -8761,20 +8766,33 @@ def cancel_purchase_order(order_id: int, payload: dict = Body(default={}), db: S
         zoho = pozoho.zoho_cancel(db, o)
     total = _lpo_snap(o)["total"]
     _tell_accounts(db, o, "cancel", [f"Cancelled - {reason}", f"Total was AED {total:,.2f}"], zoho, user)
-    freed = _release_lpo_lines(db, o)
+    # The materials: no longer needed (the request closes - off Approvals and Order follow-up), or still
+    # needed (back to waiting to be ordered from someone else).
+    not_needed = bool((payload or {}).get("not_needed"))
+    freed = _release_lpo_lines(db, o, not_needed=not_needed, why=reason)
     db.commit()
+    what = ("request line(s) closed - not needed" if not_needed else "request line(s) back to waiting for an order")
     log_action(db, user.id, "cancel_lpo", f"{o.ref} ({o.supplier_name}) - {reason}"
-               + (f" - {freed} request line(s) back to waiting for an order" if freed else "") + (f"; {zoho}" if zoho else ""))
-    return {"ok": True, "zoho": zoho,
-            "detail": f"{o.ref} cancelled." + (f" {freed} material(s) are back on the list waiting to be ordered." if freed else "")
+               + (f" - {freed} {what}" if freed else "") + (f"; {zoho}" if zoho else ""))
+    return {"ok": True, "zoho": zoho, "freed": freed,
+            "detail": f"{o.ref} cancelled."
+                      + ((f" {freed} material(s) taken off the request - no longer on Approvals or Order follow-up." if not_needed
+                          else f" {freed} material(s) are back on the list waiting to be ordered.") if freed else "")
                       + (f" {zoho}." if zoho else "") + " Accounts have been told."}
 
 
-def _release_lpo_lines(db, o):
+def _release_lpo_lines(db, o, not_needed=False, why=""):
     """A cancelled order gives its request lines back: still approved, no supplier, waiting to be ordered again
     (they were left 'ordered' from the cancelled supplier - off the to-order list, and a delivery could still be
     booked against them). A line already part-received, or also on another live order from the same supplier,
     is left as it is."""
+    ids = [int(x) for x in (getattr(o, "request_line_ids", "") or "").split(",") if x.strip().isdigit()]
+    if ids:
+        # The lines this LPO was raised for - known for sure (LPOs raised from 29 Oct 2026)
+        found = (db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id.in_(ids)).all())
+        found = [l for l in found if (l.qty_received or 0) <= 0 and (l.status or "pending") != "rejected"
+                 and (not o.supplier_id or l.supplier_id in (o.supplier_id, None))]
+        return _settle_request_lines(db, o, found, not_needed, why)
     if not o.supplier_id:
         return 0
     keys = {(l.item_id or 0, (l.description or "").strip().lower()) for l in o.lines}
@@ -8805,15 +8823,54 @@ def _release_lpo_lines(db, o):
             continue
         if covered(l):
             continue
+        touched.add(l)
+    return _settle_request_lines(db, o, list(touched), not_needed, why)
+
+
+def _fix_lpo_0153(db):
+    """IC/LPO/20260153 (Black sand + 3/4 aggregate, site said not needed) was cancelled on 29 Oct 2026 before a
+    cancel could find the request it came from: MR-0038 stayed 'ordered' on Approvals and Order follow-up.
+    Its lines from that supplier are taken off the request now, once."""
+    key = "fix_lpo_0153_requests"
+    if db.query(models.Setting).filter(models.Setting.key == key).first():
+        return
+    o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.ref == "IC/LPO/20260153").first()
+    mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.ref == "MR-0038").first()
+    if o and mr and o.status == "cancelled" and o.supplier_id:
+        lines = [l for l in mr.lines if l.supplier_id == o.supplier_id and (l.qty_received or 0) <= 0
+                 and (l.status or "pending") != "rejected"]
+        if lines:
+            o.request_line_ids = "," + ",".join(str(l.id) for l in lines) + ","
+            _settle_request_lines(db, o, lines, True, o.cancel_reason or "")
+            print(f"{o.ref}: {len(lines)} line(s) of {mr.ref} taken off - not needed")
+    put_setting(db, key, "done")
+    db.commit()
+
+
+def _settle_request_lines(db, o, lines, not_needed, why):
+    """What a cancelled LPO does to the request lines it was for: taken off the request (not needed any more -
+    shown as such, the request closes when nothing is left), or back to waiting to be ordered."""
+    touched = set()
+    for l in lines:
         l.supplier_id = None
-        freed += 1; touched.add(l.request)
-    for mr in touched:
+        if not_needed:
+            l.status = "rejected"
+            l.reject_reason = (f"Not needed - {o.ref} cancelled" + (f": {why}" if why else ""))[:300]
+        touched.add(l.request)
+    for mr in [m for m in touched if m]:
         live = [x for x in mr.lines if (x.status or "pending") != "rejected"]
-        if mr.status == "ordered" and not any(x.supplier_id for x in live):
+        got = any((x.qty_received or 0) > 0 for x in mr.lines)
+        if not live:
+            # nothing left to come: closed, said why - off Approvals and Order follow-up
+            mr.status = "delivered" if got else "closed"
+            mr.closed_on = _dubai_today()
+            note = f"{o.ref} cancelled" + (f" - {why}" if why else "")
+            mr.office_remark = ((mr.office_remark + " | ") if (mr.office_remark or "").strip() else "") + note
+        elif mr.status == "ordered" and not any(x.supplier_id for x in live):
             mr.status = "approved"
         sup_ids = {x.supplier_id for x in live}
         mr.supplier_id = next(iter(sup_ids)) if len(sup_ids) == 1 and None not in sup_ids else None
-    return freed
+    return len(lines)
 
 
 def db_session_site(code):

@@ -323,6 +323,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   tr.lpr-cxrow td .lpr-cx, tr.lpr-cxrow td .lpr-why { text-decoration: none; display: inline-block; }
   #lpo-cx-modal { position: fixed; inset: 0; background: rgba(20,24,28,.45); z-index: 5000; display: none; align-items: center; justify-content: center; }
   #lpo-cx-modal.on { display: flex; } #lpo-cx-modal .box { background: #fff; border-radius: 12px; padding: 22px 24px; width: min(460px, 92vw); box-shadow: 0 20px 50px rgba(0,0,0,.3); }
+  #lpo-cx-modal .lpo-cx-opt { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; font-size: 13px; line-height: 1.4; cursor: pointer; } #lpo-cx-modal .lpo-cx-opt input { margin-top: 3px; }
   #lpo-cx-modal h3 { margin: 0 0 6px; } #lpo-cx-modal textarea { width: 100%; box-sizing: border-box; min-height: 78px; margin-top: 10px; font: inherit; padding: 8px 10px; }
   #lpo-cx-modal .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; } #lpo-cx-modal .chips button { border: 1px solid #E2C9C5; background: #FDF6F5; border-radius: 14px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; }
   .inv-list tr.cx td { color: #999; } .inv-list tr.cx td.num { text-decoration: line-through; }
@@ -13134,14 +13135,18 @@ function cancelLpo(id, ref) {
   if (!m) { m = document.createElement("div"); m.id = "lpo-cx-modal"; document.body.appendChild(m); }
   const chips = ["Site says material no longer needed", "Supplier cannot supply", "Wrong supplier - new LPO raised", "Duplicate LPO", "Price changed - new LPO raised"];
   m.innerHTML = `<div class="box"><h3>Cancel ${escapeHtml(ref)}?</h3>
-    <div style="font-size:13px;color:#555;line-height:1.5;">It stays on the register struck through, with the reason, and prints stamped CANCELLED. The materials go back to waiting to be ordered. If it is in Zoho it is cancelled there too, and accounts are told.</div>
+    <div style="font-size:13px;color:#555;line-height:1.5;">It stays on the register struck through, with the reason, and prints stamped CANCELLED. If it is in Zoho it is cancelled there too, and accounts are told.</div>
     <div class="chips">${chips.map(c => `<button type="button" data-c="${escapeAttr(c)}">${escapeHtml(c)}</button>`).join("")}</div>
     <textarea id="lpo-cx-why" placeholder="Why is it cancelled? (required)"></textarea>
+    <div style="margin-top:10px;font-size:13px;font-weight:600;">The materials on it:</div>
+    <label class="lpo-cx-opt"><input type="radio" name="lpo-cx-need" value="no" checked> <span><b>No longer needed</b> - take them off the material request (gone from Approvals and Order follow-up)</span></label>
+    <label class="lpo-cx-opt"><input type="radio" name="lpo-cx-need" value="yes"> <span><b>Still needed</b> - back to waiting to be ordered (another supplier, a new LPO)</span></label>
     <div class="status-msg" id="lpo-cx-status"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;"><button type="button" class="btn btn-gray" data-x>Keep the LPO</button><button type="button" class="btn btn-primary" data-go style="background:#C0392B;border-color:#C0392B;">Cancel LPO</button></div></div>`;
   m.classList.add("on");
   const why = m.querySelector("#lpo-cx-why"); setTimeout(() => why.focus(), 30);
-  m.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { why.value = b.dataset.c; why.focus(); });
+  m.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { why.value = b.dataset.c; why.focus(); showStatus("lpo-cx-status", null);
+    m.querySelector(`[name="lpo-cx-need"][value="${/new LPO|cannot supply/.test(b.dataset.c) ? "yes" : "no"}"]`).checked = true; });
   m.querySelector("[data-x]").onclick = () => m.classList.remove("on");
   m.onclick = e => { if (e.target === m) m.classList.remove("on"); };
   m.querySelector("[data-go]").onclick = async () => {
@@ -13149,7 +13154,8 @@ function cancelLpo(id, ref) {
     if (!reason) { showStatus("lpo-cx-status", "err", "Say why it is cancelled."); why.focus(); return; }
     const go = m.querySelector("[data-go]"); go.disabled = true;
     try {
-      const r = await apiCall(`/store/purchase/orders/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) });
+      const notNeeded = (m.querySelector('[name="lpo-cx-need"]:checked') || {}).value !== "yes";
+      const r = await apiCall(`/store/purchase/orders/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason, not_needed: notNeeded }) });
       m.classList.remove("on"); lprFlash = r.detail || `${ref} cancelled.`;
       if (typeof loadLpoReport === "function") loadLpoReport();
       if (typeof lpoEditingId !== "undefined" && lpoEditingId === id && typeof resetLpoForm === "function") resetLpoForm();
