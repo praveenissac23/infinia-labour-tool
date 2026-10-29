@@ -426,6 +426,7 @@ window.HELP_GUIDES = [
     steps: [{ say: "Press Chat at the foot of the left menu (on a phone: the chat button beside the bell). It shows how many are online and your unread messages.", el: ".pg-side .pg-chat" },
             { say: "Everyone is the whole office. Pick a person on the left for a private chat - only the two of you see it. Online people are listed first." },
             { say: "Type and press Enter to send (Shift+Enter for a new line). Type @ and a name to tag someone - they get it in their bell and on their phone. @everyone tags the whole office in Everyone." },
+            { say: "Chat is kept for one day: messages older than 24 hours are deleted for good - from the chat, the Activity Monitor and the backups." },
             { say: "The + sends a photo or a document (or paste / drop it on the chat); the microphone records a voice message. Files are kept only while you have the portal open - they go when you sign out, close the portal or your computer goes off." },
             { say: "A photo opens in the editor first, as on WhatsApp: draw, circle or box something, point with an arrow, write on it, add a sticker - Undo takes back the last mark, Move / resize drags a mark or sticker (drop it on the bin to remove it). Add a caption and press send." },
             { say: "Tap a document to preview it, as on WhatsApp: a PDF opens page by page (and shows its first page in the chat), Excel opens as a table with its sheets, Word as its text, PowerPoint slide by slide. The round arrow on the document downloads it." },

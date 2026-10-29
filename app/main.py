@@ -3679,7 +3679,8 @@ BACKUP_KEEP_DAYS = 40
 #
 # Only the backups table itself is left out - a backup of backups grows
 # on itself every time one is taken.
-BACKUP_SKIP_TABLES = {"backups"}
+# The chat is kept for a day only and deleted from everywhere - so it is never put in a backup either.
+BACKUP_SKIP_TABLES = {"backups", "chat_messages", "chat_reads", "chat_seen"}
 
 
 def _backup_models():
@@ -3777,7 +3778,10 @@ def build_backup_data(db: Session) -> dict:
         "tables": [name for name, _ in _backup_models()],
     }
     for name, model in _backup_models():
-        data[name] = [_row_to_dict(r) for r in db.query(model).all()]
+        q = db.query(model)
+        if model is models.AuditLog:       # chat lines in the Activity Monitor last a day - not in a backup
+            q = q.filter(~models.AuditLog.action.like("chat\\_%", escape="\\"))
+        data[name] = [_row_to_dict(r) for r in q.all()]
     # The uploaded signature and the logo - on disk, not in any table,
     # and gone for good if a snapshot skips them.
     data["files"] = build_backup_files()
@@ -3804,6 +3808,31 @@ def _backup_dump(data: dict) -> str:
     packed = base64.b64encode(gzip.compress(raw.encode("utf-8"))).decode("ascii")
     # Only keep the compressed form if it is actually smaller.
     return _BACKUP_GZIP_PREFIX + packed if len(packed) < len(raw) else raw
+
+
+def scrub_chat_from_backups(SessionLocal) -> int:
+    """Backups taken before the chat was left out of them: the chat tables and the chat lines of the
+    activity log are taken out, so the chat is gone from everywhere after its day."""
+    db = SessionLocal(); n = 0
+    try:
+        for b in db.query(models.Backup).all():
+            try:
+                txt = _backup_text(b.data)
+                if '"chat_messages"' not in txt and '"chat_reads"' not in txt and '"chat_seen"' not in txt and '"action": "chat_' not in txt:
+                    continue
+                d = json.loads(txt)
+                for t in ("chat_messages", "chat_reads", "chat_seen"):
+                    d.pop(t, None)
+                if isinstance(d.get("tables"), list):
+                    d["tables"] = [t for t in d["tables"] if t not in ("chat_messages", "chat_reads", "chat_seen")]
+                if isinstance(d.get("audit_log"), list):
+                    d["audit_log"] = [r for r in d["audit_log"] if not str((r or {}).get("action") or "").startswith("chat_")]
+                b.data = _backup_dump(d); db.commit(); n += 1
+            except Exception as e:
+                db.rollback(); print(f"backup #{b.id}: chat not taken out - {e}")
+    finally:
+        db.close()
+    return n
 
 
 def _backup_text(stored: str) -> str:
@@ -14122,6 +14151,13 @@ app.include_router(chat.router)
 try:
     chat.create_tables(engine)
     chat.backfill_audit(SessionLocal)    # chat messages sent before the Activity Monitor logged them
+    _d = SessionLocal()
+    try:
+        chat.purge_old(_d)               # a day only - older chat is deleted at once, not 30 seconds later
+    finally:
+        _d.close()
+    threading.Thread(target=lambda: print(f"chat taken out of {scrub_chat_from_backups(SessionLocal)} backup(s)"),
+                     daemon=True, name="chat-backup-scrub").start()
     chat.start_cleaner(SessionLocal)      # files and voice messages are removed after chat.KEEP_DAYS days
 except Exception as _e:
     print("chat tables:", _e)

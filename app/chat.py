@@ -34,7 +34,8 @@ EVERYONE = "all"
 # has the portal open. When he signs out, closes the portal, or his computer / phone goes off (no word from his
 # app for GONE_AFTER seconds), the server removes his files by itself - and in any case after KEEP_HOURS.
 # The message stays, saying the file is no longer available.
-KEEP_HOURS = int(os.environ.get("INFINIA_CHAT_KEEP_HOURS", "24"))
+KEEP_HOURS = int(os.environ.get("INFINIA_CHAT_KEEP_HOURS", "24"))   # messages, files and their Activity lines: one day, then deleted
+CHAT_TABLES = ("chat_messages", "chat_reads", "chat_seen")             # never put in a backup
 GONE_AFTER = 180
 MAX_FILE = 25 * 1024 * 1024
 MAX_VOICE_SECONDS = 300
@@ -181,7 +182,8 @@ def backfill_audit(SessionLocal):
     try:
         if db.query(models.AuditLog).filter(models.AuditLog.action.like("chat\\_%", escape="\\")).first():
             return
-        for m in db.query(ChatMessage).filter(ChatMessage.deleted == False).order_by(ChatMessage.id).all():  # noqa: E712
+        for m in db.query(ChatMessage).filter(ChatMessage.deleted == False,  # noqa: E712
+                                              ChatMessage.created_at >= _now() - timedelta(hours=KEEP_HOURS)).order_by(ChatMessage.id).all():
             db.add(models.AuditLog(user_id=m.user_id, action=_action(m), details=f"{_where(db, m.room, m.user_id)}: {_says(m)}"[:4000],
                                    created_at=m.created_at.replace(tzinfo=timezone.utc) if m.created_at else None))
         db.commit()
@@ -447,6 +449,35 @@ def remove_expired(db, only_user=None):
     return n
 
 
+def purge_old(db):
+    """Chat is kept for a day only (KEEP_HOURS): older messages, their files and their lines in the
+    Activity Monitor are deleted for good - nothing of them is left on the server."""
+    cut = _now() - timedelta(hours=KEEP_HOURS)
+    old = db.query(ChatMessage).filter(ChatMessage.created_at < cut).all()
+    for m in old:
+        if m.file_path:
+            try:
+                os.remove(os.path.join(_dir(), m.file_path))
+            except OSError:
+                pass
+        db.delete(m)
+    n_log = (db.query(models.AuditLog).filter(models.AuditLog.action.like("chat\\_%", escape="\\"),
+                                              models.AuditLog.created_at < cut.replace(tzinfo=timezone.utc))
+             .delete(synchronize_session=False))
+    if old or n_log:
+        db.commit()
+    # a file whose message is gone (a crash between the two) is not kept either
+    try:
+        keep = {p for (p,) in db.query(ChatMessage.file_path).filter(ChatMessage.file_path != "").all()}
+        for f in os.listdir(_dir()):
+            full = os.path.join(_dir(), f)
+            if f not in keep and os.path.isfile(full) and time.time() - os.path.getmtime(full) > KEEP_HOURS * 3600:
+                os.remove(full)
+    except OSError:
+        pass
+    return len(old), n_log
+
+
 def start_cleaner(SessionLocal):
     """Runs on the server every 30 seconds - nobody has to have the app open."""
     def loop():
@@ -457,6 +488,9 @@ def start_cleaner(SessionLocal):
                     k = remove_expired(db)
                     if k:
                         print(f"chat: removed {k} expired file(s)")
+                    a, b = purge_old(db)
+                    if a or b:
+                        print(f"chat: deleted {a} message(s) and {b} activity line(s) older than {KEEP_HOURS} hours")
                 finally:
                     db.close()
             except Exception as e:

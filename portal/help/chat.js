@@ -333,7 +333,7 @@
     const ms = S.msgs[S.room] || [];
     const atBottom = keepBottom || $msgs.scrollHeight - $msgs.scrollTop - $msgs.clientHeight < 80;
     let h = S.more[S.room] ? `<button class="older" data-older>Load earlier messages</button>` : "";
-    h += `<div class="note"><span>${S.room === "all" ? `${I.lock} Everyone in Infinia sees messages here.` : `${I.lock} Only the two of you can see this chat.`} Photos, documents and voice messages stay only while the sender has the portal open.</span></div>`;
+    h += `<div class="note"><span>${S.room === "all" ? `${I.lock} Everyone in Infinia sees messages here.` : `${I.lock} Only the two of you can see this chat.`} Messages are deleted after 24 hours. Photos, documents and voice messages stay only while the sender has the portal open.</span></div>`;
     let lastDay = "", prev = null;
     for (const m of ms) {
       const d = new Date(m.at), dk = dayKey(d);
@@ -501,10 +501,14 @@
         if (fresh || !S.msgs[room]) { S.msgs[room] = r.messages; S.more[room] = r.more; }
         else if (r.messages.length) S.msgs[room] = S.msgs[room].concat(r.messages.filter(m => !S.msgs[room].some(x => x.id === m.id)));
         (r.changed || []).forEach(c => { const i = S.msgs[room].findIndex(x => x.id === c.id); if (i >= 0) S.msgs[room][i] = c; });
+        // a day only: what the server has deleted goes from this screen too
+        const cut = Date.now() - 24 * 3600 * 1000, n0 = S.msgs[room].length;
+        S.msgs[room] = S.msgs[room].filter(m => new Date(m.at).getTime() >= cut);
+        const pruned = S.msgs[room].length !== n0;
         const rc = JSON.stringify(r.receipts || []), moved = rc !== JSON.stringify(S.receipts[room] || []);
         S.receipts[room] = r.receipts || [];
         const ms = S.msgs[room]; if (ms.length) S.lastId[room] = Math.max(S.lastId[room] || 0, ms[ms.length - 1].id);
-        if (room === S.room && (fresh || r.messages.length || (r.changed || []).length || moved) && !$msgs.querySelector(".vn.playing")) drawMsgs(fresh);
+        if (room === S.room && (fresh || r.messages.length || (r.changed || []).length || moved || pruned) && !$msgs.querySelector(".vn.playing")) drawMsgs(fresh);
         if (room === S.room) markRead();
       }
       badge(); if (S.open) { drawList(); if (S.room) drawHead(); }
