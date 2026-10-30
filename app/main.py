@@ -3366,7 +3366,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
 
 
 @app.get("/export/{month_year}/excel")
-def export_excel(month_year: str, token: str, emp_no: str = "", db: Session = Depends(get_db)):
+def export_excel(month_year: str, token: str, emp_no: str = "", emp_nos: str = "", db: Session = Depends(get_db)):
     # Auth comes ONLY via the ?token= query param here, not the standard
     # Authorization header - this endpoint is meant to be hit by a plain
     # browser navigation (window.open(url)), which can't set custom
@@ -3389,6 +3389,8 @@ def export_excel(month_year: str, token: str, emp_no: str = "", db: Session = De
     if not summaries:
         raise HTTPException(status_code=404, detail=("No data found for this worker in this cycle."
                                                      if emp_no.strip() else "No data found for this cycle."))
+    if not emp_no.strip():
+        summaries = _pick_cards(db, summaries, month_year, emp_nos)
     pairs = []
     for s in summaries:
         rows = db.query(models.DailyRow).filter(
@@ -3406,7 +3408,7 @@ def export_excel(month_year: str, token: str, emp_no: str = "", db: Session = De
 
 
 @app.get("/export/{month_year}/pdf")
-def export_pdf(month_year: str, token: str, emp_no: str = "", db: Session = Depends(get_db)):
+def export_pdf(month_year: str, token: str, emp_no: str = "", emp_nos: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     summaries = (
         db.query(models.EmployeeSummary)
@@ -3419,6 +3421,8 @@ def export_pdf(month_year: str, token: str, emp_no: str = "", db: Session = Depe
     if not summaries:
         raise HTTPException(status_code=404, detail=("No data found for this worker in this cycle."
                                                      if emp_no.strip() else "No data found for this cycle."))
+    if not emp_no.strip():
+        summaries = _pick_cards(db, summaries, month_year, emp_nos)
     pairs = []
     for s in summaries:
         rows = db.query(models.DailyRow).filter(
@@ -3436,7 +3440,7 @@ def export_pdf(month_year: str, token: str, emp_no: str = "", db: Session = Depe
 
 
 @app.get("/export/{month_year}/cards/view")
-def view_salary_cards(month_year: str, token: str, emp_no: str = "",
+def view_salary_cards(month_year: str, token: str, emp_no: str = "", emp_nos: str = "",
                        db: Session = Depends(get_db)):
     """The salary cards on screen, exactly as they print.
 
@@ -3457,6 +3461,8 @@ def view_salary_cards(month_year: str, token: str, emp_no: str = "",
         raise HTTPException(status_code=404,
             detail=("No data found for this worker in this cycle." if emp_no.strip()
                     else "No data found for this cycle."))
+    if not emp_no.strip():
+        summaries = _pick_cards(db, summaries, month_year, emp_nos)
     cards = []
     for sm in summaries:
         rows = db.query(models.DailyRow).filter(
@@ -3466,7 +3472,8 @@ def view_salary_cards(month_year: str, token: str, emp_no: str = "",
     who = (f"{summaries[0].emp_name} ({summaries[0].emp_no})" if emp_no.strip()
            else f"{len(summaries)} worker(s)")
     base = f"/export/{quote(month_year, safe='')}"
-    tail = f"?token={t}" + (f"&emp_no={quote(emp_no.strip(), safe='')}" if emp_no.strip() else "")
+    tail = (f"?token={t}" + (f"&emp_no={quote(emp_no.strip(), safe='')}" if emp_no.strip() else "")
+            + (f"&emp_nos={quote(emp_nos.strip(), safe='')}" if emp_nos.strip() and not emp_no.strip() else ""))
     return _cards_page(f"Salary Card{'' if emp_no.strip() else 's'}",
                         f"{who}  |  Wage cycle {month_year}",
                         cards, f"{base}/pdf{tail}", f"{base}/excel{tail}")
@@ -3549,7 +3556,29 @@ def _cards_page(title, subtitle, cards, pdf_url, excel_url):
 </body></html>""")
 
 
-def _get_summary_pairs(month_year: str, db: Session):
+def _pick_cards(db, summaries, month_year, emp_nos):
+    """Labour salary cards: only the workers ticked under PAY on the Paid status card (emp_nos = '1001,1002').
+    A worker already paid who was ticked again carries "(Already paid)" after his name on the printed card.
+    No selection sent = every card, as before."""
+    if emp_nos is None or not str(emp_nos).strip():
+        return summaries
+    want = {x.strip() for x in str(emp_nos).split(",") if x.strip()}
+    out = [s for s in summaries if s.emp_no in want]
+    if not out:
+        raise HTTPException(status_code=404, detail="None of the ticked workers has a card in this cycle.")
+    try:
+        import paystatus as _ps
+        paid = _ps.labour_paid_emp_nos(db, month_year, {s.emp_no for s in out})
+    except Exception as ex:
+        print("pay status:", ex); paid = set()
+    for sm in out:
+        if sm.emp_no in paid:
+            db.expunge(sm)                     # the label is for the print only - never saved
+            sm.emp_name = f"{sm.emp_name} (Already paid)"
+    return out
+
+
+def _get_summary_pairs(month_year: str, db: Session, emp_nos: str = ""):
     drop_leaver_cards(db, month_year)
     summaries = (
         db.query(models.EmployeeSummary)
@@ -3560,6 +3589,7 @@ def _get_summary_pairs(month_year: str, db: Session):
     )
     if not summaries:
         raise HTTPException(status_code=404, detail="No data found for this cycle.")
+    summaries = _pick_cards(db, summaries, month_year, emp_nos)
     pairs = []
     for s in summaries:
         rows = db.query(models.DailyRow).filter(
@@ -3636,10 +3666,10 @@ def _report_table_heading(month_year):
 
 
 @app.get("/export/{month_year}/excel-separate")
-def export_excel_separate(month_year: str, token: str, db: Session = Depends(get_db)):
+def export_excel_separate(month_year: str, token: str, emp_nos: str = "", db: Session = Depends(get_db)):
     """One .xlsx per worker, zipped together - the 'Separate Files' option next to Combine."""
     user = auth.get_download_user_from_token(token, db)
-    pairs = _get_summary_pairs(month_year, db)
+    pairs = _get_summary_pairs(month_year, db, emp_nos)
     files = export_web.build_separate_excel_files(pairs)
     buf = export_web.zip_files(files)
     safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
@@ -3650,10 +3680,10 @@ def export_excel_separate(month_year: str, token: str, db: Session = Depends(get
 
 
 @app.get("/export/{month_year}/pdf-separate")
-def export_pdf_separate(month_year: str, token: str, db: Session = Depends(get_db)):
+def export_pdf_separate(month_year: str, token: str, emp_nos: str = "", db: Session = Depends(get_db)):
     """One .pdf per worker, zipped together - the 'Separate Files' option next to Combine."""
     user = auth.get_download_user_from_token(token, db)
-    pairs = _get_summary_pairs(month_year, db)
+    pairs = _get_summary_pairs(month_year, db, emp_nos)
     files = export_web.build_separate_pdf_files(pairs)
     buf = export_web.zip_files(files)
     safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
@@ -12485,6 +12515,26 @@ def _full_month_key(month_year, group):
     return f"hr_full_month:{month_year}:{group}"
 
 
+def _full_month_info(db, month_year, group):
+    """(on, employee ids or None). None = the whole statement is on the full month; a set = only those people
+    (the ones ticked when Pay full month now was pressed). Stored as "date" or "date|id,id,..."."""
+    v = get_setting(db, _full_month_key(month_year, group)) or ""
+    if not v:
+        return False, None
+    if "|" in v:
+        ids = {int(x) for x in v.split("|", 1)[1].split(",") if x.strip().isdigit()}
+        return True, ids
+    return True, None
+
+
+def _line_full_month(db, r, employee_id):
+    """Is this person on the whole month's salary (approved, or Pay full month now covers him)?"""
+    if r.status == "approved":
+        return True
+    on, ids = _full_month_info(db, r.month_year, r.group or "staff")
+    return on and (ids is None or employee_id in ids)
+
+
 @app.post("/employees/payroll/full-month")
 def set_full_month(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = HR):
     """Pay the whole month before it ends - every company's sheet of that
@@ -12494,11 +12544,17 @@ def set_full_month(payload: dict = Body(...), db: Session = Depends(get_db), use
     group = payload.get("group") if payload.get("group") in ("staff", "local") else "staff"
     _staff_month_bounds(month_year)
     on = bool(payload.get("on", True))
-    put_setting(db, _full_month_key(month_year, group), _dubai_today().isoformat() if on else "")
+    # Only the people ticked on the sheet go on the full month; the rest stay on the salary to date.
+    ids = [int(x) for x in (payload.get("employee_ids") or []) if str(x).isdigit()]
+    if on and "employee_ids" in payload and not ids:
+        raise HTTPException(status_code=400, detail="Tick the staff to pay the full month first.")
+    val = (_dubai_today().isoformat() + ("|" + ",".join(str(i) for i in sorted(set(ids))) if ids else "")) if on else ""
+    put_setting(db, _full_month_key(month_year, group), val)
     log_action(db, user.id, "payroll_full_month",
-               f"{month_year} {'office' if group == 'staff' else 'local'} staff: {'full month' if on else 'salary to date'}")
+               f"{month_year} {'office' if group == 'staff' else 'local'} staff: {'full month' if on else 'salary to date'}"
+               + (f" ({len(set(ids))} ticked)" if on and ids else ""))
     db.commit()
-    return {"ok": True, "month_year": month_year, "group": group, "on": on}
+    return {"ok": True, "month_year": month_year, "group": group, "on": on, "count": len(set(ids)) if ids else None}
 
 
 def _run_dict(r, db):
@@ -12542,7 +12598,13 @@ def _run_dict(r, db):
         print("pay status:", ex); pay = {}
     for l in lines:
         l["pay"] = pay.get(l["id"]) or {"state": "none", "paid": 0, "balance": l["net_pay"], "payments": [], "slips": {}, "locked": False}
-    full = bool(get_setting(db, _full_month_key(r.month_year, r.group or "staff"))) or r.status == "approved"
+    # Pay full month now may cover only the people ticked: theirs is the whole month, the rest the salary to date.
+    fm_on, fm_ids = _full_month_info(db, r.month_year, r.group or "staff")
+    for l in lines:
+        l["full_month"] = r.status == "approved" or (fm_on and (fm_ids is None or l["employee_id"] in fm_ids))
+        if l["full_month"]:
+            l["to_date"] = l["net_pay"]
+    full = r.status == "approved" or (fm_on and fm_ids is None) or bool(lines and all(l["full_month"] for l in lines))
     progress = {"day": done, "days": days, "pct": round(done * 100 / days),
                 "running": 0 < done < days and not full, "full_month": full,
                 "full_month_on": get_setting(db, _full_month_key(r.month_year, r.group or "staff")),
@@ -12844,7 +12906,12 @@ def consolidated_statement(month_year: str = "", group: str = "", db: Session = 
             db.refresh(r)
     emps = {e.id: e for e in db.query(models.Employee).all()}
     rows, drafts = [], []
+    try:
+        import paystatus as _ps
+    except Exception:
+        _ps = None
     for r in runs:
+        paid_ids = _ps.paid_line_ids(db, r) if _ps else set()
         if r.status != "approved":
             drafts.append(r.company.short_name or r.company.name if r.company else "?")
         for l in sorted(r.lines, key=lambda l: (emps.get(l.employee_id).emp_no
@@ -12856,6 +12923,7 @@ def consolidated_statement(month_year: str = "", group: str = "", db: Session = 
             d["company"] = (r.company.short_name or r.company.name) if r.company else ""
             d["status"] = r.status
             d["run_id"] = r.id
+            d["paid_full"] = l.id in paid_ids
             rows.append(d)
 
     def tot(*fields):
@@ -12906,7 +12974,14 @@ def _dmy(d):
     return d.strftime("%d-%b-%y") if d else "-"
 
 
-def _statement_rows(lines, consolidated=False, progress=None):
+def _parse_ids(text):
+    """'12,15,18' -> {12, 15, 18}; '' -> None (no selection sent: everyone, as before)."""
+    if text is None or str(text).strip() == "":
+        return None
+    return {int(x) for x in str(text).split(",") if x.strip().isdigit()}
+
+
+def _statement_rows(lines, consolidated=False, progress=None, pick=None):
     """The salary statement, the same columns as the salary sheet on screen.
 
     One salary figure, one column for everything in Additions & Deductions
@@ -12924,8 +12999,13 @@ def _statement_rows(lines, consolidated=False, progress=None):
     for l in lines:
         if l.get("held"):
             continue
+        # Only the people ticked under PAY on the sheet (pick = their employee ids); someone already paid
+        # who was ticked again is marked so on the statement.
+        if pick is not None and l.get("employee_id") not in pick:
+            continue
+        name = l["name"] + ("  (Already paid)" if pick is not None and l.get("paid_full") else "")
         adj = round(l["other_allowance"] + l["leave_salary"] + l["air_ticket"] - l["statutory"], 2)
-        r = {"Emp. Code": l["emp_no"], "Employee Name": l["name"],
+        r = {"Emp. Code": l["emp_no"], "Employee Name": name,
              "Joining Date": _dmy(_as_date(l["joined_on"])) if l["joined_on"] else "-"}
         if consolidated:
             r["Company"] = l.get("company", "")
@@ -12966,10 +13046,23 @@ def _run_or_404(db, run_id):
     return r
 
 
-def _statement_parts(db, run_id):
+def _picked_routes(lines, pick, running):
+    out = {}
+    for l in lines:
+        if l.get("held") or (pick is not None and l.get("employee_id") not in pick):
+            continue
+        out[l["pay_route"]] = round(out.get(l["pay_route"], 0) + (l.get("to_date", 0) if running else l["net_pay"]), 2)
+    return out
+
+
+def _statement_parts(db, run_id, pick=None):
     r = _run_or_404(db, run_id)
     d = _run_dict(r, db)
-    rows = _statement_rows(d["lines"], progress=d.get("progress"))
+    for l in d["lines"]:
+        l["paid_full"] = bool((l.get("pay") or {}).get("locked"))
+    rows = _statement_rows(d["lines"], progress=d.get("progress"), pick=pick)
+    if pick is not None:
+        d["by_route"] = _picked_routes(d["lines"], pick, bool((d.get("progress") or {}).get("running")))
     title = f"Salary Statement for {d['month_year']}"
     p = d.get("progress") or {}
     if p.get("running"):
@@ -12982,27 +13075,30 @@ def _statement_parts(db, run_id):
 
 
 @app.get("/export/payroll/statement")
-def export_payroll_statement(run_id: int, token: str, format: str = "pdf",
+def export_payroll_statement(run_id: int, token: str, format: str = "pdf", emps: str = "",
                               db: Session = Depends(get_db)):
     _require_hr_reader(auth.get_download_user_from_token(token, db))
-    rows, title, sub = _statement_parts(db, run_id)
+    rows, title, sub = _statement_parts(db, run_id, _parse_ids(emps))
     return _hr_file(title, rows, sub, format, STATEMENT_MONEY, "Salary_Statement")
 
 
 @app.get("/export/payroll/statement/view")
-def view_payroll_statement(run_id: int, token: str, db: Session = Depends(get_db)):
+def view_payroll_statement(run_id: int, token: str, emps: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     _require_hr_reader(user)
     t = quote(auth.create_view_token(user.username), safe="")
-    rows, title, sub = _statement_parts(db, run_id)
-    url = f"/export/payroll/statement?run_id={run_id}&token={t}"
+    rows, title, sub = _statement_parts(db, run_id, _parse_ids(emps))
+    url = f"/export/payroll/statement?run_id={run_id}&token={t}" + (f"&emps={quote(emps)}" if emps.strip() else "")
     return _preview_page(title, sub, rows, url, url,
                          money_cols=STATEMENT_MONEY, total_cols=STATEMENT_MONEY)
 
 
-def _consolidated_parts(db, month_year, group=""):
+def _consolidated_parts(db, month_year, group="", pick=None):
     d = consolidated_statement(month_year=month_year, group=group, db=db, user=None)
-    rows = _statement_rows(d["rows"], consolidated=True)
+    rows = _statement_rows(d["rows"], consolidated=True, pick=pick)
+    if pick is not None:
+        d["by_route"] = _picked_routes(d["rows"], pick, False)
+        d["companies"] = list({x["company"] for x in d["rows"] if x.get("employee_id") in pick})
     title = {"staff": "Office Staff Salary Statement - All Companies",
              "local": "Local Staff Salary Statement - All Companies"}.get(group, "Consolidated Employee Salary Statement")
     sub = (f"{month_year}   |   {len(rows)} staff across "
@@ -13013,21 +13109,22 @@ def _consolidated_parts(db, month_year, group=""):
 
 
 @app.get("/export/payroll/consolidated")
-def export_consolidated(month_year: str, token: str, format: str = "pdf", group: str = "",
+def export_consolidated(month_year: str, token: str, format: str = "pdf", group: str = "", emps: str = "",
                          db: Session = Depends(get_db)):
     _require_hr_reader(auth.get_download_user_from_token(token, db))
-    rows, title, sub = _consolidated_parts(db, month_year, group)
+    rows, title, sub = _consolidated_parts(db, month_year, group, _parse_ids(emps))
     stem = {"staff": "Office_Staff_Statement", "local": "Local_Staff_Statement"}.get(group, "Consolidated_Statement")
     return _hr_file(title, rows, sub, format, STATEMENT_MONEY, stem)
 
 
 @app.get("/export/payroll/consolidated/view")
-def view_consolidated(month_year: str, token: str, group: str = "", db: Session = Depends(get_db)):
+def view_consolidated(month_year: str, token: str, group: str = "", emps: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     _require_hr_reader(user)
     t = quote(auth.create_view_token(user.username), safe="")
-    rows, title, sub = _consolidated_parts(db, month_year, group)
-    url = f"/export/payroll/consolidated?month_year={quote(month_year)}&group={quote(group)}&token={t}"
+    rows, title, sub = _consolidated_parts(db, month_year, group, _parse_ids(emps))
+    url = (f"/export/payroll/consolidated?month_year={quote(month_year)}&group={quote(group)}&token={t}"
+           + (f"&emps={quote(emps)}" if emps.strip() else ""))
     return _preview_page(title, sub, rows, url, url,
                          money_cols=STATEMENT_MONEY, total_cols=STATEMENT_MONEY)
 

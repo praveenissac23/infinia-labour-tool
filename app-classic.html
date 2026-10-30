@@ -964,6 +964,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .hr-find-x:hover { background: #C0392B; color: #fff; }
   .hr-find input { padding-right: 30px; }
   .hr-find-none { color: #999; cursor: default !important; }
+  .hr-pay-all-l { font-size: 12.5px; font-weight: 500; color: #555; margin-left: 14px; white-space: nowrap; vertical-align: 2px; cursor: pointer; }
+  .hr-pay-all-l input { width: auto; margin: 0 4px 0 0; vertical-align: -2px; }
+  .hr-pay-count { color: #8A8178; font-weight: 400; }
+  .hr-hold-link { font-size: 11px; color: #8A8178; margin-left: 6px; white-space: nowrap; }
+  .hr-held .hr-hold-link { color: #B7322A; }
   .hr-progress { border: 1px solid #EADFD2; background: #FCF9F4; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
   .hr-progress-top { display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline; font-size: 13px; color: #555; }
   .hr-progress-top b { color: #222; }
@@ -2567,14 +2572,14 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           <div style="display:flex; gap:14px; flex-wrap:wrap;">
             <div class="card" style="flex:1; min-width:260px;">
               <h2>Combine to One File</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 10px;">Every worker's full salary card in a single file for this cycle.</p>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">The salary cards of the workers ticked under PAY (Paid status &amp; payslips below), in a single file.</p>
               <button class="btn btn-dark" style="width:100%; margin-bottom:8px;" onclick="exportCombineCards('view')">Preview</button>
               <button class="btn btn-dark" style="width:100%; margin-bottom:8px;" onclick="exportCombineCards('excel')">Combine to Excel</button>
               <button class="btn btn-dark" style="width:100%;" onclick="exportCombineCards('pdf')">Combine to PDF</button>
             </div>
             <div class="card" style="flex:1; min-width:260px;">
               <h2>Separate Files</h2>
-              <p style="font-size:12px; color:#888; margin:0 0 10px;">One file per worker, zipped together.</p>
+              <p style="font-size:12px; color:#888; margin:0 0 10px;">One file per ticked worker, zipped together.</p>
               <button class="btn btn-gray" style="width:100%; margin-bottom:8px;" onclick="exportCombineCards('excel-separate')">Separate Excel Files</button>
               <button class="btn btn-gray" style="width:100%;" onclick="exportCombineCards('pdf-separate')">Separate PDF Files</button>
             </div>
@@ -2598,6 +2603,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:4px;">
               <div style="flex:1 1 300px;"><h2 style="margin:0;">Paid status &amp; payslips</h2>
                 <div id="lab-pay-sub" style="font-size:12px; color:#888; margin-top:2px;"></div></div>
+              <label class="hr-pay-all-l" title="Tick every worker not yet paid; again to untick everyone"><input type="checkbox" id="lab-pay-all" onclick="labPickAll(this)"> Select all <span class="hr-pay-count" id="lab-pay-count"></span></label>
               <button class="btn btn-gray" onclick="payLabLoad()">Refresh</button>
               <button class="btn btn-gray" onclick="payZipLabour()">Download all payslips (ZIP)</button>
             </div>
@@ -4793,18 +4799,20 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="card" id="hr-run-all" style="display:none;">
               <div class="form-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
                 <div style="flex:1 1 320px; min-width:0;">
-                  <h2 id="hr-all-title" style="margin:0;">All companies</h2>
+                  <h2 style="margin:0;"><span id="hr-all-title">All companies</span>
+                    <label class="hr-pay-all-l" title="Tick everyone not yet paid in every company; again to untick everyone"><input type="checkbox" class="hr-pay-all" onclick="hrPickAllPay(this)"> Select all <span class="hr-pay-count"></span></label></h2>
                   <div id="hr-all-sub" style="font-size:12px; color:#888; min-height:16px; margin-top:2px;"></div>
                 </div>
                 <button class="btn btn-primary hr-full-btn" style="display:none;" onclick="hrFullMonth()">Pay full month now</button>
                 <button class="btn btn-gray" onclick="payZipOffice(Object.keys(HR_ALL_RUNS))">Download all payslips (ZIP)</button>
-                <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="previewConsolidated()">Preview</button><button type="button" class="btn btn-dark" onclick="downloadConsolidated('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="downloadConsolidated('excel')">Export Excel</button><button type="button" class="btn btn-gray" onclick="previewConsolidated(true)">Consolidated statement (office + local)</button></div>
+                <div class="exp-btns"><button type="button" class="btn btn-dark hr-needs-sel" onclick="previewConsolidated()">Preview</button><button type="button" class="btn btn-dark hr-needs-sel" onclick="downloadConsolidated('pdf')">Export PDF</button><button type="button" class="btn btn-dark hr-needs-sel" onclick="downloadConsolidated('excel')">Export Excel</button><button type="button" class="btn btn-gray" onclick="previewConsolidated(true)">Consolidated statement (office + local)</button></div>
               </div>
               <p style="font-size:12px; color:#888; margin:6px 0 0;">Type loan instalments and remarks straight into any company's sheet - each saves on its own. Absence and additions come from their registers.</p>
               <div id="hr-all-body" style="margin-top:12px;"></div>
             </div>
             <div class="card" id="hr-run-card" style="display:none;">
-              <h2 id="hr-run-title">Cycle</h2>
+              <h2><span id="hr-run-title">Cycle</span>
+                <label class="hr-pay-all-l" title="Tick everyone not yet paid; again to untick everyone"><input type="checkbox" class="hr-pay-all" onclick="hrPickAllPay(this)"> Select all <span class="hr-pay-count"></span></label></h2>
               <div id="hr-run-notice" class="status-msg warn" style="display:none;"></div>
               <div id="hr-run-progress" class="hr-progress" style="display:none;"></div>
               <p id="hr-run-help" class="hr-help">Filled from Absence and Additions &amp; Deductions.
@@ -4818,7 +4826,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <button class="btn btn-gray" id="hr-pay-slips" onclick="payBulkOffice(HR_RUN && HR_RUN.id, 'payslips')">Generate payslips</button>
                 <button class="btn btn-gray" onclick="payZipOffice([HR_RUN && HR_RUN.id])">Download all payslips (ZIP)</button>
                 <div class="hr-cb-spacer"></div>
-                <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="previewStatement()">Preview</button><button type="button" class="btn btn-dark" onclick="downloadStatement('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="downloadStatement('excel')">Export Excel</button><button type="button" class="btn btn-gray" onclick="previewConsolidated(true)">Consolidated statement (office + local)</button><button type="button" class="btn btn-gray" style="color:#B7322A;" onclick="dropPayrollRun()">Discard this draft</button></div>
+                <div class="exp-btns"><button type="button" class="btn btn-dark hr-needs-sel" onclick="previewStatement()">Preview</button><button type="button" class="btn btn-dark hr-needs-sel" onclick="downloadStatement('pdf')">Export PDF</button><button type="button" class="btn btn-dark hr-needs-sel" onclick="downloadStatement('excel')">Export Excel</button><button type="button" class="btn btn-gray" onclick="previewConsolidated(true)">Consolidated statement (office + local)</button><button type="button" class="btn btn-gray" style="color:#B7322A;" onclick="dropPayrollRun()">Discard this draft</button></div>
                 <button class="btn btn-gray" id="hr-drop-btn" onclick="dropPayrollRun()" hidden>Discard draft</button>
               </div>
               <div class="grid-wrap" style="max-height:56vh;">
@@ -12592,8 +12600,11 @@ function exportCombineCards(fmt) {
   }
   // "view" shows the cards themselves, one page each, with PDF, Excel
   // and Print on them - the same document, before it is a file.
+  // Only the workers ticked under PAY on Paid status & payslips below (every card when that list is not loaded).
+  const nos = labSelNos(cycle);
+  if (nos && !nos.length) { showStatus("combine-status", "warn", "No workers selected - tick them under PAY in Paid status & payslips."); return; }
   const path = fmt === "view" ? "cards/view" : fmt;
-  const url = `${API}/export/${encodeURIComponent(cycle)}/${path}?token=${encodeURIComponent(cachedDownloadToken)}`;
+  const url = `${API}/export/${encodeURIComponent(cycle)}/${path}?token=${encodeURIComponent(cachedDownloadToken)}${nos ? `&emp_nos=${encodeURIComponent(nos.join(","))}` : ""}`;
   window.open(url, "_blank");
   if (fmt === "view") {
     showStatus("combine-status", "ok", `Opening the cards for ${cycle}.`);
@@ -14975,17 +14986,23 @@ function hrFullSync() {
     b.textContent = on ? "Back to salary to date" : "Pay full month now";
     b.className = "btn hr-full-btn " + (on ? "btn-gray" : "btn-primary");
     b.dataset.on = on ? "1" : "";
+    if (on) { b.disabled = false; b.title = ""; }
   });
+  hrSelSync();
 }
 async function hrFullMonth() {
   const month = hrCycleName(document.getElementById("hr-run-month").value);
   const group = document.getElementById("hr-run-group").value || "staff";
   const on = !document.querySelector(".hr-full-btn").dataset.on;
   const who = group === "local" ? "local staff" : "office staff";
-  if (on && !await hrAsk(`Pay the full ${month} salary now for all ${who}? Every company's ${who} sheet will show and print the whole month, not the salary to date. Absences recorded later this month still come off.`, "Pay full month")) return;
+  // Only the people ticked under PAY go on the full month; everyone else stays on the salary to date.
+  const ids = hrSelEmps(hrSelRuns());
+  if (on && !ids.length) { hrMsg("warn", "No staff selected - tick people under PAY first."); return; }
+  const n = `${ids.length} ticked ${who.replace(" staff", "")} staff`;
+  if (on && !await hrAsk(`Pay the full ${month} salary now for the ${n}? Their sheet rows will show and print the whole month, not the salary to date; the others stay on the salary to date. Absences recorded later this month still come off.`, "Pay full month")) return;
   try {
-    await apiCall("/employees/payroll/full-month", { method: "POST", body: JSON.stringify({ month_year: month, group, on }) });
-    hrMsg("ok", on ? `${month}: ${who} on the full month's salary.` : `${month}: ${who} back to the salary to date.`);
+    await apiCall("/employees/payroll/full-month", { method: "POST", body: JSON.stringify(on ? { month_year: month, group, on, employee_ids: ids } : { month_year: month, group, on }) });
+    hrMsg("ok", on ? `${month}: ${n} on the full month's salary.` : `${month}: ${who} back to the salary to date.`);
     HR_OPENING = HR_OPENING.then(() => hrOpenNow(true), () => hrOpenNow(true));
     await HR_OPENING;
   } catch (e) { hrMsg("err", errText(e)); }
@@ -15013,6 +15030,7 @@ async function hrOpenNow(force) {
   const month = hrCycleName(document.getElementById("hr-run-month").value);
   const company_id = parseInt(document.getElementById("hr-run-company").value, 10);
   if (!month) return;
+  hrSelReset(`${month}|${company_id || "all"}|${document.getElementById("hr-run-group").value || "staff"}`);
   if (!company_id) { HR_RUN = null; renderRun(); await hrOpenAll(month); return; }
   HR_ALL_MODE = false;
   document.getElementById("hr-all-body").innerHTML = "";   // one copy of each row on the page, never two
@@ -15179,14 +15197,102 @@ function renderRun() {
   document.getElementById("hr-run-routes").innerHTML = hrRoutes(r.by_route, r.progress && r.progress.running);
   document.getElementById("hr-run-progress").style.display = "none";
   document.querySelectorAll("#hr-run-body textarea.hr-rem").forEach(hrGrow);
+  hrSelSync();
 }
+// ---- PAY: who goes on the Preview / Export PDF / Export Excel / Pay full month now.
+// A selection on the screen only (never saved). Everyone not yet paid starts ticked; someone paid in full
+// starts unticked and is unticked the moment he is marked paid - tick him again and he prints, marked
+// "Already paid". Held over (the Hold link on the row) is a different thing: saved, and out of the sheet.
+// The selection is per company sheet (run) and resets when the month, company or statement changes.
+const HR_SEL = {}, HR_SEL_SEEN = {};
+let HR_SEL_KEY = "";
+const hrPaidFull = l => !!(l.pay && l.pay.locked);
+function hrSelReset(key) {
+  if (key === HR_SEL_KEY) return;
+  HR_SEL_KEY = key;
+  Object.keys(HR_SEL).forEach(k => delete HR_SEL[k]);
+  Object.keys(HR_SEL_SEEN).forEach(k => delete HR_SEL_SEEN[k]);
+}
+function hrSelInit(r) {
+  const seen = HR_SEL_SEEN[r.id];
+  if (!HR_SEL[r.id] || !seen) {
+    HR_SEL[r.id] = new Set(r.lines.filter(l => !l.held && !hrPaidFull(l)).map(l => l.id));
+  } else {
+    const set = HR_SEL[r.id];
+    r.lines.forEach(l => {
+      if (hrPaidFull(l) && !seen.paid.has(l.id)) set.delete(l.id);              // just marked paid: off the selection
+      if (l.held) set.delete(l.id);                                              // held over: not on this month's sheet
+      else if (seen.held.has(l.id) && !hrPaidFull(l)) set.add(l.id);             // released from hold: back on
+      if (!seen.all.has(l.id) && !l.held && !hrPaidFull(l)) set.add(l.id);      // a new row on the sheet
+      if (seen.paid.has(l.id) && !hrPaidFull(l) && !l.held) set.add(l.id);      // payment cancelled: due again
+    });
+  }
+  HR_SEL_SEEN[r.id] = { paid: new Set(r.lines.filter(hrPaidFull).map(l => l.id)),
+                        held: new Set(r.lines.filter(l => l.held).map(l => l.id)), all: new Set(r.lines.map(l => l.id)) };
+}
+function hrSelHas(runId, lineId) { return !!(HR_SEL[runId] && HR_SEL[runId].has(lineId)); }
+function hrSelRuns() { return HR_ALL_MODE ? Object.values(HR_ALL_RUNS) : (HR_RUN ? [HR_RUN] : []); }
+function hrSelLines(run) { return run.lines.filter(l => !l.held && hrSelHas(run.id, l.id)); }
+function hrSelEmps(runs) { return runs.flatMap(r => hrSelLines(r).map(l => l.employee_id)); }
+function hrPick(el) {
+  const run = Number(el.dataset.run), id = Number(el.dataset.line);
+  if (!HR_SEL[run]) HR_SEL[run] = new Set();
+  if (el.checked) HR_SEL[run].add(id); else HR_SEL[run].delete(id);
+  hrSelChanged(run);
+}
+// The Select all at the top: ticks everyone not yet paid on every sheet showing (paid ones stay as they
+// are and can still be ticked one by one); pressed again, unticks everyone.
+function hrPickAllPay(el) {
+  hrSelRuns().forEach(r => {
+    if (!HR_SEL[r.id]) HR_SEL[r.id] = new Set();
+    if (el.checked) r.lines.forEach(l => { if (!l.held && !hrPaidFull(l)) HR_SEL[r.id].add(l.id); });
+    else HR_SEL[r.id].clear();
+  });
+  hrSelRuns().forEach(r => hrSelPaint(r));
+  hrSelSync();
+}
+function hrSelPaint(run) {
+  document.querySelectorAll(`input.hr-pick[data-run="${run.id}"]`).forEach(x => { x.checked = hrSelHas(run.id, Number(x.dataset.line)); });
+  if (HR_ALL_MODE) hrAllRenderFoot(run); else if (HR_RUN && HR_RUN.id === run.id) document.getElementById("hr-run-foot").innerHTML = hrRunFootHtml(run);
+}
+function hrSelChanged(runId) {
+  const run = hrSelRuns().find(r => r.id === runId);
+  if (run) hrSelPaint(run);
+  hrSelSync();
+}
+// Select all shows ticked when every unpaid row is ticked, empty when none is, a dash in between; the
+// Preview / Export / Pay full month buttons wait until somebody is ticked.
+function hrSelSync() {
+  const runs = hrSelRuns();
+  const unpaid = runs.flatMap(r => r.lines.filter(l => !l.held && !hrPaidFull(l)).map(l => [r.id, l.id]));
+  const ticked = runs.reduce((a, r) => a + hrSelLines(r).length, 0);
+  const allOn = unpaid.length > 0 && unpaid.every(([r, l]) => hrSelHas(r, l));
+  document.querySelectorAll(".hr-pay-all").forEach(b => {
+    b.checked = allOn; b.indeterminate = !allOn && ticked > 0;
+    b.disabled = !runs.some(r => r.lines.some(l => !l.held));
+  });
+  document.querySelectorAll(".hr-pay-count").forEach(x => { x.textContent = runs.length ? `${ticked} selected` : ""; });
+  document.querySelectorAll(".hr-needs-sel").forEach(b => {
+    b.disabled = !ticked; b.title = ticked ? "" : "No staff selected - tick people under PAY first";
+  });
+  // Pay full month now needs somebody ticked; Back to salary to date never does.
+  document.querySelectorAll(".hr-full-btn").forEach(b => {
+    const off = !b.dataset.on && !ticked; b.disabled = off; b.title = off ? "No staff selected - tick people under PAY first" : "";
+  });
+}
+function hrNoneSelected() {
+  if (hrSelEmps(hrSelRuns()).length) return false;
+  hrMsg("warn", "No staff selected - tick people under PAY first.");
+  return true;
+}
+
 // The sheet's heading - the one-company sheet and every company in the
 // all-companies view use the same columns. Paid sits after the salary
 // (to date), the payslip is the last column.
 function hrRunHead(run, sheet) {
   const pension = run.lines.some(l => l.pension);
   const running = run.progress && run.progress.running;
-  return `<tr><th style="width:3.5%;" title="Include on this cycle">Pay</th><th style="width:4.5%;">Code</th><th class="txt" style="width:12%;">Employee</th>
+  return `<tr><th style="width:3.5%;" title="Tick who goes on the Preview, Export PDF / Excel and Pay full month now">Pay</th><th style="width:4.5%;">Code</th><th class="txt" style="width:12%;">Employee</th>
     <th class="num" style="width:6.5%;">Basic</th><th class="num" style="width:6.5%;">Fix Allown.</th><th class="num" style="width:7.5%;">Add / Ded.</th>
     <th class="num" style="width:7%;">Absent Ded.</th><th class="num" style="width:8%;">Loan</th>
     <th class="num" style="width:9%;"${sheet ? ' id="hr-th-net"' : ""}>${running ? "Salary To Date" : "Net Pay"}</th>
@@ -15198,6 +15304,7 @@ function hrRunHead(run, sheet) {
 function hrRunRows(r) {
   const approved = r.status === "approved";
   const pension = r.lines.some(l => l.pension);
+  hrSelInit(r);
   return r.lines.map(l => {
     const remark = l.remarks || l.deduction_note || "";
     const pay = l.pay || { state: "none", payments: [], slips: {} };
@@ -15206,12 +15313,15 @@ function hrRunRows(r) {
     payRemember("office", l.id, { name: l.name, emp_no: l.emp_no, pay, route: l.pay_route, held: l.held, month: r.month_year });
     return `
     <tr data-line="${l.id}" class="${l.held ? "hr-held" : ""}${pay.locked ? " pay-locked" : ""}">
-      <td>${locked ? (l.held ? '<span class="hr-nil">held</span>' : "&#10003;") :
-        `<input type="checkbox" ${l.held ? "" : "checked"} title="Untick to hold this salary over to a later month"
-                onchange="hrHold(${l.id}, !this.checked)">`}</td>
+      <td>${l.held ? '<span class="hr-nil">held</span>' :
+        `<input type="checkbox" class="hr-pick" data-run="${r.id}" data-line="${l.id}" ${hrSelHas(r.id, l.id) ? "checked" : ""}
+                title="${hrPaidFull(l) ? "Already paid - tick to put on the Preview / Export again" : "Tick to put on the Preview / Export"}" onchange="hrPick(this)">`}</td>
       <td>${escapeHtml(l.emp_no)}</td>
       <td class="txt">${xlink(l.name, `editStaff(${jsq(l.emp_no)})`, "hrpayroll", "Open the staff record")}
-        ${l.pay_route !== "wps" ? `<span class="hr-tag">${l.pay_route === "bank" ? "Bank" : "Cash"}</span>` : ""}</td>
+        ${l.pay_route !== "wps" ? `<span class="hr-tag">${l.pay_route === "bank" ? "Bank" : "Cash"}</span>` : ""}
+        ${l.full_month && r.progress && r.progress.running ? '<span class="hr-tag" title="On the whole month (Pay full month now)">Full month</span>' : ""}
+        ${locked ? "" : `<a href="javascript:void 0" class="hr-hold-link" onclick="hrHold(${l.id}, ${!l.held})"
+            title="${l.held ? "Put this salary back on this month's sheet" : "Hold this salary over to a later month (leave, etc.)"}">${l.held ? "Held - release" : "Hold"}</a>`}</td>
       <td class="num">${hrMoney(l.basic)}</td>
       <td class="num">${hrMoney(l.allowance)}</td>
       ${hrAdjCell(l, locked)}
@@ -15236,7 +15346,7 @@ function renderRunFoot() {
   document.getElementById("hr-run-foot").innerHTML = hrRunFootHtml(HR_RUN);
 }
 function hrRunFootHtml(R) {
-  const paid = R.lines.filter(l => !l.held);
+  const paid = hrSelLines(R);            // the TOTAL is the people ticked under PAY - the same as the Preview
   const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
   const pension = R.lines.some(l => l.pension);
   const tot = fn => paid.reduce((a, l) => a + fn(l), 0);
@@ -15244,7 +15354,7 @@ function hrRunFootHtml(R) {
                  sum("loan_deduction"), sum("net_pay")];
   const paidOut = R.lines.reduce((a, l) => a + Number((l.pay && l.pay.paid) || 0), 0);
   return `<tr class="hr-foot">
-       <td colspan="3" class="txt">TOTAL - ${R.lines.filter(l => !l.held).length} staff${R.lines.some(l => l.held) ? `, ${R.lines.filter(l => l.held).length} held over` : ""}</td>
+       <td colspan="3" class="txt">TOTAL - ${paid.length} of ${R.lines.filter(l => !l.held).length} staff ticked${R.lines.some(l => l.held) ? `, ${R.lines.filter(l => l.held).length} held over` : ""}</td>
        ${cells.map(v => `<td class="num">${hrMoney(v)}</td>`).join("")}
        <td class="txt" title="Paid so far">${paidOut ? hrMoney(paidOut) + " paid" : ""}</td>
        ${pension ? `<td class="num">${hrMoney(sum("pension"))}</td>` : ""}
@@ -15575,6 +15685,47 @@ async function payZip(kind, month, extra, statusId) {
 
 // ---- labour: Salary cards > Paid status & payslips
 let PAY_LAB = null;
+// PAY on the labour card: who goes on the salary cards Preview / Combine to Excel / PDF / Separate files.
+// Same rule as office: not yet paid starts ticked, paid starts (and becomes) unticked, tick him again and
+// his card prints with "(Already paid)". Per cycle; changing the cycle starts again.
+const LAB_SEL = { cyc: "", set: new Set(), paid: new Set(), all: new Set() };
+const labPaid = x => ["paid", "settled", "todate"].includes(x.pay && x.pay.state);
+function labSelInit(d, cyc) {
+  const rows = d.groups.flatMap(g => g.rows);
+  if (LAB_SEL.cyc !== cyc) {
+    LAB_SEL.cyc = cyc; LAB_SEL.set = new Set(rows.filter(x => !labPaid(x)).map(x => x.emp_no));
+  } else rows.forEach(x => {
+    if (labPaid(x) && !LAB_SEL.paid.has(x.emp_no)) LAB_SEL.set.delete(x.emp_no);
+    if (!labPaid(x) && (LAB_SEL.paid.has(x.emp_no) || !LAB_SEL.all.has(x.emp_no))) LAB_SEL.set.add(x.emp_no);
+  });
+  LAB_SEL.paid = new Set(rows.filter(labPaid).map(x => x.emp_no)); LAB_SEL.all = new Set(rows.map(x => x.emp_no));
+}
+function labPick(el) { if (el.checked) LAB_SEL.set.add(el.dataset.emp); else LAB_SEL.set.delete(el.dataset.emp); labSelSync(); }
+function labPickAll(el) {
+  const rows = PAY_LAB ? PAY_LAB.groups.flatMap(g => g.rows) : [];
+  if (el.checked) rows.forEach(x => { if (!labPaid(x)) LAB_SEL.set.add(x.emp_no); }); else LAB_SEL.set.clear();
+  document.querySelectorAll("#lab-pay-body input.lab-pick").forEach(x => { x.checked = LAB_SEL.set.has(x.dataset.emp); });
+  labSelSync();
+}
+function labSelSync() {
+  const rows = PAY_LAB ? PAY_LAB.groups.flatMap(g => g.rows) : [];
+  const unpaid = rows.filter(x => !labPaid(x)), ticked = rows.filter(x => LAB_SEL.set.has(x.emp_no)).length;
+  const allOn = unpaid.length > 0 && unpaid.every(x => LAB_SEL.set.has(x.emp_no));
+  const b = document.getElementById("lab-pay-all");
+  if (b) { b.checked = allOn; b.indeterminate = !allOn && ticked > 0; b.disabled = !rows.length; }
+  const c = document.getElementById("lab-pay-count"); if (c) c.textContent = rows.length ? `${ticked} selected` : "";
+  (PAY_LAB ? PAY_LAB.groups : []).forEach((g, gi) => {
+    const f = document.getElementById(`lab-pay-foot-${gi}`); if (!f) return;
+    const sel = g.rows.filter(x => LAB_SEL.set.has(x.emp_no));
+    f.querySelector(".lab-tot-l").textContent = `TOTAL - ${sel.length} of ${g.rows.length} worker${g.rows.length === 1 ? "" : "s"} ticked`;
+    f.querySelector(".lab-tot-n").textContent = hrMoney(sel.reduce((a, x) => a + Number(x.net || 0), 0));
+  });
+}
+// The ticked workers for the card exports - null when the Paid status card is not showing this cycle (then every card, as before).
+function labSelNos(cyc) {
+  if (!PAY_LAB || LAB_SEL.cyc !== cyc) return null;
+  return [...LAB_SEL.set];
+}
 async function payLabLoad() {
   const box = document.getElementById("lab-pay-body"), cyc = (document.getElementById("combine-cycle") || {}).value;
   if (!box || !cyc) return;
@@ -15583,6 +15734,7 @@ async function payLabLoad() {
   catch (e) { box.innerHTML = `<p class="hr-nil">${escapeHtml(errText(e))}</p>`; return; }
   if (document.getElementById("combine-cycle").value !== cyc) return;
   PAY_LAB = d;
+  labSelInit(d, cyc);
   document.getElementById("lab-pay-sub").textContent = `${cycleLabel(cyc)} · ${d.closed ? "cycle closed" : "cycle running - figures are salary to date"}`;
   if (!d.groups.length) { box.innerHTML = '<p class="hr-nil">No salary cards for this cycle yet.</p>'; return; }
   box.innerHTML = d.groups.map((g, gi) => {
@@ -15591,18 +15743,20 @@ async function payLabLoad() {
       <span class="pay-bulk"><button class="btn btn-gray btn-sm" onclick="payLabBulk(${gi}, 'mark')">Mark selected as paid</button>
         <button class="btn btn-gray btn-sm" onclick="payLabBulk(${gi}, 'payslips')">Generate payslips</button></span></h3>
       <div class="grid-wrap" style="max-height:60vh;"><table class="hr-grid hr-cycle"><thead><tr>
-        <th style="width:6%;">Code</th><th class="txt" style="width:18%;">Worker</th><th class="txt" style="width:11%;">Trade</th>
+        <th style="width:4%;" title="Tick who goes on the salary cards Preview / Combine / Separate files">Pay</th><th style="width:6%;">Code</th><th class="txt" style="width:16%;">Worker</th><th class="txt" style="width:11%;">Trade</th>
         <th class="num" style="width:6%;">Days</th><th class="num" style="width:6%;">OT hrs</th><th class="num" style="width:9%;">Card salary</th>
         <th class="num" style="width:8%;">Add / Ded.</th><th class="num" style="width:10%;">${d.closed ? "Net Pay" : "Salary To Date"}</th>
         <th class="txt" style="width:15%;"><input type="checkbox" style="width:auto; margin:0 4px 0 0; vertical-align:-2px;" onclick="payPickAll(this)" title="Tick everyone not yet paid">Paid</th>
         <th class="txt" style="width:11%;">Payslip</th></tr></thead><tbody>
-      ${g.rows.map(x => `<tr class="${x.pay.locked ? "pay-locked" : ""}"><td>${escapeHtml(x.emp_no)}</td><td class="txt">${escapeHtml(x.name)}${x.pay_route !== "wps" ? `<span class="hr-tag">${x.pay_route === "bank" ? "Bank" : "Cash"}</span>` : ""}${x.active ? "" : ' <span class="hr-tag">inactive</span>'}</td>
+      ${g.rows.map(x => `<tr class="${x.pay.locked ? "pay-locked" : ""}"><td><input type="checkbox" class="lab-pick" data-emp="${escapeAttr(x.emp_no)}" ${LAB_SEL.set.has(x.emp_no) ? "checked" : ""}
+          title="${labPaid(x) ? "Already paid - tick to print his card again" : "Tick to print his card"}" onchange="labPick(this)"></td><td>${escapeHtml(x.emp_no)}</td><td class="txt">${escapeHtml(x.name)}${x.pay_route !== "wps" ? `<span class="hr-tag">${x.pay_route === "bank" ? "Bank" : "Cash"}</span>` : ""}${x.active ? "" : ' <span class="hr-tag">inactive</span>'}</td>
         <td class="txt">${escapeHtml(x.trade)}</td><td class="num">${num(x.days)}</td><td class="num">${x.ot ? num(x.ot) : '<span class="hr-nil">-</span>'}</td>
         <td class="num">${hrMoney(x.salary)}</td><td class="num">${x.adjust ? `<span style="color:${x.adjust > 0 ? "#2E7D32" : "#B03A2E"}">${x.adjust > 0 ? "+" : "-"}${hrMoney(Math.abs(x.adjust))}</span>` : '<span class="hr-nil">-</span>'}</td>
         <td class="num net">${hrMoney(x.net)}</td><td class="pay-cell">${payCell("labour", x.source_id)}</td><td class="pay-cell pay-slip">${payslipCell("labour", x.source_id)}</td></tr>`).join("")}
-      </tbody><tfoot><tr class="hr-foot"><td colspan="7" class="txt">TOTAL - ${g.rows.length} worker${g.rows.length === 1 ? "" : "s"}</td><td class="num">${hrMoney(g.net)}</td>
+      </tbody><tfoot id="lab-pay-foot-${gi}"><tr class="hr-foot"><td colspan="8" class="txt lab-tot-l"></td><td class="num lab-tot-n"></td>
         <td class="txt">${g.paid ? hrMoney(g.paid) + " paid" : ""}</td><td></td></tr></tfoot></table></div></div>`;
   }).join("");
+  labSelSync();
 }
 function payLabBulk(gi, action) {
   const g = PAY_LAB && PAY_LAB.groups[gi], scope = document.querySelector(`#lab-pay-body [data-labco="${gi}"]`);
@@ -16170,16 +16324,20 @@ async function downloadHr(which, format) {
               .replace("?&", "?"), "_blank");
 }
 
+// Preview / Export PDF / Export Excel carry only the people ticked under PAY (their employee ids).
+const hrEmpsQ = runs => `&emps=${hrSelEmps(runs).join(",")}`;
 async function previewStatement() {
   if (!HR_RUN) { hrMsg("warn", "Open a cycle first."); return; }
-  window.open(`${API}/export/payroll/statement/view?run_id=${HR_RUN.id}&token=${await hrToken()}`,
+  if (hrNoneSelected()) return;
+  window.open(`${API}/export/payroll/statement/view?run_id=${HR_RUN.id}&token=${await hrToken()}${hrEmpsQ([HR_RUN])}`,
               "_blank");
 }
 
 async function downloadStatement(format) {
   if (!HR_RUN) { hrMsg("warn", "Open a cycle first."); return; }
+  if (hrNoneSelected()) return;
   window.open(
-    `${API}/export/payroll/statement?run_id=${HR_RUN.id}&token=${await hrToken()}&format=${format}`,
+    `${API}/export/payroll/statement?run_id=${HR_RUN.id}&token=${await hrToken()}&format=${format}${hrEmpsQ([HR_RUN])}`,
     "_blank");
 }
 
@@ -16187,8 +16345,9 @@ async function downloadStatement(format) {
 // what comes out of the printer is the sheet that was checked.
 async function printStatement() {
   if (!HR_RUN) { hrMsg("warn", "Open a cycle first."); return; }
+  if (hrNoneSelected()) return;
   const w = window.open(
-    `${API}/export/payroll/statement/view?run_id=${HR_RUN.id}&token=${await hrToken()}`, "_blank");
+    `${API}/export/payroll/statement/view?run_id=${HR_RUN.id}&token=${await hrToken()}${hrEmpsQ([HR_RUN])}`, "_blank");
   if (w) w.addEventListener("load", () => w.print());
 }
 
@@ -16266,6 +16425,7 @@ function hrAllRenderSection(run) {
     </table></div>`;
   box.querySelectorAll("textarea.hr-rem").forEach(hrGrow);
   hrAllRenderGrand();
+  hrSelSync();
 }
 function hrAllRenderFoot(run) {
   const f = document.getElementById(`hr-all-foot-${run.id}`);
@@ -16275,13 +16435,14 @@ function hrAllRenderFoot(run) {
 function hrAllRenderGrand() {
   const el = document.getElementById("hr-all-grand"); if (!el) return;
   const all = Object.values(HR_ALL_RUNS);
-  const paid = all.flatMap(r => r.lines.filter(l => !l.held)), held = all.reduce((a, r) => a + r.lines.filter(l => l.held).length, 0);
-  if (!paid.length) { el.innerHTML = ""; return; }
+  const paid = all.flatMap(r => hrSelLines(r)), held = all.reduce((a, r) => a + r.lines.filter(l => l.held).length, 0);
+  const staff = all.reduce((a, r) => a + r.lines.filter(l => !l.held).length, 0);
+  if (!staff) { el.innerHTML = ""; return; }
   const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
   const adj = paid.reduce((a, l) => a + hrAdjust(l), 0);
   const out = all.flatMap(r => r.lines).reduce((a, l) => a + Number((l.pay && l.pay.paid) || 0), 0);
   el.innerHTML = `<table class="hr-grid"><tfoot><tr class="hr-foot">
-      <td class="txt" style="width:20%;">GRAND TOTAL - ${paid.length} staff${held ? `, ${held} held over` : ""}</td>
+      <td class="txt" style="width:20%;">GRAND TOTAL - ${paid.length} of ${staff} staff ticked${held ? `, ${held} held over` : ""}</td>
       <td class="num" style="width:6.5%;">${hrMoney(sum("basic"))}</td><td class="num" style="width:6.5%;">${hrMoney(sum("allowance"))}</td>
       <td class="num" style="width:7.5%;">${adj ? hrMoney(adj) : "-"}</td><td class="num" style="width:7%;">${hrMoney(sum("deduction"))}</td>
       <td class="num" style="width:8%;">${hrMoney(sum("loan_deduction"))}</td><td class="num" style="width:9%;">${hrMoney(sum("net_pay"))}</td>
@@ -16314,10 +16475,16 @@ async function hrConsolidatedUrl(view, fmt, group) {
   return `${API}/export/payroll/consolidated${view ? "/view" : ""}?month_year=${encodeURIComponent(month)}` +
          (group ? `&group=${group}` : "") + (fmt ? `&format=${fmt}` : "") + `&token=${await hrToken()}`;
 }
-async function downloadConsolidated(fmt) { const u = await hrConsolidatedUrl(false, fmt, hrAllGroup()); if (u) window.open(u, "_blank"); }
-async function previewConsolidated(all) { const u = await hrConsolidatedUrl(true, "", all ? "" : hrAllGroup()); if (u) window.open(u, "_blank"); }
+// The all-companies Preview / Export follow the PAY ticks; Consolidated statement (office + local) is
+// everyone, as before.
+async function downloadConsolidated(fmt) { if (hrNoneSelected()) return; const u = await hrConsolidatedUrl(false, fmt, hrAllGroup()); if (u) window.open(u + hrEmpsQ(hrSelRuns()), "_blank"); }
+async function previewConsolidated(all) {
+  if (!all && hrNoneSelected()) return;
+  const u = await hrConsolidatedUrl(true, "", all ? "" : hrAllGroup()); if (u) window.open(u + (all ? "" : hrEmpsQ(hrSelRuns())), "_blank");
+}
 async function printConsolidated() {
-  const u = await hrConsolidatedUrl(true, "", hrAllGroup()); if (!u) return;
+  if (hrNoneSelected()) return;
+  const u = (await hrConsolidatedUrl(true, "", hrAllGroup())) + hrEmpsQ(hrSelRuns()); if (!u) return;
   const w = window.open(u, "_blank"); if (w) w.addEventListener("load", () => w.print());
 }
 

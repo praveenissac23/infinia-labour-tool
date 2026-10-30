@@ -83,7 +83,7 @@ def office_to_date(db, r, l):
     today = M._dubai_today()
     days = (b - a).days + 1
     done = 0 if today < a else days if today > b else (today - a).days + 1
-    full = bool(M.get_setting(db, M._full_month_key(r.month_year, r.group or "staff"))) or r.status == "approved"
+    full = M._line_full_month(db, r, l.employee_id)
     if full or done >= days:
         return _r2(l.net_pay)
     earned = (l.fixed_salary or 0) * done / days
@@ -177,6 +177,20 @@ def paid_line_ids(db, r):
     for p in pays:
         by.setdefault(p.source_id, []).append(p)
     return {lid for lid, ps in by.items() if _frozen(ps)}
+
+
+def labour_paid_emp_nos(db, month_year, emp_nos):
+    """Workers among emp_nos already paid what their card is due for the cycle (paid in full, settled, or paid to date)."""
+    out = set()
+    for c in (db.query(models.EmployeeSummary).options(joinedload(models.EmployeeSummary.adjustments))
+                .filter(models.EmployeeSummary.month_year == month_year, models.EmployeeSummary.emp_no.in_(list(emp_nos))).all()):
+        e = db.query(models.Employee).filter(models.Employee.emp_no == c.emp_no).first()
+        if not e:
+            continue
+        pays = _payments(db, "labour", e.id, month_year)
+        if pays and row_state(db, "labour", e, month_year, services.adjusted_final_salary(c), pays)["state"] in ("paid", "settled", "todate"):
+            out.add(c.emp_no)
+    return out
 
 
 # ---- carried to next month -------------------------------------------------------------------------------------------
