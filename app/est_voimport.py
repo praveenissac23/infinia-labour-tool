@@ -37,10 +37,12 @@ def _num(v):
     s = str(v).replace(",", "").replace("AED", "").replace("*", "").strip()
     if s in ("", "-"):
         return None
+    neg = s.startswith("(") and s.endswith(")")          # (5,000.00) - a minus figure
     try:
-        return round(float(s), 2)
+        x = round(float(s.strip("()").strip()), 2)
     except ValueError:
         return None
+    return -x if neg else x
 
 
 def _date(v):
@@ -57,6 +59,17 @@ def _date(v):
             return _dt.date(y, mo, d)
         except ValueError:
             return None
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})", s)                         # 2026-10-21
+    if m:
+        try:
+            return _dt.date(*(int(x) for x in m.groups()))
+        except ValueError:
+            return None
+    for f in ("%d-%b-%Y", "%d-%b-%y", "%d %b %Y", "%d %B %Y", "%d-%B-%Y", "%d %b %y"):   # 21-Oct-2026, 21 October 2026
+        try:
+            return _dt.datetime.strptime(s, f).date()
+        except ValueError:
+            continue
     return None
 
 

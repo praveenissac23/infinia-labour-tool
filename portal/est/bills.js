@@ -131,6 +131,45 @@ async function viewFormat(fid, i = 0) {
 }
 function billsRedraw() { if (key() === "bills.ipa" && $("#sec")) SECTIONS["bills.ipa"]($("#sec")); }
 
+// Upload a bill workbook as a format (Bills > Upload, and Previous records > "use as the bill format"). A bigger file
+// goes in pieces (the web server takes about 1 MB a request). When some of its formulas do not give Excel's own
+// figure here, the server stops and says which: the person sees them and chooses - upload anyway, or cancel.
+async function sendBillFormat(file, fields, progress, force) {
+  const fd = new FormData(); fd.append("project_id", ST.pid); fd.append("name", fields.name || file.name.replace(/\.xls[xm]?$/i, ""));
+  if (fields.contract_id) fd.append("contract_id", fields.contract_id);
+  if (force) fd.append("force", "1");
+  const PART = 700 * 1024;
+  if (file.size > PART) {
+    const id = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, "0")).join("");
+    const n = Math.ceil(file.size / PART);
+    for (let i = 0; i < n; i++) {
+      if (progress) progress(`Uploading ${Math.round(100 * i / n)}%...`);
+      const pf = new FormData(); pf.append("upload_id", id); pf.append("index", i); pf.append("file", file.slice(i * PART, (i + 1) * PART), "part");
+      await api("/store/est/ipa/format/part", { method: "POST", body: pf });
+    }
+    fd.append("upload_id", id); fd.append("parts", n); fd.append("filename", file.name);
+  } else fd.append("file", file);
+  if (progress) progress("Reading the workbook...");
+  try {
+    return await api("/store/est/ipa/format", { method: "POST", body: fd });
+  } catch (e) {
+    if (e.status !== 409 || !e.data || force) throw e;
+    const rows = (e.data.different || []).map(d => `<tr><td>${esc(d.sheet)} ${esc(d.cell)}</td><td class="r">${esc(String(d.excel ?? ""))}</td><td class="r">${esc(String(d.here ?? ""))}</td></tr>`).join("");
+    const go = await confirmDelete(`${e.data.formulas - e.data.same} formula${e.data.formulas - e.data.same === 1 ? "" : "s"} do not match Excel`,
+      `${esc(e.message)}<div class="tw" style="margin:10px 0;max-height:220px;overflow:auto"><table class="t"><thead><tr><th>Cell</th><th class="r">Excel</th><th class="r">Here</th></tr></thead><tbody>${rows}</tbody></table></div>
+       Check these cells in the workbook first. Upload it anyway only if you are sure the figures are right.`, "Upload anyway", "");
+    if (!go) return null;
+    return sendBillFormat(file, fields, progress, true);
+  }
+}
+
+// What a workbook upload could not find - said, not left for a wrong bill to show later.
+function formatGaps(r) {
+  const miss = [["bill_no", "the bill no. (it will not go up by itself)"], ["issue_date", "the issue date (it will not be dated today by itself)"],
+                ["total_due", "the total amount due"], ["payments", "a previous-payments table"]].filter(([k]) => r[k] === false).map(x => x[1]);
+  return miss.length ? ` Not found in it: ${miss.join("; ")} - check the bill before sending.` : "";
+}
+
 function uploadFormat() {
   const p = ST.b.project, K = CTRS().find(k => IPA.list && k.id === IPA.list.contract_id);
   modal("Upload bill format" + (K ? " - " + K.name : ""), [
@@ -138,23 +177,11 @@ function uploadFormat() {
   ], async v => {
     const f = ($("#fm-file") || {}).files; const file = f && f[0];
     if (!file) throw new Error("Pick the Excel bill.");
-    const fd = new FormData(); fd.append("project_id", ST.pid); fd.append("name", v.name);
-    if (IPA.list && IPA.list.contract_id) fd.append("contract_id", IPA.list.contract_id);
-    const PART = 700 * 1024;                         // the web server takes about 1 MB a request: a bigger file goes in pieces
-    if (file.size > PART) {
-      const id = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, "0")).join("");
-      const n = Math.ceil(file.size / PART);
-      for (let i = 0; i < n; i++) {
-        $("#m-save").textContent = `Uploading ${Math.round(100 * i / n)}%...`;
-        const pf = new FormData(); pf.append("upload_id", id); pf.append("index", i); pf.append("file", file.slice(i * PART, (i + 1) * PART), "part");
-        await api("/store/est/ipa/format/part", { method: "POST", body: pf });
-      }
-      fd.append("upload_id", id); fd.append("parts", n); fd.append("filename", file.name);
-    } else fd.append("file", file);
-    $("#m-save").textContent = "Reading the workbook...";
-    const r = await api("/store/est/ipa/format", { method: "POST", body: fd });
+    const r = await sendBillFormat(file, { name: v.name, contract_id: IPA.list && IPA.list.contract_id }, t => { $("#m-save").textContent = t; });
+    if (!r) return;
     const ok = r.same === r.formulas;
-    toast(`Format read: ${r.lines} lines with Previous % / Total % on ${r.sheets.join(", ")}. ${ok ? `All ${r.formulas} formulas give Excel's own figures.` : `${r.same} of ${r.formulas} formulas match Excel - check the bill before sending.`}`, { ms: 7000, err: !ok });
+    const gaps = formatGaps(r);
+    toast(`Format read: ${r.lines} lines with Previous % / Total % on ${r.sheets.join(", ")}. ${ok ? `All ${r.formulas} formulas give Excel's own figures.` : `${r.same} of ${r.formulas} formulas match Excel - check the bill before sending.`}${gaps}`, { ms: gaps || !ok ? 15000 : 7000, err: !ok || !!gaps });
     billsRedraw();
   }, { save: "Upload", bottom: `<div class="frm" style="margin-top:4px"><div class="f full"><label for="fm-file">The last bill as sent (Excel .xlsx or .xls) ${tip("The whole workbook: cover / summary and the sheets with the % of work done. It is kept on the server - every new bill is made from it, with the same layout, logo, stamps and formulas.")}</label><input type="file" id="fm-file" accept=".xlsx,.xlsm,.xls"></div></div>` });
 }

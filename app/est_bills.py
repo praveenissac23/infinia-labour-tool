@@ -851,6 +851,7 @@ def _fmt_no(full, filename=""):
     n = num(raw)
     if not n:
         stem = re.sub(r"\.xls[xm]?$", "", filename or "", flags=re.I)
+        stem = re.sub(r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", " ", stem)      # a date in the file name is not the bill no.
         m_ = re.search(r"IPA\D*(\d+)", stem, re.I)
         n = int(m_.group(1)) if m_ else num(stem)
         raw = raw or (str(n) if n else "")
@@ -873,10 +874,21 @@ def next_source(db, pid, cid=None):
     if last is not None:
         fno = None
         if fmt is not None:
-            fno = (_LIST_CACHE.get(fmt.id) or {}).get("no") or _fmt_no(None, fmt.filename)
+            fno = _format_no(fmt)          # the same reading as the current format's - not just its file name
         if fmt is None or _bill_num(last.label or last.seq) >= (fno or [0])[0] or fmt.id == last.format_id:
             return db.get(EstBillFormat, last.format_id), last
     return fmt, None
+
+
+def _format_no(f):
+    """An uploaded workbook's bill no. [number, as written] - its bill no. cell, else its file name."""
+    n = (_LIST_CACHE.get(f.id) or {}).get("no")
+    if n is None:
+        try:
+            n = _fmt_no(json.loads(f.model or "{}"), f.filename)
+        except ValueError:
+            n = _fmt_no(None, f.filename)
+    return n
 
 
 def _current_format(db, pid, cid=None):
@@ -886,12 +898,7 @@ def _current_format(db, pid, cid=None):
         q = q.filter(EstBillFormat.contract_id == int(cid))
     best = None
     for f in q.all():
-        n = (_LIST_CACHE.get(f.id) or {}).get("no")
-        if n is None:
-            try:
-                n = _fmt_no(json.loads(f.model or "{}"), f.filename)
-            except ValueError:
-                n = _fmt_no(None, f.filename)
+        n = _format_no(f)
         if best is None or (n[0], f.id) > best[0]:
             best = ((n[0], f.id), f)
     return best[1] if best else None
@@ -1003,7 +1010,7 @@ def xls_check(user: models.User = E.VIEW):
 
 @router.post("/store/est/ipa/format")
 async def upload_format(project_id: int = Form(...), name: str = Form(""), file: UploadFile = File(None), contract_id: str = Form(""),
-                        upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""),
+                        upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""), force: str = Form(""),
                         db: Session = Depends(get_db), user: models.User = E.VIEW):
     E._project(db, project_id)
     cid = E._contract_ok(db, project_id, int(contract_id) if str(contract_id).strip().isdigit() else None)
@@ -1033,6 +1040,14 @@ async def upload_format(project_id: int = Form(...), name: str = Form(""), file:
     if not mp.get("progress"):
         raise HTTPException(400, "No lines with Previous % / Total % were found in this workbook. Upload the bill as sent to the consultant "
                                  "(the sheets with the % of work done).")
+    # A formula that does not give Excel's own figure here would make every bill from this format wrong: the upload
+    # stops and says which, and goes ahead only when the person chooses to (force=1) after checking.
+    if chk["formulas"] and chk["same"] < chk["formulas"] and str(force) != "1":
+        from fastapi.responses import JSONResponse
+        n = chk["formulas"] - chk["same"]
+        return JSONResponse(status_code=409, content={
+            "detail": f"{n} of {chk['formulas']} formulas in this workbook do not give Excel's own figure here - bills made from it could be wrong.",
+            "different": chk["different"][:10], "formulas": chk["formulas"], "same": chk["same"]})
     f = EstBillFormat(project_id=project_id, contract_id=cid, name=(name or "").strip()[:120] or re.sub(r"\.xlsx?$", "", file.filename or "Bill format", flags=re.I)[:120],
                       filename=(file.filename or "")[:200], data=data, model=json.dumps(model), checked=json.dumps(chk), created_by=user.id)
     db.add(f)

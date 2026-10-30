@@ -756,6 +756,58 @@ def _round(x, n, mode):
     return float((d / q).quantize(Decimal(1), rounding=mode) * q)
 
 
+def _crit_ok(x, crit):
+    """Excel's SUMIF / COUNTIF test: 5, ">=5", "<>x", "=x", "Ab*" (wildcards), case-insensitive."""
+    if isinstance(crit, (int, float)) and not isinstance(crit, bool):
+        return isinstance(x, (int, float)) and not isinstance(x, bool) and float(x) == float(crit)
+    t = general(crit)
+    m = re.match(r"^(<=|>=|<>|<|>|=)?(.*)$", t, re.S)
+    op, val = m.group(1) or "=", m.group(2)
+    try:
+        num = float(val.replace(",", ""))
+    except ValueError:
+        num = None
+    if num is not None and op in ("<", ">", "<=", ">=", "=", "<>") and isinstance(x, (int, float)) and not isinstance(x, bool):
+        xv = float(x)
+        return {"=": xv == num, "<>": xv != num, "<": xv < num, ">": xv > num, "<=": xv <= num, ">=": xv >= num}[op]
+    xs = "" if x is None else general(x)
+    if op in ("=", "<>"):
+        if val == "" and op == "=":
+            return xs == ""
+        pat = "^" + re.escape(val).replace(r"\*", ".*").replace(r"\?", ".") + "$"
+        hit = re.match(pat, xs, re.I | re.S) is not None
+        return hit if op == "=" else not hit
+    if num is None:
+        a, b = xs.lower(), val.lower()
+        return {"<": a < b, ">": a > b, "<=": a <= b, ">=": a >= b}[op]
+    return False
+
+
+def _lookup(vals, key, mode):
+    """MATCH / VLOOKUP: mode 0 exact (wildcards for text), 1 the largest <= key (sorted up), -1 the smallest >= key."""
+    def same(a, b):
+        if isinstance(a, str) and isinstance(b, str):
+            return re.match("^" + re.escape(b).replace(r"\*", ".*").replace(r"\?", ".") + "$", a, re.I | re.S) is not None
+        if isinstance(a, (int, float)) and isinstance(b, (int, float)) and not isinstance(a, bool) and not isinstance(b, bool):
+            return float(a) == float(b)
+        return a == b
+    if mode == 0:
+        return next((i for i, v in enumerate(vals) if same(v, key)), None)
+    best = None
+    for i, v in enumerate(vals):
+        if v in (None, ""):
+            continue
+        try:
+            ok = (v <= key) if mode == 1 else (v >= key)
+        except TypeError:
+            continue
+        if ok:
+            best = i
+        elif mode == 1:
+            break
+    return best
+
+
 def _nf_decimals(nf):
     """Decimals a number format shows, or None when it does not fix them (General, text, scientific, dates)."""
     f = (nf or "").split(";")[0]
@@ -857,9 +909,31 @@ class Book(object):
         sh2 = self.sheet(sh)
         if sh2 is None:
             return [REF]
-        s = self.by_name[sh2]
-        r2 = min(r2, max(s["maxr"], r1)); c2 = min(c2, max(s["maxc"], c1))
+        r1, c1, r2, c2 = self._clip(sh2, r1, c1, r2, c2)
         return [self.value(sh2, r, c) for r in range(r1, r2 + 1) for c in range(c1, c2 + 1)]
+
+    def _clip(self, sh2, r1, c1, r2, c2):
+        """A range cut to the cells that can hold anything - the used area, and rows / columns typed on this bill
+        below or beside it (a whole-column SUM(D:D) is not a million cells)."""
+        s = self.by_name[sh2]
+        mr, mc = s["maxr"], s["maxc"]
+        for k in (self.inputs.get(sh2) or {}):
+            if not k.startswith("_"):
+                rr, cc = (int(x) for x in k.split(","))
+                mr, mc = max(mr, rr), max(mc, cc)
+        return r1, c1, min(r2, max(mr, r1)), min(c2, max(mc, c1))
+
+    def grid(self, node):
+        """A range as rows of values (VLOOKUP / INDEX / MATCH / SUMPRODUCT), with each cell's address."""
+        if node[0] != "ref":
+            v = self.ev(node)
+            return [[v]] if not isinstance(v, list) else [[x] for x in v], None
+        _, sh, r1, c1, r2, c2, _isr = node
+        sh2 = self.sheet(sh)
+        if sh2 is None:
+            return [[REF]], None
+        r1, c1, r2, c2 = self._clip(sh2, r1, c1, r2, c2)
+        return [[self.value(sh2, r, c) for c in range(c1, c2 + 1)] for r in range(r1, r2 + 1)], (sh2, r1, c1)
 
     def ev(self, n):
         k = n[0]
@@ -1029,8 +1103,150 @@ class Book(object):
         if name == "UPPER":
             return general(self.scalar(self.ev(args[0]))).upper()
         if name == "TEXT":
-            return general(self.scalar(self.ev(args[0])))
+            v = self.scalar(self.ev(args[0]))
+            if isinstance(v, Err):
+                return v
+            f = general(self.scalar(self.ev(args[1]))) if len(args) > 1 else ""
+            if not f:
+                return general(v)
+            try:
+                import est_bills_render as _BR
+                return _BR.fmt(v, f)
+            except Exception:
+                return general(v)
+        if name == "DATE":
+            y, m, d = (_num(self.scalar(self.ev(a))) for a in args[:3])
+            for x in (y, m, d):
+                if isinstance(x, Err):
+                    return x
+            y, m, d = int(y), int(m), int(d)
+            y += (m - 1) // 12; m = (m - 1) % 12 + 1
+            base = _dt.date(1899, 12, 30)
+            return float((_dt.date(y, m, 1) - base).days + d - 1)
+        if name == "SUBTOTAL":
+            code = int(_num(self.scalar(self.ev(args[0]))) or 9)
+            skip_hidden = code > 100
+            code %= 100
+            xs, n_all = [], 0
+            for a in args[1:]:
+                for v, addr in self._cells_for_subtotal(a, skip_hidden):
+                    if isinstance(v, Err):
+                        return v
+                    if v not in (None, ""):
+                        n_all += 1
+                    if isinstance(v, (int, float)) and not isinstance(v, bool):
+                        xs.append(float(v))
+            if code == 9:
+                return float(sum(xs))
+            if code == 1:
+                return sum(xs) / len(xs) if xs else DIV0
+            if code == 2:
+                return float(len(xs))
+            if code == 3:
+                return float(n_all)
+            if code in (4, 5):
+                return float((max if code == 4 else min)(xs)) if xs else 0.0
+            if code == 6:
+                p_ = 1.0
+                for x in xs:
+                    p_ *= x
+                return p_ if xs else 0.0
+            return NAME
+        if name in ("SUMIF", "COUNTIF", "AVERAGEIF"):
+            rng_ = self.grid(args[0])[0]
+            crit = self.scalar(self.ev(args[1]))
+            src = self.grid(args[2])[0] if name != "COUNTIF" and len(args) > 2 and args[2][0] != "none" else rng_
+            flat_r = [x for row in rng_ for x in row]
+            flat_s = [x for row in src for x in row]
+            hits = [i for i, x in enumerate(flat_r) if _crit_ok(x, crit)]
+            if name == "COUNTIF":
+                return float(len(hits))
+            vals = [float(flat_s[i]) for i in hits if i < len(flat_s) and isinstance(flat_s[i], (int, float)) and not isinstance(flat_s[i], bool)]
+            if name == "SUMIF":
+                return float(sum(vals))
+            return sum(vals) / len(vals) if vals else DIV0
+        if name in ("SUMIFS", "COUNTIFS"):
+            off = 1 if name == "SUMIFS" else 0
+            src = [x for row in self.grid(args[0])[0] for x in row] if name == "SUMIFS" else None
+            pairs = []
+            for i in range(off, len(args) - 1, 2):
+                pairs.append(([x for row in self.grid(args[i])[0] for x in row], self.scalar(self.ev(args[i + 1]))))
+            n_ = max((len(pr[0]) for pr in pairs), default=0)
+            ok = [all(i < len(pr[0]) and _crit_ok(pr[0][i], pr[1]) for pr in pairs) for i in range(n_)]
+            if name == "COUNTIFS":
+                return float(sum(ok))
+            return float(sum(float(src[i]) for i in range(min(n_, len(src))) if ok[i] and isinstance(src[i], (int, float)) and not isinstance(src[i], bool)))
+        if name == "SUMPRODUCT":
+            arrs = [[x for row in self.grid(a)[0] for x in row] for a in args]
+            if not arrs:
+                return 0.0
+            n_ = len(arrs[0])
+            if any(len(a) != n_ for a in arrs):
+                return VALUE
+            tot = 0.0
+            for i in range(n_):
+                p_ = 1.0
+                for a in arrs:
+                    x = a[i]
+                    if isinstance(x, Err):
+                        return x
+                    p_ *= float(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else 0.0
+                tot += p_
+            return tot
+        if name == "VLOOKUP":
+            key = self.scalar(self.ev(args[0]))
+            rows_ = self.grid(args[1])[0]
+            col = int(_num(self.scalar(self.ev(args[2]))))
+            approx = True
+            if len(args) > 3 and args[3][0] != "none":
+                approx = bool(_num(self.scalar(self.ev(args[3]))))
+            if col < 1 or (rows_ and col > len(rows_[0])):
+                return REF
+            idx = _lookup([r[0] for r in rows_], key, 1 if approx else 0)
+            return NA if idx is None else rows_[idx][col - 1]
+        if name == "MATCH":
+            key = self.scalar(self.ev(args[0]))
+            g = self.grid(args[1])[0]
+            flat = [x for row in g for x in row]
+            mt = int(_num(self.scalar(self.ev(args[2])))) if len(args) > 2 and args[2][0] != "none" else 1
+            idx = _lookup(flat, key, mt)
+            return NA if idx is None else float(idx + 1)
+        if name == "INDEX":
+            g = self.grid(args[0])[0]
+            r_ = int(_num(self.scalar(self.ev(args[1])))) if len(args) > 1 and args[1][0] != "none" else 0
+            c_ = int(_num(self.scalar(self.ev(args[2])))) if len(args) > 2 and args[2][0] != "none" else 0
+            if len(g) == 1 and not c_:
+                r_, c_ = 1, r_
+            if not c_:
+                c_ = 1
+            if r_ < 1 or r_ > len(g) or c_ < 1 or c_ > len(g[0]):
+                return REF
+            return g[r_ - 1][c_ - 1]
         return NAME
+
+    def _cells_for_subtotal(self, node, skip_hidden):
+        """The cells SUBTOTAL adds: a range's cells less the ones that are SUBTOTALs themselves (Excel leaves nested
+        subtotals out), and for 101-111 less hidden rows."""
+        if node[0] != "ref":
+            v = self.ev(node)
+            return [(x, None) for x in (v if isinstance(v, list) else [v])]
+        _, sh, r1, c1, r2, c2, _isr = node
+        sh2 = self.sheet(sh)
+        if sh2 is None:
+            return [(REF, None)]
+        r1, c1, r2, c2 = self._clip(sh2, r1, c1, r2, c2)
+        s = self.by_name[sh2]
+        hid = set(s.get("hidden_rows") or []) if skip_hidden else set()
+        out = []
+        for r in range(r1, r2 + 1):
+            if r in hid:
+                continue
+            for c in range(c1, c2 + 1):
+                raw = self.raw(sh2, r, c)
+                if raw and raw[0] == "f" and re.match(r"\s*SUBTOTAL\s*\(", raw[1], re.I):
+                    continue
+                out.append((self.value(sh2, r, c), (r, c)))
+        return out
 
     def all_values(self, only_visible=False):
         """Every cell's figure: {sheet: {"r,c": value}} (formulas worked out, typed cells as typed)."""

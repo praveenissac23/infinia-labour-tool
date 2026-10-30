@@ -117,6 +117,10 @@ def read_schedule(data: bytes):
                 break
         if cols is None:
             continue
+        # the % column is read one way for the whole column: written as whole numbers (if any figure is over 1:
+        # 1 = 1%, 50 = 50%) or as fractions (0.5 = 50%) - never 1 = 100% in one row and 50 = 50% in the next
+        pct_whole = "pct" in cols and any((_n(r[cols["pct"]]) or 0) > 1.0000001 for r in rows[hi + 1:])
+        as_pct = lambda p_: p_ if pct_whole else p_ * 100
         # bill: "Appendix - B1" above the heading, its title the text line after it
         bill, title = "", ""
         for r in rows[:hi]:
@@ -193,7 +197,7 @@ def read_schedule(data: bytes):
             done_pct = None
             if measure == "pct":
                 if pct is not None:
-                    done_pct = round(pct * 100 if pct <= 1.0000001 else pct, 4)
+                    done_pct = round(as_pct(pct), 4)
                 elif cert_amt is not None and amount:
                     done_pct = round(100 * cert_amt / amount, 4)
             mine.append({"bill": bill, "bill_title": title[:120], "section": section[:200], "no": no[:20], "description": desc[:2000],
@@ -203,7 +207,7 @@ def read_schedule(data: bytes):
                          "done_pct": done_pct, "done_qty": round(cert_qty, 4) if (measure == "qty" and cert_qty is not None) else None,
                          "claimed_qty": round(_n(r[cols["claim_qty"]]) or 0, 4) if "claim_qty" in cols else None,
                          "certified": round(cert_amt, 2) if cert_amt is not None else None,
-                         "stage_pct": round(pct * 100 if pct <= 1.0000001 else pct, 4) if (measure == "qty" and pct) else None,
+                         "stage_pct": round(as_pct(pct), 4) if (measure == "qty" and pct) else None,
                          "rate_missing": bool(qty) and not rate and not amt and not words})
         if not mine:
             continue

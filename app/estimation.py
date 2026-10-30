@@ -1472,6 +1472,12 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
     t = today()
     if kind in ("clientpcs", "variations"):
         row.contract_id = _contract_ok(db, row.project_id, data.get("contract_id"))
+    if kind == "clientpcs" and row.seq:
+        # the same bill saved a second time (Save pressed again after a hiccup): refused, not added twice
+        twin = db.query(EstClientPC).filter(EstClientPC.project_id == row.project_id, EstClientPC.contract_id == row.contract_id,
+                                            EstClientPC.seq == row.seq).all()
+        if any(abs((x.claimed_cum or 0) - (row.claimed_cum or 0)) < 0.01 and x.submitted == row.submitted for x in twin):
+            raise HTTPException(409, f"Bill {row.seq} with these figures is already in the app - it was not added again.")
     if kind == "contracts":
         p = _project(db, row.project_id)
         if not (row.name or "").strip():
@@ -2311,6 +2317,25 @@ def _vo_rows_in(db, p, rows, user_id, cid=None):
     return seq
 
 
+def _vo_new_rows(db, pid, cid, rows):
+    """The variations of a log not already in the app (the same log brought in twice adds nothing twice): matched on
+    the QS log's own number, else on the title with the submitted amount."""
+    have = db.query(EstVariation).filter(EstVariation.project_id == pid)
+    if cid:
+        have = have.filter(EstVariation.contract_id == cid)
+    have = have.all()
+    norm = lambda t: re.sub(r"\s+", " ", str(t or "")).strip().lower()
+    refs = {norm(v.qs_ref) for v in have if (v.qs_ref or "").strip()} | {norm(v.ref) for v in have if (v.ref or "").strip()}
+    keys = {(norm(v.title), r2(v.submitted_amount or 0)) for v in have}
+    out = []
+    for x in rows:
+        ref = norm(x.get("ref"))
+        if (ref and ref in refs) or (norm(x.get("title")), r2(x.get("submitted_amount") or 0)) in keys:
+            continue
+        out.append(x)
+    return out
+
+
 def _vo_take_off(db, p, cid, amount):
     """The contract value already had the accepted variations in it: take them off (the contract's, when it has several)."""
     if cid:
@@ -2357,11 +2382,14 @@ async def vo_import(pid: int, file: UploadFile = File(...), save: int = Form(0),
     if not save:
         return out
     cid = _contract_ok(db, pid, int(contract_id) if str(contract_id).strip().isdigit() else None)
-    _vo_rows_in(db, p, rows, user.id, cid)
-    if take_off_contract and out["approved"]:
-        _vo_take_off(db, p, cid, out["approved"])
+    new = _vo_new_rows(db, pid, cid, rows)
+    _vo_rows_in(db, p, new, user.id, cid)
+    approved_new = _vo_summary(new)["approved"] if new else 0.0
+    if take_off_contract and approved_new:
+        _vo_take_off(db, p, cid, approved_new)
     db.commit()
     out["saved"] = True
+    out["added"], out["skipped"] = len(new), len(rows) - len(new)
     out["contract"] = r2(p.contract_value)
     return out
 
@@ -2424,9 +2452,12 @@ def vo_import_text(pid: int, data: dict = Body(...), db: Session = Depends(get_d
     if not data.get("save"):
         return out
     cid = _contract_ok(db, pid, data.get("contract_id"))
-    _vo_rows_in(db, p, vrows, user.id, cid)
-    if data.get("take_off_contract") and out["approved"]:
-        _vo_take_off(db, p, cid, out["approved"])
+    vnew = _vo_new_rows(db, pid, cid, vrows)
+    _vo_rows_in(db, p, vnew, user.id, cid)
+    approved_new = _vo_summary(vnew)["approved"] if vnew else 0.0
+    if data.get("take_off_contract") and approved_new:
+        _vo_take_off(db, p, cid, approved_new)
+    out["added"], out["skipped"] = len(vnew), len(vrows) - len(vnew)
     db.commit()
     out["saved"] = True
     out["contract"] = r2(p.contract_value)

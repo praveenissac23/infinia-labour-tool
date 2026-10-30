@@ -43,8 +43,10 @@ async function api(path, opt = {}) {
   if (res.status === 401) { signIn(); throw new Error("Please sign in again."); }
   if (!res.ok) {
     let msg = "Something went wrong.";
-    try { const j = await res.json(); msg = typeof j.detail === "string" ? j.detail : msg; } catch (e) { if (res.status === 413) msg = "That file is too big."; }
-    throw new Error(msg);
+    let data = null;
+    try { data = await res.json(); msg = typeof data.detail === "string" ? data.detail : msg; } catch (e) { if (res.status === 413) msg = "That file is too big."; }
+    const err = new Error(msg); err.status = res.status; err.data = data;
+    throw err;
   }
   return res.json();
 }
@@ -208,7 +210,7 @@ function modal(title, fields, onSave, opts = {}) {
   $$("#m-body input").forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); save(); } }));
 }
 // The one confirmation box for every delete in Estimation: says what goes, Cancel / Delete (red).
-function confirmDelete(title, detail = "", ok = "Delete") {
+function confirmDelete(title, detail = "", ok = "Delete", note = "This cannot be undone.") {
   return new Promise(res => {
     let el = document.getElementById("cfm");
     if (!el) {
@@ -218,7 +220,7 @@ function confirmDelete(title, detail = "", ok = "Delete") {
       document.body.appendChild(el);
     }
     $("#cfm-t").textContent = title;
-    $("#cfm-d").innerHTML = (detail ? detail + "<br>" : "") + '<span class="muted">This cannot be undone.</span>';
+    $("#cfm-d").innerHTML = (detail ? detail + "<br>" : "") + (note ? `<span class="muted">${note}</span>` : "");
     $("#cfm-ok").textContent = ok;
     const done = v => { el.classList.add("hide"); document.removeEventListener("keydown", key, true); res(v); };
     const key = e => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); done(false); } };
@@ -648,9 +650,10 @@ function ctrPick() {                     // the contract shown on the Bills tab 
   return (ks.find(k => k.id === id) || ks[0]).id;
 }
 function ctrSet(id) { try { localStorage.setItem("est_ctr_" + ST.pid, id); } catch (e) {} }
-function ctrField(value, label = "Contract") {   // the "which contract" box on a form - only when there are several
+function ctrField(value, label = "Contract", mustPick = false) {   // the "which contract" box on a form - only when there are several
   const ks = CTRS(); if (!ks.length) return null;
-  return { k: "contract_id", label, type: "select", noseg: true, value: value || (ks.length === 1 ? ks[0].id : ctrPick() || ""),
+  // mustPick: a file brought in (a previous bill) names no contract here - the person picks it, it is not taken from the Bills tab
+  return { k: "contract_id", label, type: "select", noseg: true, value: value || (ks.length === 1 ? ks[0].id : mustPick ? "" : ctrPick() || ""),
            options: [["", "- Pick the contract -"], ...ks.map(k => [k.id, k.name + (k.ref ? " · " + k.ref : "")])],
            tip: "This project is under several agreements with the client - each has its own bills, certificates and variations." };
 }
@@ -1513,7 +1516,7 @@ async function voImport(file) {
   let r; try { r = await send(false); } catch (e) { return fail(e); }
   const by = Object.entries(r.by_status).map(([k, n]) => `${st(k)} ${n}`).join(" ");
   const orig = r2(r.contract - r.approved);
-  modal(`Import ${file.name}`, [], async () => { const off = $("#vo-off") && $("#vo-off").checked; const x = await send(true, off); await reload(); toast(`${x.rows} variations added${off ? " - contract set to " + money(x.contract, false) : ""}`); }, {
+  modal(`Import ${file.name}`, [], async () => { const off = $("#vo-off") && $("#vo-off").checked; const x = await send(true, off); await reload(); toast(`${x.added ?? x.rows} variations added${x.skipped ? ` - ${x.skipped} already in the app, not added again` : ""}${off ? " - contract set to " + money(x.contract, false) : ""}`, { ms: x.skipped ? 7000 : 2600 }); }, {
     wide: true, save: `Add ${r.rows} variations`,
     top: `${CTRS().length ? `<div class="frm"><div class="f full"><label for="vo-ctr">These variations are for the contract</label><select id="vo-ctr"><option value="">- Pick the contract -</option>${CTRS().map(k => `<option value="${k.id}" ${k.id === ctrPick() ? "selected" : ""}>${esc(k.name)}</option>`).join("")}</select></div></div>` : ""}${r.have ? `<div class="warn">This project already has ${r.have} variation(s). These are added after them - nothing is replaced.</div>` : ""}
       <div class="strip"><div class="fig"><div class="l">Lines</div><div class="v">${r.rows}</div></div><div class="fig green"><div class="l">Approved</div><div class="v">${money(r.approved, false)}</div></div><div class="fig"><div class="l">Submitted</div><div class="v">${money(r.submitted, false)}</div></div>${r.absorbed ? `<div class="fig"><div class="l">Absorbed</div><div class="v">${money(r.absorbed, false)}</div></div>` : ""}</div>

@@ -132,7 +132,7 @@ function prevCpcForm(x) {
   const remarks = [`Previous record: ${x.file.name}`, f.bill_label ? `bill ${f.bill_label}` : "", f.previous != null ? `previous payments ${money(f.previous, false)}` : "",
                    f.vat != null ? `VAT ${money(f.vat, false)}` : "", f.authority ? `authority fees ${money(f.authority, false)}` : "", extra, f.total != null ? `amount due ${money(f.total, false)}` : ""].filter(Boolean).join(" · ");
   modal(`Previous bill - ${x.file.name}`, [
-    ...[ctrField("", "Bill for the contract")].filter(Boolean),
+    ...[ctrField("", "Bill for the contract", true)].filter(Boolean),
     { k: "seq", label: "Bill / certificate no.", type: "num", value: f.seq ?? "", tip: "The bill's own number - the bills are kept in this order." },
     { k: "pc_type", label: "Type", type: "select", options: ["Interim", "Advance", "Final"], value: f.pc_type || "Interim" },
     { k: "submitted", label: "Submitted on", type: "date", value: f.submitted || "" },
@@ -154,7 +154,8 @@ function prevCpcForm(x) {
     ["submitted", "period_to", "certified_on"].forEach(k => { if (!d[k]) d[k] = null; });
     if (!d.seq) delete d.seq;
     await POST("/store/est/clientpcs", d);
-    if (xl && $("#pv-fmt") && $("#pv-fmt").checked) await prevAsFormat(x.file, d.contract_id);
+    // the bill is saved: a problem keeping its workbook as the format is said, never a reason to save the bill twice
+    if (xl && $("#pv-fmt") && $("#pv-fmt").checked) { try { await prevAsFormat(x.file, d.contract_id); } catch (e) { toast("Bill saved. The workbook was not kept as the bill format: " + e.message, { err: true, ms: 9000 }); } }
     await reload(); toast(`Bill ${v.seq || ""} saved`);
   }, { wide: true, save: "Save bill",
        top: `${dup ? `<div class="warn">Bill ${esc(String(f.seq))} is already in the app - saving adds it again. Skip it if it is the same bill.</div>` : ""}${prevChecks(x.read)}`,
@@ -167,16 +168,10 @@ function prevLatest(x, kind) {           // the highest bill no. among the files
   return all.every(y => n(y) <= n(x) || !y.read);
 }
 async function prevAsFormat(file, contractId) {
-  const fd = new FormData(); fd.append("project_id", ST.pid); fd.append("name", file.name.replace(/\.xls[xm]?$/i, ""));
-  if (contractId) fd.append("contract_id", contractId);
-  const PART = 700 * 1024;
-  if (file.size > PART) {
-    const id = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, "0")).join(""), n = Math.ceil(file.size / PART);
-    for (let i = 0; i < n; i++) { const pf = new FormData(); pf.append("upload_id", id); pf.append("index", i); pf.append("file", file.slice(i * PART, (i + 1) * PART), "part"); await api("/store/est/ipa/format/part", { method: "POST", body: pf }); }
-    fd.append("upload_id", id); fd.append("parts", n); fd.append("filename", file.name);
-  } else fd.append("file", file);
-  const r = await api("/store/est/ipa/format", { method: "POST", body: fd });
-  toast(`Bill format kept: ${r.lines} lines - the next bill starts from it (Bills tab)`, { ms: 5000 });
+  const r = await sendBillFormat(file, { contract_id: contractId });
+  if (!r) { toast("Not kept as the bill format - the bill itself is saved", { ms: 5000 }); return; }
+  const gaps = formatGaps(r);
+  toast(`Bill format kept: ${r.lines} lines - the next bill starts from it (Bills tab).${gaps}`, { ms: gaps ? 15000 : 5000, err: !!gaps });
 }
 
 // ---- a subcontractor payment certificate ----------------------------------------------------------------------

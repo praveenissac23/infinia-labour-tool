@@ -19,7 +19,7 @@ import re
 
 import openpyxl
 
-TITLE = re.compile(r"^\s*(\d{1,2})\s*\.\s*(.+)$")
+TITLE = re.compile(r"^\s*(\d{1,2})\s*[.\-)_ ]\s*([A-Za-z].*)$")     # "1.PRELIM", "2 SUBSTR", "3-SUPER", "4) FINISHES"
 SECTION = re.compile(r"^\s*([A-Z])\s*[.)]\s*(.+)$")
 
 
@@ -37,10 +37,12 @@ def _n(v):
     if isinstance(v, (int, float)):
         return float(v)
     t = str(v).replace(",", "").replace("AED", "").strip()
+    neg = t.startswith("(") and t.endswith(")")            # (2,500.00) is a minus figure, as accountants write it
     try:
-        return float(t)
+        x = float(t.strip("()").strip())
     except ValueError:
         return None
+    return -x if neg else x
 
 
 SMALL = {"And": "and", "Of": "of", "For": "for", "To": "to", "In": "in", "Ac": "AC", "Mep": "MEP", "Rcc": "RCC", "Ss": "SS", "Pt": "PT", "Ff": "FF", "Fa": "FA"}
@@ -145,12 +147,21 @@ def read_internal_boq(data: bytes):
     wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True, read_only=False)
     lines, bills, notes = [], [], []
     summary, summary_total, summary_sheet = _summary(wb)
+    seen = set()
     for ws in wb.worksheets:
         m = TITLE.match(ws.title)
         if not m:
             continue
+        if ws.sheet_state != "visible":
+            notes.append(f"Sheet {ws.title} is hidden in the workbook - not brought in.")
+            continue
         num = int(m.group(1))
-        rows = [list(r) + [None] * 4 for r in ws.iter_rows(values_only=True)]
+        seen.add(num)
+        # rows hidden in the workbook (options, old figures) are not part of the BOQ
+        hidden = {i for i, d in ws.row_dimensions.items() if d.hidden}
+        rows = [list(r) + [None] * 4 for i, r in enumerate(ws.iter_rows(values_only=True), start=1) if i not in hidden]
+        if hidden:
+            notes.append(f"{ws.title}: {len(hidden)} hidden row(s) left out.")
         if not rows:
             continue
         title = next((_s(r[0]) for r in rows[:3] if TITLE.match(_s(r[0]))), "")
@@ -242,7 +253,11 @@ def read_internal_boq(data: bytes):
     if not lines:
         raise ValueError("No BOQ lines found. Upload the internal BOQ workbook (sheets 1.PRELIM, 2.SUBSTR ...).")
     total = round(sum(x["amount"] for x in lines if not x["scope"]), 2)
-    if summary_total is not None and abs(total - round(summary_total, 2)) > 0.005:
+    # a bill on the summary with no sheet read: said plainly - its value is never put in as a "discount"
+    missing = [(n, v) for n, (v, _w, _nt) in summary.items() if n not in seen and v]
+    for n, v in missing:
+        notes.append(f"The summary lists bill {n} ({v:,.2f}) but no sheet for it was read - check the sheet name (it should start with {n}.)")
+    if summary_total is not None and abs(total - round(summary_total, 2)) > 0.005 and not missing:
         d = round(summary_total - total, 2)
         lines.append({"bill": "99. Summary", "section": "", "code": "", "description": "Discount / rounding as per summary total",
                       "unit": "", "qty": 0.0, "rate": 0.0, "amount": d, "remark": "as per summary", "scope": ""})
