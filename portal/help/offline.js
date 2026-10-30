@@ -38,7 +38,8 @@
   const mount = () => { document.body.appendChild(bar); document.body.appendChild(list); };
   if (document.body) mount(); else addEventListener("DOMContentLoaded", mount);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const hm = t => { const d = new Date(t); return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) + " " + d.toTimeString().slice(0, 5); };
+  const p2 = n => String(n).padStart(2, "0");      // dd/mm/yyyy HH:mm, as every date in the app reads
+  const hm = t => { const d = new Date(t); return `${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${d.getFullYear()} ${d.toTimeString().slice(0, 5)}`; };
 
   function draw() {
     if (!bar) return;

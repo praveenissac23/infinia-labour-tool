@@ -19,7 +19,8 @@ function m0(v) { const n = Number(v || 0); return n.toLocaleString("en-US", { ma
 function aed(v) { return money(v, false); }      // full figures, as everywhere else in the app
 function r2(x) { return Math.round((Number(x || 0) + Number.EPSILON) * 100) / 100; }
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-function dt(s) { if (!s) return ""; const [y, m, d] = s.slice(0, 10).split("-"); return `${+d}-${MON[+m - 1]}-${y.slice(2)}`; }
+// Every date on screen reads dd/mm/yyyy (30/10/2026). Display only - the API keeps ISO.
+function dt(s) { if (!s) return ""; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s)); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(s); }
 function today() { return (ST.meta && ST.meta.today) || new Date().toISOString().slice(0, 10); }
 function pad(n, w = 3) { return String(n).padStart(w, "0"); }
 function h(html) { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; }

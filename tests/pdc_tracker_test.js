@@ -53,9 +53,11 @@ const plus = n => iso(new Date(today.getTime() + n * 864e5));
   ck('grid: monthly totals and the grand total add up', Math.abs(g.grand - sumCells) < 0.01 && Math.abs(g.grand - (g.overdue + g.totals.reduce((x, y) => x + y, 0))) < 0.01, [g.grand, sumCells]);
   const dmy = isoD => { const d = new Date(isoD + 'T00:00:00Z'); return `${String(d.getUTCDate()).padStart(2, '0')}-${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })}-${String(d.getUTCFullYear()).slice(2)}`; };
   const rentLabel = dmy(plus(14)), seoLabel = dmy(plus(-2));
+  const scr = isoD => isoD.split('-').reverse().join('/');          // the screen writes dd/mm/yyyy
+  const rentScr = scr(plus(14)), seoScr = scr(plus(-2));
   const gtxt = await a.locator('#pdc-gbody').textContent();
-  ck(`screen grid shows the exact cheque date and number under the figure (${rentLabel} #000451)`, gtxt.includes(rentLabel + ' #000451'), gtxt.slice(0, 400));
-  ck('the overdue figure shows its date too', gtxt.includes(seoLabel + ' #000466'));
+  ck(`screen grid shows the exact cheque date and number under the figure (${rentScr} #000451)`, gtxt.includes(rentScr + ' #000451'), gtxt.slice(0, 400));
+  ck('the overdue figure shows its date too', gtxt.includes(seoScr + ' #000466'));
   await a.screenshot({ path: SH + 'pdc-1-grid.png', fullPage: true });
   // Clear / list
   const des = (await api(a, '/employees/pdc')).d.rows.find(r => /Desarch/.test(r.payee));

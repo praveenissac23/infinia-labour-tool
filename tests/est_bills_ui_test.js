@@ -72,7 +72,7 @@ const xls = fs.readdirSync(D).find(n => /914_MEP.*\.xls$/.test(n));
   ck('cover: project, client, payment summary and words', cv.includes('SOBHA HARTLAND') && cv.includes('ASIF') && cv.includes('Total Amount due for Payment') && /DIRHAMS/i.test(cv), cv.slice(0, 300));
   ck('cover total = side panel total', cv.includes((await due()).replace('AED ', '')));
   await p.fill('#cv-date', '2026-10-25'); await p.dispatchEvent('#cv-date', 'change'); await sleep(1500);
-  ck('issue date saved', (await p.textContent('#ipa-nav [data-step="cover"] small')).includes('25-Oct-26'));
+  ck('issue date saved', (await p.textContent('#ipa-nav [data-step="cover"] small')).includes('25/10/2026'));
   // who signs: change the preparer, upload his signature
   ck('cover lists who prepares / checks / approves, with names and designations', (await p.$$('tr[data-sg]')).length >= 2 && (await p.$$eval('.ipa-sgt', a => a.map(x => x.value))).includes('Senior Contracts Manager'));
   const sgRow = (await p.$$('tr[data-sg]'))[0];

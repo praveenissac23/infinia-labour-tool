@@ -604,7 +604,8 @@ const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","
 
 function esc(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function money(v) { return Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function dmy(iso) { if (!iso) return ""; const [y, m, d] = String(iso).slice(0, 10).split("-"); return `${parseInt(d, 10)} ${MON[parseInt(m, 10) - 1]} ${y}`; }
+// Every date on screen reads dd/mm/yyyy (30/10/2026).
+function dmy(iso) { if (!iso) return ""; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso)); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso); }
 function or(v, alt) { return (v === "" || v === null || v === undefined) ? `<span class="nil">${alt || "—"}</span>` : esc(v); }
 function status(kind, text) { const el = document.getElementById("status"); el.className = "status " + (text ? kind : ""); el.textContent = text || ""; if (text && kind === "ok") setTimeout(() => { if (el.textContent === text) status("", ""); }, 4000); }
 function errText(e) { const d = e && e.body && e.body.detail; return typeof d === "string" ? d : (d ? JSON.stringify(d) : "Something went wrong."); }
@@ -1068,7 +1069,7 @@ function setBdayGroup(g) { P.bdGroup = g; segSet(document.getElementById("bd-gro
 async function loadBday() {
   let d = { rows: [], missing: 0 };
   try { d = await apiCall(`/employees/people/birthdays/upcoming?group=${P.bdGroup || ""}`); } catch (e) { status("warn", errText(e)); }
-  const wk = iso => new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" });
+  const wk = iso => `${new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short" })} ${dmy(iso)}`;
   document.getElementById("bd-count").innerHTML = `${d.rows.length} people, next birthday first.` +
     (d.missing ? ` <b>${d.missing}</b> still have no date of birth on file - ${P.bdGroup === "client" ? "click + Client birthday or Edit to add it" : "add it (as per passport) under Identity to include them"}.` : "");
   if (P.bdGroup === "client") { // clients with no date yet, so it can be filled in
@@ -1122,11 +1123,9 @@ function vacYear(step) { P.vacYear = (P.vacYear || new Date().getFullYear()) + s
 const LC_DAY = 86400000;
 const lcDay = iso => { const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number); return Math.round(Date.UTC(y, m - 1, d) / LC_DAY); };
 const lcIso = n => new Date(n * LC_DAY).toISOString().slice(0, 10);
-const lcDm = n => { const d = new Date(n * LC_DAY); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`; };
+const lcDm = n => dmy(lcIso(n));
 function lcRange(a, b) {
-  const A = new Date(a * LC_DAY), B = new Date(b * LC_DAY);
   if (a === b) return lcDm(a);
-  if (A.getUTCMonth() === B.getUTCMonth() && A.getUTCFullYear() === B.getUTCFullYear()) return `${A.getUTCDate()} – ${lcDm(b)}`;
   return `${lcDm(a)} – ${lcDm(b)}`;
 }
 const LC_COLS = ["#2F6FA8", "#7B5EA7", "#2E9E5B", "#C0392B", "#B8860B", "#E07A3F", "#16857A", "#8E4B6E", "#4F6D8F", "#9C6B30"];

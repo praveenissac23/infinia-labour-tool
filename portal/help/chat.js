@@ -235,22 +235,22 @@
   pane.querySelectorAll("[data-f]").forEach(b => b.onclick = () => { S.filter = b.dataset.f; pane.querySelectorAll("[data-f]").forEach(x => x.classList.toggle("on", x === b)); drawList(); });
 
   // ---- time words, the way WhatsApp writes them -------------------------------------------------------------
-  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const dmy = d => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;   // 30/10/2026
   const hm = d => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const dayKey = d => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
   const yest = () => { const y = new Date(); y.setDate(y.getDate() - 1); return y; };
   function dayWord(d) { const t = new Date();
     if (dayKey(d) === dayKey(t)) return "Today"; if (dayKey(d) === dayKey(yest())) return "Yesterday";
     if ((t - d) < 6 * 86400000) return d.toLocaleDateString("en-GB", { weekday: "long" });
-    return `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}`; }
+    return dmy(d); }
   function listTime(iso) { if (!iso) return ""; const d = new Date(iso), t = new Date();
     if (dayKey(d) === dayKey(t)) return hm(d); if (dayKey(d) === dayKey(yest())) return "Yesterday";
     if ((t - d) < 6 * 86400000) return d.toLocaleDateString("en-GB", { weekday: "long" });
-    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; }
+    return dmy(d); }
   function lastSeen(iso) { if (!iso) return "offline"; const d = new Date(iso);
     if (dayKey(d) === dayKey(new Date())) return `last seen today at ${hm(d)}`;
     if (dayKey(d) === dayKey(yest())) return `last seen yesterday at ${hm(d)}`;
-    return `last seen ${d.getDate()} ${MON[d.getMonth()]} at ${hm(d)}`; }
+    return `last seen ${dmy(d)} at ${hm(d)}`; }
 
   // ---- the chats list ----------------------------------------------------------------------------------------------
   const userBy = id => S.users.find(u => u.id === id) || {};

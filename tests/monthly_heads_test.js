@@ -10,7 +10,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await p.goto(B + '/'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()'); await sleep(3000);
     await p.goto(B + '/?p=payroll'); await sleep(2500);
     await p.evaluate(() => switchScreen('monthly')); await sleep(1500);
-    await p.evaluate(() => { const s = document.querySelector('#screen-monthly select'); if (s) { const o = [...s.options].find(x => /Oct 2026/.test(x.text)); if (o) { s.value = o.value; s.dispatchEvent(new Event('change')); } } }); await sleep(1500);
+    await p.evaluate(() => { const s = document.querySelector('#screen-monthly select'); if (s) { const o = [...s.options].find(x => /25\/10\/2026/.test(x.text)); if (o) { s.value = o.value; s.dispatchEvent(new Event('change')); } } }); await sleep(1500);
     await p.evaluate(() => { const b = [...document.querySelectorAll('#screen-monthly button')].find(x => /^Preview$/.test(x.textContent.trim())); if (b) b.click(); }); await sleep(3000);
     const r = await p.evaluate(() => {
       const ths = [...document.querySelectorAll('#monthly-preview-slot thead th')]; const out = [];

@@ -18,18 +18,19 @@ function isoDay(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2
 function nowLocal() { return new Date(); }
 function parseDue(s) { if (!s) return null; const [d, t] = s.split("T"); const [y, m, dd] = d.split("-").map(Number); const [hh, mm] = (t || "00:00").split(":").map(Number); return new Date(y, m - 1, dd, hh || 0, mm || 0); }
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// Every date on screen reads dd/mm/yyyy (30/10/2026); with a time, dd/mm/yyyy HH:mm (24h).
+function dmy(d) { return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`; }
 function fmtDue(s, withTime = true) {
   const d = parseDue(s); if (!d) return "";
-  const y = d.getFullYear() !== new Date().getFullYear() ? `, ${d.getFullYear()}` : "";
-  const t = withTime && s.includes("T") ? `, ${((d.getHours() + 11) % 12) + 1}:${pad2(d.getMinutes())} ${d.getHours() < 12 ? "AM" : "PM"}` : "";
-  return `${MON[d.getMonth()]} ${d.getDate()}${y}${t}`;
+  const t = withTime && s.includes("T") ? ` ${pad2(d.getHours())}:${pad2(d.getMinutes())}` : "";
+  return `${dmy(d)}${t}`;
 }
 function ago(iso) {
   if (!iso) return ""; const d = new Date(iso), s = (Date.now() - d) / 1000;
   if (s < 60) return "just now"; if (s < 3600) return `${Math.floor(s / 60)} minute${s < 120 ? "" : "s"} ago`;
   if (s < 86400) return `${Math.floor(s / 3600)} hour${s < 7200 ? "" : "s"} ago`;
   if (s < 86400 * 2) return `yesterday at ${((d.getHours() + 11) % 12) + 1}:${pad2(d.getMinutes())} ${d.getHours() < 12 ? "AM" : "PM"}`;
-  return `${MON[d.getMonth()]} ${d.getDate()}${d.getFullYear() !== new Date().getFullYear() ? ", " + d.getFullYear() : ""}, ${((d.getHours() + 11) % 12) + 1}:${pad2(d.getMinutes())} ${d.getHours() < 12 ? "AM" : "PM"}`;
+  return `${dmy(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 function dueState(c) {
   if (!c.due) return "";

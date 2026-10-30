@@ -58,7 +58,8 @@ textarea{height:80px;resize:vertical}
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const money = v => Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const when = t => { if (!t) return ""; const d = new Date(t); return isNaN(d) ? t : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) + " " + t.slice(11, 16); };
+  // dd/mm/yyyy HH:mm, as every date in the app reads
+  const when = t => { if (!t) return ""; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t); return m ? `${m[3]}/${m[2]}/${m[1]}` + (t.length > 11 ? " " + t.slice(11, 16) : "") : t; };
   let TOKEN = null;
   try { TOKEN = sessionStorage.getItem("infinia_token") || localStorage.getItem("infinia_keep"); } catch (e) {}
   const q = new URLSearchParams(location.search);

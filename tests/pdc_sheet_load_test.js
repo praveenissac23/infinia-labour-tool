@@ -16,7 +16,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('Oct / Nov / Dec / Jan totals as on the sheet', JSON.stringify(g.totals) === JSON.stringify([640093.92, 448784.81, 720590, 380000]), g.totals);
   ck('grand total 2,189,468.73 = the four month totals (the sheet showed 2,189,025.73 - it missed Al Refada 443.00, whose row total was blank)', g.grand === 2189468.73, g.grand);
   const gt = await p.locator('#pdc-gbody').textContent();
-  ck('dated ones show their date (01-Dec-26, 05-Dec-26, 19-Oct-26)', ['01-Dec-26', '05-Dec-26', '19-Oct-26'].every(x => gt.includes(x)));
+  ck('dated ones show their date (01/12/2026, 05/12/2026, 19/10/2026)', ['01/12/2026', '05/12/2026', '19/10/2026'].every(x => gt.includes(x)));
   ck('the rest say "date to fill"', (gt.match(/date to fill/g) || []).length === 18, (gt.match(/date to fill/g) || []).length);
   const s = (await api('/employees/pdc')).summary;
   ck('a Date-to-fill box: 18 cheques', s.no_date === 18 && (await p.locator('.exp-card[data-k="nodate"]').count()) === 1, s.no_date);

@@ -14,7 +14,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await p.evaluate(() => { if (typeof switchScreen === 'function' && !document.querySelector('#screen-livecard.active')) switchScreen('livecard'); }); await sleep(2500);
     const n = await p.$$eval('#livecard-worker-body tr.clickable-row', x => x.length);
     const cnt = await p.textContent('#lc-count').catch(() => '');
-    await p.evaluate(() => { const s = document.getElementById('livecard-cycle'); const o = [...s.options].find(x => /Oct 2026$/.test(x.text) || /October 2026/.test(x.value)); if (o) { s.value = o.value; s.dispatchEvent(new Event('change')); } }); await sleep(2000);
+    await p.evaluate(() => { const s = document.getElementById('livecard-cycle'); const o = [...s.options].find(x => /25\/10\/2026$/.test(x.text) || /October 2026/.test(x.value)); if (o) { s.value = o.value; s.dispatchEvent(new Event('change')); } }); await sleep(2000);
     await p.click('#livecard-worker-body tr.clickable-row').catch(() => {}); await sleep(2500);
     const card = await p.evaluate(() => { const g = document.querySelector('#livecard-detail .grid-wrap'); return g ? { inner: g.scrollHeight - g.clientHeight } : null; });
     await p.screenshot({ path: `${SH}${u}_${w}.png` });

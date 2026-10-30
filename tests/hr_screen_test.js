@@ -178,7 +178,7 @@ const CYCLE_MONTH = '2026-08';
   }
   const lv = await p.locator('#hr-leave-body').textContent();
   ck("the month's first sick day shows paid and the second deducted",
-     /5 Aug 2026[\s\S]*Paid/.test(lv) && /6 Aug 2026[\s\S]*Deducted/.test(lv), lv.slice(0, 300));
+     /05\/08\/2026[\s\S]*Paid/.test(lv) && /06\/08\/2026[\s\S]*Deducted/.test(lv), lv.slice(0, 300));
 
   await p.evaluate("hrTab('payroll')"); await p.waitForTimeout(500);
   let L1 = await cycleLine('BT001');
@@ -217,8 +217,8 @@ const CYCLE_MONTH = '2026-08';
   ck('and the form says how many days', (await p.locator('#hr-leave-hint').textContent()).includes('3 calendar days'));
   await p.fill('#hr-vac-ticket', '1200');
   await p.click('#hr-leave-save'); await p.waitForTimeout(1300);
-  ck('the vacation shows as one line, 20-22 Aug',
-     (await p.locator('#hr-leave-body').textContent()).includes('20-22 Aug 2026'),
+  ck('the vacation shows as one line, 20/08/2026 - 22/08/2026',
+     (await p.locator('#hr-leave-body').textContent()).includes('20/08/2026 - 22/08/2026'),
      await p.locator('#hr-leave-body').textContent());
   await p.evaluate("hrTab('payroll')"); await p.waitForTimeout(400);
   let L2 = await cycleLine('BT002');
@@ -291,14 +291,14 @@ const CYCLE_MONTH = '2026-08';
   await p.click('text=Record repayment'); await p.waitForTimeout(1200);
   const hist = await p.locator('#hr-loan-body').textContent();
   ck('a repayment is recorded in the page with its date - no pop-up',
-     hist.includes('18 Aug 2026') && hist.includes('Paid at the office'), hist.slice(0, 300));
+     hist.includes('18/08/2026') && hist.includes('Paid at the office'), hist.slice(0, 300));
   ck('and the balance drops: 2,100.00', hist.includes('2,100.00'));
   const repId = await p.evaluate(() => HR_LOANS.find(l => l.emp_no === 'BT001').repayments
                                   .find(r => r.notes === 'Paid at the office').id);
   await p.evaluate(([l, r]) => hrRepEdit(l, r), [loanId, repId]); await p.waitForTimeout(300);
   await p.fill('#hr-rep-date', '2026-08-19');
   await p.click('text=Save changes'); await p.waitForTimeout(1200);
-  ck('its date can be corrected', (await p.locator('#hr-loan-body').textContent()).includes('19 Aug 2026'));
+  ck('its date can be corrected', (await p.locator('#hr-loan-body').textContent()).includes('19/08/2026'));
   p.evaluate(r => hrRepDelete(r), repId);
   await ask();
   ck('and it can be removed, putting the balance back',
