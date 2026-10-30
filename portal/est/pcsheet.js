@@ -83,7 +83,7 @@ async function scheduleEditor(sid) {
 // checked against its own total row, then saved - and opened in the editor for any change.
 async function importItems(sid, file, after) {
   if (/\.(pdf|docx|jpe?g|png)$/i.test(file.name)) return importItemsDoc(sid, file, after);
-  const send = async (save, mode) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace"); return api(`/store/est/subs/${sid}/items/import`, { method: "POST", body: fd }); };
+  const send = async (save, mode) => { const fd = new FormData(); await addFile(fd, file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace"); return api(`/store/est/subs/${sid}/items/import`, { method: "POST", body: fd }); };
   let r; try { toast("Reading " + file.name + " ..."); r = await send(false); } catch (e) { return fail(e); }
   const ok = c => c ? (c.ok ? `<span class="st g">= sheet total</span>` : `<span class="st r">sheet says ${money(c.sheet, false)}</span>`) : `<span class="small muted">no total row</span>`;
   const ML = { pct: "% done", size: "size", qty: "quantity" };

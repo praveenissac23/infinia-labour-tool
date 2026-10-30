@@ -2074,8 +2074,20 @@ def _boq_key(code, desc):
     return ((code or "").strip().lower(), re.sub(r"\s+", " ", (desc or "").strip().lower()))
 
 
+async def upload_data(file, upload_id, parts, filename, user):
+    """The uploaded file's bytes and name - sent whole, or in pieces for a big file (the web server takes about 1 MB a
+    request; the pieces go up first to /store/est/ipa/format/part and are put together here)."""
+    if file is not None:
+        return await file.read(), (file.filename or "")
+    if not upload_id:
+        raise HTTPException(400, "Pick the file.")
+    import est_bills
+    return est_bills._joined(user.id, upload_id, int(parts or 0)), (filename or "")
+
+
 @router.post("/store/est/projects/{pid}/boq-import")
-async def boq_import(pid: int, file: UploadFile = File(...), save: int = Form(0), mode: str = Form("replace"),
+async def boq_import(pid: int, file: UploadFile = File(None), save: int = Form(0), mode: str = Form("replace"),
+                     upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""),
                      db: Session = Depends(get_db), user: models.User = VIEW):
     """The estimation team's internal BOQ workbook (1.PRELIM ... 20. SPECIALIZED ITEMS). The first
     call only reads it and shows what will come in; save=1 puts the lines on the project.
@@ -2083,7 +2095,7 @@ async def boq_import(pid: int, file: UploadFile = File(...), save: int = Form(0)
     on any line that comes back (same item no. and description); mode=add puts them after."""
     import est_boqimport
     p = _project(db, pid)
-    data = await file.read()
+    data, fname = await upload_data(file, upload_id, parts, filename, user)
     if len(data) > MAX_FILE:
         raise HTTPException(413, "That file is over 25 MB.")
     if not data[:2] == b"PK":
@@ -2094,7 +2106,7 @@ async def boq_import(pid: int, file: UploadFile = File(...), save: int = Form(0)
         raise HTTPException(400, str(e))
     except Exception:
         raise HTTPException(400, "That workbook could not be read. Upload the internal BOQ as .xlsx (sheets 1.PRELIM, 2.SUBSTR ...).")
-    return _boq_take(db, p, r, save, mode, user, file.filename or "")
+    return _boq_take(db, p, r, save, mode, user, fname)
 
 
 @router.post("/store/est/projects/{pid}/boq-import-text")
@@ -2360,7 +2372,8 @@ def _vo_summary(rows):
 
 
 @router.post("/store/est/projects/{pid}/variations/import")
-async def vo_import(pid: int, file: UploadFile = File(...), save: int = Form(0), take_off_contract: int = Form(0), contract_id: str = Form(""),
+async def vo_import(pid: int, file: UploadFile = File(None), save: int = Form(0), take_off_contract: int = Form(0), contract_id: str = Form(""),
+                    upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""),
                     db: Session = Depends(get_db), user: models.User = VIEW):
     """The variation log Excel (Ref.No, Description, Submitted / Revised / Accepted /
     Absorbed amount, dates, Claimed in PC, Remarks; the OHP sheet too). First call
@@ -2369,7 +2382,7 @@ async def vo_import(pid: int, file: UploadFile = File(...), save: int = Form(0),
     counted twice."""
     import est_voimport
     p = _project(db, pid)
-    data = await file.read()
+    data, _fname = await upload_data(file, upload_id, parts, filename, user)
     if len(data) > MAX_FILE:
         raise HTTPException(413, "That file is over 25 MB.")
     try:

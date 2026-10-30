@@ -1272,7 +1272,7 @@ def calculate(model, inputs=None):
 def check_against_excel(model):
     """How many formulas give Excel's own figure (the file as saved) - the engine checking itself on a new format."""
     b = Book(model)
-    total = same = 0
+    total = same = mismatch = 0
     bad = []
     for s in model["sheets"]:
         for k, cell in s["cells"].items():
@@ -1284,9 +1284,12 @@ def check_against_excel(model):
             total += 1
             if _same(v, x):
                 same += 1
-            elif len(bad) < 30:
+                continue
+            if x is not None:
+                mismatch += 1                    # Excel saved a figure and this one is not it (no saved figure: nothing to compare)
+            if len(bad) < 30 and x is not None:
                 bad.append({"sheet": s["name"], "cell": f"{get_column_letter(c)}{r}", "formula": "=" + cell["f"], "excel": x, "here": repr(v)})
-    return {"formulas": total, "same": same, "different": bad}
+    return {"formulas": total, "same": same, "different": bad, "mismatch": mismatch}
 
 
 def _same(v, x):

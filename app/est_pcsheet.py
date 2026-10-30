@@ -323,14 +323,15 @@ def paste_items(sid: int, data: dict = Body(...), db: Session = Depends(get_db),
 
 
 @router.post("/store/est/subs/{sid}/items/import")
-async def import_items(sid: int, file: UploadFile = File(...), save: int = Form(0), mode: str = Form("replace"),
+async def import_items(sid: int, file: UploadFile = File(None), save: int = Form(0), mode: str = Form("replace"),
+                       upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""),
                        db: Session = Depends(get_db), user: models.User = VIEW):
     """The item schedule out of an Excel workbook - the agreement BOQ or any payment certificate
     (Appendix A / Bill sheets). Read in memory, never stored. The first call shows every line and
     checks each sheet against its own total row; save=1 puts the lines in (mode replace | add)."""
     import est_itemimport
     s = E._sub_of(db, sid)
-    data = await file.read()
+    data, fname = await E.upload_data(file, upload_id, parts, filename, user)
     if len(data) > E.MAX_FILE:
         raise HTTPException(413, "That file is over 25 MB.")
     if data[:2] != b"PK":
@@ -344,7 +345,7 @@ async def import_items(sid: int, file: UploadFile = File(...), save: int = Form(
     have = db.query(EstSubItem).filter(EstSubItem.sub_id == sid).order_by(EstSubItem.sort, EstSubItem.id).all()
     used = {x[0] for x in db.query(EstPCLine.item_id).filter(EstPCLine.item_id.in_([i.id for i in have] or [-1])).all()}
     out = {k: r[k] for k in ("sheets", "notes", "contract", "certified", "all_checked")}
-    out.update({"lines": len(r["items"]), "existing": len(have), "used": len(used), "value": r2(s.value or 0), "file": file.filename or "",
+    out.update({"lines": len(r["items"]), "existing": len(have), "used": len(used), "value": r2(s.value or 0), "file": fname,
                 "items": [{k: x[k] for k in ("bill", "bill_title", "section", "no", "description", "qty", "unit", "rate", "amount", "measure",
                                             "words", "done_pct", "done_qty", "certified", "rate_missing")} for x in r["items"]]})
     if not save:

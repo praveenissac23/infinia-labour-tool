@@ -1042,12 +1042,12 @@ async def upload_format(project_id: int = Form(...), name: str = Form(""), file:
                                  "(the sheets with the % of work done).")
     # A formula that does not give Excel's own figure here would make every bill from this format wrong: the upload
     # stops and says which, and goes ahead only when the person chooses to (force=1) after checking.
-    if chk["formulas"] and chk["same"] < chk["formulas"] and str(force) != "1":
+    if chk.get("mismatch") and str(force) != "1":
         from fastapi.responses import JSONResponse
-        n = chk["formulas"] - chk["same"]
+        n = chk["mismatch"]
         return JSONResponse(status_code=409, content={
-            "detail": f"{n} of {chk['formulas']} formulas in this workbook do not give Excel's own figure here - bills made from it could be wrong.",
-            "different": chk["different"][:10], "formulas": chk["formulas"], "same": chk["same"]})
+            "detail": f"{n} of {chk['formulas']} formulas in this workbook {'does' if n == 1 else 'do'} not give Excel's own figure here - bills made from it could be wrong.",
+            "different": chk["different"][:10], "formulas": chk["formulas"], "same": chk["same"], "mismatch": chk["mismatch"]})
     f = EstBillFormat(project_id=project_id, contract_id=cid, name=(name or "").strip()[:120] or re.sub(r"\.xlsx?$", "", file.filename or "Bill format", flags=re.I)[:120],
                       filename=(file.filename or "")[:200], data=data, model=json.dumps(model), checked=json.dumps(chk), created_by=user.id)
     db.add(f)

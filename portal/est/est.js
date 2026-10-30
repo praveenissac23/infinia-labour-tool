@@ -50,6 +50,19 @@ async function api(path, opt = {}) {
   }
   return res.json();
 }
+// A file onto a form: whole, or - over 700 KB (the web server takes about 1 MB a request) - in pieces sent first,
+// put together by the server (BOQ, variation log and item schedule imports; bill formats do the same).
+async function addFile(fd, file) {
+  const PART = 700 * 1024;
+  if (!file || file.size <= PART) { fd.append("file", file); return fd; }
+  const id = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, "0")).join(""), n = Math.ceil(file.size / PART);
+  for (let i = 0; i < n; i++) {
+    const pf = new FormData(); pf.append("upload_id", id); pf.append("index", i); pf.append("file", file.slice(i * PART, (i + 1) * PART), "part");
+    await api("/store/est/ipa/format/part", { method: "POST", body: pf });
+  }
+  fd.append("upload_id", id); fd.append("parts", n); fd.append("filename", file.name);
+  return fd;
+}
 const GET = p => api(p), POST = (p, b) => api(p, { method: "POST", body: b || {} }), PATCH = (p, b) => api(p, { method: "PATCH", body: b }),
       DEL = p => api(p, { method: "DELETE" }), PUT = (p, b) => api(p, { method: "PUT", body: b });
 function toast(msg, opts = {}) {
@@ -1323,7 +1336,7 @@ function boqScope(bill, section, now) {
 function isDoc(file) { return /\.(pdf|docx|jpe?g|png|webp)$/i.test(file.name || "") || /^image\//.test(file.type || ""); }
 async function boqImport(file, pid) {
   pid = pid || ST.pid;
-  let send = async (save, mode) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace"); return api(`/store/est/projects/${pid}/boq-import`, { method: "POST", body: fd }); };
+  let send = async (save, mode) => { const fd = new FormData(); await addFile(fd, file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace"); return api(`/store/est/projects/${pid}/boq-import`, { method: "POST", body: fd }); };
   if (isDoc(file)) {                     // a PDF, Word file or scan: read here, only its words are sent
     let d; try { d = await readAgreement(file, m => toast(m)); } catch (e) { return fail(e); }
     send = (save, mode) => POST(`/store/est/projects/${pid}/boq-import-text`, { lines: d.lines, save: save ? 1 : 0, mode: mode || "replace", name: file.name });
@@ -1508,7 +1521,7 @@ function voTable(list) {
 // The QS variation log Excel: shows what will come in, then puts it in.
 async function voImport(file) {
   const cid = () => ($("#vo-ctr") && $("#vo-ctr").value) || "";
-  let send = async (save, off) => { const fd = new FormData(); fd.append("file", file); fd.append("save", save ? "1" : "0"); fd.append("take_off_contract", off ? "1" : "0"); fd.append("contract_id", cid()); return api(`/store/est/projects/${ST.pid}/variations/import`, { method: "POST", body: fd }); };
+  let send = async (save, off) => { const fd = new FormData(); await addFile(fd, file); fd.append("save", save ? "1" : "0"); fd.append("take_off_contract", off ? "1" : "0"); fd.append("contract_id", cid()); return api(`/store/est/projects/${ST.pid}/variations/import`, { method: "POST", body: fd }); };
   if (isDoc(file)) {                     // a PDF, Word file or scan: read here, only its words are sent
     let d; try { d = await readAgreement(file, m => toast(m)); } catch (e) { return fail(e); }
     send = (save, off) => POST(`/store/est/projects/${ST.pid}/variations/import-text`, { lines: d.lines, save: save ? 1 : 0, take_off_contract: off ? 1 : 0, contract_id: cid() || null });

@@ -155,7 +155,8 @@ async function sendBillFormat(file, fields, progress, force) {
   } catch (e) {
     if (e.status !== 409 || !e.data || force) throw e;
     const rows = (e.data.different || []).map(d => `<tr><td>${esc(d.sheet)} ${esc(d.cell)}</td><td class="r">${esc(String(d.excel ?? ""))}</td><td class="r">${esc(String(d.here ?? ""))}</td></tr>`).join("");
-    const go = await confirmDelete(`${e.data.formulas - e.data.same} formula${e.data.formulas - e.data.same === 1 ? "" : "s"} do not match Excel`,
+    const nm = e.data.mismatch || (e.data.formulas - e.data.same);
+    const go = await confirmDelete(`${nm} formula${nm === 1 ? " does" : "s do"} not match Excel`,
       `${esc(e.message)}<div class="tw" style="margin:10px 0;max-height:220px;overflow:auto"><table class="t"><thead><tr><th>Cell</th><th class="r">Excel</th><th class="r">Here</th></tr></thead><tbody>${rows}</tbody></table></div>
        Check these cells in the workbook first. Upload it anyway only if you are sure the figures are right.`, "Upload anyway", "");
     if (!go) return null;

@@ -255,7 +255,8 @@ function prevPcForm(x, keepSub) {
       d.paid_amount = calc.payable; d.remarks = `${d.remarks} · certificate total ${money(f.total, false)} (rounded)`;
     }
     ["inv_date", "received", "measured_on", "issued", "paid_on"].forEach(k => { if (!d[k]) d[k] = null; });
-    d.inv_amount = f.total || 0;
+    // the invoice amount follows the figures as typed on this form (worked out like the certificate), not as first read
+    d.inv_amount = calc && calc.payable != null ? calc.payable : (f.total || 0);
     await POST("/store/est/subpcs", d);
     await reload(); toast(`PC ${pad(seq, 2)} of ${s.name} saved`);
   }, { wide: true, live, save: "Save certificate",

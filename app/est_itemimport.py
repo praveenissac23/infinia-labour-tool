@@ -143,7 +143,11 @@ def read_schedule(data: bytes):
             no = _s(r[cols["no"]]) if "no" in cols else ""
             desc = _s(r[cols["desc"]])
             rowtext = " ".join(_s(x) for x in r[:12]).lower()
-            if re.search(r"\btotal\b", rowtext) and not (desc and _n(r[cols["rate"]]) if "rate" in cols else False):
+            # a total row - not an item that only has the word in it ("Total station survey", with its no. / unit / qty)
+            itemish = bool(no) or ("unit" in cols and _s(r[cols["unit"]])) or ("qty" in cols and _n(r[cols["qty"]]))
+            starts_total = re.match(r"^\s*(sub\s*-?\s*|grand\s+)?total\b", desc, re.I)
+            if re.search(r"\btotal\b", rowtext) and not (desc and _n(r[cols["rate"]]) if "rate" in cols else False) \
+                    and (starts_total or not desc or not itemish):
                 if any(_n(r[cols[k]]) for k in ("amount", "cert_amt") if k in cols):
                     total_row = r
                 if mine:
