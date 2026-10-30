@@ -402,7 +402,35 @@ def _touch(db, board):
         print("touch mirrors:", e)
 
 
+# A card that changes goes to the top of its list - on its own board and on every board that shows it (mirrors,
+# the synced follow board), as Anoop asked: the latest change is always the first card he sees. Not for a card
+# dragged to a place by hand (that keeps the place), nor for watching, voting, a cover or archiving.
+BUMP_KINDS = {"card_desc", "card_due", "card_member_added", "card_member_removed", "card_renamed", "card_complete",
+              "card_incomplete", "checklist_added", "checklist_removed", "comment", "attached", "detached",
+              "item_done", "item_undone", "time_logged"}
+
+
+def _bump(db, card):
+    """Put the card - and every mirror of it - first in its list."""
+    try:
+        root = card.mirror_of or card.id
+        db.flush()
+        for x in db.query(KCard).filter((KCard.id == root) | (KCard.mirror_of == root), KCard.closed == False).all():  # noqa: E712
+            top = (db.query(func.min(KCard.pos)).filter(KCard.list_id == x.list_id, KCard.closed == False, KCard.id != x.id)  # noqa: E712
+                     .scalar())
+            if top is not None and (x.pos is None or x.pos >= top):
+                x.pos = top - 65536
+                if x.board_id != card.board_id:
+                    xb = db.query(KBoard).filter(KBoard.id == x.board_id).first()
+                    if xb:
+                        xb.version = (xb.version or 0) + 1
+    except Exception as e:          # never let the ordering stop the change itself
+        print("kb bump:", e)
+
+
 def _act(db, board, user, kind, card=None, **data):
+    if card is not None and kind in BUMP_KINDS:
+        _bump(db, card)
     db.add(KActivity(board_id=board.id, card_id=card.id if card else None, user_id=user.id if user else None,
                      kind=kind, data=json.dumps(data, default=str)))
     if card is not None:
@@ -1901,8 +1929,14 @@ def edit_card(cid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     return out
 
 
+BUMP_FIELDS = ("title", "desc", "list_id", "board_id", "start", "due", "location", "due_complete", "labels", "members",
+               "fields", "priority", "points", "estimate", "links")
+
+
 def _edit_card(db, user, c, b, payload):
     events = []
+    placed = "pos" in payload                    # dragged to a spot by hand: it stays where it was dropped
+    was = {k: getattr(c, k) for k in BUMP_FIELDS}
     for k in ("labels", "members"):
         add, rem = payload.pop("add_" + k, None), payload.pop("remove_" + k, None)
         if add is not None or rem is not None:
@@ -1955,7 +1989,7 @@ def _edit_card(db, user, c, b, payload):
         events.append(("card_moved", {"list_id": nl.id}))
         events.append(("card_added", {"list_id": nl.id}))
         if "pos" not in payload:
-            c.pos = _end_pos(db, KCard, list_id=nl.id)
+            c.pos = _top_pos(db, KCard, list_id=nl.id)
     if "pos" in payload:
         c.pos = _pos_from(payload, db, KCard, list_id=c.list_id, closed=False)
         _renumber_if_tight(db, KCard, list_id=c.list_id)
@@ -2054,6 +2088,13 @@ def _edit_card(db, user, c, b, payload):
                         c.list_id = fl.id
         c.closed = v
     c.updated_at = _now()
+    if not placed and any(getattr(c, k) != was[k] for k in BUMP_FIELDS):
+        _bump(db, c)
+    elif placed and c.list_id != was["list_id"]:
+        # dragged onto another list: its mirrors elsewhere still come to the top of theirs
+        keep = c.pos
+        _bump(db, c)
+        c.pos = keep
     for ev, ctx in events:
         _run_rules(db, target_board, c, user, ev, **ctx)
     _ensure_member(db, target_board, user)
@@ -2190,6 +2231,7 @@ def add_item(clid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     if not ids:
         raise HTTPException(status_code=400, detail="Type the item first.")
     c.updated_at = _now()
+    _bump(db, c)
     _touch(db, b)
     db.commit()
     return {"ids": ids, "id": ids[0]}
@@ -2202,7 +2244,10 @@ def edit_item(iid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Item gone.")
     cl, c, b = _cl(db, user, it.checklist_id)
     if "text" in payload:
-        it.text = (payload["text"] or "").strip()[:1000] or it.text
+        t = (payload["text"] or "").strip()[:1000] or it.text
+        if t != it.text:
+            _bump(db, c)
+        it.text = t
     if "done" in payload:
         v = bool(payload["done"])
         if v != bool(it.done):
@@ -2237,6 +2282,7 @@ def delete_item(iid: int, db: Session = Depends(get_db), user: models.User = VIE
         return {"ok": True}
     cl, c, b = _cl(db, user, it.checklist_id)
     db.delete(it)
+    _bump(db, c)
     _touch(db, b)
     db.commit()
     return {"ok": True}
