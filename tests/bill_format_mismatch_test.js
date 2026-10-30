@@ -16,7 +16,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await p.click(`#sec button:has-text("${up[0]}")`); await sleep(600); await p.setInputFiles('#fm-file', DIR + '914-IPA-09 mismatch.xlsx'); await p.click('#m-save'); await sleep(3000); };
   await open();
   const box = await p.evaluate(() => { const c = document.getElementById('cfm'); return c && !c.classList.contains('hide') ? c.textContent : null; });
-  ck('upload stops and shows the formula that does not match (cell, Excel 22, here #NAME?)', box && /do not match Excel/.test(box) && /Z1/.test(box) && /22/.test(box) && /#NAME\?/.test(box), box);
+  ck('upload stops and shows the formula that does not match (cell, Excel 22, here #NAME?)', box && /do(es)? not match Excel/.test(box) && /Z1/.test(box) && /22/.test(box) && /#NAME\?/.test(box), box);
   await p.screenshot({ path: '/tmp/claude-0/mismatch.png' });
   await p.click('#cfm-no'); await sleep(800);
   ck('Cancel: nothing kept', (await count()) === n0, [n0, await count()]);
