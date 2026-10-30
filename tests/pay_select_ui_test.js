@@ -14,7 +14,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const ctx = await br.newContext({ viewport: { width: 1600, height: 1000 } });
   const errs = []; const p = await ctx.newPage();
   p.on('pageerror', e => errs.push(String(e).slice(0, 200)));
-  await p.goto(B + '/app-classic.html');
+  await p.goto(B + (process.env.PAGE || '/app.html'));
   await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123');
   await p.evaluate('doLogin()'); await p.waitForSelector('#app-screen', { state: 'visible', timeout: 25000 }); await sleep(1500);
   await p.evaluate(() => { window.__opened = []; window.open = u => { window.__opened.push(u); return null; }; });

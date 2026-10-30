@@ -59,7 +59,7 @@ PAGES = {
         tab("masterdata", "masterdata", "Labour master data")]),
     "payroll": ("Payroll", [
         tab("labourpay", "combine", "Labour payroll", ["combine", "errorcheck", "adjustments", "reports"], subs=[
-            sub("combine", "Salary cards", screen="combine", right="combine", show=["#pg-cards-bar", "#combine-status", "#pg-cards-body"]),
+            sub("combine", "Salary cards", screen="combine", right="combine", show=["#pg-cards-bar", "#combine-status", "#pg-cards-body", "#lab-pay-card"]),
             sub("adjust", "Additions & deductions", screen="combine", right="adjustments", show=["#pg-adj-bar", "#adj-status", "#adj-detail-card", "#adj-all-card"]),
             sub("errorcheck", "Check before you pay", screen="errorcheck"),
             # The month-end labour report sits with the payroll it reports on.
