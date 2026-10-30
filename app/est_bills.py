@@ -977,6 +977,32 @@ def _joined(user_id, upload_id, parts):
     return out
 
 
+@router.get("/store/est/ipa/xls-check")
+def xls_check(user: models.User = E.VIEW):
+    """Read-only: can this server turn an old .xls bill into .xlsx? Runs LibreOffice on a two-cell sheet made
+    on the spot (nothing saved) and says what happened - which program, how long, and any error it printed."""
+    import getpass, shutil, subprocess, time
+    exe = shutil.which("soffice") or shutil.which("libreoffice")
+    out = {"soffice": exe or "", "user": getpass.getuser(), "path": os.environ.get("PATH", "")}
+    if not exe:
+        out["ok"] = False; out["why"] = "LibreOffice is not installed on the server"
+        return out
+    with tempfile.TemporaryDirectory() as d:
+        src = os.path.join(d, "t.csv")
+        with open(src, "w") as f:
+            f.write("a,b\n1,2\n")
+        t = time.time()
+        try:
+            r = subprocess.run([exe, "--headless", "--norestore", f"-env:UserInstallation=file://{d}/lo", "--convert-to", "xlsx",
+                                "--outdir", d, src], capture_output=True, timeout=150, env={**os.environ, "HOME": d})
+            out.update({"rc": r.returncode, "stdout": r.stdout.decode(errors="ignore")[-400:], "stderr": r.stderr.decode(errors="ignore")[-600:]})
+        except Exception as ex:
+            out["error"] = f"{type(ex).__name__}: {ex}"
+        out["seconds"] = round(time.time() - t, 1)
+        out["ok"] = os.path.exists(os.path.join(d, "t.xlsx"))
+    return out
+
+
 @router.post("/store/est/ipa/format")
 async def upload_format(project_id: int = Form(...), name: str = Form(""), file: UploadFile = File(None), contract_id: str = Form(""),
                         upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""),
