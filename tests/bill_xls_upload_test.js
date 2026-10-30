@@ -28,6 +28,25 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(1500);
   const fm = await p.evaluate(async (pid) => (await (await fetch('/store/est/ipa?project_id=' + pid, { headers: { Authorization: 'Bearer ' + sessionStorage.getItem('infinia_token') } })).json()), P).catch(() => null);
   const s = JSON.stringify(fm || '');
+  // the new bill (No 3) from IPA02: the IPA02 line has its submitted date, no "No 3" line for the bill being made
+  await p.evaluate(id => openBill(id, 'pay'), nb[1]); await sleep(2500);
+  await p.evaluate(() => { const b = document.querySelector('#ipa-nav [data-step="pay"]'); if (b) b.click(); }); await sleep(1200);
+  const rows = () => p.$$eval('.ipa-pay tbody tr:not(.tot)', t => t.map(r => [...r.querySelectorAll('input')].map(i => i.value)));
+  let R = await rows();
+  ck('payments: no line for the bill being made (No 3)', !R.some(r => /Payment Application No 3/.test(r[0])), R);
+  const pa2 = R.find(r => /Payment Application No 2/.test(r[0]));
+  ck('payments: the IPA02 line has its submitted date', pa2 && /^\d{4}-\d{2}-\d{2}$/.test(pa2[1]), R);
+  const tot0 = await p.textContent('.ipa-pay tr.tot');
+  // delete a line (the empty "Previous Payments" heading) - confirm in the standard box
+  const n0 = R.length;
+  const i = R.findIndex(r => /Previous Payments/.test(r[0]));
+  await p.click(`.ipa-pay tbody tr:nth-child(${i + 1}) [data-paydel]`); await sleep(500);
+  await p.click('#cdel-ok, .cdel-ok, [data-cdel="ok"], .modal button:has-text("Delete")').catch(async () => { await p.click('button:has-text("Delete") >> nth=-1'); });
+  await sleep(2000);
+  R = await rows();
+  ck('Delete takes the line off the payment summary', R.length === n0 - 1 && !R.some(r => /Previous Payments/.test(r[0])), R);
+  ck('the total of previous payments is unchanged by deleting an empty line', (await p.textContent('.ipa-pay tr.tot')) === tot0, [tot0, await p.textContent('.ipa-pay tr.tot')]);
+  await p.screenshot({ path: '/tmp/claude-0/pay_del.png' });
   ck('kept as .xlsx, listed', /914 MEP IPA02 - R2\.xlsx/.test(s) || /914 MEP IPA02/.test(await p.textContent('body')), s.slice(0, 200));
   await br.close(); console.log(bad ? `${bad} FAILED` : 'ALL PASS'); process.exit(bad ? 1 : 0);
 })();

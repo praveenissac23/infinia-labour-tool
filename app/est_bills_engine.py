@@ -1537,8 +1537,23 @@ def roll_over(model, prev_inputs, prev_values, today=None):
                 return inputs[sh][k]
             x = s["cells"].get(k)
             return None if not x else (x.get("v") if "v" in x else ("=" + x["f"] if "f" in x else None))
-        already = any(label and isinstance(cellv(r, cols["desc"]), str) and re.sub(r"\s+", " ", cellv(r, cols["desc"]).strip().lower()) == label.lower()
-                      for r in range(p["head_row"] + 1, p["total_row"]))
+        def same(r, lab):
+            dv = cellv(r, cols["desc"])
+            return bool(lab) and isinstance(dv, str) and re.sub(r"\s+", " ", dv.strip().lower()) == lab.lower()
+        already = next((r for r in range(p["head_row"] + 1, p["total_row"]) if same(r, label)), None)
+        # the line for last month's bill is already there (typed ahead in the workbook): give it its submitted date
+        if already and cols.get("submitted") and isinstance(last_date, (int, float)) and cellv(already, cols["submitted"]) in (None, ""):
+            inputs.setdefault(sh, {})[f"{already},{cols['submitted']}"] = float(last_date)
+        # a line typed ahead for THIS bill (no money on it) is not a previous payment: cleared on this bill
+        nn = re.sub(r"\s*[-/ ]?\s*R\d+\s*$", "", general(bill_no_next(last_no)).strip(), flags=re.I)
+        label_this = f"Payment Application No {nn}" if re.match(r"^\d", nn) else ""
+        for r in range(p["head_row"] + 1, p["total_row"]):
+            if label_this and same(r, label_this) and cellv(r, cols["amount"]) in (None, "", 0):
+                for c in cols.values():
+                    if cellv(r, c) not in (None, ""):
+                        inputs.setdefault(sh, {})[f"{r},{c}"] = ""
+                if isinstance(cellv(r, 1), (int, float)) and 1 not in cols.values():
+                    inputs.setdefault(sh, {})[f"{r},1"] = ""
         if label and not already:
             for r in range(p["head_row"] + 1, p["total_row"]):
                 dv, av = cellv(r, cols["desc"]), cellv(r, cols["amount"])

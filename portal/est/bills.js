@@ -611,15 +611,31 @@ function ipaDrawPay(m) {
       const filled = p.rows.filter(r => p.cols.some(c => r[c] && r[c].value !== null && r[c].value !== "" && r[c].value !== 0));
       const spare = p.rows.filter(r => !filled.includes(r));
       const show = filled.concat(IPA.addRow === pi && spare[0] ? [spare[0]] : []);
-      return `<div class="ipa-card"><h3>${esc(p.sheet)}</h3><div class="ipa-tw"><table class="ipa-pay"><thead><tr><th style="width:34px">#</th>${p.cols.map(c => `<th class="${c === "amount" ? "r" : ""}">${head[c] || c}</th>`).join("")}</tr></thead><tbody>
-        ${show.map((r, i) => `<tr>${`<td class="muted">${i + 1}</td>`}${p.cols.map(c => payCell(p, r, c)).join("")}</tr>`).join("")}
-        <tr class="tot"><td></td><td colspan="${p.cols.length - 1}">Total of previous payments</td><td class="r">${money(p.total, false)}</td></tr>
+      const canDel = !(IPA.bill.status === "Paid" && !ST.meta.me.admin);
+      return `<div class="ipa-card"><h3>${esc(p.sheet)}</h3><div class="ipa-tw"><table class="ipa-pay"><thead><tr><th style="width:34px">#</th>${p.cols.map(c => `<th class="${c === "amount" ? "r" : ""}">${head[c] || c}</th>`).join("")}${canDel ? '<th style="width:40px"></th>' : ""}</tr></thead><tbody>
+        ${show.map((r, i) => `<tr>${`<td class="muted">${i + 1}</td>`}${p.cols.map(c => payCell(p, r, c)).join("")}${canDel ? `<td class="r"><button class="btn btn-ghost btn-sm" data-paydel="${pi}:${r.r}" title="Delete this line from the payment summary">&#10005;</button></td>` : ""}</tr>`).join("")}
+        <tr class="tot"><td></td><td colspan="${p.cols.length - 1}">Total of previous payments</td><td class="r">${money(p.total, false)}</td>${canDel ? "<td></td>" : ""}</tr>
         </tbody></table></div>
         ${spare.length && IPA.addRow !== pi ? `<button class="btn btn-plain btn-sm" data-addpay="${pi}" style="margin-top:10px">+ Add a payment line</button>` : ""}</div>`;
     }).join("") + nextBtn("pay");
   bindNext(m);
   $$("[data-addpay]", m).forEach(x => x.onclick = () => { IPA.addRow = +x.dataset.addpay; ipaDrawPay(m); const e = $$(".ipa-pay tr:not(.tot)", m).pop(); const i = e && $("input", e); if (i) i.focus(); });
   $$("[data-pk]", m).forEach(bindPayInput);
+  // Delete a line: its bill name, dates and amount are cleared on this bill (the format is not changed), so it
+  // drops off the summary and out of the total; + Add a payment line brings an empty one back.
+  $$("[data-paydel]", m).forEach(x => x.onclick = async () => {
+    const [pi, rr] = x.dataset.paydel.split(":").map(Number), p = IPA.bill.payments[pi], r = p && p.rows.find(y => y.r === rr);
+    if (!r) return;
+    const name = (r.desc && r.desc.value) || "this line";
+    if (!(await confirmDelete(`Delete ${esc(String(name))}?`, "It comes off this bill's payment summary and out of the total of previous payments.", "Delete"))) return;
+    const set = {}; p.cols.forEach(c => { if (r[c]) set[r[c].key] = ""; });
+    if (await save({ set: { [p.sheet]: set } })) {
+      const sn = `${rr},1`;                         // the line's number in the first column, when it is typed
+      if (!p.cols.some(c => r[c] && r[c].key === sn)) { try { await PUT(`/store/est/ipa/bill/${IPA.bill.id}`, { set: { [p.sheet]: { [sn]: "" } } }); } catch (e) {} }
+      IPA.bill = await GET(`/store/est/ipa/bill/${IPA.bill.id}`);
+      toast("Line deleted"); drawBill();
+    }
+  });
 }
 function payCell(p, r, c) {
   const x = r[c]; if (!x) return "<td></td>";
