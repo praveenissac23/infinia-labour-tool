@@ -303,7 +303,7 @@ def shown_rows(model, sheet, inputs):
     for p in (model.get("map") or {}).get("payments", []):
         if p["sheet"] != sheet:
             continue
-        keys = [p["cols"][k] for k in ("desc", "amount") if k in p["cols"]]
+        keys = list(p["cols"].values())             # the bill named, a date or the amount: the line is in use
         for r in range(p["head_row"] + 1, p["total_row"]):
             if any(inp.get(f"{r},{c}") not in (None, "") for c in keys):
                 out.add(r)
@@ -1485,18 +1485,32 @@ def _right(s, r, c):
 
 # ============================================================================ the month's bill
 
+REV_RE = re.compile(r"\s*[-/ (]?\s*\b(R|Rev\.?|Revision)\s*\.?\s*\d+\s*\)?\s*$", re.I)
+
+
+def strip_rev(t):
+    """A bill no. without its revision: '7-R2', 'IPA 07 Rev 2', 'IPA-07 (R2)', 'IPA-7 Rev.1', 'PC-03 R 2' -> the bill."""
+    return REV_RE.sub("", str(t or "").strip())
+
+
+def bill_num_match(t):
+    """The bill's own number in a label: the last number that is not a year ('IPA 07/2026' -> 07)."""
+    ms = list(re.finditer(r"\d+", t or ""))
+    real = [m for m in ms if not (len(m.group(0)) == 4 and 1990 <= int(m.group(0)) <= 2100)]
+    return (real or ms or [None])[-1]
+
+
 def bill_no_next(v):
-    """'9' -> 10, '7-R2' -> 8, 'IPA 08' -> 'IPA 09', 8.0 -> 9."""
+    """'9' -> 10, '7-R2' -> 8, 'IPA 08' -> 'IPA 09', 'IPA 07 Rev 2' -> 'IPA 08', 'IPA 07/2026' -> 'IPA 08/2026', 8.0 -> 9."""
     if isinstance(v, (int, float)):
         return float(int(v) + 1)
-    s = str(v or "").strip()
-    s = re.sub(r"\s*[-/ ]?\s*R\d+\s*$", "", s, flags=re.I)      # a revision suffix goes
-    m = re.search(r"(\d+)(?!.*\d)", s)
+    s = strip_rev(v)                                             # a revision suffix goes
+    m = bill_num_match(s)
     if not m:
         if re.search(r"\bpre[\s-]*final\b", s, re.I):
             return re.sub(r"\bpre[\s-]*final\b", "Final", s, flags=re.I)       # after the pre-final bill: the final bill
         return s
-    n = m.group(1)
+    n = m.group(0)
     return s[:m.start()] + str(int(n) + 1).zfill(len(n)) + s[m.end():]
 
 
@@ -1541,40 +1555,70 @@ def roll_over(model, prev_inputs, prev_values, today=None):
         last_date = prev_values.get(mp["issue_date"]["sheet"], {}).get(f"{mp['issue_date']['r']},{mp['issue_date']['c']}") if mp.get("issue_date") else None
         p = mp["payments"][0]; sh = p["sheet"]; cols = p["cols"]
         s = next(x for x in model["sheets"] if x["name"] == sh)
-        n = general(last_no).strip()
-        n = re.sub(r"\s*[-/ ]?\s*R\d+\s*$", "", n, flags=re.I)
-        label = (f"Payment Application No {n}" if re.match(r"^\d", n) else n) if n else ""      # "Pre Final Bill" by its name
+        n = strip_rev(general(last_no))
         def cellv(r, c):
             k = f"{r},{c}"
             if k in inputs.get(sh, {}):
                 return inputs[sh][k]
             x = s["cells"].get(k)
             return None if not x else (x.get("v") if "v" in x else ("=" + x["f"] if "f" in x else None))
-        def same(r, lab):
+        # every line of the table - a spare row hidden in the workbook is shown once it is filled (shown_rows)
+        rows = list(range(p["head_row"] + 1, p["total_row"]))
+        def num_of(r):
+            """The bill no. a payment line names ("Payment Application No 2 ", "IPA 08", "Payment Certificate No.02")."""
+            dv = cellv(r, cols["desc"])
+            if not isinstance(dv, str) or not re.search(r"[A-Za-z]", dv):
+                return None
+            m_ = bill_num_match(strip_rev(dv))
+            return int(m_.group(0)) if m_ else None
+        # the workbook's own way of naming a bill on this list (the last line that names one): IPA 08 -> IPA 09
+        style = None
+        for r in rows:
+            dv = cellv(r, cols["desc"])
+            if num_of(r) is not None and re.search(r"(payment|ipa|ipc|bill|certificate|application)", dv, re.I):
+                style = strip_rev(dv.strip())
+        def name_for(no):
+            if not no or not re.match(r"^\d", no):
+                return no                                   # "Pre Final Bill" by its name
+            if style:
+                m_ = bill_num_match(style)
+                if m_:
+                    return style[:m_.start()] + str(int(no)).zfill(len(m_.group(0))) + style[m_.end():]
+            return f"Payment Application No {no}"
+        label = name_for(n) if n else ""
+        n_int = int(n) if re.fullmatch(r"\d+", n or "") else None
+        def is_bill(r, no_int, lab):
+            if no_int is not None:
+                return num_of(r) == no_int
             dv = cellv(r, cols["desc"])
             return bool(lab) and isinstance(dv, str) and re.sub(r"\s+", " ", dv.strip().lower()) == lab.lower()
-        already = next((r for r in range(p["head_row"] + 1, p["total_row"]) if same(r, label)), None)
+        already = next((r for r in rows if is_bill(r, n_int, label)), None)
         # the line for last month's bill is already there (typed ahead in the workbook): give it its submitted date
         if already and cols.get("submitted") and isinstance(last_date, (int, float)) and cellv(already, cols["submitted"]) in (None, ""):
             inputs.setdefault(sh, {})[f"{already},{cols['submitted']}"] = float(last_date)
         # a line typed ahead for THIS bill (no money on it) is not a previous payment: cleared on this bill
-        nn = re.sub(r"\s*[-/ ]?\s*R\d+\s*$", "", general(bill_no_next(last_no)).strip(), flags=re.I)
-        label_this = f"Payment Application No {nn}" if re.match(r"^\d", nn) else ""
-        for r in range(p["head_row"] + 1, p["total_row"]):
-            if label_this and same(r, label_this) and cellv(r, cols["amount"]) in (None, "", 0):
+        nn = strip_rev(general(bill_no_next(last_no)))
+        nn_int = int(nn) if re.fullmatch(r"\d+", nn or "") else None
+        for r in rows:
+            if nn_int is not None and num_of(r) == nn_int and cellv(r, cols["amount"]) in (None, "", 0):
                 for c in cols.values():
                     if cellv(r, c) not in (None, ""):
                         inputs.setdefault(sh, {})[f"{r},{c}"] = ""
                 if isinstance(cellv(r, 1), (int, float)) and 1 not in cols.values():
                     inputs.setdefault(sh, {})[f"{r},1"] = ""
         if label and not already:
-            for r in range(p["head_row"] + 1, p["total_row"]):
+            # the first free line after the last one used (never a hidden placeholder, never above earlier bills)
+            def free(r):
                 dv, av = cellv(r, cols["desc"]), cellv(r, cols["amount"])
-                if (dv in (None, "") or (isinstance(dv, str) and re.match(r"^payment (application|certificate) no\.?\s*\d*\s*$", dv.strip(), re.I) and av in (None, "", 0))) and av in (None, "", 0):
-                    inputs.setdefault(sh, {})[f"{r},{cols['desc']}"] = label
-                    if cols.get("submitted") and isinstance(last_date, (int, float)):
-                        inputs[sh][f"{r},{cols['submitted']}"] = float(last_date)
-                    break
+                # empty, or a blank template line ("Payment Application No") with no money on it
+                return av in (None, "", 0) and (dv in (None, "") or bool(re.match(r"^\s*payment\s+(application|certificate)\s+no\.?\s*$", str(dv), re.I)))
+            used = [r for r in rows if not free(r)]
+            after = [r for r in rows if (not used or r > used[-1]) and free(r)]
+            spot = (after or [r for r in rows if free(r)] or [None])[0]
+            if spot is not None:
+                inputs.setdefault(sh, {})[f"{spot},{cols['desc']}"] = label
+                if cols.get("submitted") and isinstance(last_date, (int, float)):
+                    inputs[sh][f"{spot},{cols['submitted']}"] = float(last_date)
     # payments to authorities: last month's lines are hidden (kept in the file), and a heading for this bill with
     # one empty line is put in above the total, ready to type - as the office does in Excel
     label_new = None

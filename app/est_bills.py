@@ -844,9 +844,8 @@ def _fmt_no(full, filename=""):
     except Exception:
         raw = ""
     def num(t):
-        t = re.sub(r"\s*[-/ ]?\s*R\d+\s*$", "", str(t or "").strip(), flags=re.I)
-        m_ = re.search(r"(\d+)(?!.*\d)", t)
-        return int(m_.group(1)) if m_ else 0
+        m_ = BE.bill_num_match(BE.strip_rev(t))
+        return int(m_.group(0)) if m_ else 0
     if isinstance(raw, (int, float)) and raw:
         return [int(raw), str(int(raw))]
     n = num(raw)
@@ -859,9 +858,8 @@ def _fmt_no(full, filename=""):
 
 
 def _bill_num(label):
-    t = re.sub(r"\s*[-/ ]?\s*R\d+\s*$", "", str(label or "").strip(), flags=re.I)
-    m_ = re.search(r"(\d+)(?!.*\d)", t)
-    return int(m_.group(1)) if m_ else 0
+    m_ = BE.bill_num_match(BE.strip_rev(label))
+    return int(m_.group(0)) if m_ else 0
 
 
 def next_source(db, pid, cid=None):
