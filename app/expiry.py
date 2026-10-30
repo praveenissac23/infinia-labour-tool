@@ -195,7 +195,7 @@ def mail_body(db):
     today = M._dubai_today()
     head = (f"{s['expired']} expired, {s['week']} due within 7 days, {s['month']} within 30 days"
             + (f", {s['missing']} people with a document missing" if s["missing"] else ""))
-    lines = [f"Expiry Reminder - {today:%d %b %Y}", head, ""]
+    lines = [f"Expiry Reminder - {today:%d/%m/%Y}", head, ""]
     for i in items:
         lines.append(f"- {i['who']}: {i['what']} {M._dmy(M._as_date(i['expires_on']))} ({_when(i['days_left'])})")
     if not items:
@@ -209,7 +209,7 @@ def mail_body(db):
         f"{'#B7322A' if i['days_left'] < 0 else '#9A6700' if i['days_left'] <= 7 else '#555'}'>{_when(i['days_left'])}</td></tr>"
         for i in items)
     html = (f"<div style='font-family:Arial,sans-serif;font-size:14px;color:#222'>"
-            f"<h2 style='color:#B7322A;margin:0 0 6px'>Expiry Reminder - {today:%d %b %Y}</h2>"
+            f"<h2 style='color:#B7322A;margin:0 0 6px'>Expiry Reminder - {today:%d/%m/%Y}</h2>"
             f"<p style='margin:0 0 12px'><b>{escape(head)}</b></p>"
             + (f"<table style='border-collapse:collapse;min-width:520px'><tr style='background:#B7322A;color:#fff'>"
                f"<th style='padding:6px 10px;text-align:left'>Who / what</th><th style='padding:6px 10px;text-align:left'>Document</th>"

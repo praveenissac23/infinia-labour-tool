@@ -186,7 +186,7 @@ def _parts(db, show="held", q=""):
         rows = [x for x in rows if q.lower() in " ".join(v or "" for v in (x.party, x.purpose, x.project, x.bank,
                                                                          x.cheque_no, x.notes)).lower()]
     rows.sort(key=lambda x: (x.status != "held", x.remind_on or date(9999, 1, 1), (x.party or "").lower()))
-    d = lambda v: f"{v:%d %b %Y}" if v else "-"
+    d = lambda v: f"{v:%d/%m/%Y}" if v else "-"
     out = []
     for i, x in enumerate(rows, 1):
         r = {"Sr.": i, "Type": "Deposit" if x.kind == "deposit" else "Cheque", "Given to": x.party, "Purpose": x.purpose or "-", "Project": x.project or "-",
@@ -198,7 +198,7 @@ def _parts(db, show="held", q=""):
         out.append(r)
     total = sum(r["Amount"] for r in out)
     sub = (f"{len(out)} cheque{'s' if len(out) != 1 else ''} / deposit{'s' if len(out) != 1 else ''} {'still with others' if show != 'all' else 'in all'}"
-           + (f'   |   matching "{q}"' if q else "") + f"   |   AED {total:,.2f}   |   As at {today:%d %b %Y}")
+           + (f'   |   matching "{q}"' if q else "") + f"   |   AED {total:,.2f}   |   As at {today:%d/%m/%Y}")
     return out, "Security Cheques & Deposits", sub
 
 
@@ -234,11 +234,11 @@ def notification(db, today):
     if not (s["due"] or s["week"]):
         return None
     bits = [f"{s['due']} due to collect back" if s["due"] else "", f"{s['week']} within 7 days" if s["week"] else ""]
-    first = ", ".join(f"{x.party} AED {x.amount or 0:,.0f} ({x.remind_on:%d %b})" for x in s["first"][:3])
+    first = ", ".join(f"{x.party} AED {x.amount or 0:,.0f} ({x.remind_on:%d/%m/%Y})" for x in s["first"][:3])
     more = len(s["first"]) - 3
     return {"id": f"secchq-{today}", "kind": "seccheque", "title": "Security cheques: " + ", ".join(b for b in bits if b),
             "detail": first + (f" and {more} more" if more > 0 else ""), "screen": "seccheque",
-            "lines": [f"{x.remind_on:%d %b}  ·  AED {x.amount or 0:,.2f}  ·  {__import__('push').short_name(x.party)}" for x in s["first"]],
+            "lines": [f"{x.remind_on:%d/%m/%Y}  ·  AED {x.amount or 0:,.2f}  ·  {__import__('push').short_name(x.party)}" for x in s["first"]],
             "when": today.isoformat(), "count": s["due"] + s["week"], "level": "warn" if s["due"] else "info"}
 
 

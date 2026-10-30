@@ -250,7 +250,7 @@ def create(payload: dict = Body(...), db: Session = Depends(get_db), user: model
     v = models.VisaFile(employee_id=eid, emp_no=no, person=name, kind=kind, stages=json.dumps(KINDS[kind][1]), done="[]",
                         started_on=d, status="ongoing", note=" ".join(str(payload.get("note") or "").split())[:300], created_by=user.id)
     db.add(v); db.commit()
-    M.log_action(db, user.id, "visa_file_add", f"Visa file: {name} - {kind_label(kind)}, started {d:%d %b %Y}")
+    M.log_action(db, user.id, "visa_file_add", f"Visa file: {name} - {kind_label(kind)}, started {d:%d/%m/%Y}")
     return _dict(v, [], _users(db), _emps(db))
 
 
@@ -626,7 +626,7 @@ def link(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), use
     if x.visa_stage:
         tick(v, x.visa_stage)
     db.commit()
-    M.log_action(db, user.id, "visa_link", f"Visa file {v.person}: tied {x.on_date:%d %b %Y} {x.description} {x.paid:,.2f}")
+    M.log_action(db, user.id, "visa_link", f"Visa file {v.person}: tied {x.on_date:%d/%m/%Y} {x.description} {x.paid:,.2f}")
     return _out(db, v)
 
 
@@ -661,7 +661,7 @@ def pay_stage(vid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     if st:
         tick(v, st)
     db.commit()
-    M.log_action(db, user.id, "visa_paystage", f"Visa file {v.person}: {x.on_date:%d %b %Y} {x.paid:,.2f} was for {st or '-'}")
+    M.log_action(db, user.id, "visa_paystage", f"Visa file {v.person}: {x.on_date:%d/%m/%Y} {x.paid:,.2f} was for {st or '-'}")
     return _out(db, v)
 
 
@@ -673,12 +673,12 @@ def unlink(vid: int, payload: dict = Body(...), db: Session = Depends(get_db), u
         raise HTTPException(status_code=400, detail="That payment is not on this file.")
     x.visa_file_id, x.visa_stage = None, ""
     db.commit()
-    M.log_action(db, user.id, "visa_unlink", f"Visa file {v.person}: untied {x.on_date:%d %b %Y} {x.description} {x.paid:,.2f}")
+    M.log_action(db, user.id, "visa_unlink", f"Visa file {v.person}: untied {x.on_date:%d/%m/%Y} {x.description} {x.paid:,.2f}")
     return _out(db, v)
 
 
 def _fmt(iso):
-    return date.fromisoformat(iso).strftime("%d-%b-%y") if iso else ""
+    return date.fromisoformat(iso).strftime("%d/%m/%Y") if iso else ""
 
 
 @router.get("/export/visa")
@@ -700,7 +700,7 @@ def export(token: str, format: str = "excel", status: str = "ongoing", db: Sessi
     t = d["tiles"]
     total = round(sum(r["spent"] for r in d["rows"]), 2)
     sub = (f"{len(rows)} file(s) | spent AED {total:,.2f} | ongoing: {t['ongoing']} (AED {t['spent_ongoing']:,.2f})"
-           f" | As at {M._dubai_today():%d %b %Y}")
+           f" | As at {M._dubai_today():%d/%m/%Y}")
     if format == "view":
         url = f"/export/visa?status={status}&token={quote(auth.create_view_token(u.username), safe='')}"
         return M._preview_page(title, sub, rows, url, url, money_cols=["Spent (AED)"])
@@ -876,7 +876,7 @@ def sheet_pdf(v, pays):
                 colWidths=[W / 2, W / 2])
     top.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("LINEBELOW", (0, 0), (-1, 0), 1.5, R),
                              ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
-    dmy = lambda d: d.strftime("%d-%m-%Y") if d else ""
+    dmy = lambda d: d.strftime("%d/%m/%Y") if d else ""
     span = f"{dmy(min(p.on_date for p in pays))} to {dmy(max(p.on_date for p in pays))}" if pays else dmy(v.started_on)
     title = Paragraph(f"<b>{escape(v.person)} Visa Expenses</b>" + (f" &nbsp;<font color='#777777'>{escape(v.emp_no)}</font>" if v.emp_no else "")
                       + f" &nbsp;<font color='#777777'>( {span} )</font>", ParagraphStyle("tt", parent=base, fontSize=12, leading=16))
@@ -936,8 +936,8 @@ body{{margin:0;background:#E9E6E2;font-family:-apple-system,BlinkMacSystemFont,'
 {export_web.SHARE_JS}</body></html>""")
     if format == "excel":
         rows = [{"No": i, "Item": p.step or p.description or "Payment", "Details": " · ".join(x for x in ((p.description if p.step else ""), p.supplier or "", f"Rcpt {p.receipt_no}" if p.receipt_no else "") if x),
-                 "Date": p.on_date.strftime("%d-%b-%y"), "Amount (AED)": round(p.amount or 0, 2)} for i, p in enumerate(pays, 1)]
-        sub = f"{v.person}{' ' + v.emp_no if v.emp_no else ''} | {'Completed ' + v.completed_on.strftime('%d %b %Y') if v.completed_on else 'In progress'}" + (f" | Note: {v.note}" if v.note else "")
+                 "Date": p.on_date.strftime("%d/%m/%Y"), "Amount (AED)": round(p.amount or 0, 2)} for i, p in enumerate(pays, 1)]
+        sub = f"{v.person}{' ' + v.emp_no if v.emp_no else ''} | {'Completed ' + v.completed_on.strftime('%d/%m/%Y') if v.completed_on else 'In progress'}" + (f" | Note: {v.note}" if v.note else "")
         return StreamingResponse(export_web.build_store_report_excel(f"{v.person} Visa Expenses", rows, sub, money_cols=["Amount (AED)"]),
                                  media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                  headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})

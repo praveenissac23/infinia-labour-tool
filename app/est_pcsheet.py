@@ -625,7 +625,7 @@ def sign(rid: int, data: dict = Body(...), db: Session = Depends(get_db), user: 
 # ---- the certificate on paper --------------------------------------------------------------------
 
 def _dt(d):
-    return d.strftime("%d-%b-%Y") if d else ""
+    return d.strftime("%d/%m/%Y") if d else ""
 
 
 def _m(v, dash=True):
@@ -753,7 +753,7 @@ def _stamp_time(pc, step, d):
     for x in reversed(E.flow_of(pc)):
         if x.get("s") == step and not x.get("undo") and not x.get("back") and x.get("at"):
             try:
-                return datetime.fromisoformat(x["at"]).strftime("%d-%b-%Y %H:%M")
+                return datetime.fromisoformat(x["at"]).strftime("%d/%m/%Y %H:%M")
             except ValueError:
                 break
     return _dt(d)

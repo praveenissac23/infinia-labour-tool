@@ -542,7 +542,7 @@ def approve(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
                 refused.append({"id": x.id, "why": "Changed after Zoho - correct it in Zoho, then press Corrected in Zoho"})
                 continue
             x.zoho_status = "sent" if (x.zoho_id or "") else "inzoho"
-            x.zoho_ref = ((x.zoho_ref or "").split(" · corrected")[0] + f" · corrected in Zoho {now:%d %b}")[:200]
+            x.zoho_ref = ((x.zoho_ref or "").split(" · corrected")[0] + f" · corrected in Zoho {now:%d/%m/%Y}")[:200]
             x.approved_by, x.approved_at = user.id, now
             M.log_action(db, user.id, "zoho_corrected", f"petty cash #{x.id} {x.description} confirmed corrected in Zoho")
             continue
@@ -666,7 +666,7 @@ def export_queue(token: str, format: str = "excel", book: str = "", db: Session 
     rows = [_row(x, learned, users) for x in _waiting(db)]
     if book in BOOKS:
         rows = [r for r in rows if r["book"] == book]
-    out = [{"Book": r["book_label"], "Date": M._as_date(r["date"]).strftime("%d-%b-%y"), "Description": r["description"],
+    out = [{"Book": r["book_label"], "Date": M._as_date(r["date"]).strftime("%d/%m/%Y"), "Description": r["description"],
             "Supplier": r["supplier"] or "-", "Project": r["site"] or "-", "Zoho account": r["account"] or "-",
             "VAT": ("Yes" + (f" ({r['trn']})" if r["trn"] else "")) if r["vat"] else "No",
             "Paid (AED)": "" if r["kind"] == "received" else r["amount"],
@@ -674,7 +674,7 @@ def export_queue(token: str, format: str = "excel", book: str = "", db: Session 
             "To fix": ", ".join(r["flags"]) or "-"} for r in rows]
     title = "Petty cash - waiting for Zoho"
     sub = (f"{len(rows)} line{'' if len(rows) == 1 else 's'}" + (f" | {BOOKS[book]} book" if book in BOOKS else " | all books")
-           + f" | from {_start(db):%d %b %Y} | As at {M._dubai_today():%d %b %Y}")
+           + f" | from {_start(db):%d/%m/%Y} | As at {M._dubai_today():%d/%m/%Y}")
     money = ["Paid (AED)", "Received (AED)"]
     if format == "view":
         url = f"/export/accounts/zoho?book={quote(book)}&token={quote(auth.create_view_token(u.username), safe='')}"

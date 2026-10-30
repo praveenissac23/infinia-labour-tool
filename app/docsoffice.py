@@ -246,7 +246,7 @@ def build_pdf(x, users, co=None):
     hd = ParagraphStyle("hd", fontName="Helvetica-Bold", fontSize=6.8, textColor=colors.white, leading=8)
     say = ParagraphStyle("say", fontName="Helvetica", fontSize=9.2, textColor=F.INK, leading=12)
     tw = W - 2 * Mg
-    dmy = lambda d: d.strftime("%d-%b-%Y") if d else ""
+    dmy = lambda d: d.strftime("%d/%m/%Y") if d else ""
     head = Table([[Paragraph("TRANSMITTAL NO.", lab), Paragraph("DATE", lab), Paragraph("FROM SITE / PROJECT", lab), Paragraph("DOCUMENTS", lab)],
                   [Paragraph(ref(x.no), val), Paragraph(dmy(x.on_date), val), Paragraph(x.from_site or "-", val), Paragraph(str(len(x.lines)), val)]],
                  colWidths=[tw * 0.24, tw * 0.22, tw * 0.36, tw * 0.18])
@@ -273,7 +273,7 @@ def build_pdf(x, users, co=None):
     t.setStyle(TableStyle(st))
     sent = users.get(x.sent_by, "")
     recv = users.get(x.received_by, "")
-    rat = (x.received_at + timedelta(hours=4)).strftime("%d-%b-%Y") if x.received_at else "____ / ____ / ________"
+    rat = (x.received_at + timedelta(hours=4)).strftime("%d/%m/%Y") if x.received_at else "____ / ____ / ________"
     sat = dmy(x.on_date)
     sig_name = ParagraphStyle("sn", fontName="Helvetica-Bold", fontSize=8.8, textColor=F.CHAR, leading=11)
     sig_sub = ParagraphStyle("ss", fontName="Helvetica", fontSize=7.6, textColor=F.MUTED, leading=10)
@@ -321,15 +321,15 @@ def export_register(token: str, format: str = "excel", status: str = "", date_fr
     out = []
     for r in rows:
         for l in r["lines"]:
-            out.append({"No.": r["ref"], "Date": M._as_date(r["date"]).strftime("%d-%b-%y"), "Line": l["sl"], "Supplier": l["description"],
+            out.append({"No.": r["ref"], "Date": M._as_date(r["date"]).strftime("%d/%m/%Y"), "Line": l["sl"], "Supplier": l["description"],
                         "Delivery note no.": l["dn_no"], "Site": l["site"] or r["from_site"], "Remarks": l["remarks"],
                         "Sent by": r["sent_by"], "Status": st.get(r["status"], r["status"]),
                         "Received": "" if l["received"] is None else ("Yes" if l["received"] else "No"),
                         "Checked by": r["received_by"]})
     title = "Docs to Office - History"
-    span = (f"{df:%d %b %Y} to {dt_:%d %b %Y}" if df and dt_ else f"from {df:%d %b %Y}" if df else f"up to {dt_:%d %b %Y}" if dt_ else "all dates")
+    span = (f"{df:%d/%m/%Y} to {dt_:%d/%m/%Y}" if df and dt_ else f"from {df:%d/%m/%Y}" if df else f"up to {dt_:%d/%m/%Y}" if dt_ else "all dates")
     sub = (f"{len(rows)} transmittal(s), {len(out)} document(s) | {span}" + (f" | {st.get(status)}" if status else "")
-           + (f" | '{q.strip()}'" if k else "") + f" | As at {M._dubai_today():%d %b %Y}")
+           + (f" | '{q.strip()}'" if k else "") + f" | As at {M._dubai_today():%d/%m/%Y}")
     if format == "view":
         vt = quote(auth.create_view_token(u.username), safe="")
         url = f"/export/store/docs?{urlencode({'status': status, 'date_from': date_from, 'date_to': date_to, 'q': q})}&token={vt}"
@@ -366,7 +366,7 @@ def export_one(tid: int, token: str, format: str = "pdf", dl: int = 0, db: Sessi
 <title>{escape(title)}</title><style>{export_web.PREVIEW_BAR_CSS}
 body{{margin:0;background:#E9E6E2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}} .pg{{max-width:900px;margin:18px auto 30px;padding:0 12px}}
 .pg iframe{{width:100%;height:1180px;border:0;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.12);border-radius:3px}}</style></head><body>
-<div class="pvbar"><h1>{escape(title)}</h1><span class="who">{len(x.lines)} document(s) &middot; {escape(x.on_date.strftime('%d %b %Y'))}</span><span class="sp"></span>
+<div class="pvbar"><h1>{escape(title)}</h1><span class="who">{len(x.lines)} document(s) &middot; {escape(x.on_date.strftime('%d/%m/%Y'))}</span><span class="sp"></span>
 <a class="btn dark" href="{pdf}&dl=1">Download PDF</a><a class="btn" href="{xl}">Excel</a><a class="btn" href="{pdf}" target="_blank" rel="noopener">Print</a>{export_web.share_button(pdf, title)}</div>
 <div class="pg pvwide"><iframe src="{pdf}#toolbar=0&view=FitH" title="{escape(title)}"></iframe></div>
 {export_web.phone_pages(pdf)}
@@ -374,9 +374,9 @@ body{{margin:0;background:#E9E6E2;font-family:-apple-system,BlinkMacSystemFont,'
     if format == "excel":
         d = _dict(x, users)
         rows = [{"No.": l["sl"], "Supplier": l["description"], "Delivery note no.": l["dn_no"], "Site": l["site"],
-                 "Date": M._as_date(l["date"]).strftime("%d-%b-%y") if l["date"] else "", "Remarks": l["remarks"],
+                 "Date": M._as_date(l["date"]).strftime("%d/%m/%Y") if l["date"] else "", "Remarks": l["remarks"],
                  **({"Received": "Yes" if l["received"] else "No"} if x.status != "sent" else {})} for l in d["lines"]]
-        sub = f"{ref(x.no)} | {x.on_date:%d %b %Y} | from {x.from_site or '-'} | sent by {d['sent_by']}" + (
+        sub = f"{ref(x.no)} | {x.on_date:%d/%m/%Y} | from {x.from_site or '-'} | sent by {d['sent_by']}" + (
             f" | received by {d['received_by']}" if d["received_by"] else "")
         return StreamingResponse(export_web.build_store_report_excel("Document transmittal", rows, sub),
                                  media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

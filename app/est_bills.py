@@ -1651,7 +1651,7 @@ def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, d
     p = db.query(E.EstProject).get(b.project_id)
     code = p.code if p else ""
     label = b.label or str(b.seq)
-    title = f"{code} - IPA {label}" + (f" - {b.issue_date:%d %b %Y}" if b.issue_date else "")
+    title = f"{code} - IPA {label}" + (f" - {b.issue_date:%d/%m/%Y}" if b.issue_date else "")
     fname = re.sub(r"[^A-Za-z0-9]+", "_", f"{code}_IPA_{label}").strip("_")
     store = _sig_store(db)
     if format == "excel":

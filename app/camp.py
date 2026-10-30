@@ -129,7 +129,7 @@ def release_leavers(db):
         gone = (not e) or (e.terminated_on and e.terminated_on <= today) or (not e.active and not e.terminated_on)
         if gone:
             _log(db, None, "out", rooms.get(b.room_id, ""), b.bed_no, emp=e,
-                 reason=f"Left the company{(' ' + e.terminated_on.strftime('%d %b %Y')) if e and e.terminated_on else ''} - bed freed automatically")
+                 reason=f"Left the company{(' ' + e.terminated_on.strftime('%d/%m/%Y')) if e and e.terminated_on else ''} - bed freed automatically")
             b.employee_id = None
             n += 1
     if n:
@@ -288,7 +288,7 @@ def book(payload: dict = Body(...), db: Session = Depends(get_db), user: models.
     when = M._as_date(payload.get("date")) if payload.get("date") else None
     b.booked_name, b.booked_trade, b.booked_on = name, M.tidy_text(payload.get("trade"))[:60], when
     b.updated_by = user.id
-    _log(db, user, "book", r.name, b.bed_no, name=name, reason=f"arriving {when:%d %b %Y}" if when else "arriving")
+    _log(db, user, "book", r.name, b.bed_no, name=name, reason=f"arriving {when:%d/%m/%Y}" if when else "arriving")
     db.commit()
     return {"ok": True}
 
@@ -353,7 +353,7 @@ def history(employee_id: int = 0, room: str = "", db: Session = Depends(get_db),
 
 
 def _fmt(iso):
-    return date.fromisoformat(iso).strftime("%d-%b-%y") if iso else ""
+    return date.fromisoformat(iso).strftime("%d/%m/%Y") if iso else ""
 
 
 @router.get("/export/reports/camp")

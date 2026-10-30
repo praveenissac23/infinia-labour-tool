@@ -690,7 +690,7 @@ def _visible_boards(db, user, inbox=False):
 def _due_words(v):
     try:
         d = datetime.fromisoformat(str(v)[:16])
-        return d.strftime("%d %b %Y") + ("" if len(str(v)) <= 10 else d.strftime(", %I:%M %p").replace(" 0", " "))
+        return d.strftime("%d/%m/%Y") + ("" if len(str(v)) <= 10 else d.strftime(" %H:%M"))
     except ValueError:
         return str(v)
 
@@ -2742,7 +2742,7 @@ def bell_items(db, user):
                     "who": who, "initials": _initials(who), "verb": VERB.get(n.kind, "updated a card"),
                     "card": card.title if card else "", "board": boards.get(n.board_id, ""),
                     "list": lists.get(card.list_id, "") if card else "", "words": words[:300],
-                    "at": (n.created_at + timedelta(hours=4)).strftime("%d %b, %I:%M %p").replace(" 0", " ") if n.created_at else "",
+                    "at": (n.created_at + timedelta(hours=4)).strftime("%d/%m/%Y %H:%M") if n.created_at else "",
                     "when": (n.created_at + timedelta(hours=4)).date().isoformat(), "level": "info"})
     return out
 
@@ -3504,7 +3504,7 @@ def _fmt_due(s):
         return ""
     try:
         d = datetime.fromisoformat(s[:16])
-        return d.strftime("%d-%b-%y") + ("" if s[11:16] in ("", "00:00") else d.strftime(" %H:%M"))
+        return d.strftime("%d/%m/%Y") + ("" if s[11:16] in ("", "00:00") else d.strftime(" %H:%M"))
     except ValueError:
         return s
 
@@ -3551,7 +3551,7 @@ def export_board(bid: int, token: str, format: str = "excel", list_id: int = 0, 
         rows = [{"List": "", "#": "", "Card": "No cards match", "Labels": "", "Members": "", "Start": "", "Due": "",
                  "Status": "", "Checklist": "", "Comments": ""}]
     title = f"{b.title} - Board"
-    sub = f"{len(rows)} cards | As at {(datetime.utcnow() + timedelta(hours=4)):%d %b %Y}"
+    sub = f"{len(rows)} cards | As at {(datetime.utcnow() + timedelta(hours=4)):%d/%m/%Y}"
     if format == "preview":
         url = f"/export/kb/{bid}?token={token}&list_id={list_id}&label_id={label_id}&member_id={member_id}&q={q}&due={due}"
         return M._preview_page(title, sub, rows, url + "&format=pdf", url + "&format=excel", money_cols=[])

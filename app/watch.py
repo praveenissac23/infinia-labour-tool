@@ -184,6 +184,6 @@ def notifications(db, models, days=14, limit=40):
     for a in rows:
         when = (a.created_at + timedelta(hours=4)) if a.created_at else datetime.utcnow()
         out.append({"id": f"watch-{a.id}", "kind": "watch", "title": f"{a.who}: {a.title}",
-                    "detail": f"{a.detail}  -  {when:%d %b %H:%M}".strip(" -"),
+                    "detail": f"{a.detail}  -  {when:%d/%m/%Y %H:%M}".strip(" -"),
                     "screen": "activity", "target": "", "when": when.date().isoformat(), "level": "warn"})
     return out

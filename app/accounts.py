@@ -214,7 +214,7 @@ def _clean(db, p, kind, keep_id=None):
         raise HTTPException(status_code=400, detail="Give the invoice a number.")
     clash = db.query(Invoice).filter(Invoice.kind == kind, Invoice.number == number, Invoice.id != (keep_id or 0)).first()
     if clash:
-        raise HTTPException(status_code=400, detail=f"{number} is already used (dated {clash.inv_date:%d %b %Y}).")
+        raise HTTPException(status_code=400, detail=f"{number} is already used (dated {clash.inv_date:%d/%m/%Y}).")
     d = M._as_date(p.get("date"))
     if not d:
         raise HTTPException(status_code=400, detail="Put the invoice date.")
@@ -389,9 +389,9 @@ def set_terms(payload: dict = Body(...), db: Session = Depends(get_db), user: mo
 
 def _pdf_response(db, x):
     d = _dict(x)
-    d["date_text"] = f"{x.inv_date:%d %B %Y}"
+    d["date_text"] = f"{x.inv_date:%d/%m/%Y}"
     if d.get("paid_stamp"):
-        d["paid_text"] = f"{(x.paid_on or x.inv_date):%d %b %Y}"
+        d["paid_text"] = f"{(x.paid_on or x.inv_date):%d/%m/%Y}"
     d["terms"] = terms_for(db, x.kind)
     d["notes"] = M.get_setting(db, "invoice_note") or "Thank you for your business."
     buf = invoice_pdf.build(d, company=_company(db, x.company_id), signature=invoice_signature())
@@ -408,7 +408,7 @@ def _invoice_excel(db, x):
         rows.append({"#": i, "Description": l.get("description") or "", "Net amount": a, "VAT %": f"{pc:g}%",
                      "VAT": v, "Total (AED)": round(a + v, 2)})
     title = ("Tax Invoice " if x.kind == "tax" else "Proforma Invoice ") + x.number
-    sub = "   |   ".join(v for v in (f"{x.inv_date:%d %b %Y}", d["client"], (f"TRN {d['client_trn']}" if d["client_trn"] else ""),
+    sub = "   |   ".join(v for v in (f"{x.inv_date:%d/%m/%Y}", d["client"], (f"TRN {d['client_trn']}" if d["client_trn"] else ""),
                                        " - ".join(v for v in (d["project"], d["location"]) if v)) if v)
     return M._hr_file(title, rows, sub, "excel", ["Net amount", "VAT", "Total (AED)"],
                       ("Tax_Invoice_" if x.kind == "tax" else "Proforma_") + x.number.replace("/", "-"))
@@ -482,7 +482,7 @@ def export_invoice_register(token: str, kind: str = "tax", format: str = "excel"
     # A cancelled invoice stays on the list, its figures shown as text so
     # the totals line (which adds numbers only) leaves it out.
     amt = lambda x, v: round(v or 0, 2) if x.status != "cancelled" else f"{(v or 0):,.2f}"
-    rows = [{"Number": x.number, "Date": f"{x.inv_date:%d-%b-%y}", "Client": x.client or "",
+    rows = [{"Number": x.number, "Date": f"{x.inv_date:%d/%m/%Y}", "Client": x.client or "",
              "Client TRN": x.client_trn or "-", "Project": " - ".join(v for v in (x.project_no, x.project) if v) or "-",
              "Net (AED)": amt(x, x.subtotal), "VAT (AED)": amt(x, x.vat), "Total (AED)": amt(x, x.total),
              "Status": "Cancelled" if x.status == "cancelled" else ("Invoiced" if x.converted_to_id else "Issued")}
@@ -490,7 +490,7 @@ def export_invoice_register(token: str, kind: str = "tax", format: str = "excel"
     cx = len(found) - len(live)
     sub = (f"{len(live)} {'invoice' if kind == 'tax' else 'proforma'}{'' if len(live) == 1 else 's'}"
            + (f" (+{cx} cancelled, not in the totals)" if cx else "") + (f' | matching "{q}"' if q else "")
-           + f" | As at {M._dubai_today():%d %b %Y}")
+           + f" | As at {M._dubai_today():%d/%m/%Y}")
     money = ["Net (AED)", "VAT (AED)", "Total (AED)"]
     name = title.replace(" ", "_")
     if format == "view":
@@ -712,7 +712,7 @@ def _register_pdf(r):
 
 def _d(iso):
     d = M._as_date(iso) if iso else None
-    return f"{d:%d-%b-%y}" if d else ""
+    return f"{d:%d/%m/%Y}" if d else ""
 
 
 def _register_excel(r):
@@ -737,7 +737,7 @@ def _register_excel(r):
                    x["amount"] if x["kind"] == "received" else None, x["amount"] if x["kind"] == "paid" else None, None])
         row = ws.max_row
         ws.cell(row, 6, f"=F{row - 1}+D{row}-E{row}").font = Font(bold=True)        # the balance is a formula
-        ws.cell(row, 1).number_format = "dd-mmm-yy"
+        ws.cell(row, 1).number_format = "dd/mm/yyyy"
         for col in (4, 5, 6):
             ws.cell(row, col).number_format = "#,##0.00"
         for col in range(1, 7):

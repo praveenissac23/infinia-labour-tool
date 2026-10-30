@@ -766,7 +766,7 @@ def _check_deleted_now(db):
         except ZohoError as e:
             if e.code == 404 or "not exist" in e.msg.lower() or "does not" in e.msg.lower():
                 x.zoho_status = "cancelled"
-                x.zoho_err = f"Deleted in Zoho ({datetime.now(timezone.utc):%d %b %Y})"
+                x.zoho_err = f"Deleted in Zoho ({datetime.now(timezone.utc):%d/%m/%Y})"
                 n += 1
         except Exception:
             break

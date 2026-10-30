@@ -545,7 +545,7 @@ def _ago(days):
 
 
 def _fmt(iso):
-    return date.fromisoformat(iso).strftime("%d-%b-%y") if iso else ""
+    return date.fromisoformat(iso).strftime("%d/%m/%Y") if iso else ""
 
 
 @router.get("/export/reports/ppe")
@@ -590,9 +590,9 @@ def export(token: str, format: str = "excel", view: str = "grid", db: Session = 
             rows.append(row)
     t = d["tiles"]
     sub = (f"Last 6 months: {t['six']} items | this month: {t['month']} | quick repeats (30 days): {t['quick']}"
-           f" | As at {M._dubai_today():%d %b %Y}" + ("" if view in ("log", "sizes") else " | each item: last given (how long ago)"))
+           f" | As at {M._dubai_today():%d/%m/%Y}" + ("" if view in ("log", "sizes") else " | each item: last given (how long ago)"))
     if view == "sizes":
-        sub = f"In hand size by size = last count + received - given from there | As at {M._dubai_today():%d %b %Y}"
+        sub = f"In hand size by size = last count + received - given from there | As at {M._dubai_today():%d/%m/%Y}"
     if format == "view":
         url = f"/export/reports/ppe?view={view}&token={quote(auth.create_view_token(u.username), safe='')}"
         return M._preview_page(title, sub, rows, url, url, money_cols=[])

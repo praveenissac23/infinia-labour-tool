@@ -343,7 +343,7 @@ def reverse(lid: int, payload: dict = Body(...), db: Session = Depends(get_db), 
     if x is not None and (getattr(x, "zoho_id", "") or "").endswith(l.zoho_id):
         x.zoho_status, x.zoho_id, x.zoho_err = "", "", ""
         if hasattr(x, "zoho_ref"):
-            x.zoho_ref = f"Reversed {now + timedelta(hours=4):%d %b %Y}: {reason}"[:200]
+            x.zoho_ref = f"Reversed {now + timedelta(hours=4):%d/%m/%Y}: {reason}"[:200]
         for f in ("approved_by", "approved_at", "released_by", "released_at"):
             if hasattr(x, f):
                 setattr(x, f, None)
@@ -366,16 +366,16 @@ def export_sent(token: str, start: str = "", end: str = "", source: str = "", al
     if (u.role or "") != "admin" and "accounts_zoho" not in M.effective_permissions(u):
         raise HTTPException(status_code=403, detail="Send to Zoho is for the chief accountant.")
     d = sent(start, end, source, all, db, u)
-    rows = [{"Sent": (datetime.fromisoformat(r["at"]) + timedelta(hours=4)).strftime("%d-%b-%y %H:%M") if r["at"] else "",
+    rows = [{"Sent": (datetime.fromisoformat(r["at"]) + timedelta(hours=4)).strftime("%d/%m/%Y %H:%M") if r["at"] else "",
              "Portal": f"{r['source_label']} - {r['item'] or r['ref']}", "Zoho": f"{r['kind_label']} {r['number']}".strip()
              + (" (deleted)" if r["action"] == "delete" else "") + (" (updated)" if r["action"] == "update" else ""),
              "From": r["from"] or "-", "To": r["to"] or "-", "Project": r["project"] or "-", "Supplier": r["supplier"] or "-",
              "Amount (AED)": r["amount"] if r["action"] == "create" else "",
-             "Status": ("Refused: " + r["error"]) if not r["ok"] else (f"Reversed {r['reversed_at'][:10]} - {r['reverse_reason']}" if r["reversed"] else "In Zoho"),
+             "Status": ("Refused: " + r["error"]) if not r["ok"] else (f"Reversed {M._dmy(M._as_date(r['reversed_at'][:10]))} - {r['reverse_reason']}" if r["reversed"] else "In Zoho"),
              "By": r["by"] or "-"} for r in d["rows"]]
     a, b = M._as_date(d["start"]), M._as_date(d["end"])
     title = "Sent to Zoho" if not all else "Changes made in Zoho"
-    sub = f"{a:%d %b %Y} - {b:%d %b %Y} | {d['counts']['sent']} in Zoho, AED {d['counts']['amount']:,.2f} | reversed {d['counts']['reversed']}"
+    sub = f"{a:%d/%m/%Y} - {b:%d/%m/%Y} | {d['counts']['sent']} in Zoho, AED {d['counts']['amount']:,.2f} | reversed {d['counts']['reversed']}"
     money = ["Amount (AED)"]
     if format == "view":
         url = (f"/export/zoho/sent?start={d['start']}&end={d['end']}&source={quote(source)}&all={all}"

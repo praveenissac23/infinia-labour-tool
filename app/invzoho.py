@@ -136,7 +136,7 @@ def release(iid: int, payload: dict = Body(default={}), db: Session = Depends(ge
     import zohosync
     start = zohosync._start(db)
     if x.inv_date and x.inv_date < start:
-        raise HTTPException(status_code=400, detail=f"Dated before {start:%d %b %Y}, when the portal starts sending to Zoho - it is entered in Zoho by hand.")
+        raise HTTPException(status_code=400, detail=f"Dated before {start:%d/%m/%Y}, when the portal starts sending to Zoho - it is entered in Zoho by hand.")
     account = str(payload.get("account") or "Progressive Payments")
     if account not in INCOME:
         raise HTTPException(status_code=400, detail="Pick the income account.")

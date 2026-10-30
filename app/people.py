@@ -459,7 +459,7 @@ def leave_state(db, e, p, group, today=None):
     out["vacations"] = [{"from": _d(a), "to": _d(b), "days": round(n, 1)} for a, b, n in reversed(spells)]
     if spells:
         a, b, n = spells[-1]
-        out["last_vacation"] = f"{a:%d %b %Y} - {b:%d %b %Y} ({n:g} d)" if a != b else f"{a:%d %b %Y} ({n:g} d)"
+        out["last_vacation"] = f"{a:%d/%m/%Y} - {b:%d/%m/%Y} ({n:g} d)" if a != b else f"{a:%d/%m/%Y} ({n:g} d)"
     # The next block of leave falls due when its period completes.
     blocks_used = int(max(taken - opening, 0) // days)
     due = _add_months(start, months * (blocks_used + 1))
@@ -1170,7 +1170,7 @@ def _register_parts(db, group, company_id=None, user=None):
              "Next Expiry": M._dmy(M._as_date(r["soonest_expiry"])) if r["soonest_expiry"] else "-",
              "Leave Bal.": f"{r['leave_balance']:g}"} for r in d["rows"]]
     label = GROUPS.get(group, "Left / archived" if group == "left" else "Everyone")
-    sub = f"{len(rows)} on the register   |   As at {M._dubai_today():%d %b %Y}"
+    sub = f"{len(rows)} on the register   |   As at {M._dubai_today():%d/%m/%Y}"
     return rows, f"{label} Register", sub
 
 
@@ -1221,7 +1221,7 @@ def _file_parts(db, emp_no, user):
             + (f", returned {M._dmy(M._as_date(a['returned_on']))}" if a["returned_on"] else ""))
     if pr["notes"]:
         put("Notes", "Notes", pr["notes"])
-    return rows, f"Personal File - {p['emp_no']} {p['name']}", f"{p['designation']} · {p['company']} · As at {M._dubai_today():%d %b %Y}"
+    return rows, f"Personal File - {p['emp_no']} {p['name']}", f"{p['designation']} · {p['company']} · As at {M._dubai_today():%d/%m/%Y}"
 
 
 def _due_parts(db, days, group, user=None):
@@ -1231,7 +1231,7 @@ def _due_parts(db, days, group, user=None):
              "Days Left": ("expired %dd" % -r["days_left"]) if r["days_left"] is not None and r["days_left"] < 0
                           else ("today" if r["days_left"] == 0 else r["days_left"]),
              "Company": r["company"]} for r in d["rows"]]
-    return rows, f"Documents Due Within {days} Days", f"{len(rows)} document(s)   |   As at {M._dubai_today():%d %b %Y}"
+    return rows, f"Documents Due Within {days} Days", f"{len(rows)} document(s)   |   As at {M._dubai_today():%d/%m/%Y}"
 
 
 def _leave_parts(db, group, user=None):
@@ -1242,16 +1242,16 @@ def _leave_parts(db, group, user=None):
              "Balance": f"{r['balance']:g}",
              "Next Due": M._dmy(M._as_date(r["next_due"])) if r["next_due"] else "-",
              "Last Vacation": r["last_vacation"] or "-"} for r in d["rows"]]
-    return rows, f"Leave Balances - {GROUPS.get(group, 'Everyone')}", f"{len(rows)} people   |   As at {M._dubai_today():%d %b %Y}"
+    return rows, f"Leave Balances - {GROUPS.get(group, 'Everyone')}", f"{len(rows)} people   |   As at {M._dubai_today():%d/%m/%Y}"
 
 
 def _bday_parts(db, group, user=None):
     d = birthdays_upcoming(group=group, db=db, user=user)
-    rows = [{"Birthday": M._as_date(r["next"]).strftime("%a %d %b"),
+    rows = [{"Birthday": M._as_date(r["next"]).strftime("%a %d/%m/%Y"),
              "In": "Today" if r["days"] == 0 else ("Tomorrow" if r["days"] == 1 else f"{r['days']} days"),
              "Code / Project": r["emp_no"] or "-", "Name": r["name"], "Register": r["group_label"], "Designation": r["role"] or "-",
              "Date of Birth": M._dmy(M._as_date(r["dob"])), "Turns": r["turns"]} for r in d["rows"]]
-    sub = f"{len(rows)} people, next birthday first   |   From {M._dubai_today():%d %b %Y}"
+    sub = f"{len(rows)} people, next birthday first   |   From {M._dubai_today():%d/%m/%Y}"
     if d["missing"]:
         sub += f"   |   {d['missing']} without a date of birth on file"
     return rows, f"Birthdays - {GROUPS.get(group, 'Clients' if group == 'client' else 'Everyone')}", sub
@@ -1275,7 +1275,7 @@ def _leave_reg_parts(db, group, show, user=None):
     what = {"away": "on leave now", "pending": "pending", "upcoming": "approved, not yet gone", "returned": "returned"}.get(show)
     sub = (f"{len(rows)} {what}" if what else
            f"{c['away']} on leave   |   {c['pending']} pending   |   {c['upcoming']} approved, not yet gone   |   {c['returned']} returned")
-    sub += f"   |   As at {M._dubai_today():%d %b %Y}"
+    sub += f"   |   As at {M._dubai_today():%d/%m/%Y}"
     return rows, f"{label} - Leave Details", sub
 
 
@@ -1404,7 +1404,7 @@ def build_leave_calendar_pdf(rows, year, title, today):
         ahead = sum(1 for r in _lc_runs(_lc_spells(rows, today), today, today + timedelta(days=365)))
         c.setFont("Helvetica", 8.5); c.setFillColor(colors.HexColor("#555555"))
         c.drawCentredString(W / 2, top - 27, f"Away now {away}   |   Approved, not gone yet {nxt}   |   Overdue {late}   |   "
-                                             f"Clashes ahead {ahead}   |   As at {today:%d %b %Y}")
+                                             f"Clashes ahead {ahead}   |   As at {today:%d/%m/%Y}")
         return top - 40
 
     top = page_head()
@@ -1453,10 +1453,9 @@ def build_leave_calendar_pdf(rows, year, title, today):
                 st = s["r"]["standing"]
                 c.setFillColor(colors.HexColor(LC_COLOURS.get(st, "#B3AEA4")))
                 c.roundRect(xa, ry + (row_h - bh) / 2, bw, bh, bh / 2, stroke=0, fill=1)
-                a_txt = f"{s['a'].day} {mons[s['a'].month - 1]}"
-                b_txt = f"{s['b'].day} {mons[s['b'].month - 1]}"
-                lab = (f"{s['a'].day} – {b_txt}" if (s["a"].month == s["b"].month and s["a"].year == s["b"].year and s["a"] != s["b"])
-                       else b_txt if s["a"] == s["b"] else f"{a_txt} – {b_txt}")
+                a_txt = f"{s['a']:%d/%m/%Y}"
+                b_txt = f"{s['b']:%d/%m/%Y}"
+                lab = b_txt if s["a"] == s["b"] else f"{a_txt} – {b_txt}"
                 if st == "Overdue" and s["r"].get("days_late"):
                     lab += f" · {s['r']['days_late']} d overdue"
                 tw = stringWidth(lab, "Helvetica-Bold", 7)
@@ -1507,7 +1506,7 @@ def build_leave_calendar_pdf(rows, year, title, today):
             if idx < len(order):
                 c.showPage(); top = page_head()
         # the clashes, spelled out
-        lines = [f"{r['a'].day} {mons[r['a'].month - 1]} – {r['b'].day} {mons[r['b'].month - 1]}  ·  "
+        lines = [f"{r['a']:%d/%m/%Y} – {r['b']:%d/%m/%Y}  ·  "
                  f"{len(r['who'])} away together: {', '.join(r['who'])}" + ("  (past)" if r["b"] < today else "")
                  for r in runs]
         if lines:
