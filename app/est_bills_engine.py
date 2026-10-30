@@ -1103,7 +1103,7 @@ def _text(s, r, c):
     return v if isinstance(v, str) else ""
 
 
-MAP_VERSION = 5          # 5: the item / unit / last column of each progress table
+MAP_VERSION = 6          # 5: the item / unit / last column of each progress table; 6: fees on a hidden sheet the cover uses
 MODEL_VERSION = 4          # what read_format keeps: 3 = the sheet's default sizes and its print set-up
 
 
@@ -1114,6 +1114,18 @@ def find_inputs(model):
        previous payments table (one row per bill paid)
        the amount in words under the total due."""
     out = {"progress": [], "bill_no": None, "issue_date": None, "payments": [], "words": [], "total_due": None, "signs": [], "fees": [], "v": MAP_VERSION}
+    # hidden sheets a printed sheet takes figures from (the MEP bill's APP B: ='APP B'!D22 on the IPA cover) - their
+    # tables are this bill's to fill like any other, the sheet just does not print
+    used_hidden = set()
+    for s0 in model["sheets"]:
+        if not s0.get("visible", True):
+            continue
+        for cell in s0["cells"].values():
+            f = cell.get("f")
+            if f and "!" in f:
+                for h in model["sheets"]:
+                    if not h.get("visible", True) and (("'" + h["name"] + "'!") in f or (h["name"] + "!") in f):
+                        used_hidden.add(h["name"])
     for s in model["sheets"]:
         name = s["name"]
         # ---- header row of a progress table: a "Previous" and a "Total/Cumulative" with % under / in it
@@ -1262,7 +1274,8 @@ def find_inputs(model):
             heads = {cc: _text(s, r, cc).lower() for cc in range(1, s["maxc"] + 1) if _text(s, r, cc)}
             ref_c = next((cc for cc, t in heads.items() if cc > c and re.search(r"invoice|reference|receipt|ref\b", t)), None)
             amt_c = next((cc for cc, t in heads.items() if cc > c and re.search(r"amount", t)), None)
-            if not (ref_c and amt_c) or not s.get("visible", True) or any(p["sheet"] == name and p["head_row"] == r for p in out["payments"]):
+            if not (ref_c and amt_c) or (not s.get("visible", True) and name not in used_hidden) \
+                    or any(p["sheet"] == name and p["head_row"] == r for p in out["payments"]):
                 continue
             total_r = next((rr for rr in range(r + 1, min(r + 60, s["maxr"]) + 1)
                             if any(re.search(r"\btotal\b", _text(s, rr, cc), re.I) for cc in range(1, amt_c))), None)
@@ -1272,7 +1285,7 @@ def find_inputs(model):
             sn = next((cc for cc, t in heads.items() if cc < c and re.search(r"^(sn|sl|s\.?\s*no|no)\b", t)), None)
             if sn:
                 cols["sn"] = sn
-            out["fees"].append({"sheet": name, "head_row": r, "total_row": total_r, "cols": cols})
+            out["fees"].append({"sheet": name, "head_row": r, "total_row": total_r, "cols": cols, "hidden": not s.get("visible", True)})
             break
         if s.get("visible", True):
             out["signs"].extend(find_signs(s))
