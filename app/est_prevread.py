@@ -16,7 +16,7 @@ import est_docread as R
 NUM = re.compile(r"\(?\s*-?\s*(?:AED|Dhs?\.?)?\s*\(?\s*-?\s*\d[\d,]*(?:\.\d+)?\s*\)?", re.I)
 
 
-def _amounts(text):
+def _amounts(text, loose=False):
     """Every money figure in a piece of text, signed: (1,234.50), -1,234.50 and 'AED (1,234.50)' are negative.
     Percentages and dates are not money."""
     out = []
@@ -31,9 +31,11 @@ def _amounts(text):
         digits = re.sub(r"[^\d.]", "", s)
         if not digits or digits.count(".") > 1:
             continue
-        # a bare small integer (an item no., "IPC 12") is not an amount unless it carries decimals or a comma
+        # a bare small integer (an item no., "IPC 12") is not an amount unless it carries decimals or a comma;
+        # a whole-dirham total written without a comma (8522) is - but not a year standing alone (2026)
         if "." not in digits and "," not in s and not re.search(r"AED|Dh", s, re.I):
-            continue
+            if not loose or len(digits) < 4 or (len(digits) == 4 and 1990 <= int(digits) <= 2100):
+                continue
         try:
             v = float(digits)
         except ValueError:
@@ -41,6 +43,21 @@ def _amounts(text):
         neg = "(" in s or re.search(r"(^|\s)-\s*(AED\s*)?\d", s) is not None or s.strip().startswith("-")
         out.append(-v if neg else v)
     return out
+
+
+def _money(vals):
+    """The line's amount among its figures: the first one, passing over a bare fraction (0.0358 - a percentage
+    written as a number in the column before the amount) when a real amount is on the line too."""
+    real = [v for v in vals if abs(v) >= 1]
+    return (real or vals)[0]
+
+
+def _seq(label):
+    """A bill / certificate number from its label: the last number once the revision and a year are taken off -
+    "VE207/IPA/03 R1" -> 3, "914-IPA-07" -> 7, "IPA 07/2026" -> 7, "IPC 12" -> 12."""
+    t = re.sub(r"[\s\-/(]*\b(R|Rev\.?|Revision)\s*\.?\s*\d+\s*\)?\s*$", "", label or "", flags=re.I)
+    nums = [n for n in re.findall(r"\d+", t) if not (len(n) == 4 and 1990 <= int(n) <= 2100)]
+    return int(nums[-1]) if nums else None
 
 
 def _cells(l):
@@ -59,6 +76,8 @@ def _row(lines, pat, start=0, stop=None, avoid=None):
                 after = cells[j + 1:]
                 inline = c[rx.search(c).end():]
                 vals = _amounts(inline + " " + " ".join(after))
+                if not vals:               # only a whole-dirham figure written without a comma (8522)
+                    vals = _amounts(inline + " " + " ".join(after), loose=True)
                 if vals:
                     return i, vals
                 if any(re.fullmatch(r"[-–—]+|nil|n/?a", x.strip(), re.I) for x in after if x.strip()):
@@ -181,9 +200,9 @@ def read_ipa(lines, flat):
     bill = _text_cell(lines, r"(interim\s+bill|payment\s+application|ipa|interim\s+payment\s+(?:certificate|application)|certificate)\s*(no\.?|number|#)\s*:?", 30)
     if bill:
         f["bill_label"] = bill
-        m = re.search(r"\d+", bill)
-        if m:
-            f["seq"] = int(m.group(0))
+        n = _seq(bill)
+        if n is not None:
+            f["seq"] = n
         elif re.search(r"final", bill, re.I):
             f["pc_type"] = "Final"
     d = _date_cell(lines, r"(issue|submission|bill|application)\s*date\s*:?") or _date_cell(lines, r"^\s*date\s*:?\s*")
@@ -204,7 +223,7 @@ def read_ipa(lines, flat):
     for k, (p, av) in pats.items():
         i, vals = _row(lines, p, avoid=av)
         if i is not None:
-            rows[k] = {"i": i, "v": vals[0], "label": " ".join(_cells(lines[i]))[:90]}
+            rows[k] = {"i": i, "v": _money(vals), "label": " ".join(_cells(lines[i]))[:90]}
     # other lines of the payment summary ("Add: Supervision Fee") - between the work done and the total
     extra = []
     if "work" in rows and "total" in rows:
@@ -274,9 +293,9 @@ def read_subpc(lines, flat, subs=None):
     lines = _join_ocr(lines)
     f, checks, notes = {}, [], []
     no = _text_cell(lines, r"\b(IPC|payment\s+certificate|PC)\s*(no\.?|number|#)\s*:?", 12)
-    m = re.search(r"\d+", no or "")
-    if m:
-        f["seq"] = int(m.group(0))
+    n = _seq(no or "")
+    if n is not None:
+        f["seq"] = n
     f["inv_ref"] = _text_cell(lines, r"\binv(oice)?\.?\s*(ref|no)\.?\s*:?", 60)
     # the invoice date is the "Date :" on the invoice line
     for cells, j, m in _find(lines, r"inv(oice)?\.?\s*(ref|no)\b"):
@@ -320,7 +339,7 @@ def read_subpc(lines, flat, subs=None):
             notes.append(f"{f['new_sub']} is not a subcontractor on this project yet - add it as a new one below.")
     def amt(p, avoid=None):
         i, v = _row(lines, p, avoid=avoid)
-        return (v[0] if v else None), i
+        return (_money(v) if v else None), i
     f["work_cum"], _ = amt(r"value\s+of\s+work\s+executed\s+to\s+date|work\s+done\s+to\s+date", r"variation|total")
     f["var_cum"], _ = amt(r"value\s+of\s+variations?\s+executed")
     tot_work, _ = amt(r"total\s+value\s+of\s+work\s+executed")
