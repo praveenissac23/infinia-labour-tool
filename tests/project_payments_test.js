@@ -36,7 +36,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
 
   // With payment dates
   await c.selectOption('#pp-report', 'detail'); await c.waitForTimeout(300);
-  ck('With payment dates: each payment with its date', /31-Dec-25\s*1,730,952.38/.test(await c.locator('#pp-body').innerText()));
+  ck('With payment dates: each payment with its date', /31\/12\/2025\s*1,730,952.38/.test(await c.locator('#pp-body').innerText()));
   await c.screenshot({ path: SH + 'pp-2-detail.png' });
   await c.selectOption('#pp-report', 'summary');
 

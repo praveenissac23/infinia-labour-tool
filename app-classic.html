@@ -5808,8 +5808,7 @@ function cycleLabel(cycle) {
   if (isNaN(d)) return cycle;
   const end = new Date(d.getFullYear(), d.getMonth(), 25);
   const start = new Date(d.getFullYear(), d.getMonth() - 1, 26);
-  const fmt = (x) => x.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-  return `${fmt(start)} - ${fmt(end)} ${end.getFullYear()}`;
+  return `${dmy(start)} - ${dmy(end)}`;
 }
 
 function buildCycleOptions(currentCycle, monthsBack = 23) {
@@ -5854,7 +5853,7 @@ async function labFullSync() {
   btn.dataset.on = st.on ? "1" : "";
   btn.textContent = st.on ? "Back to salary to date" : "Pay full salary now";
   btn.className = "btn " + (st.on ? "btn-gray" : "btn-primary");
-  note.textContent = st.on ? `Full cycle salary - paid in advance from ${new Date(st.from + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : "";
+  note.textContent = st.on ? `Full cycle salary - paid in advance from ${dmy(st.from)}` : "";
 }
 async function labFullCycle() {
   const cyc = document.getElementById("combine-cycle").value;
@@ -5929,6 +5928,38 @@ function isoLocal(d) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+// Every date on screen reads dd/mm/yyyy (30/10/2026); with a time, dd/mm/yyyy HH:mm (24h).
+// dmy() takes an ISO "2026-10-30" (any time part is ignored - no timezone shift) or a Date;
+// a date the server already wrote as text ("30 Oct 2026", "30-Oct-26", "30 Oct 2026 14:05")
+// is turned round too. Anything else comes back unchanged. Display only - never send these to the server.
+const DMY_MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+function dmy(v) {
+  if (v === null || v === undefined || v === "") return "";
+  if (v instanceof Date) return isNaN(v) ? "" : `${String(v.getDate()).padStart(2, "0")}/${String(v.getMonth() + 1).padStart(2, "0")}/${v.getFullYear()}`;
+  const s = String(v);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const t = /^(\d{1,2})[ -]([A-Za-z]{3})[a-z]*,?[ -](\d{4}|\d{2})(,? (\d{1,2}:\d{2}))?$/.exec(s.trim());
+  if (t && DMY_MON[t[2].toLowerCase()]) {
+    const y = t[3].length === 2 ? "20" + t[3] : t[3];
+    return `${t[1].padStart(2, "0")}/${String(DMY_MON[t[2].toLowerCase()]).padStart(2, "0")}/${y}${t[5] ? " " + t[5].padStart(5, "0") : ""}`;
+  }
+  return s;
+}
+// A moment (Date, or anything new Date() reads) as "30/10/2026 14:05" in local time.
+function dmyHm(v) {
+  if (v === null || v === undefined || v === "") return "";
+  const d = v instanceof Date ? v : new Date(v);
+  if (isNaN(d)) return String(v);
+  return `${dmy(d)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+// "Friday 30/10/2026" - a day heading that keeps its weekday name.
+function dayDmy(v) {
+  const d = v instanceof Date ? v : new Date(String(v || "").slice(0, 10) + "T00:00:00");
+  if (isNaN(d)) return String(v || "");
+  return `${d.toLocaleDateString("en-GB", { weekday: "long" })} ${dmy(d)}`;
 }
 
 // Plain calendar month of a date - "August 2026" for any day in August.
@@ -6140,7 +6171,7 @@ async function loadDate(dateStr, preserveStatus) {
 
   const dateObj = new Date(dateStr + "T00:00:00");
   document.getElementById("viewing-label").textContent =
-    "Viewing: " + dateObj.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    "Viewing: " + dayDmy(dateObj);
 
   document.getElementById("loading").style.display = "none";
   document.getElementById("grid-table").style.display = "table";
@@ -6485,8 +6516,8 @@ async function saveAttendance() {
         .some(k => (before[k] || "") !== (now[k] || ""));
     }).length;
     let msg = changed === 0
-      ? `Saved for ${currentDate}: no changes to save.`
-      : `Saved for ${currentDate}: ${changed} worker(s) updated (${filledCount} marked on this day in total).`;
+      ? `Saved for ${dmy(currentDate)}: no changes to save.`
+      : `Saved for ${dmy(currentDate)}: ${changed} worker(s) updated (${filledCount} marked on this day in total).`;
     if (result.blocked && result.blocked.length) {
       msg += "\n\nBlocked (Holiday needs previous day filled in first):\n" + result.blocked.join("\n");
       showStatus("att-status", "warn", msg);
@@ -6553,7 +6584,7 @@ function renderMasterDataLists() {
              ? '<span class="pill" style="background:#FFF3E0; color:#B26A00;">Fixed monthly</span>'
              : '<span class="pill" style="background:#EFEFEF; color:#555;">Daily wage</span>'}</td>
       <td>${e.terminated_on
-             ? `<span class="pill" style="background:#DCDCDC; color:#444;" title="Left on ${e.terminated_on}">Left ${e.terminated_on}</span>`
+             ? `<span class="pill" style="background:#DCDCDC; color:#444;" title="Left on ${dmy(e.terminated_on)}">Left ${dmy(e.terminated_on)}</span>`
              : '<span class="pill" style="background:#E3F4E4; color:#2E7D32;">Working</span>'}</td>
       <td>${e.total_salary.toLocaleString()}</td><td>${e.basic_salary.toLocaleString()}</td>
       <td><button class="btn btn-gray" onclick="editEmployee('${e.emp_no}')">Edit</button>
@@ -6571,7 +6602,7 @@ function renderMasterDataLists() {
       <td>${e.company || "Infinia"}</td>
       <td>${(e.pay_type || "daily") === "fixed" ? "Fixed monthly" : "Daily wage"}</td>
       <td><span class="pill" style="background:#DCDCDC; color:#444;">${
-           e.terminated_on ? `Left ${e.terminated_on}` : "Removed"}</span></td>
+           e.terminated_on ? `Left ${dmy(e.terminated_on)}` : "Removed"}</span></td>
       <td>${(e.total_salary || 0).toLocaleString()}</td>
       <td>${(e.basic_salary || 0).toLocaleString()}</td>
       <td><button class="btn btn-gray" onclick="editEmployee('${e.emp_no}')">Edit</button></td>
@@ -6741,7 +6772,7 @@ function closeImportModal() {
 function openClearDayModal() {
   const dateObj = new Date(currentDate + "T00:00:00");
   document.getElementById("clearday-modal-date").textContent =
-    dateObj.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    dayDmy(dateObj);
   document.getElementById("clearday-modal-overlay").style.display = "flex";
 }
 
@@ -6753,7 +6784,7 @@ async function confirmClearDay() {
   closeClearDayModal();
   try {
     const result = await apiCall(`/attendance/${currentDate}`, { method: "DELETE" });
-    showStatus("att-status", "ok", `Cleared ${result.deleted} entr${result.deleted === 1 ? "y" : "ies"} for ${currentDate}.`);
+    showStatus("att-status", "ok", `Cleared ${result.deleted} entr${result.deleted === 1 ? "y" : "ies"} for ${dmy(currentDate)}.`);
     clearDraft(currentDate);
     await loadDate(currentDate, true);
     loadDashboardCalendar(calendarMonthFor(new Date(currentDate + "T00:00:00")), "attendance-calendar");
@@ -7360,7 +7391,7 @@ function exportReportTable(fmt) {
     const t = document.getElementById("report-date-to").value;
     if (!f || !t) { showStatus(monthlyStatus(), "warn", "Pick both a from and a to date."); return; }
     url += `&date_from=${f}&date_to=${t}`;
-    periodText = `${f} to ${t}`;
+    periodText = `${dmy(f)} to ${dmy(t)}`;
   }
   window.open(url, "_blank");
   showStatus(monthlyStatus(), "ok",
@@ -7815,7 +7846,7 @@ function startDashboardClock() {
     const clockEl = document.getElementById("dash-clock");
     const ampmEl = document.getElementById("dash-clock-ampm");
     if (clockEl) clockEl.textContent = `${hours}:${mins}`;
-    if (ampmEl) ampmEl.textContent = ampm + " - " + now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    if (ampmEl) ampmEl.textContent = ampm + " - " + dayDmy(now);
   }
   tick();
   setInterval(tick, 1000 * 30);
@@ -7991,7 +8022,7 @@ async function selectLiveCardWorker(empNo) {
     while (cur <= end) {
       const iso = isoLocal(cur);
       const r = days[iso];
-      const label = cur.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
+      const label = dmy(cur);
       gridRows += `<tr>
         <td>${label}</td><td${statusCell(r && r.am)}>${r ? r.am || "" : ""}</td><td${statusCell(r && r.pm)}>${r ? r.pm || "" : ""}</td>
         <td class="code">${r ? r.site || "" : ""}</td><td class="txt">${r ? r.engineer || "" : ""}</td>
@@ -8268,7 +8299,7 @@ async function fillNotificationLines(id) {
     const r = await apiCall(`/store/requests/${id}/summary`);
     if (!box.isConnected) return;
     const head = [r.site ? `Site ${r.site}` : "", r.requested_by ? `asked by ${r.requested_by}` : "",
-                  r.needed_by ? `needed ${r.needed_by}` : ""].filter(Boolean).join(" · ");
+                  r.needed_by ? `needed ${dmy(r.needed_by)}` : ""].filter(Boolean).join(" · ");
     const rows = r.lines.slice(0, 8).map(l => `
       <tr>
         <td>${l.material}${l.purpose ? `<div class="notif-for">for ${l.purpose}</div>` : ""}</td>
@@ -8319,7 +8350,7 @@ function renderBell() {
   const list = document.getElementById("bell-list");
   const today = isoLocal(new Date());
   const yday = isoLocal(new Date(Date.now() - 86400000));
-  const when = d => d === today ? "Today" : d === yday ? "Yesterday" : d;
+  const when = d => d === today ? "Today" : d === yday ? "Yesterday" : dmy(d);
   list.innerHTML = notifications.length ? notifications.map(n => {
     const isNew = !read.has(n.id);
     const colour = n.level === "warn" ? "#C0392B" : n.level === "ok" ? "#2E7D32" : "#1F2429";
@@ -8692,7 +8723,7 @@ async function refreshOnHire() {
                 // several deliveries: each its own date, quantity and days on rent
                 ? `<td style="font-size:12px; line-height:1.7;">${i.batches.map(b => `${pcDate(b.since)} <span style="color:#888;">&middot; ${num(b.qty)}</span>`).join("<br>")}</td>
                    <td style="font-size:12px; line-height:1.7;">${i.batches.map(b => `<span${b.days > 60 ? ' style="color:#C0392B; font-weight:600;"' : b.days > 30 ? ' style="color:#8A6100; font-weight:600;"' : ""}>${b.days} day${b.days === 1 ? "" : "s"}</span> <span style="color:#888;">(${num(b.qty)})</span>`).join("<br>")}</td>`
-                : `<td>${i.since || "-"}</td>
+                : `<td>${i.since ? dmy(i.since) : "-"}</td>
               <td${i.days > 60 ? ' style="color:#C0392B; font-weight:600;"'
                  : i.days > 30 ? ' style="color:#8A6100; font-weight:600;"' : ""}>${
                 i.since ? `${i.days} day${i.days === 1 ? "" : "s"}` : "-"}</td>`}
@@ -8814,7 +8845,7 @@ async function refreshReturnList() {
   body.innerHTML = rows.map(r => `
     <tr>
       <td style="text-align:left;"><strong>${xlink(r.ref, `printReturn(${r.id}, 'view')`, null, "Open the return note")}</strong></td>
-      <td>${r.return_date || "-"}</td>
+      <td>${r.return_date ? dmy(r.return_date) : "-"}</td>
       <td style="text-align:left;">${r.supplier ? supplierLink(r.supplier) : "-"}</td>
       <td>${r.lines}</td>
       <td>${num(r.total_returned)}</td>
@@ -10355,7 +10386,7 @@ function holdPanel(side, title, rows, sub, recent) {
 
 function shortDate(iso) {
   const d = new Date(iso + "T00:00:00");
-  return isNaN(d) ? iso : d.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
+  return isNaN(d) ? iso : dmy(d);
 }
 
 function outLineItemIds() {
@@ -10746,10 +10777,10 @@ async function fuBooked(rid, lid, name) {
 }
 // Edit from the follow-up list: the request opens in the raise form
 async function fuEditReq(id) { switchScreen("requests"); for (let i = 0; i < 30 && !document.getElementById("mr-lines"); i++) await new Promise(r => setTimeout(r, 100)); await new Promise(r => setTimeout(r, 400)); mrEdit(id); }
-// "01-Oct-26 09:12" - the day and minute a request was raised.
+// "01/10/2026 09:12" - the day and minute a request was raised.
 function fuWhen(iso) {
   const d = new Date(iso); if (isNaN(d)) return "";
-  return `${pcDate(isoLocal(d))} ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
+  return dmyHm(d);
 }
 
 function renderFollowUp() {
@@ -10823,12 +10854,12 @@ function renderFollowUp() {
           <td class="num-col" style="font-weight:700;">${num(x.due)} ${x.unit}${x.received ? `<div style="font-size:11px; color:#999; font-weight:400;">${num(x.received)} of ${num(x.asked)} in</div>` : ""}</td>
           <td>${x.site || '<span style="color:#999;">store</span>'}</td>
           <td><strong>${requestLink(x.ref)}</strong>${x.raised ? `<div style="font-size:11px; color:#999; white-space:nowrap;">${fuWhen(x.raised)}</div>` : ""}</td>
-          <td>${x.needed || "-"}${x.late ? '<div style="color:#C0392B; font-size:11px; font-weight:700;">LATE</div>' : ""}</td>
+          <td>${x.needed ? dmy(x.needed) : "-"}${x.late ? '<div style="color:#C0392B; font-size:11px; font-weight:700;">LATE</div>' : ""}</td>
           <td>${x.sup ? supplierLink(x.sup.name) : '<span style="color:#B26A00; font-weight:600;">not ordered yet</span>'}</td>
           <td>${x.sup && (x.sup.phone || x.sup.contact_person)
             ? `${x.sup.contact_person ? x.sup.contact_person : ""}${x.sup.phone ? `<div><a href="tel:${x.sup.phone}" style="color:#1565C0; font-weight:600;">${x.sup.phone}</a></div>` : ""}`
             : (x.sup ? '<span style="color:#999;">no number on file</span>' : '<span style="color:#999;">ask the office</span>')}</td>
-          <td>${x.expected || "-"}</td>
+          <td>${x.expected ? dmy(x.expected) : "-"}</td>
           <td><span style="color:${MR_COLOUR[x.status] || "#777"}; font-weight:600; font-size:12px;">${MR_LABEL[x.status] || x.status}</span>
             ${x.sup && MY_SCREENS.includes("store")
               ? `<div><button class="btn btn-dark" style="margin-top:4px;" onclick="openReceive(${x.rid}, ${x.supId})">It arrived</button></div>
@@ -11032,8 +11063,8 @@ async function loadRequests() {
               <td><strong>${r.ref}</strong>${r.urgency === "urgent" && isOpen(r) ? '<div style="font-size:10px; font-weight:700; letter-spacing:.5px; color:#B26A00;">URGENT</div>' : ""}</td>
               <td>${r.site || '<span style="color:#999;">Central store</span>'}</td>
               <td>${r.requested_by || '<span style="color:#C0392B;">not recorded</span>'}</td>
-              <td>${r.requested_on}</td>
-              <td>${r.needed_by || '<span style="color:#C0392B;">no date</span>'}${late ? ' <span style="color:#C0392B; font-weight:700;">LATE</span>' : ""}</td>
+              <td>${dmy(r.requested_on)}</td>
+              <td>${r.needed_by ? dmy(r.needed_by) : '<span style="color:#C0392B;">no date</span>'}${late ? ' <span style="color:#C0392B; font-weight:700;">LATE</span>' : ""}</td>
               <td style="font-size:12.5px;">${preview || "-"}${progress}${
                 (() => {
                 const sups = [...new Map((r.lines || []).filter(l => l.supplier)
@@ -11289,7 +11320,7 @@ async function saveReceive() {
   // it is worth one glance at the date before saving.
   const when = document.getElementById("recv-date").value;
   if (when && when > isoLocal(new Date()) &&
-      !confirm(`The delivery date ${when} is in the future.\n\n` +
+      !confirm(`The delivery date ${dmy(when)} is in the future.\n\n` +
                "The stock will go up straight away. Save anyway?")) return;
   try {
     const res = await apiCall(`/store/requests/${recvRequest.id}/receive-bulk`, {
@@ -11936,7 +11967,7 @@ function pickReport(kind, noScroll) {
   document.getElementById("store-range-wrap").style.display = needsDates ? "" : "none";
   document.getElementById("store-report-sub").textContent = needsDates
     ? "Pick a date range, or leave blank for everything."
-    : `As at ${isoLocal(new Date())}`;
+    : `As at ${dmy(new Date())}`;
   // A fresh report starts unfiltered - a leftover search from the last
   // report silently hiding rows would look like missing data.
   document.getElementById("store-report-search").value = "";
@@ -12156,7 +12187,7 @@ async function loadStore() {
       .filter(k => d.rows.some(r => !blank(r[k]))));
     // What is grouped on screen: issues by day, tools by site and holder.
     const groupOf = view === "usage" ? r => r.date : (view === "issues" && !(d.rows[0] || {}).returned_on) ? r => `${r.site} · ${r.given_to || "-"}` : null;
-    const groupLabel = view === "usage" ? g => (g ? new Date(g + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "short", year: "numeric" }) : "No date")
+    const groupLabel = view === "usage" ? g => (g ? dayDmy(g) : "No date")
                                         : g => `Site ${g}`;
     const isDate = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
     const WIDE = ["name", "notes", "description", "hired_from", "condition", "supplier", "material"];
@@ -12432,7 +12463,7 @@ async function loadErrorCheck() {
   // than reading a date out of a sentence and finding it by hand.
   const pretty = d => {
     const t = new Date(d + "T00:00:00");
-    return isNaN(t) ? d : t.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    return isNaN(t) ? d : dmy(t);
   };
   const gotoDay = w => {
     const withGoto = w.issues.find(x => x.goto);
@@ -12473,7 +12504,7 @@ async function loadErrorCheck() {
           const go = gotoDay(w);
           if (!go) return "";
           return `<div style="display:flex; justify-content:flex-end; margin:-4px 0 6px;">
-            <button class="btn btn-primary" title="Open ${go.day} on Daily Attendance"
+            <button class="btn btn-primary" title="Open ${dmy(go.day)} on Daily Attendance"
               onclick="event.stopPropagation(); fillMissing('${go.day}', '${w.emp_no}')">
               ${canRemind(w) ? "Fill missing" : "Open"} ${go.label} &rarr;</button></div>`;
         })()}
@@ -12483,7 +12514,7 @@ async function loadErrorCheck() {
           return `<div style="padding:12px 0; ${x !== w.issues[0] ? "border-top:1px solid #EAEAEA;" : "padding-top:2px;"}">
             <div style="font-size:13px; font-weight:600; color:${t ? t[1] : "#1F2429"};">
               ${t ? `<span style="font-size:10px; letter-spacing:.4px;">${t[0]} &middot; </span>` : ""}${x.issue}
-              ${x.date && x.date !== "-" ? `<span style="color:#999; font-weight:400;"> (${x.date}${x.site && x.site !== "-" ? ", site " + x.site : ""})</span>` : ""}
+              ${x.date && x.date !== "-" ? `<span style="color:#999; font-weight:400;"> (${dmy(x.date)}${x.site && x.site !== "-" ? ", site " + x.site : ""})</span>` : ""}
             </div>
             ${Object.keys(detail).length ? `
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr));
@@ -12745,9 +12776,9 @@ async function refreshSignatureState() {
     const hb = document.getElementById("sig-history"), er = document.getElementById("sig-earlier-row");
     const hist = s.history || [];
     if (hb) hb.innerHTML = hist.length ? hist.slice().reverse().map((h, i) => {
-      const when = h.from ? new Date(h.from + "Z").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+      const when = h.from ? dmyHm(new Date(h.from + "Z")) : "";
       return `<div style="color:${i === 0 ? "#2E7D32" : "#666"};">${i === 0 ? "&#10003; " : ""}${h.name ? `<b>${h.name.replace(/</g, "&lt;")}</b>` : "Signature"} - ${h.from ? `orders made from ${when}` : "the earlier orders"}${i === 0 ? " (current)" : ""}</div>`; }).join("")
-      + (hist.length && hist[0].from ? `<div style="color:#B26A00;">Orders made before ${new Date(hist[0].from + "Z").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} print unsigned until their signature is uploaded below.</div>` : "") : "";
+      + (hist.length && hist[0].from ? `<div style="color:#B26A00;">Orders made before ${dmy(new Date(hist[0].from + "Z"))} print unsigned until their signature is uploaded below.</div>` : "") : "";
     if (er) er.style.display = hist.length && hist[0].from ? "" : (hist.length ? "" : "none");
     el.style.color = s.present ? "#2E7D32" : "#C0392B";
     if (panel) {
@@ -12984,7 +13015,7 @@ function renderLpoPending() {
       <td style="text-align:left;">${p.description}</td>
       <td>${num(p.qty)} ${p.unit || ""}</td>
       <td style="text-align:left;">${p.purpose || "-"}</td>
-      <td>${p.needed_by || "-"}${p.urgency === "urgent" ? ' <span class="pill" style="background:#FFE0B2; color:#B26A00;">urgent</span>' : ""}</td>
+      <td>${p.needed_by ? dmy(p.needed_by) : "-"}${p.urgency === "urgent" ? ' <span class="pill" style="background:#FFE0B2; color:#B26A00;">urgent</span>' : ""}</td>
       <td>${p.requested_by || "-"}</td>
     </tr>`).join("");
   notePendingPick();
@@ -13121,10 +13152,10 @@ async function loadLpoReport() {
       const cells = [];
       if (r.group_by === "order") {
         cells.push(`<td style="text-align:left;"><strong class="lpr-no">${row.label}</strong>${
-          row.status === "cancelled" ? ` <span class="pill lpr-cx" style="background:#FBE0DE; color:#C0392B; font-weight:700;">CANCELLED</span>${row.cancel_reason ? `<div class="lpr-why" style="font-size:11.5px;color:#B03A2E;margin-top:2px;">${row.cancelled_on ? escapeHtml(row.cancelled_on) + " - " : ""}${escapeHtml(row.cancel_reason)}</div>` : ""}` : ""}${
+          row.status === "cancelled" ? ` <span class="pill lpr-cx" style="background:#FBE0DE; color:#C0392B; font-weight:700;">CANCELLED</span>${row.cancel_reason ? `<div class="lpr-why" style="font-size:11.5px;color:#B03A2E;margin-top:2px;">${row.cancelled_on ? escapeHtml(dmy(row.cancelled_on)) + " - " : ""}${escapeHtml(row.cancel_reason)}</div>` : ""}` : ""}${
           row.edited && row.status !== "cancelled"
-            ? ` <span class="pill" style="background:#FDF0D5; color:#8A6100;" title="Corrected on ${row.edited_on}">edited</span>` : ""}</td>`);
-        cells.push(`<td style="text-align:left;">${row.date || "-"}</td>`);
+            ? ` <span class="pill" style="background:#FDF0D5; color:#8A6100;" title="Corrected on ${dmy(row.edited_on)}">edited</span>` : ""}</td>`);
+        cells.push(`<td style="text-align:left;">${row.date ? dmy(row.date) : "-"}</td>`);
         cells.push(`<td style="text-align:left;">${row.supplier ? supplierLink(row.supplier) : "-"}</td>`);
         cells.push(`<td style="text-align:left;">${row.site || "-"}</td>`);
       } else {
@@ -13215,7 +13246,7 @@ async function priceSearch() {
         <div class="price-buys">
           <table>${m.buys.map(b => `
             <tr>
-              <td style="width:16%;">${b.date}</td>
+              <td style="width:16%;">${dmy(b.date)}</td>
               <td style="width:28%;">${b.supplier ? supplierLink(b.supplier) : "-"}</td>
               <td style="width:16%;">${b.site || "-"}</td>
               <td style="width:14%; text-align:right;">${num(b.qty)} ${m.unit || ""}</td>
@@ -13715,7 +13746,7 @@ function paintLpoLine(i) {
     const pct = l.last.rate ? ((rate - l.last.rate) / l.last.rate * 100) : 0;
     lastCell = `<div style="font-size:12px;">
         <strong>${money(l.last.rate)}</strong>
-        <span style="color:#888;"> ${l.last.date} \u00b7 ${l.last.supplier || ""}</span>
+        <span style="color:#888;"> ${dmy(l.last.date)} \u00b7 ${l.last.supplier || ""}</span>
         ${l.times > 1 ? `<span style="color:#888;"> \u00b7 ${l.times}x</span>` : ""}
         ${up ? `<div style="color:#C0392B; font-weight:600;">&#9650; +${pct.toFixed(1)}% higher</div>` : ""}
         ${rate > 0 && rate < l.last.rate ? `<div style="color:#2E7D32;">&#9660; ${Math.abs(pct).toFixed(1)}% lower</div>` : ""}
@@ -14221,7 +14252,7 @@ async function dashSky() {
   const bits = [];
   if (d.workers != null) bits.push(d.workers ? `<em>${num(d.workers)}</em> workers on <em>${num(d.sites || 0)}</em> site${d.sites === 1 ? "" : "s"} today` : (d.day_off ? "A day off on site today" : "Today's attendance is not in yet"));
   if (d.deliveries != null) bits.push(d.deliveries ? `<em>${num(d.deliveries)}</em> deliver${d.deliveries === 1 ? "y" : "ies"} on the way` : "Nothing waiting to arrive");
-  if (!bits.length) bits.push(new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }));
+  if (!bits.length) bits.push(dayDmy(new Date()));
   ln.innerHTML = bits.join(" &middot; ");
 }
 // ---- Dashboard: quick actions, by job -------------------------------------
@@ -14651,9 +14682,7 @@ async function loadBackupList() {
       return;
     }
     body.innerHTML = rows.map(b => {
-      const when = new Date(b.created_at).toLocaleString(undefined, {
-        year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-      });
+      const when = dmyHm(b.created_at);
       // Restoring replaces the whole database and deleting throws away a
       // safety net - both are refused by the server for anyone but an
       // admin, so they are not offered either. A button that always
@@ -14827,12 +14856,10 @@ let HR_RUNS = [];
 
 function hrMsg(kind, text) { showStatus("hr-status", kind, text); }
 
-// 13 Sep 2026 - the way the statements and the trackers write a date.
-const HR_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// 13/09/2026 - the way every date on screen is written.
 function hrDate(iso) {
   if (!iso) return "";
-  const [y, m, d] = String(iso).slice(0, 10).split("-");
-  return `${parseInt(d, 10)} ${HR_MON[parseInt(m, 10) - 1]} ${y}`;
+  return dmy(String(iso).slice(0, 10));
 }
 // 4.09 years reads as "4 y 1 m": service is counted in years and months.
 function hrService(years) {
@@ -15471,7 +15498,7 @@ function payCell(kind, id) {
   // One payment for the whole amount needs no figure; several show what each one was.
   const many = (p.payments || []).length > 1 || p.state === "partial" || p.state === "todate";
   const lines = (p.payments || []).map(x => `<div class="pay-meta" title="${escapeAttr(hrMoney(x.amount) + (x.reference ? " - ref " + x.reference : "") + (x.note ? " - " + x.note : ""))}">` +
-      `${many ? hrMoney(x.amount) + " &middot; " : ""}${escapeHtml(payShortDate(x.paid_on_text))} &middot; ${escapeHtml(x.type_label)} &middot; ${escapeHtml(x.mode_label)}` +
+      `${many ? hrMoney(x.amount) + " &middot; " : ""}${escapeHtml(x.paid_on ? dmy(x.paid_on) : payShortDate(x.paid_on_text))} &middot; ${escapeHtml(x.type_label)} &middot; ${escapeHtml(x.mode_label)}` +
       `<span class="pay-x" title="Cancel this payment (entered by mistake)" onclick="payCancel(${x.id})">&#10005;</span></div>`).join("");
   const carry = p.carry ? `<div class="pay-carry" title="Changed after it was paid - carried to Additions &amp; Deductions">` +
       `${p.carry > 0 ? "+" : "-"}${hrMoney(Math.abs(p.carry))} to ${escapeHtml(p.carry_to)}</div>` : "";
@@ -15498,7 +15525,7 @@ function payslipCell(kind, id) {
     if (!v.length) return `<div><button class="pay-btn" onclick="payGenerate(${x.id}, '${kind}')">Generate</button></div>`;
     const s = v[v.length - 1];
     return `<div><a onclick="payslipOpen(${s.id})">View</a> &middot; <a onclick="payslipOpen(${s.id}, true)">Download</a>` +
-           ` <span class="v" title="${escapeAttr(s.slip_no)} - ${escapeAttr(s.created)}">${s.type === "settlement" ? "settlement " : ""}v${s.version}</span>` +
+           ` <span class="v" title="${escapeAttr(s.slip_no)} - ${escapeAttr(dmy(s.created))}">${s.type === "settlement" ? "settlement " : ""}v${s.version}</span>` +
            ` <a class="v" title="A new version - earlier versions are kept" onclick="payGenerate(${x.id}, '${kind}')">&#8635;</a></div>`;
   }).join("");
 }
@@ -16140,8 +16167,7 @@ async function labIncForm() {
   const t = new Date(), y = t.getFullYear(), m = t.getMonth();
   const cs = t.getDate() >= 26 ? new Date(y, m, 26) : new Date(y, m - 1, 26);
   const ls = new Date(cs.getFullYear(), cs.getMonth() - 1, 26);
-  const MON3 = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  const d = x => `${x.getDate()} ${MON3[x.getMonth()]} ${x.getFullYear()}`;
+  const d = x => dmy(x);
   document.getElementById("labinc-from").innerHTML = `<option value="this">This cycle (${d(cs)})</option><option value="previous">Last cycle (${d(ls)})</option>`;
 }
 async function labIncAdd() {
@@ -17022,7 +17048,6 @@ async function loadLeave() {
 function hrSpan(r) {
   if (r.from === r.to) return hrDate(r.from) + (r.half ? " (half)" : "");
   const a = r.from.split("-"), b = r.to.split("-");
-  if (a[0] === b[0] && a[1] === b[1]) return `${parseInt(a[2], 10)}-${hrDate(r.to)}`;
   return `${hrDate(r.from)} - ${hrDate(r.to)}`;
 }
 
@@ -17649,7 +17674,7 @@ function hrDocRenewal() {
   if (yrs && old.expires_on) { const d = new Date(old.expires_on); d.setFullYear(d.getFullYear() + yrs); put(exp, isoLocal(d)); }
   note.textContent = `Renewing ${old.name}'s ${old.kind_label} (expires ${dmyShort(old.expires_on)}).` + (yrs ? ` New expiry set ${yrs} year${yrs > 1 ? "s" : ""} on - change it to the date on the new document.` : "");
 }
-function dmyShort(iso) { try { return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); } catch (e) { return iso; } }
+function dmyShort(iso) { return dmy(iso); }
 function hrDocKindChanged() {
   hrDocRenewal();
   const custom = document.getElementById("hr-doc-kind").value === "custom";
@@ -17934,7 +17959,7 @@ document.addEventListener("keydown", ev => { if (ev.key === "Escape") hrMenuClos
 let PC = null, PC_EDIT = null, PC_KIND = "paid", PC_SITES = null;
 function pcToday() { const d = new Date(Date.now() + 4 * 3600e3); return d.toISOString().slice(0, 10); }
 function pcMoney(v) { return Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function pcDate(iso) { if (!iso) return ""; const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" }).replace("Sept", "Sep").replace(/ /g, "-"); }
+function pcDate(iso) { if (!iso) return ""; return dmy(iso); }
 
 // The words a book is kept with. A director's book (Naveen, Praveen)
 // reads as his own sheet does: DR what he paid for the company, CR what
@@ -18666,9 +18691,9 @@ async function zsLoad() {
 }
 function zsWhen(iso) {
   if (!iso) return "";
-  const d = new Date(iso); const p = n => String(n).padStart(2, "0");
-  const m = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()];
-  return `${p(d.getDate())}-${m}<span class="sub">${p(d.getHours())}:${p(d.getMinutes())}</span>`;
+  const d = new Date(iso); if (isNaN(d)) return "";
+  const [day, hm] = dmyHm(d).split(" ");
+  return `${day}<span class="sub">${hm}</span>`;
 }
 function zsAcc(a) {
   if (!a) return `<span class="zh-none">-</span>`;
@@ -18933,7 +18958,7 @@ function zhPosDraw() {
         return `<div class="zh-chg" data-chg="${o.id}" style="border-top:1px solid #F0DDB5;margin-top:8px;padding-top:8px;display:flex;gap:12px;align-items:flex-start;">
           <div style="flex:1;min-width:0;"><div><a href="#" class="zh-open" onclick="event.preventDefault(); zhPoView(${o.id})"><b>${escapeHtml(o.ref)}</b></a> · ${escapeHtml(o.supplier)} · AED ${pcMoney(o.total)}
             ${o.cancelled ? `<span class="zx-tag zx-bad">Cancelled</span>` : `<span class="zx-tag" style="background:#FDF0D5;color:#8A6100;">Edited</span>`}</div>
-          ${items.map(it => `<div class="sub" style="display:block;margin-top:4px;color:#6b625a;">${escapeHtml(it.when || "")} · ${escapeHtml(it.who || "")}</div>
+          ${items.map(it => `<div class="sub" style="display:block;margin-top:4px;color:#6b625a;">${escapeHtml(dmy(it.when || ""))} · ${escapeHtml(it.who || "")}</div>
             <ul style="margin:3px 0 0 18px;padding:0;font-size:13px;line-height:1.5;">${(it.changes || []).map(c => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
             ${it.zoho ? `<div style="margin-top:3px;font-size:12.5px;font-weight:600;color:${/automatically/.test(it.zoho) ? "#1E7A3C" : "#B03A2E"};">${/automatically/.test(it.zoho) ? "&#10003; " : "&#9888; "}${escapeHtml(it.zoho)}</div>` : ""}`).join("")}
           ${!items.length && o.err ? `<div style="margin-top:4px;"><span class="zx-tag zx-bad">${escapeHtml(o.err)}</span></div>` : ""}</div>
@@ -19505,7 +19530,7 @@ async function ppeLoad() {
   ["pe-give", "pe-stockbtns"].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = PE.may_edit ? "" : "none"; });
   ppeDraw();
 }
-function ppeD(iso, y) { if (!iso) return ""; const [Y, m, d] = iso.split("-"); return `${d} ${"Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ")[+m - 1]}${y || (PE && Y !== PE.today.slice(0, 4)) ? " " + (y ? Y : "'" + Y.slice(2)) : ""}`; }
+function ppeD(iso, y) { if (!iso) return ""; return dmy(iso); }
 function ppeAgo(days, long) {
   if (days === null || days === undefined) return "";
   if (days === 0) return "today";
@@ -19811,7 +19836,7 @@ async function campLoad() {
   ["cp-bookbtn", "cp-roombtn"].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = CP.may_edit ? "" : "none"; });
   campDraw();
 }
-function campDmy(iso) { if (!iso) return ""; const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }); }
+function campDmy(iso) { if (!iso) return ""; return dmy(iso); }
 function campFilter(f) { CP_F = f; campDraw(); }
 function campMatch(b) {
   const q = (document.getElementById("cp-q").value || "").trim().toLowerCase();
@@ -19822,7 +19847,7 @@ function campMatch(b) {
 function campDraw() {
   if (!CP) return;
   const t = CP.totals, q = (document.getElementById("cp-q").value || "").trim().toLowerCase();
-  document.getElementById("cp-asof").textContent = `Camp · ${CP.rooms.length} rooms · as on ${new Date(CP.today + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}`;
+  document.getElementById("cp-asof").textContent = `Camp · ${CP.rooms.length} rooms · as on ${dmy(CP.today)}`;
   const tile = (f, label, n, cls) => `<button type="button" class="cp-tile ${cls || ""}${CP_F === f ? " on" : ""}" onclick="campFilter('${f}')"><span>${label}</span><b>${n}</b></button>`;
   document.getElementById("cp-tiles").innerHTML = tile("all", "All beds", t.beds) + tile("in", "In camp", t.in) + tile("vac", "On vacation", t.vac, "t-vac") + tile("book", "Booked - arriving", t.book, "t-book") + tile("free", "Free beds", t.free, "t-free");
   const nb = CP.nobed || [];
@@ -20336,8 +20361,7 @@ let PDC = null, PDC_EDIT = null, PDC_GRID = null, PDC_VIEW = "grid";
 const pdcMoney = v => (Number(v) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // "29-Sep-26" exactly as on the papers (a browser's own "short month" can
 // read "Sept").
-const PDC_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const pdcDmy = iso => { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${d}-${PDC_MON[+m - 1]}-${y.slice(2)}`; };
+const pdcDmy = iso => { if (!iso) return ""; return dmy(iso); };
 function pdcToday() { const d = new Date(Date.now() + 4 * 3600e3); return d.toISOString().slice(0, 10); }
 
 async function pdcOpen() {
@@ -20647,7 +20671,7 @@ async function pdcExport(kind) {
 // issued invoice is cancelled, never deleted.
 let INV_KIND = "tax", INV = null, INV_EDIT = null, INV_AUTO = true, INV_LINES = [];
 function accMoney(v) { return (Number(v) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function accDmy(iso) { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${d}-${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m - 1]}-${y.slice(2)}`; }
+function accDmy(iso) { if (!iso) return ""; return dmy(iso); }
 function accToday() { return new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10); }
 function accNum(s) { const v = parseFloat(String(s || "").replace(/,/g, "")); return isNaN(v) ? 0 : v; }
 
@@ -21483,7 +21507,7 @@ function bdayTitle(s) { return String(s || "").toLowerCase().replace(/(^|[\s.'-]
 function bdayFirst(s) { return bdayTitle(String(s || "").trim().split(/\s+/)[0]); }
 function bdayShow() {
   if (!BDAY || !BDAY.people.length) return;
-  const d = new Date(BDAY.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  const d = dayDmy(BDAY.date);
   const ppl = BDAY.people;
   const names = ppl.length === 1 ? bdayTitle(ppl[0].name) : ppl.length === 2 ? `${bdayFirst(ppl[0].name)} & ${bdayFirst(ppl[1].name)}` : `${ppl.length} of our team`;
   const row = p => {
@@ -22022,7 +22046,7 @@ async function loadDailyReport() {
   body.innerHTML = '<div class="empty-note">Loading&hellip;</div>';
   try { DR = await apiCall("/attendance/report/daily?" + drParams()); }
   catch (e) { body.innerHTML = `<div class="empty-note">Could not load: ${escapeHtml(errText(e))}</div>`; return; }
-  document.getElementById("dr-title").textContent = `Daily report - ${new Date(DR.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "short", year: "numeric" })}`;
+  document.getElementById("dr-title").textContent = `Daily report - ${dayDmy(DR.date)}`;
   const fill = (id, list, all) => { const el = document.getElementById(id), cur = el.value;
     el.innerHTML = `<option value="">${all}</option>` + list.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(id === "dr-trade" ? x.charAt(0) + x.slice(1).toLowerCase() : x)}</option>`).join("");
     el.value = list.includes(cur) ? cur : ""; };

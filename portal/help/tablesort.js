@@ -22,7 +22,7 @@
     let m = t.match(/^(\d{1,2})[- ]([A-Za-z]{3})[a-z]*[- ,]*(\d{2,4})?/);
     if (m && MON[m[2].toLowerCase()] !== undefined) { const y = m[3] ? (+m[3] < 100 ? 2000 + +m[3] : +m[3]) : new Date().getFullYear(); return { n: new Date(y, MON[m[2].toLowerCase()], +m[1]).getTime() }; }
     m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return { n: new Date(+m[1], +m[2] - 1, +m[3]).getTime() };
-    m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return { n: new Date(+m[3], +m[2] - 1, +m[1]).getTime() };
+    m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?: (\d{1,2}):(\d{2}))?/); if (m) return { n: new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)).getTime() };   // 30/10/2026, 30/10/2026 14:05
     m = t.match(/^(?:(\d+)\s*y)?\s*(?:(\d+)\s*m)?$/i);                          // service "10 y 6 m", "10 m": in months
     if (m && (m[1] || m[2])) return { n: (+(m[1] || 0)) * 12 + (+(m[2] || 0)) };
     m = t.match(/^(\d{1,2})-\d{1,2} ([A-Za-z]{3})[a-z]* (\d{4})/);          // a date range "5-18 Oct 2026": by its first day

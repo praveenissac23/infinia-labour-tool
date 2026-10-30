@@ -14,7 +14,7 @@ const measure = sel => { const out = []; let n = 0;
     await p.goto(B + '/'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()'); await sleep(3000);
     await p.goto(B + '/?p=reports'); await sleep(3000);
     await p.evaluate(() => { document.querySelectorAll('#screen-reports input[type=checkbox]').forEach(c => { if (/OT Amount|BH Amount|Final Salary|OT Hours|BH Hours|Days Present|Days Absent|Employee/i.test(c.parentElement.textContent)) c.checked = true; }); }); 
-    await p.evaluate(() => { document.querySelectorAll('#screen-reports select').forEach(s => { const o = [...s.options].find(x => /Sep.*25 Oct 2026/.test(x.text)); if (o) { s.value = o.value; s.dispatchEvent(new Event('change')); } }); }); await sleep(800);
+    await p.evaluate(() => { document.querySelectorAll('#screen-reports select').forEach(s => { const o = [...s.options].find(x => /25\/10\/2026/.test(x.text)); if (o) { s.value = o.value; s.dispatchEvent(new Event('change')); } }); }); await sleep(800);
     await p.evaluate(() => loadReports()); await sleep(3500);
     let r = await p.evaluate(measure, '#report-preview-card thead th');
     ck(`${w}px: the ${r.n} headings fit their columns`, r.n > 6 && !r.bad.length, r);
