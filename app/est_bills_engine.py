@@ -13,6 +13,8 @@ Standard library and openpyxl only (nothing to install on the server).
 import base64
 import datetime as _dt
 import io
+import os
+import tempfile
 import math
 import re
 import zipfile
@@ -347,6 +349,30 @@ def slim(data: bytes) -> bytes:
         zo.writestr(it, raw)
     zo.close()
     return out.getvalue()
+
+
+def xls_to_xlsx(data: bytes) -> bytes:
+    """An old-format Excel bill (.xls) -> .xlsx, converted on the server with LibreOffice (formulas, layout and
+    formatting kept), so the bill can be uploaded as it is instead of being re-saved in Excel first."""
+    import shutil, subprocess
+    exe = shutil.which("soffice") or shutil.which("libreoffice")
+    if not exe:
+        raise BillError("This is the old Excel format (.xls) and the server cannot convert it yet. Open it in Excel and save it as "
+                        ".xlsx (File > Save As > Excel Workbook), then upload that.")
+    with tempfile.TemporaryDirectory() as d:
+        src = os.path.join(d, "bill.xls")
+        with open(src, "wb") as f:
+            f.write(data)
+        try:
+            subprocess.run([exe, "--headless", "--norestore", f"-env:UserInstallation=file://{d}/lo", "--convert-to", "xlsx",
+                            "--outdir", d, src], capture_output=True, timeout=150, env={**os.environ, "HOME": d})
+        except subprocess.TimeoutExpired:
+            raise BillError("Converting the .xls took too long. Save it as .xlsx in Excel and upload that.")
+        out = os.path.join(d, "bill.xlsx")
+        if not os.path.exists(out) or os.path.getsize(out) == 0:
+            raise BillError("That .xls file could not be converted. Open it in Excel, save it as .xlsx and upload that.")
+        with open(out, "rb") as f:
+            return f.read()
 
 
 def read_format(data: bytes, filename: str = ""):

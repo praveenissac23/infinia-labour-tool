@@ -998,6 +998,9 @@ async def upload_format(project_id: int = Form(...), name: str = Form(""), file:
     if len(data) > 25 * 1024 * 1024:
         raise HTTPException(400, "That workbook is over 25 MB - remove pictures it does not need and upload it again.")
     try:
+        if (file.filename or "").lower().endswith(".xls") or data[:4] == b"\xd0\xcf\x11\xe0":   # old Excel: converted here, kept as .xlsx
+            data = BE.xls_to_xlsx(data)
+            file.filename = re.sub(r"\.xls$", "", file.filename or "bill", flags=re.I) + ".xlsx"
         model = BE.read_format(data, file.filename or "")
     except BE.BillError as e:
         raise HTTPException(400, str(e))

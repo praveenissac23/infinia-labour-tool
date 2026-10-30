@@ -33,7 +33,7 @@ SECTIONS["bills.ipa"] = async el => {
     (!formats.length ? `<div class="card empty" style="text-align:left;line-height:1.6"><b>No bill format for ${K ? "the " + esc(K.name) + " contract" : "this project"} yet.</b><br>
         Upload the last bill exactly as it was sent to the consultant (the Excel workbook with the cover, summary and the sheets with Previous % / Total %).
         Each new bill starts from it: last month's Total % becomes Previous %, the bill number goes up by one and the date is today.
-        The workbook comes back out with the same layout, logo, stamps and formulas.<br><span class="muted small">An old .xls file must first be saved as .xlsx in Excel (File &gt; Save As).</span></div>` :
+        The workbook comes back out with the same layout, logo, stamps and formulas.</div>` :
      bills.length ? `<div class="tw"><table class="t"><thead><tr><th>Bill</th><th>Issue date</th><th>Format</th><th class="r">Total due</th><th>Status</th><th>Last change</th><th></th></tr></thead><tbody>
       ${bills.map(b => `<tr class="rowc" data-ipa="${b.id}"><td><b>IPA ${esc(b.label || b.seq)}</b></td><td>${dt(b.issue_date)}</td><td class="small">${esc((fm(b.format_id) || {}).name || "")}</td>
         <td class="r"><b>${money(b.total_due)}</b></td><td>${st(b.status)}</td><td class="small muted">${esc(b.by)}${b.updated ? " · " + dt(b.updated) : ""}</td>
@@ -138,7 +138,6 @@ function uploadFormat() {
   ], async v => {
     const f = ($("#fm-file") || {}).files; const file = f && f[0];
     if (!file) throw new Error("Pick the Excel bill.");
-    if (/\.xls$/i.test(file.name)) throw new Error("This is an old .xls file. Open it in Excel, File > Save As > Excel Workbook (.xlsx), and upload that.");
     const fd = new FormData(); fd.append("project_id", ST.pid); fd.append("name", v.name);
     if (IPA.list && IPA.list.contract_id) fd.append("contract_id", IPA.list.contract_id);
     const PART = 700 * 1024;                         // the web server takes about 1 MB a request: a bigger file goes in pieces
@@ -157,7 +156,7 @@ function uploadFormat() {
     const ok = r.same === r.formulas;
     toast(`Format read: ${r.lines} lines with Previous % / Total % on ${r.sheets.join(", ")}. ${ok ? `All ${r.formulas} formulas give Excel's own figures.` : `${r.same} of ${r.formulas} formulas match Excel - check the bill before sending.`}`, { ms: 7000, err: !ok });
     billsRedraw();
-  }, { save: "Upload", bottom: `<div class="frm" style="margin-top:4px"><div class="f full"><label for="fm-file">The last bill as sent (Excel .xlsx) ${tip("The whole workbook: cover / summary and the sheets with the % of work done. It is kept on the server - every new bill is made from it, with the same layout, logo, stamps and formulas.")}</label><input type="file" id="fm-file" accept=".xlsx,.xlsm,.xls"></div></div>` });
+  }, { save: "Upload", bottom: `<div class="frm" style="margin-top:4px"><div class="f full"><label for="fm-file">The last bill as sent (Excel .xlsx or .xls) ${tip("The whole workbook: cover / summary and the sheets with the % of work done. It is kept on the server - every new bill is made from it, with the same layout, logo, stamps and formulas.")}</label><input type="file" id="fm-file" accept=".xlsx,.xlsm,.xls"></div></div>` });
 }
 
 // A new bill is made from the latest bill - the last one made here (with every line, section and page added on it),
