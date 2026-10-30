@@ -85,7 +85,20 @@
     wb.SheetNames.forEach(function (name, si) {
       var hidden = wb.Workbook && wb.Workbook.Sheets && wb.Workbook.Sheets[si] && wb.Workbook.Sheets[si].Hidden;
       if (hidden) return;
-      var rows = root.XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: "" });
+      // A real date cell is written out day first (06/10/2026). Excel's default "Short Date" would come out US
+      // style (10/6/26) and be read back as 10 June - the office reads every date as dd/mm/yyyy.
+      var ws = wb.Sheets[name];
+      Object.keys(ws).forEach(function (k) {
+        var c = ws[k];
+        if (k.charAt(0) !== "!" && c && c.t === "d" && c.v instanceof Date && !isNaN(c.v)) {
+          var d = new Date(c.v.getTime()), p2 = function (n) { return (n < 10 ? "0" : "") + n; };
+          // SheetJS can land a few seconds before midnight in some time zones: that is the next day
+          if (d.getHours() === 23 && d.getMinutes() >= 59) d = new Date(d.getTime() + 60 * 1000);
+          var day = p2(d.getDate()) + "/" + p2(d.getMonth() + 1) + "/" + d.getFullYear();
+          c.w = (d.getHours() || d.getMinutes()) ? day + " " + p2(d.getHours()) + ":" + p2(d.getMinutes()) : day;
+        }
+      });
+      var rows = root.XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
       rows.forEach(function (r) {
         var cells = r.map(function (v) { return String(v == null ? "" : v).replace(/\s+/g, " ").trim(); });
         while (cells.length && !cells[cells.length - 1]) cells.pop();
