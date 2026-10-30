@@ -24,7 +24,7 @@ def _d(iso, year=False):
     if not iso:
         return ""
     x = date.fromisoformat(iso)
-    return x.strftime("%d %b %Y" if year else "%d %b")
+    return x.strftime("%d/%m/%Y")
 
 
 def bed_view(b):

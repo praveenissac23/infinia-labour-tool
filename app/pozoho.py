@@ -158,7 +158,7 @@ def add_note(db, o, kind, changes, zoho, who_name):
     d = note_of(o)
     items = [] if d.get("seen", True) else list(d.get("items") or [])
     now = datetime.now(timezone.utc) + timedelta(hours=4)          # Dubai
-    items.append({"kind": kind, "when": now.strftime("%d %b %Y %H:%M"), "who": who_name, "changes": changes[:40], "zoho": zoho})
+    items.append({"kind": kind, "when": now.strftime("%d/%m/%Y %H:%M"), "who": who_name, "changes": changes[:40], "zoho": zoho})
     d = {"items": items[-10:], "seen": False, "seq": int(d.get("seq") or 0) + 1}
     o.acc_note = json.dumps(d)
 

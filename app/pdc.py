@@ -225,7 +225,7 @@ def tracker(db, start="", months=4, show="due"):
         if x.notes and x.notes not in p["notes"]:
             p["notes"].append(x.notes)
         p["cheques"].append({"date": x.cheque_date.isoformat(), "no": x.cheque_no or "", "amount": x.amount, "status": x.status})
-        q = {"id": x.id, "date": x.cheque_date.isoformat(), "label": "date to fill" if x.date_tbc else f"{x.cheque_date:%d-%b-%y}",
+        q = {"id": x.id, "date": x.cheque_date.isoformat(), "label": "date to fill" if x.date_tbc else f"{x.cheque_date:%d/%m/%Y}",
              "tbc": bool(x.date_tbc), "no": x.cheque_no or "",
              "amount": round(x.amount or 0, 2), "cleared": x.status == "cleared"}
         if x.cheque_date < a:
@@ -268,7 +268,7 @@ def _dates(t, r):
 
 
 def _when(qs):
-    """'05-Oct-26 #000451' - one line per cheque; with its amount when
+    """'05/10/2026 #000451' - one line per cheque; with its amount when
     one figure is made of several cheques."""
     out = []
     for q in qs:
@@ -448,7 +448,7 @@ def _excel(t):
     rr = 2
     for r in t["rows"]:
         for q in sorted(r["cheques"], key=lambda q: q["date"]):
-            w2.cell(rr, 1, M._as_date(q["date"])).number_format = "dd-mmm-yy"
+            w2.cell(rr, 1, M._as_date(q["date"])).number_format = "dd/mm/yyyy"
             w2.cell(rr, 2, r["payee"]); w2.cell(rr, 3, q["no"])
             w2.cell(rr, 4, q["amount"]).number_format = "#,##0.00"; w2.cell(rr, 5, q["status"].title()); w2.cell(rr, 6, r["notes"])
             rr += 1
@@ -483,7 +483,7 @@ def _list_parts(db, which="pending", q=""):
             "Payee": r["payee"], "Cheque no": r["cheque_no"] or "-", "Bank": r["bank"] or "-", "Amount": r["amount"],
             "For / notes": r["notes"] or "-", "Status": r["status"].title()} for i, r in enumerate(rows, 1)]
     sub = (f"{len(out)} cheque{'s' if len(out) != 1 else ''} - {LIST_SHOW.get(which, which)}" + (f' - matching "{q}"' if q else "")
-           + f"   |   AED {sum(r['Amount'] for r in out):,.2f}   |   As at {today:%d %b %Y}")
+           + f"   |   AED {sum(r['Amount'] for r in out):,.2f}   |   As at {today:%d/%m/%Y}")
     return out, "PDC Cheque List", sub
 
 
@@ -528,11 +528,11 @@ def notification(db, today):
             f"{s['week']} this week" if s["week"] else "",
             f"{s['fortnight']} next week" if s["fortnight"] else "",
             f"{s['no_date']} with no date" if s["no_date"] else ""]
-    first = ", ".join(f"{x.payee} {_money(x.amount)} on {x.cheque_date:%d %b}" for x in s["soon"][:3]) \
+    first = ", ".join(f"{x.payee} {_money(x.amount)} on {x.cheque_date:%d/%m/%Y}" for x in s["soon"][:3]) \
         or "Put the cheque dates in so the reminders can work"
     more = len(s["soon"]) - 3
     from push import short_name
-    lines = [f"{x.cheque_date:%d %b}  ·  AED {_money(x.amount)}  ·  {short_name(x.payee)}" + ("  (overdue)" if x.cheque_date < today else "")
+    lines = [f"{x.cheque_date:%d/%m/%Y}  ·  AED {_money(x.amount)}  ·  {short_name(x.payee)}" + ("  (overdue)" if x.cheque_date < today else "")
              for x in s["soon"]]
     return {"id": f"pdc-{today}" if s["milestone"] else f"pdc-wk{today.isocalendar()[1]}", "kind": "pdc",
             "title": "PDCs due: " + " · ".join(b for b in bits if b),

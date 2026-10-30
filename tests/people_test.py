@@ -125,7 +125,7 @@ for i in range(10):
     if r.status_code != 200 and i == 0:
         print('   attendance save refused:', r.text[:200])
 lv = c.get('/employees/people/101', headers=H).json()['leave']
-ck('days marked Leave on the attendance grid come off the balance', lv['taken'] == 10 and lv['last_vacation'].startswith('01 Apr 2024'), lv)
+ck('days marked Leave on the attendance grid come off the balance', lv['taken'] == 10 and lv['last_vacation'].startswith('01/04/2024'), lv)
 f = c.get('/employees/people/IC022', headers=H).json()
 lv = f['leave']
 ck('office staff accrue 30 days a year', lv['rule_days'] == 30 and lv['rule_months'] == 12, lv)

@@ -135,7 +135,7 @@ def _frozen(pays):
 
 def _pay_dict(p):
     return {"id": p.id, "type": p.pay_type, "type_label": TYPES.get(p.pay_type, p.pay_type), "amount": _r2(p.amount),
-            "due": _r2(p.due), "paid_on": p.paid_on.isoformat(), "paid_on_text": p.paid_on.strftime("%d %b %Y"),
+            "due": _r2(p.due), "paid_on": p.paid_on.isoformat(), "paid_on_text": p.paid_on.strftime("%d/%m/%Y"),
             "mode": p.mode, "mode_label": MODES.get(p.mode, p.mode), "reference": p.reference or "", "note": p.note or "",
             "loan_repaid": _r2(p.loan_repaid)}
 
@@ -147,7 +147,7 @@ def _slips(db, payment_ids):
     for s in (db.query(models.Payslip).filter(models.Payslip.payment_id.in_(payment_ids))
                 .order_by(models.Payslip.payment_id, models.Payslip.version).all()):
         out.setdefault(s.payment_id, []).append({"id": s.id, "version": s.version, "slip_no": s.slip_no, "type": s.slip_type,
-                                                 "created": s.created_at.strftime("%d %b %Y %H:%M") if s.created_at else ""})
+                                                 "created": s.created_at.strftime("%d/%m/%Y %H:%M") if s.created_at else ""})
     return out
 
 
@@ -285,7 +285,7 @@ def _emp(db, e):
         c = (db.query(models.Company).filter((models.Company.short_name == e.company.strip()) | (models.Company.name == e.company.strip())).first())
     iban = (e.iban or "").replace(" ", "").upper()
     return {"emp_no": e.emp_no, "name": e.name, "designation": e.designation or e.trade or "",
-            "joined_on": e.joined_on.strftime("%d %b %Y") if e.joined_on else "",
+            "joined_on": e.joined_on.strftime("%d/%m/%Y") if e.joined_on else "",
             "company": (c.name if c else "") or e.company or "INFINIA CONTRACTING L.L.C.",
             "company_address": (c.address if c else "") or "", "iban": iban,
             "bank": _BANKS.get(iban[4:7], "") if iban.startswith("AE") and len(iban) > 7 else "",
@@ -547,7 +547,7 @@ def make_payslip(db, user, p):
     data = dict(figs)
     data.update({"kind": p.kind, "month_year": p.month_year, "employee": figs.get("employee") or _emp(db, e),
                  "payment": _pay_dict(p), "paid_total": _r2(sum(x.amount or 0 for x in pays)), "due": _r2(p.due),
-                 "issued": M._dubai_today().strftime("%d %b %Y")})
+                 "issued": M._dubai_today().strftime("%d/%m/%Y")})
     data["balance"] = _r2(max(data["due"] - data["paid_total"], 0))
     mon = datetime.strptime(f"1 {p.month_year}", "%d %B %Y").strftime("%Y-%m")
     s = models.Payslip(kind=p.kind, employee_id=p.employee_id, payment_id=p.id, month_year=p.month_year, version=v,
@@ -786,7 +786,7 @@ def employee_payslips(emp_no: str, db: Session = Depends(get_db), user: models.U
     for s in (db.query(models.Payslip).filter(models.Payslip.employee_id == e.id).order_by(models.Payslip.id.desc()).all()):
         p = db.get(models.PayPayment, s.payment_id)
         rows.append({"id": s.id, "slip_no": s.slip_no, "version": s.version, "type": s.slip_type, "month_year": s.month_year,
-                     "created": s.created_at.strftime("%d %b %Y %H:%M") if s.created_at else "",
+                     "created": s.created_at.strftime("%d/%m/%Y %H:%M") if s.created_at else "",
                      "payment": _pay_dict(p) if p else {}, "cancelled": bool(p and p.void)})
     pays = [_pay_dict(p) | {"month_year": p.month_year, "cancelled": bool(p.void)}
             for p in db.query(models.PayPayment).filter(models.PayPayment.employee_id == e.id).order_by(models.PayPayment.id.desc()).all()]

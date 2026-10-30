@@ -94,7 +94,7 @@ ck("MD approves digitally", r.status_code == 200 and row()["status"] == "MD appr
 tok = c.post("/auth/download-token", headers=H).json()["token"]
 html = c.get(f"/export/est/pc/{pc}?token={tok}&format=preview").text
 ck("printed: the stamps - prepared, approved, verified, MD approved (no name)", all(w in html for w in ("ARATHI SAJEENDRAN", "ANOOP S", "SHAFEEQ", "MANAGING DIRECTOR", "Digitally approved")), "")
-ck("printed: the time each was done", re.search(r"\d\d-[A-Z][a-z]{2}-\d{4} \d\d:\d\d", html) is not None)
+ck("printed: the time each was done", re.search(r"\d\d/\d\d/\d{4} \d\d:\d\d", html) is not None)
 ck("Shafeeq's bell: to pay", any(n["subpc"] == pc and "to pay" in n["title"] for n in bell(HA)))
 r = step(HA, {"step": "Paid", "ref": "ADCB TT 4471"})
 ck("Shafeeq marks it paid - his name, the reference", r.status_code == 200 and row()["status"] == "Paid" and row()["paid_by"] == "Shafeeq" and row()["paid_ref"] == "ADCB TT 4471", r.text)

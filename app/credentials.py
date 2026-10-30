@@ -320,12 +320,12 @@ def _parts(db, cat="", user=None, q=""):
             "username": c.username or "", "secret": unlock(c.secret), "notes": unlock(c.notes),
             "logo": c.logo or "", "admin_only": bool(c.admin_only) and _is_admin(user)} for c in rows]
     sub = (f"{len(out)} login{'s' if len(out) != 1 else ''}{(' - ' + cat) if cat else ''}"
-           + (f' - matching "{q}"' if q else "") + f"   |   As at {M._dubai_today():%d %b %Y}")
+           + (f' - matching "{q}"' if q else "") + f"   |   As at {M._dubai_today():%d/%m/%Y}")
     return out, "Credentials", sub
 
 
 def _who(u):
-    return f"Printed by {u.full_name or u.username}, {M._dubai_today():%d %b %Y}"
+    return f"Printed by {u.full_name or u.username}, {M._dubai_today():%d/%m/%Y}"
 
 
 def _reader(token, db):

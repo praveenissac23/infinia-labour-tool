@@ -80,8 +80,8 @@ def _period(month="", start="", end=""):
         if a > b:
             a, b = b, a
         if a == b:
-            return a, b, f"{a:%d %b %Y}"
-        return a, b, (f"{a:%d %b} - {b:%d %b %Y}" if a.year == b.year else f"{a:%d %b %Y} - {b:%d %b %Y}")
+            return a, b, f"{a:%d/%m/%Y}"
+        return a, b, f"{a:%d/%m/%Y} - {b:%d/%m/%Y}"
     a, b = _month(month)
     return a, b, f"{a:%B %Y}"
 
@@ -193,7 +193,7 @@ def _send(db, rows, user):
     start = zohosync._start(db)
     for x in rows:
         if x.on_date and x.on_date < start:
-            failed.append({"id": x.id, "why": f"Dated before {start:%d %b %Y}, when the portal starts sending to Zoho - enter it in Zoho by hand"})
+            failed.append({"id": x.id, "why": f"Dated before {start:%d/%m/%Y}, when the portal starts sending to Zoho - enter it in Zoho by hand"})
             continue
         unsure = (x.zoho_status == "sending") or bool(x.zoho_err)
         was = ""
@@ -498,13 +498,13 @@ def export_bank(token: str, month: str = "", start: str = "", end: str = "", for
         raise HTTPException(status_code=403, detail="Bank is for accounts only.")
     d = listing(db, month, start, end)
     st = {"sent": "In Zoho", "sending": "Sending", "cancelled": "Deleted in Zoho", "": "Waiting"}
-    rows = [{"Date": M._as_date(r["date"]).strftime("%d-%b-%y"), "Type": r["kind_label"], "Party": r["party"] or "-",
+    rows = [{"Date": M._as_date(r["date"]).strftime("%d/%m/%Y"), "Type": r["kind_label"], "Party": r["party"] or "-",
              "Mode": r["mode"], "Reference": r["reference"] or "-",
              "Bills / invoices": ", ".join(x["number"] for x in r["docs"]) or "-", "Project": r["site"] or "-",
              "Paid out (AED)": r["amount"] if r["out"] else "", "Received (AED)": "" if r["out"] else r["amount"],
              "Zoho": st.get(r["zoho"], r["zoho"]) + (f" ({r['zoho_ref']})" if r["zoho_ref"] else "")} for r in d["rows"]]
     title = "Bank - ADCB"
-    sub = f"{d['label']} | paid out {d['paid']:,.2f} | received {d['received']:,.2f} | As at {M._dubai_today():%d %b %Y}"
+    sub = f"{d['label']} | paid out {d['paid']:,.2f} | received {d['received']:,.2f} | As at {M._dubai_today():%d/%m/%Y}"
     money = ["Paid out (AED)", "Received (AED)"]
     if format == "view":
         url = f"/export/accounts/bank?month={quote(d['month'])}&start={d['start']}&end={d['end']}&token={quote(auth.create_view_token(u.username), safe='')}"

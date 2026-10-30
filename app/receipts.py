@@ -152,7 +152,7 @@ def _clean(db, p, keep_id=None):
         raise HTTPException(status_code=400, detail="Give the receipt a number.")
     clash = db.query(Receipt).filter(Receipt.number == number, Receipt.id != (keep_id or 0)).first()
     if clash:
-        raise HTTPException(status_code=400, detail=f"{number} is already used (dated {clash.rc_date:%d %b %Y}).")
+        raise HTTPException(status_code=400, detail=f"{number} is already used (dated {clash.rc_date:%d/%m/%Y}).")
     d = M._as_date(p.get("date"))
     if not d:
         raise HTTPException(status_code=400, detail="Put the date the money was received.")
@@ -468,9 +468,9 @@ def _pdf(db, x):
     for a in d["allocations"]:
         paid = sum(v for dt, i, v in upto.get(a["invoice_id"], []) if (dt, i) <= (x.rc_date, x.id)) if x.status != "cancelled" else got.get(a["invoice_id"], 0) + a["amount"]
         a["balance"] = r2(a["total"] - paid)
-        a["date_text"] = M._as_date(a["date"]).strftime("%d %b %Y") if a["date"] else ""
-    d["date_text"] = f"{x.rc_date:%d %B %Y}"
-    d["cheque_date_text"] = f"{x.cheque_date:%d %b %Y}" if x.cheque_date else ""
+        a["date_text"] = M._as_date(a["date"]).strftime("%d/%m/%Y") if a["date"] else ""
+    d["date_text"] = f"{x.rc_date:%d/%m/%Y}"
+    d["cheque_date_text"] = f"{x.cheque_date:%d/%m/%Y}" if x.cheque_date else ""
     return receipt_pdf.build(d, company=A._company(db, x.company_id), signature=A.invoice_signature())
 
 

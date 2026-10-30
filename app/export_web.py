@@ -111,6 +111,7 @@ SORT_JS = """<style>th.pvs{cursor:pointer;user-select:none}th.pvs .pvs-a{font-si
 function txt(td){if(!td)return"";var s=td.getAttribute("data-s");return s!==null?s:td.textContent.trim();}
 function key(v){var t=String(v).replace(/AED|,/gi,"").trim();var neg=/^\\(.*\\)$/.test(t);t=t.replace(/[()%]/g,"").trim();
  if(t!==""&&!isNaN(t))return{n:(neg?-1:1)*parseFloat(t)};
+ var m=/^(\\d{2})\\/(\\d{2})\\/(\\d{4})(?:\\s+(\\d{2}):(\\d{2}))?/.exec(String(v).trim());if(m)return{n:Date.UTC(+m[3],m[2]-1,+m[1],+(m[4]||0),+(m[5]||0))};
  var d=Date.parse(String(v).replace(/-/g," "));if(!isNaN(d)&&/\\d/.test(v)&&/[A-Za-z]{3}|\\d{4}/.test(v))return{n:d};
  return{s:String(v).toLowerCase()};}
 function cmp(a,b){if(a.n!==undefined&&b.n!==undefined)return a.n-b.n;if(a.n!==undefined)return -1;if(b.n!==undefined)return 1;return a.s.localeCompare(b.s,undefined,{numeric:true});}
@@ -702,7 +703,7 @@ def _write_worker_card(ws, summary, rows, border, start_row):
     cycle_dates = _cycle_dates(summary.month_year)
     for idx, d in enumerate(cycle_dates):
         row = by_date.get(d)
-        label = d.strftime("%d %b") if hasattr(d, "strftime") else d
+        label = d.strftime("%d/%m/%Y") if hasattr(d, "strftime") else d
         vals = [label, row.am if row else "", row.pm if row else "", row.site if row else "",
                 row.engineer if row else "", (_num(row.ot) if row else ""),
                 (_num(row.bh) if row else ""), (row.comments if row else "")]
@@ -958,7 +959,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     status_cells = []
     for d in cycle_dates:
         row = by_date.get(d)
-        label = d.strftime("%d %b") if hasattr(d, "strftime") else str(d)
+        label = d.strftime("%d/%m/%Y") if hasattr(d, "strftime") else str(d)
         if row is not None:
             vals = [label, row.am, row.pm, _num(row.ot), _num(row.bh), row.site, row.engineer, row.comments]
         else:
@@ -968,7 +969,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
         # P.M cells can be tinted once the table is built.
         status_cells.append((len(data) - 1, vals[1], vals[2]))
 
-    col_widths = [doc_width * w for w in (0.10, 0.10, 0.10, 0.06, 0.06, 0.10, 0.14, 0.34)]
+    col_widths = [doc_width * w for w in (0.12, 0.10, 0.10, 0.06, 0.06, 0.10, 0.14, 0.32)]
     tbl = Table(data, colWidths=col_widths, repeatRows=1)
     row_bg_cmds = [("BACKGROUND", (0, i), (-1, i), colors.HexColor("#F7F7F7")) for i in range(2, len(data), 2)]
     # Status colours go on after the stripes so they win.
@@ -1107,7 +1108,7 @@ def salary_card_html(summary, rows):
     body = []
     for d in _cycle_dates(summary.month_year):
         r = by_date.get(d)
-        label = d.strftime("%d %b") if hasattr(d, "strftime") else str(d)
+        label = d.strftime("%d/%m/%Y") if hasattr(d, "strftime") else str(d)
         vals = ([label, r.am, r.pm, _num(r.ot), _num(r.bh), r.site, r.engineer, r.comments]
                 if r is not None else [label, "", "", "", "", "", "", ""])
         def tint(status):
@@ -1664,7 +1665,7 @@ def _sort_key(v):
     try:
         return (0, 0, float(t.replace(",", "")))
     except ValueError:
-        return (0, 1, t.lower())
+        return (0, 1, dmy_iso(t) or t.lower())
 
 
 def repeat_cols(rows, cols=None, money_cols=None):
@@ -1805,10 +1806,10 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
                 v = "Yes" if v else ""
             elif k == "item_type" and v:
                 v = str(v).title()
-            is_date = isinstance(v, str) and bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", v))
+            is_date = isinstance(v, str) and _looks_like_date(v)
             if is_date:
                 # A real date, shown the way the screen and PDF show it.
-                v = datetime.strptime(v, "%Y-%m-%d")
+                v = datetime.strptime(dmy_iso(v) or v, "%Y-%m-%d")
             # An amount written as text ("2,600.00") goes in as a number,
             # so the sheet can add it up - but is never counted in the
             # totals line (text there means "shown, not counted").
@@ -1819,7 +1820,7 @@ def build_store_report_excel(title, rows, subtitle="", orientation=None, money_c
             c.border = grp_top if starts[ri] else border
             c.font = Font(size=10, bold=k in gcols)
             if is_date:
-                c.number_format = "dd mmm yyyy"
+                c.number_format = "dd/mm/yyyy"
                 c.alignment = Alignment(horizontal=excel_align[aligns[k]], vertical="center")
             elif as_text_amount:
                 c.number_format = '#,##0.00'
@@ -2840,10 +2841,24 @@ def _return_rows(note: dict):
     return rows
 
 
+DMY_RE = re.compile(r"(\d{2})/(\d{2})/(\d{4})(?: (\d{2}):(\d{2}))?")
+
+
+def dmy_iso(v):
+    """'30/10/2026' -> '2026-10-30' ('30/10/2026 14:05' -> '2026-10-30 14:05'), so a
+    date shown the dd/mm/yyyy way still sorts as a date. None for anything else."""
+    m = DMY_RE.fullmatch(str(v or "").strip())
+    if not m:
+        return None
+    return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" + (f" {m.group(4)}:{m.group(5)}" if m.group(4) else "")
+
+
 def _looks_like_date(v):
-    """An ISO date the app stored, so a report can print it the way it
-    is read aloud rather than as 2026-09-24."""
+    """A date: the ISO date the app stored (2026-09-24), or one already
+    written the way people read it (24/09/2026)."""
     v = str(v or "")
+    if len(v) == 10 and v[2] == "/" and v[5] == "/":
+        v = dmy_iso(v) or ""
     if len(v) != 10 or v[4] != "-" or v[7] != "-":
         return False
     try:
@@ -2854,13 +2869,13 @@ def _looks_like_date(v):
 
 
 def _day(v):
-    """A date the way it is read out loud: 24 Sep 2026, not 2026-09-24.
+    """A date the way people read it: 24/09/2026 (dd/mm/yyyy), not 2026-09-24.
 
     Stored ISO, printed plainly - and the same on the screen preview, so
     the sheet that is checked is the sheet that comes out."""
     s = str(v or "")
     try:
-        return datetime.strptime(s[:10], "%Y-%m-%d").strftime("%d %b %Y")
+        return datetime.strptime(s[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
     except Exception:
         return s
 

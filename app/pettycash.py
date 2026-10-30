@@ -147,8 +147,8 @@ def register(db, month, book="site", date_from="", date_to=""):
             by_site[k] = round(by_site.get(k, 0) + r["paid"], 2)
     first = rows[0].on_date if rows else a
     one_month = a.day == 1 and b == date(a.year + (a.month == 12), a.month % 12 + 1, 1) - timedelta(days=1)
-    label = (f"Full history - {first:%d %b %Y} to {M._dubai_today():%d %b %Y}" if whole
-             else f"{a:%B %Y}" if one_month else f"{a:%d %b %Y} to {b:%d %b %Y}")
+    label = (f"Full history - {first:%d/%m/%Y} to {M._dubai_today():%d/%m/%Y}" if whole
+             else f"{a:%B %Y}" if one_month else f"{a:%d/%m/%Y} to {b:%d/%m/%Y}")
     held = 0.0
     if book == "pro":
         # Visa payments made but held until each visa is completed: the cash
@@ -299,7 +299,7 @@ def add_petty_cash(payload: dict = Body(...), db: Session = Depends(get_db), use
         if x.on_date and (M._dubai_today() - x.on_date).days > 7:
             import watch
             watch.alert(db, models, user, "petty_backdated", "Back-dated petty cash line added",
-                        f"{BOOKS[book][0]}: dated {x.on_date:%d %b %Y}, {x.description} "
+                        f"{BOOKS[book][0]}: dated {x.on_date:%d/%m/%Y}, {x.description} "
                         f"{'+' + _money(x.received) if x.received else '-' + _money(x.paid)}")
     except Exception:
         db.rollback()
@@ -367,7 +367,7 @@ def delete_petty_cash(pid: int, db: Session = Depends(get_db), user: models.User
         try:
             import watch
             watch.alert(db, models, user, "petty_zoho_removed", "Petty cash line removed that is in Zoho",
-                        f"{BOOKS.get(x.book or 'site', ('',))[0]}: {x.on_date:%d %b %Y} {x.description} {_money(x.paid or x.received or 0)}"
+                        f"{BOOKS.get(x.book or 'site', ('',))[0]}: {x.on_date:%d/%m/%Y} {x.description} {_money(x.paid or x.received or 0)}"
                         f" - remove it in Zoho too{(' (' + x.zoho_ref + ')') if x.zoho_ref else ''}.")
         except Exception:
             db.rollback()
@@ -405,7 +405,7 @@ def _pair(r, received, paid):
 
 def _dmy(iso):
     d = M._as_date(iso)
-    return d.strftime("%d-%b-%y") if d else ""
+    return d.strftime("%d/%m/%Y") if d else ""
 
 
 def _lines(r):
@@ -620,7 +620,7 @@ def _excel(r):
         for i, c in enumerate(spec, 1):
             k = c["key"]
             if k == "date":
-                ws.cell(row, i, M._as_date(ln["iso"])).number_format = "dd-mmm-yy"
+                ws.cell(row, i, M._as_date(ln["iso"])).number_format = "dd/mm/yyyy"
                 ws.cell(row, i).alignment = Alignment(horizontal="center", vertical="center")
             elif k in ("a1", "a2"):
                 if ln[k]:

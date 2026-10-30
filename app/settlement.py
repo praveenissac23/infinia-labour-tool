@@ -65,7 +65,7 @@ def _money(v):
 
 
 def _dmy(d):
-    return d.strftime("%d %b %Y") if d else "-"
+    return d.strftime("%d/%m/%Y") if d else "-"
 
 
 def _ymd_text(a, b):

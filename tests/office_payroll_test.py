@@ -255,7 +255,7 @@ ck('the loan instalment due is on the row', lines['IC022']['loan_deduction'] == 
 ck("and nothing for Jomon, whose loan comes back through petty cash",
    lines['IC001']['loan_deduction'] == 0, lines['IC001']['loan_deduction'])
 ck('the deduction says which days it is for',
-   '24 Aug' in lines['IC020']['deduction_note'], lines['IC020']['deduction_note'])
+   '24/08/' in lines['IC020']['deduction_note'], lines['IC020']['deduction_note'])
 
 # What is left is what only the month knows: the bills, the leave
 # salary, the ticket. They go in the additions register, as the
@@ -479,7 +479,7 @@ ck('Amal, from the 10th, is proposed nine days off: 900.00',
    money(sl['PI005']['deduction'], 900.00), (sl['PI005']['deduction'], sl['PI005']['deduction_note']))
 ck('Anoop, from the 15th, fourteen days at 466: 6,524.00',
    money(sl['PI006']['deduction'], 6524.00), (sl['PI006']['deduction'], sl['PI006']['deduction_note']))
-ck('and the row says why', 'joined 10 sep' in sl['PI005']['deduction_note'].lower(),
+ck('and the row says why', 'joined 10/09/2026' in sl['PI005']['deduction_note'].lower(),
    sl['PI005']['deduction_note'])
 ck('Syed carries his last 500 instalment', sl['PI002']['loan_deduction'] == 500,
    sl['PI002']['loan_deduction'])

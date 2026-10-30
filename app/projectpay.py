@@ -124,8 +124,8 @@ def _scope_out(s, start=None, end=None):
             "last_date": last["date"] if last else "", "last_amount": last["amount"] if last else 0.0}
 
 
-def period_label(start, end):
-    """'September 2026', 'Year 2026', '01-Sep-26 to 15-Sep-26' ..."""
+def period_label(start, end, fmt="%d/%m/%Y"):
+    """'September 2026', 'Year 2026', '01/09/2026 to 15/09/2026' ..."""
     if not start and not end:
         return ""
     if start and end:
@@ -135,8 +135,8 @@ def period_label(start, end):
             return f"{start:%B %Y}"
         if (start.month, start.day) == (1, 1) and (end.month, end.day) == (12, 31) and start.year == end.year:
             return f"Year {start.year}"
-        return f"{start:%d-%b-%y} to {end:%d-%b-%y}"
-    return f"From {start:%d-%b-%y}" if start else f"Up to {end:%d-%b-%y}"
+        return f"{start:{fmt}} to {end:{fmt}}"
+    return f"From {start:{fmt}}" if start else f"Up to {end:{fmt}}"
 
 
 def tracker(db, hide_completed=False, q="", start=None, end=None):
@@ -214,7 +214,7 @@ def _clean(p):
         if not d:
             raise HTTPException(status_code=400, detail=f"Payment {i}: put the date.")
         if d > today:
-            raise HTTPException(status_code=400, detail=f"Payment {i}: {d:%d-%b-%Y} is in the future.")
+            raise HTTPException(status_code=400, detail=f"Payment {i}: {d:%d/%m/%Y} is in the future.")
         try:
             amt = round(float(raw), 2)
         except ValueError:
@@ -242,7 +242,7 @@ def _save(db, s, payload, user):
         if hit:
             left.remove(hit); keep.append(o)
         elif (o.source or "").startswith("bank:"):
-            raise HTTPException(status_code=400, detail=f"The payment of {o.on_date:%d-%b-%Y}, AED {o.amount:,.2f} came from Accounts > Bank - change or remove it there.")
+            raise HTTPException(status_code=400, detail=f"The payment of {o.on_date:%d/%m/%Y}, AED {o.amount:,.2f} came from Accounts > Bank - change or remove it there.")
     s.payments = keep + [ProjectPayment(on_date=d, amount=a, note=n) for d, a, n in left]
     s.updated_by = user.id
 
@@ -291,7 +291,7 @@ def _m(v):
 
 def _dmy(iso):
     d = M._as_date(iso) if iso else None
-    return f"{d:%d-%b-%y}" if d else ""
+    return f"{d:%d/%m/%Y}" if d else ""
 
 
 def _title(detail):
@@ -693,7 +693,7 @@ def _excel(r, detail):
                 ws.cell(row, i, vals[k])
             for k in money:
                 ws.cell(row, col[k]).number_format = "#,##0.00"
-            ws.cell(row, col["pct"]).number_format = "0%"; ws.cell(row, col["lastd"]).number_format = "dd-mmm-yy"
+            ws.cell(row, col["pct"]).number_format = "0%"; ws.cell(row, col["lastd"]).number_format = "dd/mm/yyyy"
             for k in ("proj", "scope", "inper" if per else "received"):
                 ws.cell(row, col[k]).font = Font(bold=True)
             ws.cell(row, col["status"]).fill = fills[x["status"]]; ws.cell(row, col["status"]).font = fonts[x["status"]]
@@ -747,7 +747,7 @@ def _excel(r, detail):
                 nums = {pp["id"]: k for k, pp in enumerate(x["payments"], 1)}       # the payment's number on the scope
                 for pay in _pays_of(r, x):
                     p.append([g["project"], x["scope"], nums.get(pay["id"]), M._as_date(pay["date"]), pay["amount"], pay["note"]])
-                    p.cell(pr, 4).number_format = "dd-mmm-yy"; p.cell(pr, 5).number_format = "#,##0.00"
+                    p.cell(pr, 4).number_format = "dd/mm/yyyy"; p.cell(pr, 5).number_format = "#,##0.00"
                     for i in range(1, 7):
                         p.cell(pr, i).border = Border(bottom=thin)
                     pr += 1
@@ -772,7 +772,7 @@ def export_tracker(token: str, report: str = "summary", format: str = "pdf", hid
                    start: str = "", end: str = "", db: Session = Depends(get_db)):
     u = auth.get_download_user_from_token(token, db)
     detail, r = _args(u, report, hide_completed, q, start, end, db)
-    when = re.sub(r"[^A-Za-z0-9]+", "_", r["period_label"]).strip("_") or r["as_on"]
+    when = re.sub(r"[^A-Za-z0-9]+", "_", period_label(M._as_date(start), M._as_date(end), "%d-%b-%y")).strip("_") or r["as_on"]
     name = f"Project_Payment_Tracker_{'With_Dates' if detail else 'Summary'}_{when}"
     if format == "excel":
         return StreamingResponse(_excel(r, detail), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

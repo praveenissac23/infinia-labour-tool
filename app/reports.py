@@ -43,6 +43,17 @@ class ReportResult:
             self.totals[first_key] = f"{len(self.rows)} row(s)"
 
 
+def _dmy(d):
+    """A range end in a report's heading, dd/mm/yyyy (a date, or the ISO text of one)."""
+    if hasattr(d, "strftime"):
+        return d.strftime("%d/%m/%Y")
+    try:
+        from datetime import date as _date
+        return _date.fromisoformat(str(d)[:10]).strftime("%d/%m/%Y")
+    except ValueError:
+        return str(d)
+
+
 def _in_range(d, date_from, date_to):
     if d is None:
         return False
@@ -342,7 +353,7 @@ def _salary_by_site_partial_period(daily_rows, summaries, filters):
         cols = [("emp_no", "Employee No"), ("name", "Employee Name"), ("trade", "Trade"), ("site", "Site"),
                 ("days_present", "Days Present"), ("ot_hours", "OT Hours"),
                 ("salary_for_period", "Salary (AED)")]
-    label = f"{date_from} to {date_to}" if date_from and date_to else "selected period"
+    label = f"{_dmy(date_from)} to {_dmy(date_to)}" if date_from and date_to else "selected period"
     title = f"Salary by Site - Site {site} (Period: {label})" if site else f"Salary by Site - All Sites (Period: {label})"
     return ReportResult(title, cols, out,
                          totals={"emp_no": f"{len(out)} workers", "salary_for_period": round(total, 2)},
@@ -430,7 +441,7 @@ def site_cost_center(daily_rows, summaries, filters):
     cols = [("site", "Site"), ("worker_count", "Workers"), ("days_present", "Days Present"),
             ("ot_hours", "OT Hours"), ("bh_hours", "BH Hours"), ("total_cost", "Total Cost (AED)"),
             ("avg_cost_per_worker", "Avg Cost per Worker (AED)"), ("avg_cost_per_day", "Avg Cost per Day (AED)")]
-    label = f"{date_from} to {date_to}" if date_from and date_to else "all dates on file"
+    label = f"{_dmy(date_from)} to {_dmy(date_to)}" if date_from and date_to else "all dates on file"
     total_cost_all = round(sum(r["total_cost"] for r in out), 2)
     total_workers_all = sum(r["worker_count"] for r in out)
     total_days_all = round(sum(r["days_present"] for r in out), 1)

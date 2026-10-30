@@ -162,7 +162,7 @@ ck('with every line on the note, not just the first',
    body.count('<tr><td>1</td>') == 1 and '<tr><td>2</td>' in body
    and std['name'] in body and ldg['name'] in body, len(body))
 ck('the totals agree with the note', '256' in body and '<td class="r short">10' in body, None)
-ck('the date reads as it does on the paper', '01 Sep 2026' in body, None)
+ck('the date reads as it does on the paper', '01/09/2026' in body, None)
 ck('and both signature boxes are there, empty for hand signing',
    'Name, signature &amp; date' in body and 'Name, signature &amp; stamp' in body
    and 'signature.png' not in body, None)

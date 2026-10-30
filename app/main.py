@@ -1612,7 +1612,7 @@ def _readable(action, details, ctx):
         if m:
             _id, kind, qty, unit, name, where, on = m.groups()
             try:
-                on = f"{datetime.strptime(on, '%Y-%m-%d'):%d %b %Y}"
+                on = f"{datetime.strptime(on, '%Y-%m-%d'):%d/%m/%Y}"
             except ValueError:
                 pass
             return f"{MOVE_WORDS.get(kind, kind.capitalize())} {qty} {unit} {name} - {where}, dated {on} (entry #{_id})"
@@ -1865,7 +1865,7 @@ def upsert_employee(emp: schemas.EmployeeIn, db: Session = Depends(get_db),
         try:
             if was[0] and not existing.terminated_on:
                 watch.alert(db, models, user, "rejoined", "Leaver brought back (leaving date removed)",
-                            f"{existing.emp_no} {existing.name}, had left {was[0]:%d %b %Y}")
+                            f"{existing.emp_no} {existing.name}, had left {was[0]:%d/%m/%Y}")
             now = (round(existing.basic_salary or 0, 2), round(existing.total_salary or 0, 2))
             if now != was[1:]:
                 watch.alert(db, models, user, "rate_changed", "Labour rate changed on Master Data",
@@ -2429,7 +2429,7 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
         # 25 December went through months early - and those future days
         # count as worked in the payroll totals, inflating salaries.
         if row_in.full_date > today:
-            errors.append(f"{row_in.emp_no}: {row_in.full_date} is in the future - attendance can only be entered up to today.")
+            errors.append(f"{row_in.emp_no}: {row_in.full_date:%d/%m/%Y} is in the future - attendance can only be entered up to today.")
             continue
 
         employee = db.query(models.Employee).filter(models.Employee.emp_no == row_in.emp_no).first()
@@ -2535,7 +2535,7 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
                 _, c_end, label = pcyc.cycle_bounds_for(d)
                 if (_dubai_today() - c_end).days > 5:
                     watch.alert(db, models, user, "attendance_past", f"Attendance changed in a past cycle ({label})",
-                                f"{d:%d %b %Y}: {saved_count} worker(s) saved, cycle ended {c_end:%d %b}")
+                                f"{d:%d/%m/%Y}: {saved_count} worker(s) saved, cycle ended {c_end:%d/%m/%Y}")
         except Exception:
             db.rollback()
 
@@ -3189,11 +3189,11 @@ def error_check(month_year: str, db: Session = Depends(get_db),
                         # can jump straight there instead of the reader
                         # copying a date out of a sentence.
                         "goto": upto[0].isoformat() if upto else "",
-                        "detail": {"Cycle": f"{cycle_start} to {cycle_end}",
+                        "detail": {"Cycle": f"{cycle_start:%d/%m/%Y} to {cycle_end:%d/%m/%Y}",
                                    "Days in cycle": str(len(all_dates)),
                                    "Days entered": "0", "Trade": emp.trade or "-"}})
         elif missing:
-            preview = ", ".join(d.strftime("%d %b") for d in missing[:5])
+            preview = ", ".join(d.strftime("%d/%m/%Y") for d in missing[:5])
             more = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
             out.append({"emp_no": emp.emp_no, "name": emp.name, "date": "-", "site": "-",
                         "issue": f"{len(missing)} day(s) missing: {preview}{more}",
@@ -3203,7 +3203,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
                                    "Days in cycle": str(len(all_dates)),
                                    "Days entered": str(len(entered)),
                                    "Every missing day":
-                                       ", ".join(d.strftime("%d %b") for d in missing)}})
+                                       ", ".join(d.strftime("%d/%m/%Y") for d in missing)}})
 
     # The same man twice: one code typed with a space ("F- 771" beside
     # "F-771") puts him on the report twice and pays him twice.
@@ -6211,7 +6211,7 @@ def _add_store_movement(payload, db, user):
             had = then.get((item.id, payload.from_location, owner), 0) + later_opening.get((payload.from_location or "", owner), 0)
             if take > had + 1e-9:
                 raise HTTPException(status_code=400,
-                    detail=f"On {payload.moved_on:%d %b %Y} only {round(max(had, 0), 2)} {item.unit} of {item.name} "
+                    detail=f"On {payload.moved_on:%d/%m/%Y} only {round(max(had, 0), 2)} {item.unit} of {item.name} "
                            f"was at {payload.from_location or 'the central store'} - check the date, or book in "
                            "the delivery with the day it really arrived first.")
 
@@ -7464,11 +7464,11 @@ def export_attendance_needed(month_year: str, token: str, emp_nos: str = "",
         if not missing:
             continue
         workers.append({"emp_no": emp.emp_no, "name": emp.name, "trade": emp.trade or "",
-                        "days": ", ".join(d.strftime("%d %b") for d in missing)})
+                        "days": ", ".join(d.strftime("%d/%m/%Y") for d in missing)})
     if not workers:
         raise HTTPException(status_code=404, detail="Nothing missing for those workers.")
 
-    cycle_label = f"{cycle_start.strftime('%d %b')} - {cycle_end.strftime('%d %b %Y')}"
+    cycle_label = f"{cycle_start.strftime('%d/%m/%Y')} - {cycle_end.strftime('%d/%m/%Y')}"
     safe = "".join(c if c.isalnum() else "_" for c in month_year)
     # Through the same builders as every other report, so the reminder a
     # foreman is handed is letterheaded and reads like the rest.
@@ -7887,7 +7887,7 @@ def export_employee_report(token: str, format: str = "pdf", db: Session = Depend
     auth.get_download_user_from_token(token, db)
     rows = _employee_report_rows(db)
     title = "Workforce List"
-    sub = f"{len(rows)} worker(s)  |  As at {_dubai_today():%d %b %Y}"
+    sub = f"{len(rows)} worker(s)  |  As at {_dubai_today():%d/%m/%Y}"
     money = ["total_salary"]
     if format == "excel":
         buf = export_web.build_store_report_excel(title, rows, sub, money_cols=money)
@@ -7906,7 +7906,7 @@ def view_employee_report(token: str, db: Session = Depends(get_db)):
     rows = _employee_report_rows(db)
     url = f"/export/employees/report?token={t}"
     return _preview_page("Workforce List",
-                         f"{len(rows)} worker(s)  |  As at {_dubai_today():%d %b %Y}",
+                         f"{len(rows)} worker(s)  |  As at {_dubai_today():%d/%m/%Y}",
                          rows, url, url, money_cols=["total_salary"])
 
 
@@ -7929,7 +7929,7 @@ def export_supplier_report(token: str, format: str = "pdf", db: Session = Depend
     auth.get_download_user_from_token(token, db)
     rows = _supplier_report_rows(db)
     title = "Supplier List"
-    sub = f"{len(rows)} supplier(s)  |  As at {_dubai_today():%d %b %Y}"
+    sub = f"{len(rows)} supplier(s)  |  As at {_dubai_today():%d/%m/%Y}"
     if format == "excel":
         buf = export_web.build_store_report_excel(title, rows, sub)
         return StreamingResponse(
@@ -7947,7 +7947,7 @@ def view_supplier_report(token: str, db: Session = Depends(get_db)):
     rows = _supplier_report_rows(db)
     url = f"/export/store/suppliers/report?token={t}"
     return _preview_page("Supplier List",
-                         f"{len(rows)} supplier(s)  |  As at {_dubai_today():%d %b %Y}",
+                         f"{len(rows)} supplier(s)  |  As at {_dubai_today():%d/%m/%Y}",
                          rows, url, url)
 
 
@@ -8524,9 +8524,9 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
                                       # register shows the change on the order itself
                                       # rather than leaving it to look untouched.
                                       "edited": bool(o.updated_at),
-                                      "edited_on": o.updated_at.strftime("%d %b %Y") if o.updated_at else "",
+                                      "edited_on": o.updated_at.strftime("%d/%m/%Y") if o.updated_at else "",
                                       "cancel_reason": o.cancel_reason or "",
-                                      "cancelled_on": o.cancelled_at.strftime("%d %b %Y") if o.cancelled_at else ""})
+                                      "cancelled_on": o.cancelled_at.strftime("%d/%m/%Y") if o.cancelled_at else ""})
             r["orders"].add(o.po_no)
             r["lines"] += 1
             r["qty"] += (l.qty or 0)
@@ -8623,7 +8623,7 @@ def get_purchase_order(order_id: int, db: Session = Depends(get_db),
 def lpo_delivery_text(o):
     """What the LPO prints for delivery: the words typed ("As per site requirement") or else the date."""
     note = (getattr(o, "delivery_note", "") or "").strip()
-    return note or (o.delivery_date.strftime("%d %b %Y") if o.delivery_date else "")
+    return note or (o.delivery_date.strftime("%d/%m/%Y") if o.delivery_date else "")
 
 
 def lpo_long_note(t):
@@ -8655,7 +8655,7 @@ def _lpo_dict(o):
         "project_location": o.project_location, "discount_pct": o.discount_pct,
         "tax_pct": o.tax_pct, "notes": o.notes, "terms_text": o.terms_text, "status": o.status,
         "cancel_reason": getattr(o, "cancel_reason", "") or "",
-        "cancelled_on": o.cancelled_at.strftime("%d %b %Y") if getattr(o, "cancelled_at", None) else "",
+        "cancelled_on": o.cancelled_at.strftime("%d/%m/%Y") if getattr(o, "cancelled_at", None) else "",
         "combined": bool(getattr(o, "combined", False)),
         "lines": [{"id": l.id, "item_id": l.item_id, "description": l.description,
                    "description2": l.description2, "qty": l.qty, "unit": l.unit,
@@ -8898,8 +8898,8 @@ def _lpo_snap(o):
               "qty": round(l.qty or 0, 3), "unit": l.unit or "", "rate": round(l.rate or 0, 2), "tax": round(l.tax_pct or 0, 2),
               "to": (getattr(l, "cost_to", "") or "") if getattr(o, "combined", False) else ""}
              for l in o.lines]
-    return {"supplier": o.supplier_name or "", "date": o.order_date.strftime("%d %b %Y") if o.order_date else "",
-            "delivery": o.delivery_date.strftime("%d %b %Y") if o.delivery_date else (getattr(o, "delivery_note", "") or ""),
+    return {"supplier": o.supplier_name or "", "date": o.order_date.strftime("%d/%m/%Y") if o.order_date else "",
+            "delivery": o.delivery_date.strftime("%d/%m/%Y") if o.delivery_date else (getattr(o, "delivery_note", "") or ""),
             "discount": round(o.discount_pct or 0, 2), "supplier_ref": o.supplier_ref or "", "site": o.project_location or "",
             "terms": o.terms or "", "lines": lines, "total": tot(lines, o.discount_pct),
             "combined": bool(getattr(o, "combined", False))}
@@ -9247,7 +9247,7 @@ def _lpo_for_print(o):
         site = db_session_site(code)
     d["site_address"] = (site.address if site else "") or ""
     d["site_map"] = (site.map_url if site else "") or ""
-    d["date_text"] = o.order_date.strftime("%d %b %Y") if o.order_date else ""
+    d["date_text"] = o.order_date.strftime("%d/%m/%Y") if o.order_date else ""
     d["delivery_text"] = lpo_delivery_text(o)
     return d
 
@@ -9346,7 +9346,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     <h1>{o.ref}</h1>
     {'<span class="cancelled">CANCELLED</span>' if o.status == "cancelled" else ''}
     <span class="who">{o.supplier_name or ''}{' &middot; ' + o.project_location if o.project_location else ''}
-      {' &middot; ' + o.order_date.strftime('%d %b %Y') if o.order_date else ''}</span>
+      {' &middot; ' + o.order_date.strftime('%d/%m/%Y') if o.order_date else ''}</span>
     <span style="margin-left:auto;"></span>
     <a class="btn dark" href="/export/purchase/{o.id}?token={t}&amp;format=pdf">Download PDF</a>
     <a class="btn" href="/export/purchase/{o.id}?token={t}&amp;format=excel">Download Excel</a>
@@ -9471,7 +9471,7 @@ def _cx_stamp(o):
     if o.status != "cancelled":
         return ""
     import html as _h
-    why = _h.escape(((o.cancelled_at.strftime("%d %b %Y") + " - ") if o.cancelled_at else "") + (o.cancel_reason or ""))
+    why = _h.escape(((o.cancelled_at.strftime("%d/%m/%Y") + " - ") if o.cancelled_at else "") + (o.cancel_reason or ""))
     return ('<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">'
             '<div style="transform:rotate(-35deg);text-align:center;color:rgba(192,33,28,.28);font-weight:800;">'
             '<div style="font-size:110px;letter-spacing:6px;border:8px solid rgba(192,33,28,.25);padding:0 26px;border-radius:14px;">CANCELLED</div>'
@@ -9545,7 +9545,7 @@ def _lpo_html(o):
                    or (sup.contact_person if sup else "")),
                   ("Mobile", getattr(o, "supplier_phone", "") or (sup.phone if sup else "")),
                   ("Payment Terms", o.terms),
-                  ("Date", o.order_date.strftime("%d %b %Y") if o.order_date else ""),
+                  ("Date", o.order_date.strftime("%d/%m/%Y") if o.order_date else ""),
                   ("Reference No", o.supplier_ref)]
     left_rows, right_rows = level(left_rows, right_rows)
     left = "".join(pair(k, v) for k, v in left_rows)
@@ -9643,7 +9643,7 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
 
     date_txt = note.get("return_date") or ""
     try:
-        date_txt = datetime.strptime(date_txt[:10], "%Y-%m-%d").strftime("%d %b %Y")
+        date_txt = datetime.strptime(date_txt[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
     except Exception:
         pass
     left = "".join([pair("Supplier", note.get("supplier")),
@@ -9876,7 +9876,8 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
             return "1" if v else "0"
         if isinstance(v, (int, float)):
             return repr(float(v))
-        return str(v)
+        # A day written dd/mm/yyyy sorts by the date behind it, not as text.
+        return export_web.dmy_iso(v) or str(v)
 
     def show(c, v):
         if v is None or v == "":
@@ -10040,7 +10041,7 @@ def view_store_report(kind: str = "stock", date_from: str = None, date_to: str =
     title = data.get("title") or kind.replace("mr_", "").replace("_", " ").title()
     sub = (f"{export_web._day(date_from) if date_from else 'the start'} to "
            f"{export_web._day(date_to) if date_to else 'today'}") \
-        if (date_from or date_to) else f"As at {_dubai_today():%d %b %Y}"
+        if (date_from or date_to) else f"As at {_dubai_today():%d/%m/%Y}"
     if move in MOVE_TYPES and kind == "usage":
         sub = f"{sub} · {MOVE_TYPES[move]}"
     if data.get("unpriced"):
@@ -10141,7 +10142,7 @@ def export_rental_report(token: str, format: str = "pdf", location: str = None,
     sub = (f"{where.capitalize() if where == 'everywhere' else where}"
            f"  |  {len(rows)} line(s), {total:g} item(s) on rent"
            + (f"  |  longest out {oldest} day(s)" if oldest else "")
-           + f"  |  as at {_dubai_today().strftime('%d %b %Y')}")
+           + f"  |  as at {_dubai_today().strftime('%d/%m/%Y')}")
     if supplier.strip():
         sub = f"{supplier.strip()}  |  " + sub
     title = "Rental Materials On Rent"
@@ -10336,7 +10337,7 @@ def export_store_report(kind: str = "stock", format: str = "excel",
         sub = (f"{export_web._day(date_from) if date_from else 'the start'} to "
                f"{export_web._day(date_to) if date_to else 'today'}")
     else:
-        sub = f"As at {_dubai_today():%d %b %Y}"
+        sub = f"As at {_dubai_today():%d/%m/%Y}"
     # On screen the site split opens as its own panel; on paper there is
     # nowhere to expand, so it becomes a readable column instead of a
     # raw mapping.
@@ -11148,7 +11149,7 @@ def add_increment(payload: dict = Body(...), db: Session = Depends(get_db),
                f"{e.emp_no} {amount:,.2f} from {when.isoformat()}"
                + (f" ({to_basic:,.2f} to basic)" if to_basic else " (all to allowance)"))
     return {"ok": True, "applied": applied, "basic": new_basic, "allowance": new_allow,
-            "detail": (f"{e.name}: {amount:,.2f} from {when.strftime('%d %b %Y')}."
+            "detail": (f"{e.name}: {amount:,.2f} from {when.strftime('%d/%m/%Y')}."
                        + ("" if applied else " Dated ahead - it applies when that cycle comes."))}
 
 
@@ -11645,7 +11646,7 @@ def _day_rate(gross):
 
 
 def _span_text(days):
-    """24 Aug, 10-19 Sep, 3 Sep (half) - consecutive days run together."""
+    """24/08/2026, 10/09/2026 - 19/09/2026, 03/09/2026 (half) - consecutive days run together."""
     days = sorted(days, key=lambda d: d[0])
     out, i = [], 0
     while i < len(days):
@@ -11655,11 +11656,9 @@ def _span_text(days):
             j += 1
         a, b = days[i][0], days[j][0]
         if i == j:
-            out.append(a.strftime("%d %b").lstrip("0") + (" (half)" if days[i][1] < 1 else ""))
-        elif a.month == b.month:
-            out.append(f"{a.day}-{b.day} {b.strftime('%b')}")
+            out.append(a.strftime("%d/%m/%Y") + (" (half)" if days[i][1] < 1 else ""))
         else:
-            out.append(f"{a.strftime('%d %b').lstrip('0')} - {b.strftime('%d %b').lstrip('0')}")
+            out.append(f"{a:%d/%m/%Y} - {b:%d/%m/%Y}")
         i = j + 1
     return ", ".join(out)
 
@@ -11681,7 +11680,7 @@ def _absence_deduction(db, e, month_year, gross=None):
     amount = _day_rate(g) * total
     if total >= (b - a).days + 1:
         amount = g
-    # "Sick 10 Sep; Absent 15 Sep (half); Vacation 20-24 Sep" - each kind
+    # "Sick 10/09/2026; Absent 15/09/2026 (half); Vacation 20/09/2026 - 24/09/2026" - each kind
     # named, so the remark on the statement says why, not just when.
     short = {"absent": "Absent", "sick": "Sick", "vacation": "Vacation",
              "unpaid": "Unpaid leave", "holiday": "Holiday", "paid_leave": "Leave"}
@@ -12468,10 +12467,10 @@ def _part_month(e, a, b, gross):
     out, notes = 0, []
     if e.joined_on and a < e.joined_on <= b:
         out += (e.joined_on - a).days
-        notes.append(f"joined {e.joined_on.strftime('%d %b')}")
+        notes.append(f"joined {e.joined_on.strftime('%d/%m/%Y')}")
     if e.terminated_on and a <= e.terminated_on < b:
         out += (b - e.terminated_on).days
-        notes.append(f"left {e.terminated_on.strftime('%d %b')}")
+        notes.append(f"left {e.terminated_on.strftime('%d/%m/%Y')}")
     if not out:
         return 0.0, ""
     amount = min(float(int(gross / 30.0)) * out, gross)
@@ -12971,7 +12970,8 @@ def _require_hr_reader(user):
 
 
 def _dmy(d):
-    return d.strftime("%d-%b-%y") if d else "-"
+    """A date as every person-facing output shows it: dd/mm/yyyy."""
+    return d.strftime("%d/%m/%Y") if d else "-"
 
 
 def _parse_ids(text):
@@ -13145,7 +13145,7 @@ def _loan_parts(db):
             for i, l in enumerate(d["rows"], 1)]
     sub = (f"{len(rows)} loan(s)   |   Outstanding "
            f"{sum(r['Balance'] for r in rows):,.2f}   |   "
-           f"As at {_dubai_today():%d %b %Y}")
+           f"As at {_dubai_today():%d/%m/%Y}")
     return rows, "Staff Loan Statement", sub
 
 
@@ -13237,7 +13237,7 @@ HISTORY_MONEY = ["Increase", "Basic", "Allowance", "Salary"]
 def _history_parts(db, emp_no=""):
     d = list_increments(emp_no=emp_no, db=db, user=None)
     out, people = _history_rows(d["rows"], False)
-    sub = f"{people} staff   |   {len(out)} entries   |   As at {_dubai_today():%d %b %Y}"
+    sub = f"{people} staff   |   {len(out)} entries   |   As at {_dubai_today():%d/%m/%Y}"
     return out, "Salary History", sub
 
 
@@ -13323,7 +13323,7 @@ def add_labour_increment(payload: dict = Body(...), db: Session = Depends(get_db
         services.recalculate_summary(db, e, cycle)
     log_action(db, user.id, "labour_increment",
                f"{e.emp_no} {amount:+,.2f} from {start.isoformat()} ({'basic' if onto == 'basic' else 'allowance'})")
-    return {"ok": True, "detail": f"{e.name}: {amount:+,.2f} from {start.strftime('%d %b %Y')} - salary now {new_total:,.2f}."}
+    return {"ok": True, "detail": f"{e.name}: {amount:+,.2f} from {start.strftime('%d/%m/%Y')} - salary now {new_total:,.2f}."}
 
 
 @app.put("/employees/labour-increments/{change_id}")
@@ -13426,7 +13426,7 @@ def _labour_history_parts(db, emp_no=""):
     out, people = _history_rows(rows, False)
     who = (f"{rows[0]['emp_no']} {rows[0]['name']}" if emp_no.strip() and rows
            else f"{people} workers")
-    sub = f"{who}   |   {len(out)} entries   |   As at {_dubai_today():%d %b %Y}"
+    sub = f"{who}   |   {len(out)} entries   |   As at {_dubai_today():%d/%m/%Y}"
     return out, "Labour Salary History", sub
 
 
@@ -13448,7 +13448,7 @@ def _labour_gratuity_one(db, emp_no):
             {"Item": "Basis", "Detail": basis + (" (capped at two years' basic)" if g["capped"] else "")},
             {"Item": "Gratuity to date", "Detail": f"{g['amount']:,.2f}"},
             {"Item": "Working", "Detail": g.get("why") or "-"}]
-    return rows, f"End of Service Gratuity - {e.name}", f"As at {_dubai_today():%d %b %Y}   |   UAE labour law, article 51"
+    return rows, f"End of Service Gratuity - {e.name}", f"As at {_dubai_today():%d/%m/%Y}   |   UAE labour law, article 51"
 
 
 def _labour_gratuity_parts(db, include_left=False):
@@ -13650,7 +13650,7 @@ def _missing_doc_parts(db, who="all", q=""):
     out = [{"Sr.": i, "Emp. Code": p["emp_no"], "Employee Name": p["name"], "Staff": "Office" if p["staff"] else "Labour",
             "Company": p["company"] or "-", "Missing": ", ".join(p["missing"])} for i, p in enumerate(ps, 1)]
     sub = _narrowed({"staff": "Office staff", "labour": "Labour"}.get(who, ""), f'matching "{q}"' if q else "") + \
-        f"{len(out)} people with a document missing   |   As at {_dubai_today():%d %b %Y}"
+        f"{len(out)} people with a document missing   |   As at {_dubai_today():%d/%m/%Y}"
     return out, "Missing Documents", sub
 
 
@@ -13714,7 +13714,7 @@ def _document_parts(db, within="-1", who="all", q=""):
                     f'matching "{q}"' if q else "") + \
         (f"{len(out)} people   |   {counts['expired']} with something expired, "
            f"{counts['urgent']} due within 30 days, {counts['soon']} within 90   |   "
-           f"As at {_dubai_today():%d %b %Y}")
+           f"As at {_dubai_today():%d/%m/%Y}")
     return out, "Document Expiry Tracker", sub
 
 
@@ -13735,7 +13735,7 @@ def _expiry_parts(db, within="-1", cat="", q=""):
     c = lambda k: sum(1 for r in rows if r["status"] == k)
     sub = _narrowed(WITHIN_WORD.get(wv, ""), cat, f'matching "{q}"' if q else "") + \
         (f"{len(out)} items   |   {c('expired')} expired, {c('urgent')} due within 30 days, {c('soon')} within 90"
-           f"   |   As at {_dubai_today():%d %b %Y}")
+           f"   |   As at {_dubai_today():%d/%m/%Y}")
     return out, "Company & Vehicle Expiry Tracker", sub
 
 
@@ -13797,7 +13797,7 @@ def _staff_parts(db, company_id="", q=""):
     narrowed = "   |   ".join(x for x in ((d["rows"][0]["company"] if cid and d["rows"] else ""),
                                           (f'matching "{q}"' if q else "")) if x)
     sub = ((narrowed + "   |   ") if narrowed else "") + (f"{len(rows)} staff   |   Monthly payroll "
-           f"{sum(r['Gross'] for r in rows):,.2f}   |   As at {_dubai_today():%d %b %Y}")
+           f"{sum(r['Gross'] for r in rows):,.2f}   |   As at {_dubai_today():%d/%m/%Y}")
     return rows, "Office Staff Register", sub
 
 
@@ -13832,9 +13832,9 @@ def _gratuity_parts(db, emp_no=""):
                 {"Item": "Basis", "Detail": r["Basis"]},
                 {"Item": "Gratuity to date", "Detail": f"{s['gratuity']:,.2f}"},
                 {"Item": "Working", "Detail": s.get("gratuity_why") or "-"}]
-        return rows, f"End of Service Gratuity - {s['name']}", f"As at {_dubai_today():%d %b %Y}   |   UAE labour law, article 51"
+        return rows, f"End of Service Gratuity - {s['name']}", f"As at {_dubai_today():%d/%m/%Y}   |   UAE labour law, article 51"
     sub = (f"{len(rows)} staff   |   Liability {sum(r['Gratuity To Date'] for r in rows):,.2f}"
-           f"   |   21 / 30 days' basic a year, basic x 12 / 365 a day   |   As at {_dubai_today():%d %b %Y}")
+           f"   |   21 / 30 days' basic a year, basic x 12 / 365 a day   |   As at {_dubai_today():%d/%m/%Y}")
     return rows, "End of Service Gratuity", sub
 
 
@@ -13944,7 +13944,7 @@ def daily_report_parts(db, day, report="summary", site="", trade=""):
     expected = [e for e in staff.values() if e.active and on_books_on(e, day) and e.emp_no not in done
                 and (not trade or (e.trade or "").strip().upper() == trade)]
     counts["Not marked"] = 0 if site else len(expected)
-    when = f"{day:%A %d %b %Y}"
+    when = f"{day:%A %d/%m/%Y}"
     scope = " - ".join(x for x in [f"Site {site}" if site else "", trade.title() if trade else ""] if x)
     title = f"Daily Report - {DAILY_REPORTS[report]}"
     sub = when + (f"   |   {scope}" if scope else "")
@@ -14343,14 +14343,14 @@ def _work_out_notifications(db, user):
                              "title": f"New material request {m.ref}",
                              "detail": f"{_person_name(m.requested_by) or 'Someone'} asked for {_mr_lines(m)}"
                                        + (f" for site {m.site}" if m.site else " for the central store")
-                                       + (f", needed by {m.needed_by.isoformat()}" if m.needed_by else ""),
+                                       + (f", needed by {m.needed_by:%d/%m/%Y}" if m.needed_by else ""),
                              "screen": "approvals", "target": m.ref,
                              "when": m.requested_on.isoformat(), "level": "info"})
             if (m.needed_by and m.needed_by < today
                     and m.status not in ("delivered", "received", "closed", "rejected")):
                 out.append({"id": f"late-{m.id}-{m.needed_by}", "kind": "late", "request_id": m.id,
                              "title": f"{m.ref} is late",
-                             "detail": f"Needed by {m.needed_by.isoformat()}, still "
+                             "detail": f"Needed by {m.needed_by:%d/%m/%Y}, still "
                                        f"{MR_STATUS_WORDS.get(m.status, m.status)}",
                              "screen": "approvals", "target": m.ref,
                              "when": m.needed_by.isoformat(), "level": "warn"})
@@ -14363,7 +14363,7 @@ def _work_out_notifications(db, user):
                 out.append({"id": f"lpo-{m.id}", "kind": "purchase", "request_id": m.id,
                              "title": f"{m.ref} approved - raise the LPO",
                              "detail": f"{_mr_lines(m)}" + (f" for site {m.site}" if m.site else "")
-                                       + (f", needed by {m.needed_by.isoformat()}" if m.needed_by else ""),
+                                       + (f", needed by {m.needed_by:%d/%m/%Y}" if m.needed_by else ""),
                              "screen": "approvals", "target": m.ref,
                              "when": (m.updated_at or m.requested_on).isoformat()[:10], "level": "info"})
 
@@ -14378,7 +14378,7 @@ def _work_out_notifications(db, user):
                 sups = sorted({l.supplier.name for l in m.lines if l.supplier})
                 title = f"{m.ref} ordered"
                 detail = ("From " + ", ".join(sups) if sups else "Ordered by the office") \
-                         + (f", expected {m.expected_on.isoformat()}" if m.expected_on else "")
+                         + (f", expected {m.expected_on:%d/%m/%Y}" if m.expected_on else "")
                 lvl = "ok"
             elif m.status == "partial":
                 got = sum(l.qty_received or 0 for l in m.lines)
@@ -14411,7 +14411,7 @@ def _work_out_notifications(db, user):
             if i.item_type == "rental" and i.rental_due and i.rental_due < today:
                 out.append({"id": f"rent-{i.id}-{i.rental_due}", "kind": "rental",
                              "title": f"{i.name} is overdue back to {i.rental_supplier or 'the supplier'}",
-                             "detail": f"Was due {i.rental_due.isoformat()}",
+                             "detail": f"Was due {i.rental_due:%d/%m/%Y}",
                              "screen": "store", "target": i.code, "when": i.rental_due.isoformat(), "level": "warn"})
 
     # ---- Attendance -------------------------------------------------
@@ -14429,7 +14429,7 @@ def _work_out_notifications(db, user):
         if active and marked == 0:
             out.append({"id": f"att-none-{y}", "kind": "attendance",
                          "title": "No attendance saved for yesterday",
-                         "detail": y.strftime("%A, %d %B %Y"),
+                         "detail": y.strftime("%A, %d/%m/%Y"),
                          "screen": "attendance", "when": y.isoformat(), "level": "warn"})
         elif active and marked < active:
             out.append({"id": f"att-part-{y}", "kind": "attendance",

@@ -2558,7 +2558,7 @@ def _d(s):
     if not s:
         return ""
     try:
-        return date.fromisoformat(s[:10]).strftime("%d-%b-%y")
+        return date.fromisoformat(s[:10]).strftime("%d/%m/%Y")
     except ValueError:
         return s
 
@@ -2731,7 +2731,7 @@ def export(what: str, token: str, format: str = "excel", pid: int = 0, q: str = 
             money = [m for m in money if m in keep]
             totals = [m for m in totals if m in keep]
     full = f"{p.code} {p.name} - {title}".strip() if p else title
-    bits = [f"{len(rows)} lines", f"As at {today():%d %b %Y}"]
+    bits = [f"{len(rows)} lines", f"As at {today():%d/%m/%Y}"]
     if status:
         bits.append(status)
     if q:

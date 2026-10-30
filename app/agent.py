@@ -299,7 +299,7 @@ def make_report(sql, title, fmt, base):
             pass
     title = (title or "Report").strip()[:80]
     data = [dict(zip(cols, r)) for r in rows] or [{"": "Nothing found."}]
-    sub = f"{len(rows)} rows" + (" (first 5,000)" if more else "") + f"   |   {M._dubai_today():%d %b %Y}"
+    sub = f"{len(rows)} rows" + (" (first 5,000)" if more else "") + f"   |   {M._dubai_today():%d/%m/%Y}"
     fmt = "pdf" if str(fmt).lower() == "pdf" else "excel"
     buf = (export_web.build_store_report_pdf(title, data, sub) if fmt == "pdf"
            else export_web.build_store_report_excel(title, data, sub))

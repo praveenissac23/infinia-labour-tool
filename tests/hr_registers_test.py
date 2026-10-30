@@ -67,7 +67,7 @@ ck('and a second one', leave(emp_no='T01', kind='sick', **{'from': '2026-09-10'}
 run, L = cycle()
 ck("the month's first sick day is paid and the second deducted: 200.00",
    money(L['T01']['deduction'], 200), (L['T01']['deduction'], L['T01']['deduction_note']))
-ck('and the note names the kind and the day deducted', 'Sick 10 Sep' in L['T01']['deduction_note'],
+ck('and the note names the kind and the day deducted', 'Sick 10/09/2026' in L['T01']['deduction_note'],
    L['T01']['deduction_note'])
 
 # Bina: a half sick day uses half the allowance, so a full sick day after
