@@ -351,11 +351,66 @@ def slim(data: bytes) -> bytes:
     return out.getvalue()
 
 
+def _xls_precision_shown(data: bytes) -> bool:
+    """Excel's "Set precision as displayed" in an old .xls (the PRECISION record = 0): every formula result is
+    rounded to what its cell shows before anything else uses it."""
+    try:
+        import struct
+        import xlrd.compdoc as _cd
+        doc = _cd.CompDoc(data)
+        st = doc.get_named_stream("Workbook") or doc.get_named_stream("Book")
+        pos = 0
+        while st and pos + 4 <= len(st):
+            t, ln = struct.unpack("<HH", st[pos:pos + 4])
+            if t == 0x000E and ln >= 2:
+                return struct.unpack("<H", st[pos + 4:pos + 6])[0] == 0
+            if t == 0x000A and pos > 0:              # end of the workbook globals
+                return False
+            pos += 4 + ln
+    except Exception:
+        pass
+    return False
+
+
+def _set_precision_shown(xlsx: bytes) -> bytes:
+    """Write fullPrecision="0" (precision as displayed) into the workbook - LibreOffice drops it on the way across."""
+    zin = zipfile.ZipFile(io.BytesIO(xlsx))
+    out = io.BytesIO()
+    zo = zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED)
+    for it in zin.infolist():
+        raw = zin.read(it.filename)
+        if it.filename == "xl/workbook.xml":
+            x = raw.decode("utf-8")
+            if "<calcPr" in x:
+                x = re.sub(r"<calcPr([^>]*?)/>", lambda m: "<calcPr" + re.sub(r'\sfullPrecision="[^"]*"', "", m.group(1)) + ' fullPrecision="0"/>', x, count=1)
+            else:
+                x = x.replace("</workbook>", '<calcPr fullPrecision="0"/></workbook>')
+            raw = x.encode("utf-8")
+        zo.writestr(it, raw)
+    zo.close()
+    return out.getvalue()
+
+
+def _soffice():
+    """LibreOffice - by PATH, or where the packages put it (a service often runs with a short PATH)."""
+    import shutil
+    for name in ("soffice", "libreoffice"):
+        p = shutil.which(name, path=(os.environ.get("PATH", "") + ":/usr/local/bin:/usr/bin:/bin:/snap/bin:/opt/libreoffice/program"))
+        if p:
+            return p
+    for p in ("/usr/lib/libreoffice/program/soffice", "/opt/libreoffice/program/soffice", "/usr/bin/soffice", "/usr/bin/libreoffice", "/snap/bin/libreoffice"):
+        if os.path.exists(p):
+            return p
+    import glob
+    hits = sorted(glob.glob("/opt/libreoffice*/program/soffice"))
+    return hits[-1] if hits else ""
+
+
 def xls_to_xlsx(data: bytes) -> bytes:
     """An old-format Excel bill (.xls) -> .xlsx, converted on the server with LibreOffice (formulas, layout and
     formatting kept), so the bill can be uploaded as it is instead of being re-saved in Excel first."""
-    import shutil, subprocess
-    exe = shutil.which("soffice") or shutil.which("libreoffice")
+    import subprocess
+    exe = _soffice()
     if not exe:
         raise BillError("This is the old Excel format (.xls) and the server cannot convert it yet. Open it in Excel and save it as "
                         ".xlsx (File > Save As > Excel Workbook), then upload that.")
@@ -364,15 +419,21 @@ def xls_to_xlsx(data: bytes) -> bytes:
         with open(src, "wb") as f:
             f.write(data)
         try:
-            subprocess.run([exe, "--headless", "--norestore", f"-env:UserInstallation=file://{d}/lo", "--convert-to", "xlsx",
-                            "--outdir", d, src], capture_output=True, timeout=150, env={**os.environ, "HOME": d})
+            r = subprocess.run([exe, "--headless", "--norestore", f"-env:UserInstallation=file://{d}/lo", "--convert-to", "xlsx",
+                                "--outdir", d, src], capture_output=True, timeout=150,
+                               env={**os.environ, "HOME": d, "PATH": os.environ.get("PATH", "") + ":/usr/local/bin:/usr/bin:/bin"})
         except subprocess.TimeoutExpired:
             raise BillError("Converting the .xls took too long. Save it as .xlsx in Excel and upload that.")
+        except OSError as ex:
+            print("xls convert:", ex)
+            raise BillError("The server could not start LibreOffice to convert the .xls. Save it as .xlsx in Excel and upload that.")
         out = os.path.join(d, "bill.xlsx")
         if not os.path.exists(out) or os.path.getsize(out) == 0:
+            print("xls convert failed:", r.returncode, r.stdout[-300:], r.stderr[-500:])
             raise BillError("That .xls file could not be converted. Open it in Excel, save it as .xlsx and upload that.")
         with open(out, "rb") as f:
-            return f.read()
+            x = f.read()
+    return _set_precision_shown(x) if _xls_precision_shown(data) else x
 
 
 def read_format(data: bytes, filename: str = ""):
@@ -468,6 +529,11 @@ def read_format(data: bytes, filename: str = ""):
                        "landscape": (ws.page_setup.orientation == "landscape"), "print": print_setup(ws, z.read(paths[ws.title]).decode("utf-8", "ignore") if paths.get(ws.title) in z.namelist() else ""),
                        "images": _images(z, paths.get(ws.title, "")) if paths.get(ws.title) in z.namelist() else []})
     model = {"sheets": sheets, "styles": styles, "filename": filename, "mv": MODEL_VERSION}
+    try:
+        if re.search(r'<calcPr[^>]*\sfullPrecision="(0|false)"', z.read("xl/workbook.xml").decode("utf-8", "ignore")):
+            model["precision_shown"] = True        # Excel's "Set precision as displayed" - the engine rounds the same way
+    except KeyError:
+        pass
     model["map"] = find_inputs(model)
     return model
 
@@ -690,6 +756,19 @@ def _round(x, n, mode):
     return float((d / q).quantize(Decimal(1), rounding=mode) * q)
 
 
+def _nf_decimals(nf):
+    """Decimals a number format shows, or None when it does not fix them (General, text, scientific, dates)."""
+    f = (nf or "").split(";")[0]
+    f = re.sub(r'"[^"]*"|\\.|\[[^\]]*\]|_.|\*.', "", f)
+    if not f or f.lower() == "general" or "@" in f or re.search(r"[eE][+-]", f) or re.search(r"[dmyhs]", f, re.I):
+        return None
+    if not re.search(r"[0#?]", f):
+        return None
+    m = re.search(r"\.([0#?]+)", f)
+    n = len(m.group(1)) if m else 0
+    return n + 2 * f.count("%")
+
+
 class Book(object):
     """Works out the formulas of a model, with the typed cells changed (inputs: {sheet: {"r,c": value}})."""
 
@@ -759,10 +838,19 @@ class Book(object):
                     x = self.by_name[sheet]["cells"].get(f"{r},{c}", {}).get("x")
                     if x is not None:
                         v = float(x) if isinstance(x, (int, float)) else x
+                if self.model.get("precision_shown") and isinstance(v, (int, float)) and not isinstance(v, bool):
+                    v = self.shown(sheet, r, c, v)
             finally:
                 self.busy.discard(key)
         self.memo[key] = v
         return v
+
+    def shown(self, sheet, r, c, v):
+        """Precision as displayed: the figure rounded to the decimals its cell shows (0.00 -> 2, 0.00% -> 4)."""
+        cell = self.by_name[sheet]["cells"].get(f"{r},{c}") or {}
+        st = self.model["styles"][cell.get("s", 0)] if cell.get("s", 0) < len(self.model["styles"]) else {}
+        n = _nf_decimals(st.get("nf") or "General")
+        return v if n is None else _round(v, n, ROUND_HALF_UP)
 
     def rng(self, node):
         _, sh, r1, c1, r2, c2, _isr = node
