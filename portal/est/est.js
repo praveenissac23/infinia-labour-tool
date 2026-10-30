@@ -1230,7 +1230,7 @@ SECTIONS["subs.final"] = el => {
   let sec = "";
   for (const x of rows) {
     if (x.section !== sec) { sec = x.section; html += `<tr class="sec"><td colspan="${FCOLS.length + 2}">${esc(sec)}</td></tr>`; }
-    html += `<tr><td>${esc(x.item)}</td><td><select class="fsub" data-fsub="${x.id}"><option value="">-</option>${b.subs.map(s => `<option value="${s.id}" ${s.id === x.sub_id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}<option value="new">+ New subcontract...</option></select></td>${FCOLS.map(c => `<td class="cell ${cls(x[c[0]])}" data-fc="${x.id}:${c[0]}">${esc(x[c[0]] || "")}</td>`).join("")}</tr>`;
+    html += `<tr><td>${esc(x.item)}</td><td><select class="fsub" data-fsub="${x.id}" title="${esc(x.note || "")}"><option value="">${x.note ? esc(x.note) : "-"}</option>${b.subs.map(s => `<option value="${s.id}" ${s.id === x.sub_id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}<option value="new">+ New subcontract...</option></select></td>${FCOLS.map(c => `<td class="cell ${cls(x[c[0]])}" data-fc="${x.id}:${c[0]}">${esc(x[c[0]] || "")}</td>`).join("")}</tr>`;
   }
   el.innerHTML = html + "</tbody></table></div>";
   bindTools(el, () => SECTIONS["subs.final"](el));
