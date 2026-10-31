@@ -396,6 +396,15 @@ for lab in cycles:
                    near(sum(F(1, 2) for s_ in sts if s_.lower() in PAID), x['paid_days']), (sum(F(1, 2) for s_ in sts if s_.lower() in PAID), float(x['paid_days'])))
     for no, x in want.items():
         ck(f'card preview final = card: {no} {lab}', no in view and near(view[no], x['net']), (view.get(no), float(x['net'])))
+    # only the workers ticked under PAY go on the printed cards - same figures
+    pick = sorted(want)[:2]
+    if pick:
+        vr = c.get(f'/export/{lab}/cards/view', params={'token': dl(), 'emp_nos': ','.join(pick)})
+        got = re.findall(r'<th>Employee No:</th><td>([^<]+)</td>', vr.text)
+        ck(f'cards preview prints only the ticked workers: {lab}', sorted(got) == pick, (got, pick))
+        pr = c.get(f'/export/{lab}/pdf', params={'token': dl(), 'emp_nos': ','.join(pick)})
+        txt = ' '.join(pg.extract_text() or '' for pg in PdfReader(io.BytesIO(pr.content)).pages)
+        ck(f'cards PDF prints only the ticked workers: {lab}', sorted(set(re.findall(r'Employee No:\s*([A-Z0-9-]+)', txt))) == pick, txt[:200])
 say('salary card Excel, PDF and preview: the same final on every card')
 
 # ---- 6. report builder and site cost: totals add up -----------------------------------------------------------------
