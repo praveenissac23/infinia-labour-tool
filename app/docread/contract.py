@@ -108,6 +108,21 @@ def read_contract(doc, kind="project"):
     tf("client", r"(client|employer|owner)(\s+name)?\s*:?", 100, True)
     tf("consultant", r"(consultant|engineer|project\s+consultant|supervision\s+consultant)\s*:?", 100, True)
     tf("location", r"(location|plot\s+no\.?|project\s+location|site)\s*:?", 120)
+    # a letter: "... award you the works for the <project> for the Employer <client>, under the supervision of <consultant>"
+    if not f.get("name"):
+        m = re.search(r"(?:award(?:ed)?\s+(?:to\s+)?you\s+(?:the\s+)?(?:contract|works?|project)\s+(?:for|of)\s+(?:the\s+)?|"
+                      r"(?:subject|re)\s*[:\-]\s*(?:award\s+of\s+(?:contract|works?)\s+(?:for|of)\s+(?:the\s+)?)?)"
+                      r"([A-Z][^.;:]{8,140}?)(?=\s+for\s+the\s+(?:employer|client|owner)|,\s+(?:for|under|on behalf)|\.\s|;|$)", flat, re.I)
+        if m:
+            f["name"] = m.group(1).strip(" ,")
+    if not f.get("client"):
+        m = re.search(r"(?i:for|on\s+behalf\s+of)\s+the\s+(?i:employer|client|owner)\s*,?\s*((?:M/?s\.?\s+|Mr\.?\s+|Ms\.?\s+|Mrs\.?\s+)?[A-Z][\w.&' -]{2,70}?)(?=,|\.\s|\s+under|\s+\(|$)", flat)
+        if m:
+            f["client"] = _strip_ms(m.group(1))
+    if not f.get("consultant"):
+        m = re.search(r"(?i:under\s+the\s+supervision\s+of|supervised\s+by|the\s+consultant\s+(?:is|being))\s+((?:M/?s\.?\s+)?[A-Z][\w.&' -]{2,80}?)(?=,|\.\s|\.$|\s+\(|$)", flat)
+        if m:
+            f["consultant"] = _strip_ms(m.group(1))
     if not f.get("client"):
         m = re.search(r"between\s+((?:M/?S\.?\s+)?[A-Z][^,()]{2,80}?)\s*(?:\(|,)\s*(?:hereinafter[^)]*)?(?:the\s+)?[\"“]?(?:employer|client|owner)", flat, re.I)
         if m:

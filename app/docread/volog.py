@@ -213,8 +213,8 @@ def read_log(doc):
             j = i + 1
             while j < len(all_rows) and all_rows[j].page == r.page and len(block) < 3:
                 nx = all_rows[j]
-                roles = [head_roles(c.text) for c in nx.cells]
-                if any(roles) and not any(c.num is not None and not c.is_date for c in nx.cells) and \
+                roles = [head_roles(c.text) for c in nx.cells if c.text.strip()]
+                if roles and sum(1 for x in roles if x) >= max(1, 0.6 * len(roles)) and not any(c.num is not None and not c.is_date for c in nx.cells) and \
                         not any(_money(c)[0] is not None for c in nx.cells if re.search(r"\d", c.text)):
                     block.append(nx)
                     j += 1

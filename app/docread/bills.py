@@ -23,7 +23,7 @@ from .tables import analyse, assign_roles
 from .vocab import row_concepts
 
 FLOW = ("work", "var", "gross", "mos", "ret", "rel", "adv", "advpay", "ded")
-SIGNED = ("net", "extra")
+SIGNED = ("net", "extra", "vat", "total")
 
 
 def _labels_for(infos, i):

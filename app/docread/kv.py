@@ -34,7 +34,7 @@ def value_after(rows, r, j, m, below=True):
         if not x or x in (":", "-"):
             continue
         x = x.lstrip(": ").strip()
-        if not x or LABELISH.match(x):
+        if not x or (LABELISH.match(x) and (":" in x or not re.search(r"\d", x))):
             return "", None
         return x, c
     if below:

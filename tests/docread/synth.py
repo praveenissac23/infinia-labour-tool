@@ -238,6 +238,9 @@ def render_pdf(pages, path, st, font_size=8.5, rules=True, arabic=False):
                 size = font_size
                 while c.stringWidth(t, f, size) > (x1 - x0 - 3) and size > 5.5 and cell["k"] != "text":
                     size -= 0.5
+                if cell["k"] == "text" and row["border"]:
+                    while c.stringWidth(t, f, size) > (x1 - x0 - 3) and size > 5:
+                        size -= 0.5                 # a table cell: the words fit their cell (a printed table would wrap)
                 if cell["k"] == "text" and c.stringWidth(t, f, size) > (x1 - x0 - 3) and cell["span"] >= 1:
                     # long text: let it run (as a printed page would wrap; we shrink a little)
                     while c.stringWidth(t, f, size) > (x1 - x0 - 3) * 1.6 and size > 6:
@@ -377,11 +380,11 @@ def layout_single(rng, F, kind, arabic=False):
     if F["auth"]:
         pg.row(T(0, lab(rng, "auth", F)), N(3, F["auth"]), border=True)
     pg.row(T(0, lab(rng, "total", F)), N(3, F["total"]), border=True, bold=True)
+    if rng.random() < 0.3:
+        # a figure to the side of the total (a distractor): the previous revision's total
+        pg.rows[-1]["cells"].append(N(2, R2(F["total"] * rng.uniform(0.7, 0.95))))
     if rng.random() < 0.5:
         pg.row(T(0, f"(Dirhams {words(F['total'])} Only)", span=4))
-    if rng.random() < 0.3:
-        # a note to the side with another figure (a distractor): the previous revision's total
-        pg.rows[-1]["cells"].append(N(4 if len(pg.widths) > 4 else 2, R2(F["total"] * rng.uniform(0.7, 0.95))))
     return [pg], var_sep
 
 
@@ -803,6 +806,7 @@ def build(out, n=24, seed=7, scans=0.5, vo_n=16, contract_n=14):
         rows = vo_rows(rng, rng.randrange(6, 30))
         st = style(rng)
         st["cur"] = ""
+        st["neg"] = rng.choice(["-", "()"])          # an omission always shows its minus
         arabic = rng.random() < 0.2
         pages, cols = vo_layout(rng, rows, arabic)
         base = f"vo_{i:02d}"
