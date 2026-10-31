@@ -2373,23 +2373,40 @@ def _vo_summary(rows):
 
 @router.post("/store/est/projects/{pid}/variations/import")
 async def vo_import(pid: int, file: UploadFile = File(None), save: int = Form(0), take_off_contract: int = Form(0), contract_id: str = Form(""),
-                    upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""),
+                    upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""), rows_json: str = Form("", alias="rows"),
                     db: Session = Depends(get_db), user: models.User = VIEW):
-    """The variation log Excel (Ref.No, Description, Submitted / Revised / Accepted /
-    Absorbed amount, dates, Claimed in PC, Remarks; the OHP sheet too). First call
-    shows what will come in; save=1 puts it in. take_off_contract=1 when the
+    """The variation log - the team's Excel (Ref.No, Description, Submitted / Revised / Accepted /
+    Absorbed amount, dates, Claimed in PC, Remarks; the OHP sheet too), any other layout, a PDF or a
+    scan (est_fileread.read_vo_file). First call shows what will come in, every line with where it was
+    found; save=1 puts it in - with rows= the lines from that first call (not read again). take_off_contract=1 when the
     contract value already includes the accepted variations, so they are not
     counted twice."""
-    import est_voimport
+    import est_fileread as F
+    from fastapi.concurrency import run_in_threadpool
     p = _project(db, pid)
-    data, _fname = await upload_data(file, upload_id, parts, filename, user)
-    if len(data) > MAX_FILE:
-        raise HTTPException(413, "That file is over 25 MB.")
-    try:
-        rows = est_voimport.read_log(data)
-    except Exception as e:
-        raise HTTPException(400, f"Couldn't read that file as a variation log: {e}")
+    info = {}
+    if rows_json:
+        # Save from the confirm screen: the lines as read (and confirmed there) - the file is not read twice
+        try:
+            rows = F.vo_rows_from_json(json.loads(rows_json))
+        except ValueError:
+            raise HTTPException(400, "Bad variation lines.")
+    else:
+        data, _fname = await upload_data(file, upload_id, parts, filename, user)
+        if len(data) > MAX_FILE:
+            raise HTTPException(413, "That file is over 25 MB.")
+        try:
+            rows, info = await run_in_threadpool(F.read_vo_file, data, _fname or (file.filename if file is not None else ""))
+        except F.Unavailable as e:
+            raise HTTPException(501, str(e))
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(400, f"Couldn't read that file as a variation log: {e}")
     out = _vo_summary(rows)
+    if info:
+        out.update(rows_read=rows, engine=info.get("engine"), detail=info.get("detail") or [], sums=info.get("checks") or [],
+                   notes=info.get("notes") or [], pages=info.get("pages") or [], doc_kind=info.get("doc_kind"))
     out["contract"] = r2(p.contract_value)
     out["have"] = db.query(EstVariation).filter(EstVariation.project_id == pid).count()
     if not save:

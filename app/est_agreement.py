@@ -13,10 +13,12 @@ the way a QS reads an agreement:
 Every figure is checked: the schedule against the contract value, each section against its own
 sub-total in the agreement. What could not be found is said, never guessed.
 """
+import json
 import re
 from datetime import date
 
-from fastapi import Body, Depends, HTTPException
+from fastapi import Body, Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -769,16 +771,39 @@ def _row(blk, ml, amt):
 # ---- endpoint ---------------------------------------------------------------------------------------
 
 @router.post("/store/est/subs/agreement/read")
-def read_agreement(payload: dict = Body(...), db: Session = Depends(get_db), user=E.VIEW):
-    """Text of an agreement opened in the browser -> the subcontract's details and its schedule.
-    Nothing is saved; the form shows it all to check before Save."""
-    lines = payload.get("lines") or []
-    if not isinstance(lines, list) or not lines:
-        raise HTTPException(400, "No text came from that file.")
-    if len(lines) > 20000:
-        raise HTTPException(400, "That file is too long to read here.")
-    meta_trades = payload.get("trades") or []
-    r = read(lines, trades=meta_trades)
+async def read_agreement(request: Request, db: Session = Depends(get_db), user=E.VIEW):
+    """An agreement -> the subcontract's details and its schedule. Nothing is saved; the form shows it all to check
+    before Save. Sent as the file itself (multipart: file, or upload_id / parts / filename; trades as JSON): read on
+    the server (est_fileread.read_agreement_doc - the header by app/docread beside this reader, the schedule by this
+    reader, checked against the contract value). Sent as the browser's text ({"lines": [...]}): as before, with the
+    same header check; 501 + the reason when this server cannot read the file itself."""
+    import est_fileread as F
+    if (request.headers.get("content-type") or "").startswith(("multipart/", "application/x-www-form-urlencoded")):
+        form = await request.form()
+        data, fname = await E.upload_data(form.get("file") or None, form.get("upload_id") or "", int(form.get("parts") or 0), form.get("filename") or "", user)
+        if len(data) > E.MAX_FILE:
+            raise HTTPException(413, "That file is over 25 MB.")
+        try:
+            trades = json.loads(form.get("trades") or "[]")
+        except ValueError:
+            trades = []
+        try:
+            r = await run_in_threadpool(F.read_agreement_doc, data, fname, None, trades)
+        except F.Unavailable as e:
+            raise HTTPException(501, str(e))
+    else:
+        try:
+            payload = await request.json()
+        except ValueError:
+            raise HTTPException(400, "No text came from that file.")
+        if not isinstance(payload, dict):
+            raise HTTPException(400, "No text came from that file.")
+        lines = payload.get("lines") or []
+        if not isinstance(lines, list) or not lines:
+            raise HTTPException(400, "No text came from that file.")
+        if len(lines) > 20000:
+            raise HTTPException(400, "That file is too long to read here.")
+        r = await run_in_threadpool(F.read_agreement_doc, None, "", lines, payload.get("trades") or [])
     # the subcontractor as it is already known (Store & Purchasing suppliers, earlier subcontracts)
     nm = r["fields"].get("name")
     if nm:
@@ -790,6 +815,8 @@ def read_agreement(payload: dict = Body(...), db: Session = Depends(get_db), use
             k2 = re.sub(r"^ms", "", k2)
             if key and k2 and (key == k2 or (len(key) > 6 and (key.startswith(k2) or k2.startswith(key)))):
                 r["fields"]["name"] = n
+                if isinstance(r.get("detail"), dict) and r["detail"].get("name"):
+                    r["detail"]["name"] = dict(r["detail"]["name"], value=n, note=f"already known as {n}")
                 if sid:
                     r["fields"]["supplier_id"] = sid
                 r["known"] = True

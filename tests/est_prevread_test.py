@@ -64,5 +64,10 @@ for l in lines:
     if "Retention" in l.get("t", "") and "10,588.75" in l.get("t", "") and "Release" not in l.get("t", ""):
         l["c"] = [x.replace("10,588.75", "10,688.75") for x in l["c"]]; l["t"] = l["t"].replace("10,588.75", "10,688.75"); break
 r = c.post("/store/est/read/subpc", json={"lines": lines, "subs": []}, headers=H).json()
-ck("a misread figure is caught by the certificate's own sum", any(not x["ok"] and "net amount" in x["name"] for x in r["checks"]), r["checks"])
+# caught: a failed sum (the older reader), or - read on the server's reader (app/docread) - the misread retention is not
+# taken as "ok": left out / marked check, or put right from the sums; the amount due stays the certificate's own
+ret, dret = r["fields"].get("ret_cum"), (r.get("detail") or {}).get("ret_cum") or {}
+caught = any(not x["ok"] and "net amount" in x["name"] for x in r["checks"]) or \
+    (abs((r["fields"].get("total") or 0) - 10226.0) < 0.01 and not (ret is not None and abs(ret - 10688.75) < 0.01 and dret.get("status") == "ok"))
+ck("a misread figure is caught by the certificate's own sum", caught, [ret, dret, r["fields"].get("total"), r["checks"]])
 print(f"\n{len(fails)} FAILED: {fails}" if fails else "\nALL PASS"); sys.exit(1 if fails else 0)

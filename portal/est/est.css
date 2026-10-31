@@ -703,3 +703,45 @@ table.sb .resub { margin-top: 4px; }
 .sb-code { font: 700 10.5px inherit; padding: 2px 6px; border-radius: 6px; background: #F3F3F3; color: #555; }
 .sb-code.g { background: #EAF6EE; color: #1F6B3A; } .sb-code.a { background: #FFF4DE; color: #8A5A00; } .sb-code.r { background: #FDECEA; color: #A3281E; } .sb-code.b { background: #EAF1FC; color: #234E9A; }
 .sb-note { margin-top: 3px; font-size: 12px; color: #8A5A00; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* The confirm screen for a document read into a form (confirm.js): the page beside the boxes, a chip on every box read */
+.mbox.cfm { max-width: min(1360px, 97vw); }
+.cfv { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.cfv.one { grid-template-columns: minmax(0, 1fr); }
+.cfv-doc { position: sticky; top: 0; border: 1px solid var(--line); border-radius: 9px; background: #F7F5F2; display: flex; flex-direction: column; max-height: calc(100vh - 150px); min-height: 300px; overflow: hidden; }
+.cfv-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); background: #fff; font-size: 12px; min-width: 0; }
+.cfv-bar b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cfv-bar .spacer, .cfv-head .spacer { flex: 1; }
+.cfv-nav { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.cfv-nav .btn { padding: 2px 9px; font-size: 15px; line-height: 1.2; }
+.cfv-view { overflow: auto; flex: 1; padding: 6px; scrollbar-width: thin; }
+.cfv-view:has(.cfv-grid) { padding: 0; }
+.cfv-page { position: relative; margin: 0 auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.cfv-page canvas, .cfv-page img { display: block; }
+.cfv-hl { position: absolute; border: 2.5px solid #1D5FA8; background: rgba(29,95,168,.14); border-radius: 3px; pointer-events: none; box-shadow: 0 0 0 3px rgba(29,95,168,.15); }
+.cfv-grid { border-collapse: collapse; font-size: 11.5px; background: #fff; }
+.cfv-grid th { background: #F1EFEA; color: #6B7178; font-weight: 600; padding: 2px 6px; border: 1px solid #E4DCD2; position: sticky; top: 0; z-index: 1; }
+.cfv-grid tbody th { position: sticky; left: 0; top: auto; text-align: right; }
+.cfv-grid td { border: 1px solid #EEE9E3; padding: 2px 6px; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.cfv-grid td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.cfv-grid td.hl { background: #DCE8F8; outline: 2.5px solid #1D5FA8; outline-offset: -2px; font-weight: 700; }
+.cfv-main { min-width: 0; }
+.cfv-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); margin-bottom: 8px; }
+.cfv-left { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 9px; }
+.cfv-left.a { background: var(--amber-bg); color: var(--amber); } .cfv-left.g { background: var(--green-bg); color: var(--green); }
+.cfchip { display: inline-flex; align-items: center; border: 1px solid transparent; border-radius: 999px; padding: 0 7px; height: 17px; font-size: 10.5px; font-weight: 700; margin-left: auto; cursor: pointer; line-height: 1; }
+.cfv-head .cfchip, td .cfchip { margin-left: 0; }
+.cfchip.static { cursor: default; }
+.cfchip.ok { background: var(--green-bg); color: var(--green); border-color: #BFE2C8; }
+.cfchip.check { background: var(--amber-bg); color: var(--amber); border-color: #F1CF8E; }
+.cfchip.check.done { background: #fff; color: var(--green); border-color: #BFE2C8; }
+.cfchip.check.done::before { content: "\2713"; margin-right: 3px; }
+.cfchip.derived { background: var(--blue-bg); color: var(--blue); border-color: #C4D7F0; }
+.cfchip.pulse { animation: cfpulse .9s ease 2; }
+@keyframes cfpulse { 50% { box-shadow: 0 0 0 5px rgba(154,91,0,.25); } }
+.cfm .frm label { flex-wrap: nowrap; }
+@media (max-width: 800px) {
+  .cfv { grid-template-columns: minmax(0, 1fr); }
+  .cfv-doc { position: static; max-height: 52vh; min-height: 220px; }
+}
+.prev-chk summary { cursor: pointer; list-style-position: inside; }

@@ -1,4 +1,5 @@
-// Read from agreement: a subcontract agreement opened in the browser (nothing uploaded), the form filled in,
+// Read from agreement: a subcontract agreement read on the server (nothing kept), the form filled in beside the page
+// (the confirm screen: every amber figure looked at before Save),
 // the priced schedule saved as the item schedule - for any layout: Infinia's 909 joinery PDF, a Word MEP
 // subcontract, an Excel LPO and a plain PDF work order.
 //   AGREEMENT_FILE=<909 agreement.pdf> node tests/est_agreement_ui_test.js
@@ -7,6 +8,7 @@ const { execSync } = require('child_process');
 const B = process.env.BASE || 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/agrui_';
 let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  ' + JSON.stringify(i === undefined ? '' : i).slice(0, 300))); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const confirmAll = async p => { for (const k of await p.$$eval('#m-body .cfchip.check:not(.done):not(.static)', a => a.map(c => c.dataset.cfk))) { await p.click(`#m-body .cfchip.check[data-cfk="${k}"]`); await new Promise(r => setTimeout(r, 60)); } };   // the confirm screen: every amber figure looked at
 const DIR = '/tmp/claude-0/agrfix';
 (async () => {
   const exp = JSON.parse(execSync(`python3 ${__dirname}/est_agreement_fixtures.py ${DIR}`).toString());
@@ -44,6 +46,9 @@ const DIR = '/tmp/claude-0/agrfix';
     ck(`${tag}: ${e.items} priced lines, total = contract value`, res.includes(`Save the ${e.items} priced line`) && res.includes('= contract value'), res.slice(0, 300));
     if (/SCANNED|lift/i.test(F.path)) await p.screenshot({ path: SH + (F.code) + '_scan_form.png' });
     if (F.code === '909' && !/SCANNED/.test(F.path)) { await p.click('.agsched summary'); await sleep(200); await p.screenshot({ path: SH + '909_form.png' }); }
+    ck(`${tag}: the confirm screen - the page beside the form, a chip on the details read`, !!(await p.$('#m-body .cfv-doc')) && (await p.$$('#m-body .frm .cfchip')).length >= 3);
+    ck(`${tag}: the schedule against the contract value in the sums`, /priced schedule adds up to the contract value/.test(await p.textContent('#m-body .prev-chk')));
+    await confirmAll(p);
     await p.click('#m-save'); await sleep(2000);
     const b = await api(`/store/est/projects/${P}`);
     const sub = b.subs.filter(x => x.name === e.name).pop();
@@ -61,7 +66,7 @@ const DIR = '/tmp/claude-0/agrfix';
   require('fs').writeFileSync(`${DIR}/note.txt`, 'hello');
   await p.setInputFiles('#ag-file', `${DIR}/note.txt`); await sleep(800);
   ck('a file it cannot read says so', /PDF, Word/.test(await p.textContent('#ag-out')), await p.textContent('#ag-out'));
-  ck('the file itself was never sent to the server', uploads.length === 0, uploads);
+  ck('the agreement went only to the agreement reader (read there, nothing kept)', uploads.length > 0 && uploads.every(u => /\/store\/est\/subs\/agreement\/read$/.test(u)), uploads);
   ck('no page errors', !errs.length, errs);
   await br.close(); console.log(bad ? `\n${bad} FAILED` : '\nALL PASS'); process.exit(bad ? 1 : 0);
 })();
