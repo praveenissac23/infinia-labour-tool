@@ -80,9 +80,9 @@ for s in staff[:12]:
        st['input']['salary_amount'] == dn(D(str(st['salary']['gross'])) * D(str(st['input']['salary_days'])) / st['input']['month_days']))
     if g['amount'] and not g['capped']:
         y = D(str(st['service']['counted'])) / 365
-        ck(f"{s['emp_no']}: gratuity exact, down to the fils",
-           abs(g['amount'] - (dn(min(y, D(5)) * 21 * D(str(basic)) * 12 / 365) + dn(max(y - 5, D(0)) * 30 * D(str(basic)) * 12 / 365))) < 0.001,
-           g['amount'])
+        ck(f"{s['emp_no']}: gratuity exact, down to the fils (= the Gratuity screen), and its two lines add up to it",
+           g['amount'] == dn((min(y, D(5)) * 21 + max(y - 5, D(0)) * 30) * D(str(basic)) * 12 / 365)
+           and abs(g['first5_amt'] + g['after5_amt'] - g['amount']) < 0.001, (g['amount'], g['first5_amt'], g['after5_amt']))
     nd = next((v for k, v in amt.items() if k.startswith('Notice not served')), None)
     if nd is not None:
         short = st['input']['notice_required'] - st['input']['notice_served']

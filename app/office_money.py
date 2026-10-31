@@ -14,7 +14,9 @@ is never more than the exact figure. October 2026 and earlier months keep the ol
 to whole dirhams) so what was approved or paid is not touched.
 """
 from datetime import date, datetime
-from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
+from decimal import Decimal
+
+import payroll_cycle as pcyc       # the rounding helpers shared with labour (fils_down / fils_up)
 
 EXACT_FROM = date(2026, 11, 1)          # the November 2026 office month (calendar month) onward
 _C = Decimal("0.01")
@@ -33,13 +35,13 @@ def D(v):
 
 
 def pay_down(v):
-    """An amount paid to him: exact, then down to the fils."""
-    return float(D(v).quantize(_C, rounding=ROUND_FLOOR))
+    """An amount paid to him: exact, then DOWN to the fils (the labour side's payroll_cycle.fils_down, ROUND_FLOOR)."""
+    return pcyc.fils_down(v if not isinstance(v, (int, float)) else D(v)) + 0.0      # (never -0.0)
 
 
 def take_up(v):
-    """An amount taken from him: exact, then up to the fils."""
-    return float(D(v).quantize(_C, rounding=ROUND_CEILING))
+    """An amount taken from him: exact, then UP to the fils (payroll_cycle.fils_up)."""
+    return float(pcyc.fils_up(v if not isinstance(v, (int, float)) else D(v))) + 0.0
 
 
 def days_cost(gross, days):

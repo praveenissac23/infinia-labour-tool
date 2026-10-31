@@ -10635,13 +10635,13 @@ def gratuity_detail(e, db=None, upto=None):
     out["days"] = round(days, 2)
     if amount > cap:
         amount, out["capped"] = cap, True
-    if e.staff:
-        # Office: exact (no rounded day rate), down to the fils - never a fraction of a fils extra (office_money).
-        from decimal import Decimal as _Dec
-        yrs = _om.D(max(service - unpaid, 0)) / _Dec(365)
-        exact = ((min(yrs, _Dec(5)) * 21 + max(yrs - 5, _Dec(0)) * 30) * _om.D(basic) * 12 / _Dec(365))
-        amount = min(exact, _om.D(cap))
-    out["amount"] = _om.pay_down(amount) if e.staff else round(amount, 2)
+    # Exact - no rounded day rate - and cut DOWN to the fils (owner, 31/10/2026: never a fraction of a fils extra),
+    # for office and labour alike, so the Gratuity screens agree with the final settlement paper.
+    from fractions import Fraction as _Fr
+    _yx = _Fr(str(max(service - unpaid, 0))) / 365
+    _bx = _Fr(str(basic))
+    amount = min((min(_yx, 5) * GRATUITY_DAYS_FIRST_5 + max(_yx - 5, 0) * GRATUITY_DAYS_AFTER_5) * _bx * 12 / 365, _bx * 24)
+    out["amount"] = pcyc.fils_down(amount) + 0.0
     out["why"] = (f"{years:.2f} yrs x {'21' if years <= 5 else '21/30'} days = {days:.1f} days"
                   f" x {daily:,.2f} a day (basic {basic:,.0f} x 12 / 365)"
                   + (f", {unpaid:g} absent / leave day(s) not counted" if unpaid else "")
