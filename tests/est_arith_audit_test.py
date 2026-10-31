@@ -379,6 +379,15 @@ for f in glob.glob("/mnt/user-data/attachments/*/*914_MEP_IPA02*.xls") + glob.gl
     mr = BE.read_format(BE.xls_to_xlsx(open(f, "rb").read()), "914 MEP IPA02 - R2.xlsx")
     r = BE.check_against_excel(mr)
     ck(f"real {os.path.basename(f)}: every formula as Excel", r["mismatch"] == 0 and r["formulas"] == r["same"], (r["formulas"], r["same"]))
+    # live bill 36 (914 MEP IPA no. 3): the Total % typed - work done kept for the bill = the sheet's 35,471.07 (not .06)
+    pct = {"MEP_BOQ_HVAC": {"117": 0.2}, "MEP_BOQ_PLUMBING": {"16": 0.45, "62": 0.1, "103": 0.1, "109": 0.1, "119": 0.05},
+           "MEP_BOQ_ELECTRICAL": {"86": 0.05, "88": 0.05, "90": 0.05, "92": 0.05, "94": 0.05, "158": 0.02, "215": 0.05, "260": 0.6}}
+    binp = {sh: {f"{r},{c}": v for r, v in d.items() for c in (7, 9)} for sh, d in pct.items()}
+    _, bv = EB._calc(mr, binp)
+    fake = type("B", (), {"label": "", "issue_date": None})()
+    EB._save_totals(fake, mr, bv)
+    same("real 914 MEP IPA02: work done kept = the sheet's Total Value of Work done (IPA E15)", fake.work_done, D(str(bv["IPA"]["15,5"])))
+    same("real 914 MEP IPA02: work done = 35,471.07 as Excel", fake.work_done, D("35471.07"))
     break
 
 # ======================================================================== bills: saved = exported = next bill's previous

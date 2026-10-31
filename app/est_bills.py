@@ -781,7 +781,10 @@ def _save_totals(b, model, values):
     f = _facts(model, values)
     b.total_due = f["total_due"]
     try:                                           # work done to date: every % line's amount x its Total % (as the Work done step adds it up)
-        b.work_done = round(sum((l["amount"] or 0) * (l["total"] or 0) for t in _progress(model, values, {}) for l in t["lines"]), 2)
+        each = lambda v: v
+        if model.get("precision_shown"):          # Excel's "precision as displayed": each line's value is kept to the cent the
+            each = lambda v: BE._round(v, 2, BE.ROUND_HALF_UP)   # sheet shows, so the total is the sheet's (35,471.07 not .06)
+        b.work_done = round(sum(each((l["amount"] or 0) * (l["total"] or 0)) for t in _progress(model, values, {}) for l in t["lines"]), 2)
     except Exception:
         pass
     b.label = f["label"] or b.label
