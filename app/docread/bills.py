@@ -301,8 +301,8 @@ def relations(dom, multi, vat_rate=5.0):
         n, p, g = get("net_t"), get("net_p"), G(get, "c")
         if n is None or p is None or g is None:
             return None
-        return g - ded(get, "c") - p, n
-    rels.append(Rel("due", gvars("c") + dvars("c") + ["net_p", "net_t"], due, tol=0.06, w=3.0,
+        return g - ded(get, "c") - p + sum(get(e) or 0 for e in extras), n
+    rels.append(Rel("due", gvars("c") + dvars("c") + ["net_p", "net_t"] + extras, due, tol=0.06, w=3.0,
                     text="work to date - deductions - previously certified = net due"))
 
     def vat(get):
@@ -317,14 +317,14 @@ def relations(dom, multi, vat_rate=5.0):
         t, n = get("total"), get("net_t")
         if t is None or n is None:
             return None
-        rest = (get("auth") or 0) + sum(get(e) or 0 for e in extras)
+        rest = get("auth") or 0
         if get("vat") is None:
             # VAT not read (or not charged): the total is the net, or the net plus VAT
             r = (get("vat_pct") or vat_rate) / 100.0
             a, b = n + rest, n * (1 + r) + rest
             return (a if abs(a - t) <= abs(b - t) else b), t
         return n + get("vat") + rest, t
-    rels.append(Rel("total", ["total", "net_t", "vat", "auth"] + extras, total, tol=1.0, w=2.0, text="net + VAT = amount due"))
+    rels.append(Rel("total", ["total", "net_t", "vat", "auth"], total, tol=1.0, w=2.0, text="net + VAT = amount due"))
 
     def total2(get):
         t, g, p = get("total"), G(get, "c"), get("net_p")
@@ -411,8 +411,9 @@ def run(doc, vat_rate=5.0, beam=150, kind="subpc"):
     if doc.ocr:
         asg, rep = _repair(asg, rels, dom)
         notes += rep
+    read = dict(asg)
     derived = _derive(asg, rels)
-    st = statuses(asg, rels)
+    st = statuses(read, rels)          # the checks are on figures read from the document, never on worked-out ones
     return {"asg": asg, "rels": rels, "status": st, "derived": derived, "notes": notes, "words_total": words_total,
             "dom": dom, "multi": multi, "ms": round((time.perf_counter() - t0) * 1000, 1)}
 

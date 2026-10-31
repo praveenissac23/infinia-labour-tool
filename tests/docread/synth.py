@@ -213,8 +213,10 @@ def render_pdf(pages, path, st, font_size=8.5, rules=True, arabic=False):
             fn, fb = "DejaVu", "DejaVuB"
     except Exception:
         pass
-    c = canvas.Canvas(path, pagesize=A4)
-    W, H = A4
+    from reportlab.lib.pagesizes import landscape
+    size = landscape(A4) if max(sum(pg.widths) for pg in pages) > 200 else A4
+    c = canvas.Canvas(path, pagesize=size)
+    W, H = size
     for pg in pages:
         left = 14 * mm
         xs = [left]
@@ -762,6 +764,56 @@ def render_contract(paras, table, path, fmt_):
     SimpleDocTemplate(path, pagesize=A4).build(el)
 
 
+def team_vo_logs(out, rng, scans=True):
+    """The QS team's own variation-log layout, filled with the real rows of six projects (app/est_vo_seed.json,
+    read from the team's files and checked against their totals) - Excel, typed PDF and a scan."""
+    seed = json.load(open(os.path.join(os.path.dirname(__file__), "..", "..", "app", "est_vo_seed.json")))
+    out_c = []
+    for code, x in seed.items():
+        rows = x["rows"]
+        if len(rows) < 3:
+            continue
+        cols = ["ref", "title", "submitted_amount", "revised_amount", "approved_amount", "absorbed_amount", "submitted", "approved_on", "pc_ref", "remarks"]
+        names = ["Ref.No", "Description", "Submitted Amount", "Revised Amount", "Accepted Amount", "Absorbed Amount", "Date of Submission",
+                 "Date of Acceptance", "Claimed in PC", "Remarks"]
+        pg = Page([14, 60, 22, 22, 22, 22, 22, 22, 16, 30], "Variation Log")
+        pg.row(T(0, f"{code} - VARIATION LOG", span=10, align="c"), bold=True, h=8)
+        pg.row(*[T(i, n, align="c") for i, n in enumerate(names)], bold=True, border=True, gap=1)
+        truth = []
+        seen = set()
+        for r in rows:
+            key = (r["ref"], r["title"])
+            if key in seen or not r["ref"] or r["status"] == "Absorbed" and not r["absorbed_amount"]:
+                continue
+            seen.add(key)
+            cells = []
+            for i, c in enumerate(cols):
+                v = r.get(c)
+                if c.endswith("amount"):
+                    cells.append(N(i, abs(v), neg=v < 0) if v else T(i, "-", align="r"))
+                elif c in ("submitted", "approved_on"):
+                    cells.append(D(i, date.fromisoformat(v)) if v else T(i, "-", align="c"))
+                elif c == "remarks":
+                    cells.append(T(i, (r.get("notes") or "").split("\n")[-1][:40]))
+                else:
+                    cells.append(T(i, v or ""))
+            pg.row(*cells, border=True)
+            truth.append({k: r.get(k) for k in ("ref", "title", "submitted_amount", "revised_amount", "approved_amount", "absorbed_amount",
+                                                "submitted", "approved_on", "status")})
+        tot = [T(1, "TOTAL")] + [N(i, abs(sum(t[c] for t in truth)), neg=sum(t[c] for t in truth) < 0) for i, c in enumerate(cols) if c.endswith("amount")]
+        pg.row(*tot, bold=True, border=True)
+        st = {"cur": "", "neg": "()", "dec": True, "sep": True}
+        base = f"teamvo_{code}"
+        render_xlsx([pg], os.path.join(out, base + ".xlsx"), st)
+        out_c.append({"file": base + ".xlsx", "kind": "vo", "format": "xlsx", "layout": "team", "truth": truth, "real_data": True})
+        render_pdf([pg], os.path.join(out, base + ".pdf"), st, font_size=7)
+        out_c.append({"file": base + ".pdf", "kind": "vo", "format": "pdf", "layout": "team", "truth": truth, "real_data": True})
+        if scans:
+            scan_pdf(os.path.join(out, base + ".pdf"), os.path.join(out, base + "_scan.pdf"), rng, dpi=300)
+            out_c.append({"file": base + "_scan.pdf", "kind": "vo", "format": "scan", "layout": "team", "dpi": 300, "truth": truth, "real_data": True})
+    return out_c
+
+
 # ---- the corpus -------------------------------------------------------------------------------------------
 
 def dumps(o):
@@ -823,6 +875,7 @@ def build(out, n=24, seed=7, scans=0.5, vo_n=16, contract_n=14):
         if rng.random() < scans * 0.6:
             scan_pdf(pdfp, os.path.join(out, base + "_scan.pdf"), rng, dpi=300)
             corpus.append({"file": base + "_scan.pdf", "kind": "vo", "format": "scan", "layout": "vo", "dpi": 300, "truth": truth})
+    corpus += team_vo_logs(out, rng, scans=scans > 0)
     for i in range(contract_n):
         truth, paras, table = contract_doc(rng, i)
         base = f"contract_{i:02d}"

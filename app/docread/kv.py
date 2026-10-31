@@ -15,7 +15,7 @@ def _texts(row):
 
 def find_all(rows, pat):
     """(row, cell index, match) of each cell that STARTS with the label."""
-    rx = re.compile(r"^\s*(?:" + pat + r")", re.I)
+    rx = re.compile(r"^\s*(?:" + pat + r")(?![a-z])", re.I)
     for r in rows:
         for j, c in enumerate(r.cells):
             m = rx.match(c.text)
