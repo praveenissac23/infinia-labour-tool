@@ -316,27 +316,27 @@ SUBS = ["Al Raida Electromechanical Services LLC", "Royal Everst Technical Servi
         "Naif Crescent Technical Services LLC", "Blue Line Aluminium & Glass LLC"]
 
 
-def head_block(pg, rng, F, kind, ncols):
+def head_block(pg, rng, F, kind, ncols, ls=1):
     title = rng.choice(["INTERIM PAYMENT CERTIFICATE", "PAYMENT APPLICATION", "INTERIM PAYMENT APPLICATION", "PROGRESS PAYMENT CERTIFICATE"]) \
         if kind == "ipa" else rng.choice(["PAYMENT CERTIFICATE", "SUBCONTRACTOR PAYMENT CERTIFICATE", "INTERIM PAYMENT CERTIFICATE (SUBCONTRACT)"])
     pg.row(T(0, title, span=ncols, align="c"), bold=True, h=8)
-    pg.row(T(0, "Project:"), T(1, rng.choice(PROJECTS), span=ncols - 1))
+    pg.row(T(0, "Project:", span=ls), T(ls, rng.choice(PROJECTS), span=ncols - ls))
     if kind == "ipa":
-        pg.row(T(0, "Client:"), T(1, rng.choice(CLIENTS), span=ncols - 1))
+        pg.row(T(0, "Client:", span=ls), T(ls, rng.choice(CLIENTS), span=ncols - ls))
         lab = rng.choice(["Interim Bill No:", "IPA No.", "Payment Application No:", "Certificate No."])
         no = rng.choice([f"{F['seq']}", f"IPA-{F['seq']:02d}", f"914/IPA/{F['seq']:02d} R1", f"{F['seq']:02d}"])
     else:
         sub = rng.choice(SUBS)
         F["sub"] = sub
-        pg.row(T(0, "Subcontractor:"), T(1, "M/s. " + sub, span=ncols - 1))
+        pg.row(T(0, "Subcontractor:", span=ls), T(ls, "M/s. " + sub, span=ncols - ls))
         lab = rng.choice(["IPC No.", "PC No.", "Payment Certificate No."])
         no = rng.choice([f"{F['seq']}", f"PC-{F['seq']:02d}", f"{F['seq']:02d}"])
-    if ncols >= 4:
-        pg.row(T(0, lab), T(1, no), T(ncols - 2, rng.choice(["Date:", "Issue Date:", "Date of issue:"])), D(ncols - 1, F["date"], f=rng.choice(["%d/%m/%Y", "%d.%m.%Y", "%d-%b-%Y"])))
+    if ncols - 2 > ls:
+        pg.row(T(0, lab, span=ls), T(ls, no), T(ncols - 2, rng.choice(["Date:", "Issue Date:", "Date of issue:"])), D(ncols - 1, F["date"], f=rng.choice(["%d/%m/%Y", "%d.%m.%Y", "%d-%b-%Y"])))
     else:
-        pg.row(T(0, lab), T(1, no))
-        pg.row(T(0, rng.choice(["Date:", "Issue Date:"])), D(1, F["date"]))
-    pg.row(T(0, rng.choice(["Contract Value", "Original Contract Sum", "Contract Sum"])), N(1, F["contract"]), gap=1)
+        pg.row(T(0, lab, span=ls), T(ls, no))
+        pg.row(T(0, rng.choice(["Date:", "Issue Date:"]), span=ls), D(ls, F["date"]))
+    pg.row(T(0, rng.choice(["Contract Value", "Original Contract Sum", "Contract Sum"]), span=ls), N(ls, F["contract"]), gap=1)
 
 
 def lab(rng, k, F):
@@ -456,7 +456,7 @@ def layout_three(rng, F, kind, arabic=False):
 def layout_atoe(rng, F, kind, arabic=False):
     """Infinia's own subcontractor certificate: A work, B advance, C deductions, D additions, E previously certified."""
     pg = Page([10, 78, 22, 40], "PC")
-    head_block(pg, rng, F, kind, 4)
+    head_block(pg, rng, F, kind, 4, ls=2)
     pg.row(T(0, "A"), T(1, "ADD: VALUE OF WORK EXECUTED"), bold=True, gap=1)
     pg.row(T(1, "Value of Work Executed to Date"), D(2, F["date"]), N(3, F["work_c"]))
     pg.row(T(1, "Value of Variations Executed to Date"), N(3, F["var_c"]) if F["has_var"] else T(3, "-", align="r"))
@@ -521,7 +521,7 @@ def layout_breakdown(rng, F, kind, arabic=False):
     """A long breakdown (BOQ items with previous / current / cumulative) before the summary - the summary at the end,
     the breakdown full of figures that look like bill lines."""
     pg = Page([12, 70, 26, 26, 26], "IPA")
-    head_block(pg, rng, F, kind, 5)
+    head_block(pg, rng, F, kind, 5, ls=2)
     pg.row(T(0, "No."), T(1, "Description"), T(2, rng.choice(COLH["p"]), align="c"), T(3, rng.choice(COLH["t"]), align="c"),
            T(4, rng.choice(COLH["c"]), align="c"), bold=True, border=True, gap=1)
     n = rng.randrange(8, 28)

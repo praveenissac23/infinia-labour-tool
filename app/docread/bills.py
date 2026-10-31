@@ -212,6 +212,8 @@ def candidates(doc):
                     elif concept == "extra":
                         v = -abs(v) if less else abs(v)
                     prior = cs * rs * w * conf * page_f
+                    if var.endswith(("_p", "_t")) and not var.startswith("net"):
+                        prior *= 0.35                # previous / this-period figures are not reported - they only check
                     dom[var].append(Cand(var, round(v, 2), round(prior, 4), t, label))
                     if "@" in var:
                         multi[var] = label
@@ -257,7 +259,7 @@ def relations(dom, multi, vat_rate=5.0):
             if a is None or b is None or c is None:
                 return None
             return a + b, c
-        rels.append(Rel(f"col:{X}", [f"{X}_p", f"{X}_t", f"{X}_c"], col, tol=0.06, w=1.2, text=f"{X}: previous + this period = to date"))
+        rels.append(Rel(f"col:{X}", [f"{X}_p", f"{X}_t", f"{X}_c"], col, tol=0.06, w=0.8, text=f"{X}: previous + this period = to date"))
     for k in ("p", "t", "c"):
         def gross(get, k=k):
             g, w = get(f"gross_{k}"), get(f"work_{k}")
@@ -271,7 +273,7 @@ def relations(dom, multi, vat_rate=5.0):
             if n is None or g is None:
                 return None
             return g - ded(get, k), n
-        rels.append(Rel(f"net:{k}", gvars(k) + dvars(k) + [f"net_{k}"], net, tol=0.06, w=2.5, text="work - deductions = net"))
+        rels.append(Rel(f"net:{k}", gvars(k) + dvars(k) + [f"net_{k}"], net, tol=0.06, w=3.0, text="work - deductions = net"))
 
     for k in ("p", "t", "c"):
         def dedsum(get, k=k):
@@ -300,7 +302,7 @@ def relations(dom, multi, vat_rate=5.0):
         if n is None or p is None or g is None:
             return None
         return g - ded(get, "c") - p, n
-    rels.append(Rel("due", gvars("c") + dvars("c") + ["net_p", "net_t"], due, tol=0.06, w=2.5,
+    rels.append(Rel("due", gvars("c") + dvars("c") + ["net_p", "net_t"], due, tol=0.06, w=3.0,
                     text="work to date - deductions - previously certified = net due"))
 
     def vat(get):
@@ -329,7 +331,7 @@ def relations(dom, multi, vat_rate=5.0):
         if t is None or g is None or p is None or get("net_t") is not None:
             return None
         return g - ded(get, "c") - p + (get("vat") or 0) + (get("auth") or 0) + sum(get(e) or 0 for e in extras), t
-    rels.append(Rel("total2", ["total", "net_p", "vat", "auth", "net_t"] + gvars("c") + dvars("c") + extras, total2, tol=1.0, w=2.5,
+    rels.append(Rel("total2", ["total", "net_p", "vat", "auth", "net_t"] + gvars("c") + dvars("c") + extras, total2, tol=1.0, w=3.0,
                     text="work to date - deductions - previously paid + VAT = amount due"))
 
     def vat_on(get):
@@ -507,15 +509,23 @@ def _derive(asg, rels):
 
 # ---- the reports ----------------------------------------------------------------------------------------
 
+MAIN = ("due", "net:c", "net:t", "total", "total2", "vat", "vat2", "ded:c", "prevsum", "gross:c")
+
+
 def _conf(var, c, st, derived):
+    """0-1. A figure is sure when one of the bill's own sums that ties it to the amount due holds; a figure no
+    such sum checks stays below 0.8 (shown for checking), however well its label matched."""
     if var in derived:
         return 0.55
-    ok = sum(1 for r, good, *_ in st if good and var in r.vars and _involved(r, var))
-    bad = sum(1 for r, good, *_ in st if not good and var in r.vars and _involved(r, var))
-    base = 0.45 + 0.4 * min(1.0, c.prior)
     if c.note.startswith("corrected"):
         return 0.6
-    conf = base + 0.22 * min(ok, 2) - 0.45 * bad
+    ok = sum(1 for r, good, *_ in st if good and var in r.vars and r.name in MAIN and _involved(r, var))
+    weak = sum(1 for r, good, *_ in st if good and var in r.vars and r.name not in MAIN)
+    bad = sum(1 for r, good, *_ in st if not good and var in r.vars and _involved(r, var))
+    base = 0.45 + 0.3 * min(1.0, c.prior)
+    conf = base + 0.2 * min(ok, 2) + 0.04 * min(weak, 1) - 0.45 * bad
+    if not ok:
+        conf = min(conf, 0.75)
     if c.tok is not None and c.tok.cell.conf < 1.0:
         conf *= 0.75 + 0.25 * c.tok.cell.conf
         if ok:

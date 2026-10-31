@@ -161,18 +161,37 @@ def _explain(best, cur, order, doms, rels, optional, rounds=4):
                 if ok is not False:
                     continue
                 opt = [u for u in r.vars if t.get(u) is not None and u != added and optional(u)]
-                for k in (1, 2, 3):
+                # one field of the sum may also take another of its candidates (the right retention is in the
+                # summary, the one chosen came from a breakdown table)
+                switches = [(None, None)]
+                for u in r.vars:
+                    if u == added or u not in doms:
+                        continue
+                    for c in doms[u]:
+                        if c is not t.get(u):
+                            switches.append((u, c))
+                for k in (0, 1, 2, 3):
                     for sub in combinations(opt, k):
-                        t2 = dict(t)
-                        for u in sub:
-                            t2[u] = None
-                        ok2, _, _ = evaluate(r, _getter(t2))
-                        if not ok2:
-                            continue
-                        frozen = set(sub) | ({added} if added else set())
-                        t2, s2 = _climb(t2, score_of(t2, rels), order, doms, rels, passes=2, frozen=frozen)
-                        if s2 > top_s + 1e-9:
-                            top, top_s = t2, s2
+                        for su, sc in (switches if k <= 2 else [(None, None)]):
+                            if k == 0 and su is None:
+                                continue
+                            if su in sub:
+                                continue
+                            t2 = dict(t)
+                            for u in sub:
+                                t2[u] = None
+                            if su is not None:
+                                used = {x.key for v_, x in t2.items() if x is not None and v_ != su}
+                                if sc.key is not None and sc.key in used:
+                                    continue
+                                t2[su] = sc
+                            ok2, _, _ = evaluate(r, _getter(t2))
+                            if not ok2:
+                                continue
+                            frozen = set(sub) | ({added} if added else set()) | ({su} if su else set())
+                            t2, s2 = _climb(t2, score_of(t2, rels), order, doms, rels, passes=2, frozen=frozen)
+                            if s2 > top_s + 1e-9:
+                                top, top_s = t2, s2
         if top is None:
             break
         best, cur = _climb(top, top_s, order, doms, rels, passes=3)

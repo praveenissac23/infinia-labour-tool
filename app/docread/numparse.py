@@ -92,7 +92,10 @@ def numbers(text, ocr=False):
             continue
         pre = (m.group("pre") or "") + (m.group("pre2") or "")
         post = m.group("post") or ""
-        neg = ("(" in pre and ")" in post) or pre.strip() in ("-", "−", "–") or post.strip() == "-" or \
+        dash = pre.strip() in ("-", "−", "–")
+        if dash and re.search(r"[-−–]\s", pre) and re.search(r"[A-Za-z]", t[:m.start()]):
+            dash = False                    # "Retention held - 30,777.63": a dash between label and figure, not a minus
+        neg = ("(" in pre and ")" in post) or dash or post.strip() == "-" or \
               ("(" in pre and m.group("cur1") is not None)
         pct = bool(m.group("pct"))
         cur = bool(m.group("cur1") or m.group("cur2"))

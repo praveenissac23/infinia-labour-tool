@@ -13,6 +13,7 @@ from .model import Row
 from .numparse import numbers
 from .vocab import col_roles
 
+CUR_WORD = r"\b(?:AED|A\.E\.D|Dhs?\.?|DHS|Dirhams?)(?=[\s\d(.\-/]|$)"
 HEAD_ROLES = ("p", "t", "c", "pct", "amount", "contract", "qty", "rate", "desc", "claimed", "certified", "remarks", "unit")
 
 
@@ -92,7 +93,7 @@ def analyse(doc):
                 nums = cell_numbers(c, ocr)
                 money = [n for n in nums if (n[6] or n[4]) and not n[1]]
                 txt = c.text
-                letters = re.sub(r"\b(AED|Dhs?|Dirhams?)\b|[\d.,()%\-\s:]", "", txt, flags=re.I)
+                letters = re.sub(CUR_WORD + r"|[\d.,()%\-\s:]", "", txt, flags=re.I)
                 is_label = len(letters) >= 3 and not c.num is not None
                 if is_label:
                     # a label cell: its own figures are percentages ("Retention 10%") or a figure after the words
@@ -114,7 +115,7 @@ def analyse(doc):
                 if money:
                     seen_fig = True
             label = " ".join(label_parts).strip()
-            kvcells = [c for c in row.cells if re.search(r"[A-Za-z]{3}", re.sub(r"\b(AED|Dhs?|Dirhams?)\b", "", c.text, flags=re.I)) and c.num is None and
+            kvcells = [c for c in row.cells if re.search(r"[A-Za-z]{3}", re.sub(CUR_WORD, "", c.text, flags=re.I)) and c.num is None and
                        re.search(r"[\d)]\s*-?\s*(AED)?\s*$", c.text) and any((n[6] and not n[1]) for n in cell_numbers(c, ocr))]
             if len(kvcells) >= 2:
                 # "Retention: 12,345.00   Advance recovered: 6,789.00" - each cell is its own line
