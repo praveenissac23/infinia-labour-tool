@@ -332,6 +332,7 @@ def _instructions():
             "Call tables once, then tables with names for the columns you need, then query. "
             "Money is AED. employees.staff false = labour, true = office staff (pay_group 'local' = local staff). "
             "Payroll cycles run 26th to 25th, named by the ending month ('October 2026' = 26 Sep-25 Oct). "
+            "LPO total = lines' qty*rate less discount_pct, + their tax_pct VAT, + purchase_orders.round_off (no VAT). "
             "Keep replies small: COUNT/SUM/GROUP BY rather than listing rows; for full lists use report (Excel/PDF link).")
 
 
