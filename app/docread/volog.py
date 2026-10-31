@@ -307,7 +307,13 @@ def read_log(doc):
                     parent = (ref, title)
                     continue
             if out and not ref and not st_txt:
-                out[-1]["notes"] = (out[-1]["notes"] + "\n" if out[-1]["notes"] else "") + title   # a description run on
+                prev_row = all_rows[i - 2] if i >= 2 else None
+                wrapped = prev_row is not None and not r.ocr and prev_row.page == r.page and not float(r.y).is_integer() and \
+                    0 < r.y - prev_row.y <= 1.5 * max(6.0, (r.cells[0].y1 - r.cells[0].y0) * 1.6)
+                if wrapped or (r.ocr and prev_row is not None and 0 < r.y - prev_row.y <= 14):
+                    out[-1]["title"] = (out[-1]["title"] + " " + title)[:1000]          # the description wrapped onto a 2nd line
+                else:
+                    out[-1]["notes"] = (out[-1]["notes"] + "\n" if out[-1]["notes"] else "") + title   # a description run on
                 continue
         if ref:
             if parent and parent[0] != ref:

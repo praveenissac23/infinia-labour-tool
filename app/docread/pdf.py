@@ -4,7 +4,7 @@ is sent to text recognition (ocr.py) - page by page, so a PDF mixing typed and s
 """
 import io
 
-from .model import Cell, Doc, Region, Row, Word
+from .model import Cell, Doc, Region, Row, Word, merge_bands
 
 
 def words_to_rows(words, page, rules=None, ocr=False, src="", gap_k=0.9):
@@ -74,6 +74,18 @@ def _rules(page):
     return out
 
 
+def _hrules(page):
+    """Horizontal rules (row lines of a ruled table): (y, x0, x1)."""
+    out = []
+    try:
+        for e in page.edges:
+            if e.get("orientation") == "h" and (e["x1"] - e["x0"]) > 20:
+                out.append((e["top"], e["x0"], e["x1"]))
+    except Exception:
+        pass
+    return out
+
+
 def read_pdf(data, name="", ocr=True, dpi=300, parallel=2):
     import pdfplumber
     regions, scanned = [], []
@@ -92,15 +104,17 @@ def read_pdf(data, name="", ocr=True, dpi=300, parallel=2):
             words = [Word(w["text"], float(w["x0"]), float(w["top"]), float(w["x1"]), float(w["bottom"])) for w in ws]
             rules = _rules(page)
             rows = words_to_rows(words, pn, rules)
-            regions.append(Region(name=f"Page {pn}", page=pn, rows=rows, kind="page", width=float(page.width), height=float(page.height),
-                                  vrules=rules))
+            reg = Region(name=f"Page {pn}", page=pn, rows=rows, kind="page", width=float(page.width), height=float(page.height),
+                         vrules=rules, hrules=_hrules(page))
+            regions.append(merge_bands(reg))
     doc = Doc(regions=regions, kind="pdf", name=name)
     if scanned and ocr:
         from .ocr import ocr_pdf_pages
         got = ocr_pdf_pages(data, scanned, dpi=dpi, parallel=parallel)
         for r in doc.regions:
             if r.page in got:
-                r.rows, r.vrules = got[r.page]
+                r.rows, r.vrules, r.hrules = got[r.page]
+                merge_bands(r)
         doc.ocr_pages = scanned
         if len(scanned) == len(regions):
             doc.kind = "scan"

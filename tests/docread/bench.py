@@ -103,14 +103,24 @@ VO_FIELDS = ("ref", "title", "submitted_amount", "revised_amount", "approved_amo
 
 
 def score_vo(truth, rows):
+    """Rows matched by their reference (a scan's O / 0 and I / 1 taken as the same), else by order."""
     out = []
-    norm = lambda s: re.sub(r"[^a-z0-9]", "", str(s or "").lower())
+    norm = lambda s: re.sub(r"[^a-z0-9]", "", str(s or "").lower()).replace("o", "0").replace("i", "1").replace("l", "1")
     by_ref = {}
     for r in rows or []:
         by_ref.setdefault(norm(r.get("ref")), []).append(r)
+    left = list(rows or [])
     for t in truth:
         cand = by_ref.get(norm(t["ref"])) or []
         g = cand.pop(0) if cand else None
+        if g is None:
+            tt = norm(t.get("title"))[:12]
+            g = next((r for r in left if tt and norm(r.get("title")).startswith(tt)), None)
+        if g is not None and g in left:
+            left.remove(g)
+            for v in by_ref.values():
+                if g in v:
+                    v.remove(g)
         for k in VO_FIELDS:
             want = t.get(k)
             if want is None:
@@ -122,6 +132,8 @@ def score_vo(truth, rows):
                 ok = g is not None and abs(float(got or 0) - float(want or 0)) <= 0.011
             elif want == "":
                 ok = g is not None and not got
+            elif k == "ref":
+                ok = g is not None and norm(want) == norm(got)
             else:
                 ok = g is not None and same(k, want, got)
             out.append({"field": k, "want": want, "got": got, "ok": ok, "missing": g is None})

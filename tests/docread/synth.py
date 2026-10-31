@@ -232,9 +232,9 @@ def render_pdf(pages, path, st, font_size=8.5, rules=True, arabic=False):
                 continue
             y -= row.get("gap", 0) * row["h"] * mm
             h = row["h"] * mm
-            if y - h < 14 * mm:
-                c.showPage()
-                y = H - 16 * mm
+            # long words in a table cell wrap onto more lines (as Excel's "wrap text" prints them): a taller row
+            plan = []
+            nl = 1
             for cell in row["cells"]:
                 x0, x1 = xs[cell["col"]], xs[min(len(xs) - 1, cell["col"] + cell["span"])]
                 t = _txt(cell, st)
@@ -242,21 +242,41 @@ def render_pdf(pages, path, st, font_size=8.5, rules=True, arabic=False):
                 size = font_size
                 while c.stringWidth(t, f, size) > (x1 - x0 - 3) and size > 5.5 and cell["k"] != "text":
                     size -= 0.5
-                if cell["k"] == "text" and row["border"]:
-                    while c.stringWidth(t, f, size) > (x1 - x0 - 3) and size > 5:
-                        size -= 0.5                 # a table cell: the words fit their cell (a printed table would wrap)
-                if cell["k"] == "text" and c.stringWidth(t, f, size) > (x1 - x0 - 3) and cell["span"] >= 1:
-                    # long text: let it run (as a printed page would wrap; we shrink a little)
+                lines = [t]
+                if cell["k"] == "text" and row["border"] and c.stringWidth(t, f, size) > (x1 - x0 - 3):
+                    if len(t) > 28 and (x1 - x0) > 60:
+                        lines, cur = [], ""
+                        for wd in t.split():
+                            if cur and c.stringWidth(cur + " " + wd, f, size) > (x1 - x0 - 3):
+                                lines.append(cur)
+                                cur = wd
+                            else:
+                                cur = (cur + " " + wd).strip()
+                        lines.append(cur)
+                    else:
+                        while c.stringWidth(t, f, size) > (x1 - x0 - 3) and size > 5:
+                            size -= 0.5
+                if cell["k"] == "text" and not row["border"] and c.stringWidth(t, f, size) > (x1 - x0 - 3):
                     while c.stringWidth(t, f, size) > (x1 - x0 - 3) * 1.6 and size > 6:
                         size -= 0.5
+                nl = max(nl, len(lines))
+                plan.append((cell, x0, x1, lines, f, size))
+            lead = font_size + 2
+            h = max(h, nl * lead + 4)
+            if y - h < 14 * mm:
+                c.showPage()
+                y = H - 16 * mm
+            for cell, x0, x1, lines, f, size in plan:
                 c.setFont(f, size)
-                ty = y - h + (h - size) / 2 + 1.2
-                if cell["align"] == "r":
-                    c.drawRightString(x1 - 1.5, ty, t)
-                elif cell["align"] == "c":
-                    c.drawCentredString((x0 + x1) / 2, ty, t)
-                else:
-                    c.drawString(x0 + 1.5, ty, t)
+                top = y - (h - len(lines) * lead) / 2 - size
+                for li, t in enumerate(lines):
+                    ty = top - li * lead + 1.2 if len(lines) > 1 else y - h + (h - size) / 2 + 1.2
+                    if cell["align"] == "r":
+                        c.drawRightString(x1 - 1.5, ty, t)
+                    elif cell["align"] == "c":
+                        c.drawCentredString((x0 + x1) / 2, ty, t)
+                    else:
+                        c.drawString(x0 + 1.5, ty, t)
                 if row["border"] and rules:
                     c.setLineWidth(0.5)
                     c.rect(x0, y - h, x1 - x0, h)

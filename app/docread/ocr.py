@@ -108,13 +108,19 @@ def prepare(img):
                 x = int(g.mean()) * 2
                 ys = np.where(ver[:, g].any(axis=1))[0]
                 rules.append((x, int(ys.min()) * 2, int(ys.max()) * 2))
+    hrules = []
+    if hor.any():
+        rws = np.where(hor.any(axis=1))[0]
+        for g in np.split(rws, np.where(np.diff(rws) > 2)[0] + 1):
+            xs = np.where(hor[g, :].any(axis=0))[0]
+            hrules.append((int(g.mean()) * 2, int(xs.min()) * 2, int(xs.max()) * 2))
     lines = hor | ver
     if lines.any():
         m = Image.fromarray((lines * 255).astype(np.uint8)).resize(img.size, Image.NEAREST).filter(ImageFilter.MaxFilter(7))
         mask = np.asarray(m) > 0
         a = a.copy()
         a[mask] = 255
-    return Image.fromarray(a), rules, ang
+    return Image.fromarray(a), rules, ang, hrules
 
 
 def _tsv(img, psm=6, extra=()):
@@ -200,7 +206,7 @@ def ocr_image(img, page, scale=1.0, reread=True, with_rules=False):
         k = 2480 / img.width
         img = img.resize((int(img.width * k), int(img.height * k)), Image.LANCZOS)
         scale /= k
-    prep, rules, ang = prepare(img)
+    prep, rules, ang, hrules = prepare(img)
     raw = _tsv(prep, psm=6)
     # psm 6 reads a page as one block; where it found little (a sparse form), psm 11 finds scattered words
     if len(raw) < 15:
@@ -222,9 +228,11 @@ def ocr_image(img, page, scale=1.0, reread=True, with_rules=False):
         words.append(Word(t, x0 * scale, y0 * scale, x1 * scale, y1 * scale, max(0.0, min(1.0, conf / 100.0))))
     rr = [(x * scale, y0 * scale, y1 * scale) for x, y0, y1 in rules]
     rows = words_to_rows(words, page, rr, ocr=True, gap_k=1.0)
+    hr = [(y * scale, x0 * scale, x1 * scale) for y, x0, x1 in hrules]
     if with_rules:
-        return rows, rr
-    return rows
+        return rows, rr, hr
+    from .model import Region, merge_bands
+    return merge_bands(Region(name="", page=page, rows=rows, kind="scan", hrules=hr)).rows
 
 
 def render_pdf_pages(data, pages, dpi=300):
@@ -304,6 +312,7 @@ def read_image(data, name=""):
     regions = []
     for i, fr in enumerate(frames):
         dpi = (img.info.get("dpi") or (300, 300))[0] or 300
-        rows, rr = ocr_image(fr, i + 1, 72.0 / float(dpi), with_rules=True)
-        regions.append(Region(name=f"Page {i + 1}", page=i + 1, rows=rows, kind="scan", vrules=rr))
+        rows, rr, hr = ocr_image(fr, i + 1, 72.0 / float(dpi), with_rules=True)
+        from .model import merge_bands
+        regions.append(merge_bands(Region(name=f"Page {i + 1}", page=i + 1, rows=rows, kind="scan", vrules=rr, hrules=hr)))
     return Doc(regions=regions, kind="image", name=name, ocr_pages=[r.page for r in regions])

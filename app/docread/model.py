@@ -77,6 +77,7 @@ class Region:
     width: float = 0.0
     height: float = 0.0
     vrules: list = field(default_factory=list)   # vertical table rules (x, y0, y1) on a page
+    hrules: list = field(default_factory=list)   # horizontal table rules (y, x0, x1) on a page
 
 
 @dataclass
@@ -102,3 +103,60 @@ class Doc:
 
     def text(self):
         return "\n".join(r.text for r in self.rows())
+
+
+def merge_bands(region):
+    """A table cell whose words wrap onto two or three lines is one cell: lines that sit between the same two
+    horizontal rules of a ruled table are put together, column by column (the description's lines joined, the
+    figures beside them kept)."""
+    ys = sorted({round(y, 1) for y, x0, x1 in region.hrules if x1 - x0 > 40})
+    clean = []
+    for y in ys:
+        if not clean or y - clean[-1] > 3:
+            clean.append(y)
+    if len(clean) < 3 or not region.rows:
+        return region
+    import bisect
+    out, band = [], []
+
+    def flush():
+        if not band:
+            return
+        if len(band) == 1:
+            out.append(band[0])
+            return
+        cells = []
+        for r in band:
+            for c in r.cells:
+                hit = None
+                for m in cells:
+                    ov = min(m.x1, c.x1) - max(m.x0, c.x0)
+                    if ov > 0.3 * min(m.x1 - m.x0, c.x1 - c.x0) or (ov > -4 and not any(ch.isdigit() for ch in c.text + m.text)):
+                        hit = m
+                        break
+                if hit is None:
+                    cells.append(Cell(text=c.text, x0=c.x0, x1=c.x1, y0=c.y0, y1=c.y1, page=c.page, src=c.src, num=c.num, fmt=c.fmt,
+                                      conf=c.conf, words=list(c.words)))
+                else:
+                    hit.text = (hit.text + " " + c.text).strip()
+                    hit.x0, hit.x1 = min(hit.x0, c.x0), max(hit.x1, c.x1)
+                    hit.y0, hit.y1 = min(hit.y0, c.y0), max(hit.y1, c.y1)
+                    hit.conf = min(hit.conf, c.conf)
+                    hit.words += c.words
+        anchor = max(band, key=lambda r: len(r.cells))
+        out.append(Row(cells=sorted(cells, key=lambda c: c.x0), page=anchor.page, y=anchor.y, ocr=anchor.ocr))
+    key = None
+    for r in sorted(region.rows, key=lambda r: r.y):
+        k = bisect.bisect_left(clean, r.y)
+        inside = 0 < k < len(clean) and clean[k] - clean[k - 1] <= 70
+        if inside and k == key:
+            band.append(r)
+            continue
+        flush()
+        band = [r] if inside else []
+        if not inside:
+            out.append(r)
+        key = k if inside else None
+    flush()
+    region.rows = out
+    return region
