@@ -373,6 +373,18 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #lpo-cx-modal .lpo-cx-opt { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; font-size: 13px; line-height: 1.4; cursor: pointer; } #lpo-cx-modal .lpo-cx-opt input { margin-top: 3px; }
   #lpo-cx-modal h3 { margin: 0 0 6px; } #lpo-cx-modal textarea { width: 100%; box-sizing: border-box; min-height: 78px; margin-top: 10px; font: inherit; padding: 8px 10px; }
   #lpo-cx-modal .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; } #lpo-cx-modal .chips button { border: 1px solid #E2C9C5; background: #FDF6F5; border-radius: 14px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; }
+  /* purchasing (31 Oct 2026): LPO deliveries, petty cash arrivals, the supplier's bill */
+  .pu-modal { position: fixed; inset: 0; background: rgba(20,24,28,.45); z-index: 5000; display: none; align-items: center; justify-content: center; }
+  .pu-modal.on { display: flex; } .pu-modal .box { background: #fff; border-radius: 12px; padding: 20px 22px; width: min(900px, 96vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
+  .pu-modal.small .box { width: min(480px, 94vw); }
+  .pu-modal h3 { margin: 0 0 4px; } .pu-modal .sub { font-size: 12.5px; color: #777; margin: 0 0 12px; }
+  .pu-modal table { width: 100%; border-collapse: collapse; font-size: 13px; } .pu-modal th { text-align: center; font-size: 12px; }
+  .pu-modal td { padding: 5px 6px; border-bottom: 1px solid #eee; vertical-align: middle; } .pu-modal td.n { text-align: right; white-space: nowrap; }
+  .pu-modal .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  .pu-tag { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 700; margin-left: 4px; white-space: nowrap; }
+  .pu-st-ordered { background: #E3EEFB; color: #1565C0; } .pu-st-part { background: #FDF0D5; color: #8A6100; }
+  .pu-st-delivered, .pu-st-closed { background: #E3F4E5; color: #2E7D32; } .pu-st-superseded, .pu-st-cancelled { background: #FBE0DE; color: #C0392B; }
+  .pu-svc { background: #EEE; color: #555; } .pu-rent { background: #EDE7F6; color: #5E35B1; }
   .inv-list tr.cx td { color: #999; } .inv-list tr.cx td.num { text-decoration: line-through; }
   .inv-list tr.edit td { background: #FFF6DA; }
   .inv-list tfoot td { font-weight: 800; background: #F3F1EF; border-top: 2px solid #333; }
@@ -3027,13 +3039,14 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <thead><tr>
                   <th style="width:3%;">#</th>
                   <th style="width:24%;">Material</th>
-                  <th style="width:26%;" title="Printed under the material on the order. A short note prints as a small line ('Double washed', 'price/week'); a full description prints as typed - press Enter for a new line, leave an empty line for a gap, put **two stars** round words to print them bold. Leave it empty and nothing prints.">Spec / description <span style="color:#bbb;">(optional)</span></th>
+                  <th style="width:21%;" title="Printed under the material on the order. A short note prints as a small line ('Double washed', 'price/week'); a full description prints as typed - press Enter for a new line, leave an empty line for a gap, put **two stars** round words to print them bold. Leave it empty and nothing prints.">Spec / description <span style="color:#bbb;">(optional)</span></th>
                   <th style="width:6%;">Qty</th>
                   <th style="width:6%;">Unit</th>
                   <th style="width:7%;">Rate</th>
                   <th style="width:6%;">Tax %</th>
                   <th style="width:9%;">Amount</th>
                   <th style="width:9%;">Last paid</th>
+                  <th style="width:5%;" title="A service - pump, temperature control, transport, installation, printing, charges: never goes into stock, its cost is the site's. Ticked by itself from the words; untick or tick to decide.">Service</th>
                   <th style="width:4%;"></th>
                 </tr></thead>
                 <tbody id="lpo-lines"></tbody>
@@ -4153,6 +4166,32 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               </div>
               <div id="rent-summary" style="display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 0;"></div>
               <div id="hire-list" style="margin-top:10px;"></div>
+            </div>
+
+            <!-- LPO name <-> Rentals name: the hire LPO says 'Ledger 1.2m', Rentals books 'Rental Ledger 1.2M' -->
+            <div class="card" id="rmap-card">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                <div>
+                  <h2 style="margin-bottom:4px;" title="A hire LPO names the material its own way ('Ledger 1.2m'); Rentals books it under its 'Rental ...' name. Linked here once, the LPO line reads delivered as soon as Rentals books it in at that site from that supplier - nothing is booked twice. One LPO name can be two Rentals materials (Spigot / Nut &amp; Bolt), and two LPO names one Rentals material.">LPO names and Rentals names</h2>
+                  <p style="font-size:12px; color:#888; margin:0;">Which Rentals material each LPO material is booked in as.</p>
+                </div>
+                <button class="btn btn-dark" onclick="rmapPrefill()" title="Link every LPO material whose name is a Rentals material's (case, spaces and units ignored)">Link the same names</button>
+              </div>
+              <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
+                <div class="field"><label>Material as the LPO names it</label>
+                  <input type="text" id="rmap-lpo" placeholder="e.g. Adjustable Base/base jack" style="width:260px;"></div>
+                <div class="field"><label>Booked on Rentals as</label>
+                  <select id="rmap-rental" style="width:260px; min-width:220px;"></select></div>
+                <button class="btn btn-primary" onclick="rmapAdd()">Link</button>
+              </div>
+              <div class="status-msg" id="rmap-status"></div>
+              <div class="grid-wrap" style="margin-top:10px; max-height:46vh;">
+                <table>
+                  <thead><tr><th style="width:44%; text-align:left;">On the LPO</th><th style="width:40%; text-align:left;">On Rentals</th>
+                    <th style="width:10%;">How</th><th style="width:6%;"></th></tr></thead>
+                  <tbody id="rmap-body"><tr><td colspan="4" class="empty-note">Loading...</td></tr></tbody>
+                </table>
+              </div>
             </div>
           </div>
 
@@ -8575,7 +8614,7 @@ function storeGo(which) {
     STORE_REPORT_WANT = "";
   }
   if (which === "other") setMvKind(null);
-  if (which === "hire") loadHirePanel();
+  if (which === "hire") { loadHirePanel(); rmapLoad(); }
   if (which === "returns") loadReturnsPanel();
   // The opening-stock table starts with one empty line ready to type in,
   // and needs the site and trader lists behind its two pickers.
@@ -9128,32 +9167,53 @@ async function loadArrivePanel() {
   }
   box.innerHTML = '<div class="empty-note">Loading...</div>';
   try {
-    const reqs = await apiCall("/store/requests");
+    // Every LPO with something still to come - from a request or raised straight away - is booked in against
+    // the LPO itself (DN number, part or all, to its site). Requests show below only for what no LPO covers.
+    const [reqs, dl] = await Promise.all([apiCall("/store/requests"), apiCall("/store/purchase/deliveries").catch(() => ({ orders: [], covered_request_lines: [] }))]);
     mrCache = reqs;
+    const covered = new Set(dl.covered_request_lines || []);
+    const lpoRows = (dl.orders || []).map(o => {
+      const due = o.lines.filter(l => l.remaining > 0);
+      const preview = due.slice(0, 3).map(l => `${escapeHtml(l.description)}: ${num(l.remaining)} ${escapeHtml(l.unit || "")}${l.service ? " (service)" : ""}`).join(" &middot; ")
+        + (due.length > 3 ? ` <span style="color:#999;">+${due.length - 3} more</span>` : "");
+      return `<div class="arr-lpo" style="display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; padding:12px 2px; border-bottom:1px solid #EFEFEF;">
+        <div style="min-width:220px;">
+          <strong>${escapeHtml(o.ref)}</strong> ${puTag(o.status)} &middot; ${escapeHtml(o.supplier)} &middot; ${o.deliver_to === "STORE" ? "central store" : "site " + escapeHtml(o.deliver_to)}
+          ${o.direct ? '<span class="pu-tag pu-svc" title="Raised straight away by the purchaser, without a material request">direct LPO</span>' : ""}
+          <div style="font-size:12px; color:#777; margin-top:3px;">${preview}</div>
+        </div>
+        <button class="btn btn-primary" onclick="lpoDlvOpen(${o.id}, (m) => { showStatus('store-status', 'ok', m); loadArrivePanel(); })">Book delivery</button>
+      </div>`;
+    }).join("");
     const waiting = reqs
       .filter(r => !["delivered", "received", "closed", "rejected", "pending"].includes(r.status))
-      .map(r => ({ r, due: (r.lines || []).filter(l => l.item_id &&
+      .map(r => ({ r, due: (r.lines || []).filter(l => l.item_id && !covered.has(l.id) && (l.status || "pending") !== "rejected" &&
                      (l.qty_requested || 0) - (l.qty_received || 0) > 0) }))
       .filter(x => x.due.length);
-    if (!waiting.length) {
-      box.innerHTML = `<div class="empty-note">No approved requests are waiting for a delivery right now.<br>
-        <span style="font-size:12px;">Requests still marked "Waiting on office" appear here once the office approves them.</span></div>`;
-      return;
-    }
-    box.innerHTML = waiting.map(({ r, due }) => {
+    const reqRows = waiting.map(({ r, due }) => {
       const preview = due.slice(0, 3)
         .map(l => `${l.item_name || l.description}: ${num((l.qty_requested || 0) - (l.qty_received || 0))} ${l.unit} due`)
         .join(" &middot; ") + (due.length > 3 ? ` <span style="color:#999;">+${due.length - 3} more</span>` : "");
+      const noLpo = !due.some(l => l.supplier);
       return `<div style="display:flex; justify-content:space-between; align-items:center; gap:14px;
                   flex-wrap:wrap; padding:12px 2px; border-bottom:1px solid #EFEFEF;">
         <div style="min-width:220px;">
           <strong>${requestLink(r.ref)}</strong> &middot; site ${r.site || "-"} &middot;
           <span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span>
+          ${noLpo ? '<span class="pu-tag pu-svc">no LPO</span>' : ""}
           <div style="font-size:12px; color:#777; margin-top:3px;">${preview}</div>
         </div>
-        ${receiveButtonsHtml(r)}
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">${receiveButtonsHtml(r)}
+          <button class="btn btn-gray" title="Bought with petty cash - no LPO" onclick="pettyArriveOpen(${r.id}, (m) => { showStatus('store-status', 'ok', m); loadArrivePanel(); })">Bought with petty cash</button></div>
       </div>`;
     }).join("");
+    if (!lpoRows && !reqRows) {
+      box.innerHTML = `<div class="empty-note">Nothing is waiting for a delivery right now - every LPO has come in.<br>
+        <span style="font-size:12px;">Requests still marked "Waiting on office" appear here once the office approves them.</span></div>`;
+      return;
+    }
+    box.innerHTML = (lpoRows ? `<div class="rep-group" style="margin-top:2px;">LPOs to book in</div>${lpoRows}` : "")
+      + (reqRows ? `<div class="rep-group" style="margin-top:14px;">Material requests with nothing on an LPO</div>${reqRows}` : "");
   } catch (e) {
     box.innerHTML = `<div class="empty-note">Could not load: ${errText(e)}</div>`;
   }
@@ -9904,8 +9964,19 @@ function materialPickerHtml(cls, listName) {
   const list = listName || "material-list-all";
   const hint = list === "material-list-stock" ? "Start typing - only what is in the store" : "Start typing, e.g. cement";
   return `<input type="text" list="${list}" class="${cls}-txt" placeholder="${hint}"
-                 style="width:100%;" oninput="onMaterialTyped(this)">
+                 style="width:100%;" oninput="onMaterialTyped(this)"${cls === "mr-item" ? ' onchange="mrNameCheck(this)"' : ""}>
           <input type="hidden" class="${cls}">`;
+}
+
+// A request line typed as a new name close to a material already on the list: offer the existing one.
+async function mrNameCheck(box) {
+  await new Promise(r => setTimeout(r, 300));
+  const hidden = box.closest("tr") && box.closest("tr").querySelector('input[type=hidden]');
+  if (!hidden || hidden.value || !(box.value || "").trim()) return;
+  const best = await puSimilarName(box.value);
+  if (!best) return;
+  box.value = `${best.code} - ${best.name}`;
+  onMaterialTyped(box);
 }
 
 // ---- Suppliers -------------------------------------------------------
@@ -10746,6 +10817,258 @@ async function mrDeliveries(id) {
   } catch (e) { box.innerHTML = ""; }
 }
 
+// ---- PURCHASING (31 Oct 2026, the purchaser's questionnaire) ---------------------------------------------
+// Every LPO not cancelled - from a request or raised straight away - is booked in here by the store keeper:
+// the supplier's DN number and date, how much of each line came (all or part), to the LPO's site. Service
+// lines (pump, transport ...) are never stock; hired material goes on Rentals under its Rentals name.
+const PU_WORD = { ordered: "Ordered", part: "Part delivered", delivered: "Delivered", closed: "Closed", cancelled: "Cancelled", superseded: "Superseded" };
+function puTag(st) { return st ? `<span class="pu-tag pu-st-${st}">${PU_WORD[st] || st}</span>` : ""; }
+function puModal(id, small) {
+  let m = document.getElementById(id);
+  if (!m) {
+    m = document.createElement("div"); m.id = id; m.className = "pu-modal" + (small ? " small" : "");
+    document.body.appendChild(m);
+    m.onclick = e => { if (e.target === m) m.classList.remove("on"); };
+  }
+  return m;
+}
+async function puSites() {
+  if (!(sites || []).length) { try { sites = await apiCall("/sites"); } catch (e) {} }
+  return sites || [];
+}
+function puWhereOpts(sel) {
+  const list = (sites || []).filter(s => String(s.code || "").toUpperCase() !== "STORE");
+  return `<option value="STORE"${sel === "STORE" || !sel ? " selected" : ""}>Central store</option>` +
+    list.map(s => `<option value="${escapeAttr(s.code)}"${s.code === sel ? " selected" : ""}>Site ${escapeHtml(s.code)}</option>`).join("") +
+    (sel && sel !== "STORE" && !list.some(s => s.code === sel) ? `<option value="${escapeAttr(sel)}" selected>${escapeHtml(sel)}</option>` : "");
+}
+const puCanBook = () => CURRENT_ROLE === "admin" || MY_SCREENS.includes("store") || MY_SCREENS.includes("approvals");
+// The same words the server reads a service line by (purchasing.py SERVICE_RX); the LPO line's tick wins.
+const PU_SVC_RX = /temperature\s*control|temp\.?\s*control|\btra+nsport|\binstall|\bprinting\b|\bcharges?\b|\bservices?\b|\bpumping\b|\bhire charges?\b|\bdelivery charges?\b/i;
+function puWordsService(t) { t = t || ""; return PU_SVC_RX.test(t) || (/\bpump/i.test(t) && !/motor|submersible|water|machine|dewater|filter|hose|spare/i.test(t)); }
+function lpoLineService(l) { return l.service === true || l.service === false ? l.service : puWordsService(l.description); }
+
+let puDlvAfter = null;
+async function lpoDlvOpen(id, after) {
+  puDlvAfter = after || null;
+  const m = puModal("pu-dlv");
+  m.innerHTML = `<div class="box"><div class="empty-note">Loading...</div></div>`;
+  m.classList.add("on");
+  try {
+    await puSites();
+    const d = await apiCall(`/store/purchase/orders/${id}/deliveries`);
+    const open = d.lines.some(l => l.remaining > 0) && !["cancelled", "superseded"].includes(d.status) && puCanBook();
+    const rows = d.lines.map((l, i) => `<tr data-l="${l.line_id}" data-rem="${l.remaining}">
+        <td style="text-align:center;">${i + 1}</td>
+        <td>${escapeHtml(l.description)}${l.service ? ' <span class="pu-tag pu-svc" title="A service: no stock - its cost is the site\'s">Service - no stock</span>' : ""}${
+          l.rentals.length ? ` <span class="pu-tag pu-rent" title="Booked in on Rentals as ${escapeAttr(l.rentals.join(" + "))}">Rentals: ${escapeHtml(l.rentals.join(" + "))}</span>` : ""}${
+          l.how.length ? `<div style="font-size:11px; color:#999;">${escapeHtml(l.how.join("; "))}</div>` : ""}</td>
+        <td class="n">${num(l.ordered)} ${escapeHtml(l.unit || "")}</td>
+        <td class="n">${num(l.delivered)}${l.closed ? `<div style="font-size:11px; color:#999;">${num(l.closed)} closed</div>` : ""}</td>
+        <td class="n"><b>${num(l.remaining)}</b></td>
+        <td>${open && l.remaining > 0 ? `<input type="number" class="pu-q" step="any" min="0" max="${l.remaining}" placeholder="0" style="width:90px; text-align:right;">` : ""}</td>
+        <td>${open && l.remaining > 0 ? `<label style="font-size:12px; white-space:nowrap;" title="The rest of this line will not come (damaged and returned, no longer needed) - it is closed, not left to come"><input type="checkbox" class="pu-close"> rest not coming</label>` : ""}</td>
+      </tr>`).join("");
+    const hist = d.history.length ? `<div style="margin-top:14px; font-weight:700; font-size:13px;">What came so far</div>
+      <table><thead><tr><th>DN date</th><th>DN no.</th><th style="text-align:left;">Material</th><th>Qty</th><th>How</th><th>To</th><th>By</th></tr></thead><tbody>${
+        d.history.map(h => `<tr><td style="text-align:center;">${h.date ? dmy(h.date) : "-"}</td><td style="text-align:center;">${escapeHtml(h.dn || "-")}</td><td>${escapeHtml(h.line || "")}</td>
+          <td class="n">${num(h.qty)}</td><td style="text-align:center;">${{ delivered: "Delivered", service: "Service", rentals: "On Rentals", not_needed: "Closed - not coming" }[h.kind] || h.kind}</td>
+          <td style="text-align:center;">${h.to ? escapeHtml(h.to) : "Central store"}</td><td style="text-align:center;">${escapeHtml(h.by || (h.tag ? "data correction" : ""))}</td></tr>`).join("")}</tbody></table>` : "";
+    m.innerHTML = `<div class="box">
+      <h3>${escapeHtml(d.ref)} ${puTag(d.status)}</h3>
+      <div class="sub">${escapeHtml(d.supplier || "")}${d.site ? " &middot; for " + escapeHtml(d.site) : ""}${d.superseded_by ? " &middot; replaced by " + escapeHtml(d.superseded_by) : ""}</div>
+      ${open ? `<div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="field"><label title="The supplier's delivery note number - every delivery has one">DN number *</label><input type="text" id="pu-dn" style="width:170px;" placeholder="From the delivery note"></div>
+        <div class="field"><label>DN date *</label><input type="date" id="pu-date" style="width:150px;" value="${isoLocal(new Date())}"></div>
+        <div class="field"><label title="Where it was delivered: the LPO's site, unless the LPO is for the store">Delivered to</label><select id="pu-where" style="width:170px; min-width:150px;">${puWhereOpts(d.deliver_to)}</select></div>
+        <div class="field" style="flex:1; min-width:160px;"><label>Note</label><input type="text" id="pu-note" placeholder="optional" style="width:100%;"></div>
+      </div>` : ""}
+      <div class="grid-wrap" style="margin-top:10px; max-height:none;"><table>
+        <thead><tr><th>#</th><th style="text-align:left;">Material</th><th>Ordered</th><th>Came</th><th>Still to come</th>${open ? "<th>Came now</th><th></th>" : "<th></th><th></th>"}</tr></thead>
+        <tbody>${rows}</tbody></table></div>
+      ${hist}
+      <div class="status-msg" id="pu-dlv-status"></div>
+      <div class="acts">${open ? `<button type="button" class="btn btn-gray" onclick="lpoDlvAll()">Everything still to come arrived</button>` : ""}
+        <button type="button" class="btn btn-gray" onclick="document.getElementById('pu-dlv').classList.remove('on')">Close</button>
+        ${open ? `<button type="button" class="btn btn-primary" id="pu-dlv-save" onclick="lpoDlvSave(${d.id})">Save delivery</button>` : ""}</div></div>`;
+  } catch (e) {
+    m.innerHTML = `<div class="box"><div class="status-msg err">${escapeHtml(errText(e))}</div><div class="acts"><button class="btn btn-gray" onclick="document.getElementById('pu-dlv').classList.remove('on')">Close</button></div></div>`;
+  }
+}
+function lpoDlvAll() {
+  document.querySelectorAll("#pu-dlv tr[data-l]").forEach(tr => { const q = tr.querySelector(".pu-q"); if (q) q.value = tr.dataset.rem; });
+}
+async function lpoDlvSave(id) {
+  const m = document.getElementById("pu-dlv");
+  const lines = [...m.querySelectorAll("tr[data-l]")].map(tr => ({
+    line_id: parseInt(tr.dataset.l, 10), qty: parseFloat((tr.querySelector(".pu-q") || {}).value) || 0,
+    close: !!(tr.querySelector(".pu-close") || {}).checked })).filter(x => x.qty > 0 || x.close);
+  const dn = m.querySelector("#pu-dn").value.trim(), on = m.querySelector("#pu-date").value;
+  if (!dn) { showStatus("pu-dlv-status", "warn", "Type the DN number from the supplier's delivery note."); m.querySelector("#pu-dn").focus(); return; }
+  if (!on) { showStatus("pu-dlv-status", "warn", "Give the delivery note date."); return; }
+  if (!lines.length) { showStatus("pu-dlv-status", "warn", "Enter how much came for at least one line (or tick 'rest not coming')."); return; }
+  const btn = m.querySelector("#pu-dlv-save"); if (btn) btn.disabled = true;
+  try {
+    const r = await apiCall(`/store/purchase/orders/${id}/deliver`, { method: "POST", body: JSON.stringify({
+      dn_no: dn, dn_date: on, deliver_to: m.querySelector("#pu-where").value, notes: m.querySelector("#pu-note").value.trim(), lines }) });
+    m.classList.remove("on");
+    const msg = `Delivery booked - ${PU_WORD[r.status] || r.status}. ` + (r.done || []).slice(0, 4).join("; ") + ((r.done || []).length > 4 ? " ..." : "");
+    if (puDlvAfter) puDlvAfter(msg, r);
+  } catch (e) { if (btn) btn.disabled = false; showStatus("pu-dlv-status", "err", errText(e)); }
+}
+
+// An approved request nobody raised an LPO for, bought with petty cash: marked arrived (all or part), linked to
+// the petty cash bill line when it is there. No LPO cost is made up.
+let puPettyAfter = null;
+async function pettyArriveOpen(rid, after) {
+  puPettyAfter = after || null;
+  const m = puModal("pu-petty");
+  m.innerHTML = `<div class="box"><div class="empty-note">Loading...</div></div>`;
+  m.classList.add("on");
+  try {
+    await puSites();
+    const [all, pc] = await Promise.all([apiCall("/store/requests"), apiCall(`/store/requests/${rid}/petty-candidates`).catch(() => ({ rows: [] }))]);
+    const r = all.find(x => x.id === rid);
+    if (!r) throw new Error("Request not found");
+    const due = (r.lines || []).filter(l => (l.status || "pending") !== "rejected" && (l.qty_requested || 0) - (l.qty_received || 0) > 0);
+    m.innerHTML = `<div class="box">
+      <h3>${escapeHtml(r.ref)} - arrived, bought with petty cash</h3>
+      <div class="sub">No LPO was raised for it. It goes into stock at ${r.site ? "site " + escapeHtml(r.site) : "the central store"}; no cost is made up - the petty cash bill is the cost.</div>
+      <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="field"><label>Date it came *</label><input type="date" id="pcx-date" style="width:150px;" value="${isoLocal(new Date())}"></div>
+        <div class="field"><label>Delivered to</label><select id="pcx-where" style="width:170px;">${puWhereOpts((r.site || "").toUpperCase() === "STORE" || !r.site ? "STORE" : r.site)}</select></div>
+        <div class="field" style="flex:1; min-width:240px;"><label title="The petty cash bill it was paid on - offered from the petty cash books by date and the material's words">Petty cash bill</label>
+          <select id="pcx-bill" style="width:100%;"><option value="">Not entered yet / not sure</option>${(pc.rows || []).map(p =>
+            `<option value="${p.id}">${dmy(p.date)} - ${escapeHtml(p.description)}${p.supplier ? " (" + escapeHtml(p.supplier) + ")" : ""} - AED ${money(p.paid)}</option>`).join("")}</select></div>
+      </div>
+      <table style="margin-top:10px;"><thead><tr><th style="text-align:left;">Material</th><th>Asked</th><th>Came before</th><th>Still due</th><th>Came now</th></tr></thead><tbody>${
+        due.map(l => `<tr data-l="${l.id}" data-rem="${(l.qty_requested || 0) - (l.qty_received || 0)}"><td>${escapeHtml(l.item_name || l.description || "")}</td>
+          <td class="n">${num(l.qty_requested)} ${escapeHtml(l.unit || "")}</td><td class="n">${num(l.qty_received || 0)}</td>
+          <td class="n"><b>${num((l.qty_requested || 0) - (l.qty_received || 0))}</b></td>
+          <td>${l.item_id ? `<input type="number" class="pcx-q" step="any" min="0" style="width:90px; text-align:right;" value="${(l.qty_requested || 0) - (l.qty_received || 0)}">` : '<span style="color:#C0392B; font-size:11px;">not on the material list</span>'}</td></tr>`).join("")}</tbody></table>
+      <div class="status-msg" id="pcx-status"></div>
+      <div class="acts"><button type="button" class="btn btn-gray" onclick="document.getElementById('pu-petty').classList.remove('on')">Close</button>
+        <button type="button" class="btn btn-primary" id="pcx-save" onclick="pettyArriveSave(${rid})">Mark arrived</button></div></div>`;
+  } catch (e) {
+    m.innerHTML = `<div class="box"><div class="status-msg err">${escapeHtml(errText(e))}</div><div class="acts"><button class="btn btn-gray" onclick="document.getElementById('pu-petty').classList.remove('on')">Close</button></div></div>`;
+  }
+}
+async function pettyArriveSave(rid) {
+  const m = document.getElementById("pu-petty");
+  const lines = [...m.querySelectorAll("tr[data-l]")].map(tr => ({ line_id: parseInt(tr.dataset.l, 10), qty: parseFloat((tr.querySelector(".pcx-q") || {}).value) || 0 })).filter(x => x.qty > 0);
+  if (!lines.length) { showStatus("pcx-status", "warn", "Enter how much arrived for at least one material."); return; }
+  const w = m.querySelector("#pcx-where").value;
+  const btn = m.querySelector("#pcx-save"); btn.disabled = true;
+  try {
+    const r = await apiCall(`/store/requests/${rid}/arrived-petty`, { method: "POST", body: JSON.stringify({
+      lines, received_on: m.querySelector("#pcx-date").value || null, deliver_to: w === "STORE" ? "" : w,
+      petty_cash_id: parseInt(m.querySelector("#pcx-bill").value, 10) || null }) });
+    m.classList.remove("on");
+    if (puPettyAfter) puPettyAfter(`Marked arrived (petty cash): ${(r.done || []).join(", ")}.`, r);
+  } catch (e) { btn.disabled = false; showStatus("pcx-status", "err", errText(e)); }
+}
+
+// The purchaser's check of the supplier's bill: number, date, amount as on the bill, ticked when checked against
+// the LPO and the DN. The difference to the LPO total (round off included) is shown as it is typed.
+async function lpoBillOpen(id, after) {
+  const m = puModal("pu-bill", true);
+  m.innerHTML = `<div class="box"><div class="empty-note">Loading...</div></div>`;
+  m.classList.add("on");
+  try {
+    const d = await apiCall(`/store/purchase/orders/${id}/deliveries`);
+    m.innerHTML = `<div class="box">
+      <h3>Supplier's bill - ${escapeHtml(d.ref)}</h3>
+      <div class="sub">${escapeHtml(d.supplier || "")} &middot; LPO total AED <b>${money(d.lpo_total)}</b>${d.round_off ? ` (round off ${d.round_off > 0 ? "+" : ""}${money(d.round_off)} included)` : ""} &middot; delivery ${puTag(d.status)}</div>
+      <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="field"><label>Bill no.</label><input type="text" id="pb-no" style="width:150px;" value="${escapeAttr(d.bill_no)}"></div>
+        <div class="field"><label>Bill date</label><input type="date" id="pb-date" style="width:150px;" value="${d.bill_date || ""}"></div>
+        <div class="field"><label>Bill amount (AED, incl. VAT)</label><input type="text" inputmode="decimal" id="pb-amt" style="width:150px; text-align:right;" value="${d.bill_amount == null ? "" : Number(d.bill_amount).toFixed(2)}" oninput="lpoBillDiff(${d.lpo_total})"></div>
+      </div>
+      <div id="pb-diff" style="margin-top:8px; font-size:13px;"></div>
+      <div class="field" style="margin-top:8px;"><label>Note</label><input type="text" id="pb-note" style="width:100%;" value="${escapeAttr(d.bill_note)}" placeholder="optional - e.g. short delivery to be credited"></div>
+      <label style="display:flex; gap:8px; align-items:center; margin-top:10px; font-size:13px;"><input type="checkbox" id="pb-ok"${d.bill_checked ? " checked" : ""}> <b>Checked against the LPO and the delivery note</b></label>
+      <div class="status-msg" id="pb-status"></div>
+      <div class="acts"><button type="button" class="btn btn-gray" onclick="document.getElementById('pu-bill').classList.remove('on')">Close</button>
+        <button type="button" class="btn btn-primary" onclick="lpoBillSave(${d.id})">Save</button></div></div>`;
+    lpoBillDiff(d.lpo_total);
+    m._after = after || null;
+  } catch (e) {
+    m.innerHTML = `<div class="box"><div class="status-msg err">${escapeHtml(errText(e))}</div></div>`;
+  }
+}
+function lpoBillDiff(total) {
+  const box = document.getElementById("pb-diff"), v = parseFloat((document.getElementById("pb-amt").value || "").replace(/,/g, ""));
+  if (!box) return;
+  if (isNaN(v)) { box.innerHTML = ""; return; }
+  const d = Math.round((v - total) * 100) / 100;
+  box.innerHTML = d === 0 ? '<span style="color:#2E7D32; font-weight:700;">Same as the LPO total.</span>'
+    : `<span style="color:#C0392B; font-weight:700;">Bill is AED ${money(Math.abs(d))} ${d > 0 ? "more" : "less"} than the LPO total.</span>`;
+}
+async function lpoBillSave(id) {
+  const m = document.getElementById("pu-bill");
+  try {
+    const r = await apiCall(`/store/purchase/orders/${id}/bill`, { method: "POST", body: JSON.stringify({
+      bill_no: m.querySelector("#pb-no").value.trim(), bill_date: m.querySelector("#pb-date").value || null,
+      bill_amount: m.querySelector("#pb-amt").value.trim(), note: m.querySelector("#pb-note").value.trim(),
+      checked: m.querySelector("#pb-ok").checked }) });
+    m.classList.remove("on");
+    if (m._after) m._after(`Bill ${r.bill_no || ""} saved${r.bill_checked ? " - checked against the LPO and DN" : ""}.`, r);
+  } catch (e) { showStatus("pb-status", "err", errText(e)); }
+}
+
+// LPO names <-> Rentals names (Store > Rentals)
+async function rmapLoad() {
+  const body = document.getElementById("rmap-body");
+  if (!body) return;
+  try {
+    const d = await apiCall("/store/rental-map");
+    const sel = document.getElementById("rmap-rental");
+    if (sel) sel.innerHTML = '<option value="">Pick the Rentals material</option>' + d.rentals.map(r => `<option value="${r.id}">${escapeHtml(r.name)} (${escapeHtml(r.code)})</option>`).join("");
+    rmapDraw(d.rows);
+  } catch (e) { body.innerHTML = `<tr><td colspan="4" class="empty-note">${escapeHtml(errText(e))}</td></tr>`; }
+}
+function rmapDraw(rows) {
+  const body = document.getElementById("rmap-body");
+  body.innerHTML = rows.length ? rows.map(r => `<tr><td>${escapeHtml(r.lpo_name)}</td><td>${escapeHtml(r.rental_name)}</td>
+      <td style="text-align:center; font-size:11.5px; color:#888;">${{ auto: "same name", questionnaire: "purchaser", manual: "by hand" }[r.source] || r.source}</td>
+      <td style="text-align:right;"><button class="btn btn-gray btn-sm" title="Take this link off" onclick="rmapDel(${r.id})">&times;</button></td></tr>`).join("")
+    : '<tr><td colspan="4" class="empty-note">No links yet - press "Link the same names", then add the rest here.</td></tr>';
+}
+async function rmapAdd() {
+  const name = document.getElementById("rmap-lpo").value.trim(), rid = parseInt(document.getElementById("rmap-rental").value, 10);
+  if (!name || !rid) { showStatus("rmap-status", "warn", "Type the LPO's name and pick the Rentals material."); return; }
+  try {
+    const r = await apiCall("/store/rental-map", { method: "POST", body: JSON.stringify({ lpo_name: name, rental_item_id: rid }) });
+    document.getElementById("rmap-lpo").value = "";
+    showStatus("rmap-status", "ok", r.added ? "Linked." : "That link is there already.");
+    rmapDraw(r.rows);
+  } catch (e) { showStatus("rmap-status", "err", errText(e)); }
+}
+async function rmapDel(id) {
+  if (!confirm("Take this link off?")) return;
+  try { const r = await apiCall(`/store/rental-map/${id}`, { method: "DELETE" }); rmapDraw(r.rows); showStatus("rmap-status", "ok", "Link taken off."); }
+  catch (e) { showStatus("rmap-status", "err", errText(e)); }
+}
+async function rmapPrefill() {
+  try {
+    const r = await apiCall("/store/rental-map/prefill", { method: "POST", body: "{}" });
+    rmapDraw(r.rows);
+    showStatus("rmap-status", "ok", r.added.length ? `${r.added.length} link(s) made by name.` : "Nothing new to link by name.");
+  } catch (e) { showStatus("rmap-status", "err", errText(e)); }
+}
+
+// A material typed by name that is close to one already on the list: say so, and offer the existing one.
+async function puSimilarName(name) {
+  const t = (name || "").trim();
+  if (t.length < 3) return null;
+  try {
+    const r = await apiCall(`/store/items/similar?name=${encodeURIComponent(t)}`);
+    if (r.exact || !r.close.length) return null;
+    const best = r.close[0];
+    return confirm(`"${t}" is not on the material list, but "${best.name}" (${best.code}) is.\n\nOK = use "${best.name}"\nCancel = keep "${t}" as a new material`) ? best : null;
+  } catch (e) { return null; }
+}
+
 // Open requests cached here so the entry form can warn about materials
 // already on order without another server round-trip per keystroke.
 let mrCache = [];
@@ -10754,13 +11077,18 @@ let mrCache = [];
 // The chase list. Flattens every open request into one row per material
 // still to arrive, so site staff can see at a glance what is coming,
 // from whom, and who to ring - without opening requests one by one.
+// LPOs raised straight away with no request behind them are on it too (31 Oct 2026), and a material on an LPO
+// is booked in against the LPO.
+let fuDl = null;
 async function loadFollowUp() {
   const box = document.getElementById("fu-list");
   box.innerHTML = '<div class="empty-note">Loading...</div>';
   try {
-    const [reqs, sups] = await Promise.all([apiCall("/store/requests"), apiCall("/store/suppliers").catch(() => [])]);
+    const [reqs, sups, dl] = await Promise.all([apiCall("/store/requests"), apiCall("/store/suppliers").catch(() => []),
+                                                apiCall("/store/purchase/deliveries").catch(() => null)]);
     mrCache = reqs;
     suppliers = sups;
+    fuDl = dl;
     // Site filter built from the requests themselves
     const sel = document.getElementById("fu-site");
     const sites = [...new Set(reqs.map(r => r.site || ""))].sort();
@@ -10809,7 +11137,18 @@ function renderFollowUp() {
       name: l.item_name || l.description || "", code: l.item_code || "",
       due, unit: l.unit || "", received: l.qty_received || 0, asked: l.qty_requested || 0,
       status: r.status, sup: contact, purpose: l.purpose || "", canEdit: !!(r.can_edit && r.mine),
+      lpoId: fuDl && fuDl.request_line_lpo ? (fuDl.request_line_lpo[String(l.id)] || 0) : 0,
+      lpoCancelled: l.lpo_cancelled || "", approved: (l.status || "pending") === "approved",
     });
+  }));
+  // An LPO raised straight away, with no request behind it: its lines are chased and booked in here too.
+  ((fuDl && fuDl.orders) || []).filter(o => !o.from_request).forEach(o => o.lines.forEach(l => {
+    if (!(l.remaining > 0)) return;
+    const sup = (suppliers || []).find(s => (s.name || "").toLowerCase() === (o.supplier || "").toLowerCase()) || { id: 0, name: o.supplier };
+    rows.push({ rid: 0, supId: sup.id || 0, lid: 0, ref: o.ref, site: o.deliver_to === "STORE" ? "" : o.deliver_to, needed: "", expected: "",
+      raised: "", by: o.by || "", late: false, name: l.description, code: "", due: l.remaining, unit: l.unit || "",
+      received: l.delivered, asked: l.ordered, status: o.status === "part" ? "partial" : "ordered", sup, purpose: l.service ? "service - no stock" : "",
+      canEdit: false, lpoId: o.id, lpoOnly: true, lpoCancelled: "", approved: true });
   }));
 
   // Pills before filtering, so the picture is the whole store's
@@ -10856,18 +11195,24 @@ function renderFollowUp() {
           <td>${x.code ? `<strong>${materialLink(x.code)}</strong> ` : ""}${escapeHtml(x.name || "")}${x.purpose ? `<div style="font-size:11px; color:#999;">${x.purpose}</div>` : ""}</td>
           <td class="num-col" style="font-weight:700;">${num(x.due)} ${x.unit}${x.received ? `<div style="font-size:11px; color:#999; font-weight:400;">${num(x.received)} of ${num(x.asked)} in</div>` : ""}</td>
           <td>${x.site || '<span style="color:#999;">store</span>'}</td>
-          <td><strong>${requestLink(x.ref)}</strong>${x.raised ? `<div style="font-size:11px; color:#999; white-space:nowrap;">${fuWhen(x.raised)}</div>` : ""}</td>
+          <td><strong>${x.lpoOnly ? escapeHtml(x.ref) + '<div style="font-size:11px; color:#999; font-weight:400;">direct LPO</div>' : requestLink(x.ref)}</strong>${x.raised ? `<div style="font-size:11px; color:#999; white-space:nowrap;">${fuWhen(x.raised)}</div>` : ""}</td>
           <td>${x.needed ? dmy(x.needed) : "-"}${x.late ? '<div style="color:#C0392B; font-size:11px; font-weight:700;">LATE</div>' : ""}</td>
-          <td>${x.sup ? supplierLink(x.sup.name) : '<span style="color:#B26A00; font-weight:600;">not ordered yet</span>'}</td>
+          <td>${x.sup ? supplierLink(x.sup.name) : '<span style="color:#B26A00; font-weight:600;">not ordered yet</span>'}${
+            x.lpoCancelled ? `<div style="font-size:11px; color:#C0392B;" title="Its LPO was cancelled - waiting to be ordered again">${escapeHtml(x.lpoCancelled)} cancelled</div>` : ""}</td>
           <td>${x.sup && (x.sup.phone || x.sup.contact_person)
             ? `${x.sup.contact_person ? x.sup.contact_person : ""}${x.sup.phone ? `<div><a href="tel:${x.sup.phone}" style="color:#1565C0; font-weight:600;">${x.sup.phone}</a></div>` : ""}`
             : (x.sup ? '<span style="color:#999;">no number on file</span>' : '<span style="color:#999;">ask the office</span>')}</td>
           <td>${x.expected ? dmy(x.expected) : "-"}</td>
           <td><span style="color:${MR_COLOUR[x.status] || "#777"}; font-weight:600; font-size:12px;">${MR_LABEL[x.status] || x.status}</span>
-            ${x.sup && MY_SCREENS.includes("store")
-              ? `<div><button class="btn btn-dark" style="margin-top:4px;" onclick="openReceive(${x.rid}, ${x.supId})">It arrived</button></div>
-                 <div><a href="#" class="fu-booked" style="font-size:11px; color:#1565C0;" title="It came and is already booked in (on Rentals, or at the site) - take it off this list without moving stock again"
+            ${x.lpoId && puCanBook()
+              ? `<div><button class="btn btn-dark" style="margin-top:4px;" title="Book it in against its LPO - DN number, all or part" onclick="lpoDlvOpen(${x.lpoId}, (m) => { showStatus('fu-status', 'ok', m); loadFollowUp(); })">It arrived</button></div>`
+              : x.sup && MY_SCREENS.includes("store")
+              ? `<div><button class="btn btn-dark" style="margin-top:4px;" onclick="openReceive(${x.rid}, ${x.supId})">It arrived</button></div>` : ""}
+            ${x.sup && x.rid && MY_SCREENS.includes("store")
+              ? `<div><a href="#" class="fu-booked" style="font-size:11px; color:#1565C0;" title="It came and is already booked in (on Rentals, or at the site) - take it off this list without moving stock again"
                     onclick="event.preventDefault(); fuBooked(${x.rid}, ${x.lid}, ${escapeAttr(jsq(x.name))})">Already booked in</a></div>` : ""}
+            ${!x.sup && x.rid && x.approved && puCanBook()
+              ? `<div><button class="btn btn-gray" style="margin-top:4px;" title="No LPO - bought with petty cash and arrived" onclick="pettyArriveOpen(${x.rid}, (m) => { showStatus('fu-status', 'ok', m); loadFollowUp(); })">Bought with petty cash</button></div>` : ""}
             ${x.canEdit && MY_SCREENS.includes("requests") ? `<div style="margin-top:4px; white-space:nowrap;"><button class="btn btn-gray btn-sm" title="Not yet taken up by the office - correct it" onclick="fuEditReq(${x.rid})">Edit</button> <button class="btn btn-gray btn-sm" onclick="mrDelete(${x.rid}).then(loadFollowUp)">Delete</button></div>` : ""}</td>
         </tr>`).join("")}</tbody>
     </table></div>
@@ -13188,7 +13533,11 @@ async function loadLpoReport() {
         cells.push(`<td style="text-align:left;"><strong class="lpr-no">${row.label}</strong>${
           row.status === "cancelled" ? ` <span class="pill lpr-cx" style="background:#FBE0DE; color:#C0392B; font-weight:700;">CANCELLED</span>${row.cancel_reason ? `<div class="lpr-why" style="font-size:11.5px;color:#B03A2E;margin-top:2px;">${row.cancelled_on ? escapeHtml(dmy(row.cancelled_on)) + " - " : ""}${escapeHtml(row.cancel_reason)}</div>` : ""}` : ""}${
           row.edited && row.status !== "cancelled"
-            ? ` <span class="pill" style="background:#FDF0D5; color:#8A6100;" title="Corrected on ${dmy(row.edited_on)}">edited</span>` : ""}</td>`);
+            ? ` <span class="pill" style="background:#FDF0D5; color:#8A6100;" title="Corrected on ${dmy(row.edited_on)}">edited</span>` : ""}${
+          row.superseded_by ? `<div class="lpr-why" style="font-size:11.5px;color:#B03A2E;">replaced by ${escapeHtml(row.superseded_by)}</div>` : ""}${
+          row.status !== "cancelled" && row.delivery ? `<div style="margin-top:2px;">${puTag(row.delivery)}${row.bill_checked
+            ? ` <span class="pu-tag pu-st-delivered" title="Supplier's bill ${escapeAttr(row.bill_no || "")} checked against the LPO and DN">bill checked</span>`
+            : (row.bill_no ? ` <span class="pu-tag pu-st-part" title="Bill ${escapeAttr(row.bill_no)} entered, not ticked checked yet">bill not checked</span>` : "")}</div>` : ""}</td>`);
         cells.push(`<td style="text-align:left;">${row.date ? dmy(row.date) : "-"}</td>`);
         cells.push(`<td style="text-align:left;">${row.supplier ? supplierLink(row.supplier) : "-"}</td>`);
         cells.push(`<td style="text-align:left;">${row.site || "-"}</td>`);
@@ -13203,8 +13552,10 @@ async function loadLpoReport() {
       // the same order back in the form rather than raising a new one.
       if (r.group_by === "order") {
         cells.push(`<td style="text-align:right; white-space:nowrap;">${row.status === "cancelled" ? "" :
-          `<button class="btn btn-gray" onclick="event.stopPropagation(); editLpo(${row.id})">Edit</button>
-           <button class="btn btn-gray lpr-cancel" style="color:#B03A2E;" onclick="event.stopPropagation(); cancelLpo(${row.id}, ${escapeAttr(jsq(row.label))})">Cancel</button>`}</td>`);
+          `<button class="btn btn-gray btn-sm lpr-dlv" title="What came against it, and book a delivery" onclick="event.stopPropagation(); lpoDlvOpen(${row.id}, (m) => { lprFlash = m; loadLpoReport(); })">Delivery</button>
+           <button class="btn btn-gray btn-sm lpr-bill" title="The supplier's bill: number, date, amount - checked against the LPO and DN" onclick="event.stopPropagation(); lpoBillOpen(${row.id}, (m) => { lprFlash = m; loadLpoReport(); })">Bill</button>
+           <button class="btn btn-gray btn-sm" onclick="event.stopPropagation(); editLpo(${row.id})">Edit</button>
+           <button class="btn btn-gray btn-sm lpr-cancel" style="color:#B03A2E;" onclick="event.stopPropagation(); cancelLpo(${row.id}, ${escapeAttr(jsq(row.label))})">Cancel</button>`}</td>`);
       }
       // The tab is claimed in the click itself - asking for it after the
       // token fetch makes it a pop-up, which the browser blocks.
@@ -13467,6 +13818,7 @@ async function editLpo(id) {
     (o.lines || []).forEach(l => addLpoLine({
       item_id: l.item_id, description: l.description, description2: l.description2 || "",
       qty: l.qty, unit: l.unit, rate: l.rate, tax_pct: l.tax_pct, cost_to: l.cost_to || "",
+      service: l.service === true || l.service === false ? l.service : null,
     }));
     if (!lpoLines.length) addLpoLine();
     lpoCmbReset(!!o.combined); if (o.combined) renderLpoCombined();
@@ -13703,6 +14055,23 @@ function addLpoLine(line) {
 
 function removeLpoLine(i) { lpoLines.splice(i, 1); renderLpoLines(); }
 
+// A name typed (not picked) that is close to a material already on the list: offer the existing one, so the
+// same material does not end up under several names (questionnaire Q16 - names are sometimes typed).
+async function lpoNameCheck(i, box) {
+  await new Promise(r => setTimeout(r, 400));          // a pick from the list lands first
+  const l = lpoLines[i];
+  if (!l || l.item_id || !(box.value || "").trim()) return;
+  if ((storeItems || []).some(x => (x.name || "").toLowerCase() === box.value.trim().toLowerCase())) return;
+  const best = await puSimilarName(box.value);
+  if (!best || !lpoLines[i]) return;
+  lpoLines[i].description = best.name; lpoLines[i].item_id = best.id;
+  if (!lpoLines[i].unit) lpoLines[i].unit = best.unit || "";
+  box.value = best.name;
+  const row = document.querySelectorAll("#lpo-lines tr")[i], u = row && row.querySelector(".lpo-unit");
+  if (u && !u.value) u.value = lpoLines[i].unit;
+  lookupLpoRate(i);
+}
+
 function onLpoLineField(i, field, value) {
   lpoLines[i][field] = value;
   if (field === "description") {
@@ -13711,6 +14080,8 @@ function onLpoLineField(i, field, value) {
     lpoLines[i].item_id = null;
     const box = document.querySelectorAll("#lpo-lines tr")[i];
     if (box) showMatches(box.querySelector(".lpo-mat"), i);
+    const svc = box && box.querySelector(".lpo-svc");          // the Service tick follows the words until it is clicked
+    if (svc && lpoLines[i].service !== true && lpoLines[i].service !== false) svc.checked = puWordsService(value);
     lookupLpoRate(i);
     renderLpoTotals();
     return;
@@ -13808,6 +14179,7 @@ function renderLpoLines() {
             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
             value="${esc(l.description)}" class="lpo-mat"
             oninput="onLpoLineField(${i}, 'description', this.value)"
+            onchange="lpoNameCheck(${i}, this)"
             onfocus="showMatches(this, ${i})"
             onkeydown="matchKey(event, this, ${i})"
             onblur="closeMatchList(true)"
@@ -13821,6 +14193,7 @@ function renderLpoLines() {
       <td><input type="text" inputmode="decimal" value="${esc(l.tax_pct)}" oninput="onLpoLineField(${i}, 'tax_pct', this.value)" style="width:100%; text-align:right;"></td>
       <td class="lpo-amt" style="text-align:right;">${money(qty * rate)}</td>
       <td class="lpo-last" style="text-align:left;"></td>
+      <td style="text-align:center;"><input type="checkbox" class="lpo-svc" title="Service - no stock, cost to the site"${lpoLineService(l) ? " checked" : ""} onchange="lpoLines[${i}].service = this.checked"></td>
       <td><button class="btn btn-gray" onclick="removeLpoLine(${i})">&times;</button></td>
     </tr>`;
   }).join("");
@@ -14130,7 +14503,8 @@ async function saveLpo() {
     .filter(l => (l.description || "").trim() && (parseFloat(l.qty) || 0) > 0)
     .map(l => ({ item_id: l.item_id, description: l.description.trim(), description2: (l.description2 || "").trim(),
                  qty: parseFloat(l.qty) || 0, unit: l.unit || "", rate: parseFloat(l.rate) || 0,
-                 tax_pct: parseFloat(l.tax_pct) || 0, cost_to: lpoCmbOn() ? (l.cost_to || "") : "" }));
+                 tax_pct: parseFloat(l.tax_pct) || 0, cost_to: lpoCmbOn() ? (l.cost_to || "") : "",
+                 service: (l.service === true || l.service === false) ? l.service : null }));
   if (lpoCmbOn() && lines.some(l => !l.cost_to)) {
     if (tab) tab.close();
     renderLpoCombined(); document.getElementById("lpo-cmb").scrollIntoView({ block: "center" });
@@ -19133,7 +19507,10 @@ function zhPosDraw() {
           ${!items.length && o.err ? `<div style="margin-top:4px;"><span class="zx-tag zx-bad">${escapeHtml(o.err)}</span></div>` : ""}</div>
           <div style="white-space:nowrap;">${need ? `<button type="button" class="btn btn-primary btn-sm" onclick="zhPoDone(${o.id})">Done in Zoho</button>` : `<button type="button" class="btn btn-gray btn-sm" onclick="zhPoSeen(${o.id})">Seen</button>`}</div></div>`; }).join("")}</div>` : "";
   zhList("lpo", wait.map(o => ({ id: o.id, date: o.date, main: o.ref + ((o.split || []).length ? " · Combined" : (o.site ? " · " + o.site : "")),
-      sub: o.supplier + ((o.split || []).length ? " — cost to " + o.split.map(x => `${x.to} ${pcMoney(x.amount)}`).join(" · ") : ""), amount: o.total, out: true,
+      sub: o.supplier + ((o.split || []).length ? " — cost to " + o.split.map(x => `${x.to} ${pcMoney(x.amount)}`).join(" · ") : "")
+        // the purchaser's check of the supplier's bill against the LPO and the delivery note
+        + (o.bill_checked ? ` — bill ${o.bill_no} checked by purchaser` + (o.bill_diff ? ` (bill ${o.bill_diff > 0 ? "+" : "-"}${pcMoney(Math.abs(o.bill_diff))} vs LPO)` : " ✓")
+           : o.bill_no ? ` — bill ${o.bill_no} not checked yet` : " — bill not checked by purchaser yet"), amount: o.total, out: true,
       err: o.err, acc: o.account, accPick: `zhPoAcc(${o.id},V)`, view: `zhPoView(${o.id})`, del: ZH.po_del ? `zhPoDelete(${o.id})` : "", block: !o.linked ? "Supplier not linked" : (!o.account ? "Pick account" : "") })),
     "zh-pos", "Purchase orders (LPOs)", "They go to Zoho as purchase orders with the portal's LPO number. Pick the Zoho account the bill will be booked to - next time the supplier's last account is filled in.", "No LPOs waiting - every LPO is in Zoho.", step, fl);
   if (ZH_PANE === "lpo") setTimeout(zhPoHint, 250);

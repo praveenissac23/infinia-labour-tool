@@ -168,8 +168,14 @@ def _lpos(db, match, d1, d2):
                             "ref": (o.ref or f"LPO {o.po_no}") + " (combined)", "supplier": o.supplier_name or "",
                             "location": "Store" if st else to, "items": items(mine), "net": round(n_ + ro_, 2), "vat": v_, "id": o.id})
             continue
-        to_store = req_site.upper() == "STORE"
+        # Where the LPO is for decides (31 Oct 2026, purchaser: deliveries always go straight to the site): an LPO
+        # for a site is that site's cost even when its request was raised as a store top-up; only an LPO for the
+        # store (or naming no place, raised for the store) is stock.
+        loc = (o.project_location or "").strip()
+        to_store = loc.upper() in ("STORE", "CENTRAL STORE") or (not loc and req_site.upper() == "STORE")
         sites = [] if to_store else (match(o.project_location, o.plot_no, o.job_scope) or match(req_site))
+        if not sites and not loc and req_site.upper() == "STORE":
+            to_store = True
         out.append({"sites": sites, "to_store": to_store, "date": o.order_date, "ref": o.ref or f"LPO {o.po_no}",
                     "supplier": o.supplier_name or "", "location": o.project_location or req_site,
                     "items": ", ".join((l.description or "")[:40] for l in lines[:4]) + (" ..." if len(lines) > 4 else ""),
