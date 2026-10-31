@@ -5159,12 +5159,14 @@ def merge_supplier(supplier_id: int, payload: dict = Body(...), db: Session = De
     moved, filled = [], []
     gone_name, keep_name, keep_id = gone.name, keep.name, keep.id
     try:
-        # LPOs already issued keep their vendor block exactly as printed: an empty box on the order was
-        # printed from the duplicate's record, so its value is written onto the order before the switch.
-        for o in db.query(models.PurchaseOrder).filter(models.PurchaseOrder.supplier_id == gone.id).all():
+        # LPOs already issued (the duplicate's and the kept one's) keep their vendor block exactly as printed: an
+        # empty box on the order prints from its supplier's record, which the merge changes - so what it printed
+        # is written onto the order first (a single space where it printed nothing, so it stays empty).
+        for o in db.query(models.PurchaseOrder).filter(models.PurchaseOrder.supplier_id.in_([gone.id, keep.id])).all():
+            owner = gone if o.supplier_id == gone.id else keep
             for attr, src in (("supplier_email", "email"), ("supplier_contact", "contact_person"), ("supplier_phone", "phone")):
-                if not (getattr(o, attr, "") or "").strip() and (getattr(gone, src, "") or "").strip():
-                    setattr(o, attr, getattr(gone, src))
+                if not (getattr(o, attr, "") or ""):
+                    setattr(o, attr, getattr(owner, src, "") or " ")
         for label, model, col in _supplier_refs():
             n = (db.query(model).filter(getattr(model, col) == gone.id)
                    .update({getattr(model, col): keep.id}, synchronize_session=False))
