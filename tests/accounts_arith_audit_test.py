@@ -262,8 +262,12 @@ def seed():
     po = models.PurchaseOrder(po_no=990001, ref="IC/LPO/AUD1", order_date=d_(m1, 6), supplier_id=sup.id, supplier_name=sup.name,
                               project_location="906 Villa", discount_pct=7.5, tax_pct=5, status="issued")
     db.add(po); db.flush()
+    it = models.StoreItem(code="AUD-REBAR", name="Audit Rebar", unit="nos", item_type="consumable"); db.add(it); db.flush()
     for desc, q, rate, tax in (("Rebar", 3.333, 1234.567, 5), ("Cement", 7, 18.25, 5), ("DM fee", 1, 105, 0)):
-        db.add(models.PurchaseOrderLine(order_id=po.id, description=desc, qty=q, rate=rate, tax_pct=tax, unit="nos"))
+        db.add(models.PurchaseOrderLine(order_id=po.id, description=desc, qty=q, rate=rate, tax_pct=tax, unit="nos",
+                                        item_id=it.id if desc == "Rebar" else None))
+    # issued from the store to 906 (no cost on the movement: valued at the last LPO rate, after its 7.5% discount)
+    db.add(models.StoreMovement(item_id=it.id, kind="out", qty=2, from_location="", location="906", moved_on=d_(m1, 9)))
     po2 = models.PurchaseOrder(po_no=990002, ref="IC/LPO/AUD2", order_date=d_(m1, 7), supplier_id=sup.id, supplier_name=sup.name,
                                project_location="915", discount_pct=0, tax_pct=5, status="cancelled")
     db.add(po2); db.flush()
@@ -807,6 +811,35 @@ for o in pos:
 for cd in sorted(set(lpo_want) | {k for k, r in rows.items() if r["lpo"]}):
     g = rows.get(cd, {}).get("lpo", 0)
     ck(f"Project expense {cd} LPO cost net of discount and VAT: {r2(lpo_want.get(cd, 0)):,.2f}", same(g, r2(lpo_want.get(cd, 0)), Decimal("0.011")), g)
+# materials sent from the store: valued at the cost on the movement, else the last LPO rate actually paid (after the
+# LPO's discount, as the store's own valuation reads it), else the item's estimated price
+items = {i["id"]: i for i in raw("select * from store_items")} if has_table("store_items") else {}
+last_rate = {}
+for o in sorted(pos, key=lambda o: (o["order_date"] or "", o["id"])):
+    if o["status"] == "cancelled":
+        continue
+    for l in lines_of.get(o["id"], []):
+        if l["item_id"] and l["rate"]:
+            last_rate[l["item_id"]] = D(l["rate"]) * (1 - D(o["discount_pct"]) / 100)
+store_want = {}
+for m in (raw("select * from store_movements") if has_table("store_movements") else []):
+    it = items.get(m["item_id"])
+    if not it or (it["item_type"] or "consumable") != "consumable":
+        continue
+    to, frm, q = (m["location"] or "").strip(), (m["from_location"] or "").strip(), D(m["qty"])
+    legs = []
+    if m["kind"] == "out" and to in sites:
+        legs = [(to, q)]
+    elif m["kind"] == "return" and frm in sites:
+        legs = [(frm, -q)]
+    elif m["kind"] == "transfer":
+        legs = ([(frm, -q)] if frm in sites else []) + ([(to, q)] if to in sites else [])
+    rate = D(m["unit_cost"]) if m["unit_cost"] else last_rate.get(it["id"], D(it["est_price"] or 0))
+    for site, qq in legs:
+        store_want[site] = store_want.get(site, D(0)) + r2(qq * rate)
+for cd in sorted(set(store_want) | {k for k, r in rows.items() if r["store"]}):
+    g = rows.get(cd, {}).get("store", 0)
+    ck(f"Project expense {cd} materials from the store: {r2(store_want.get(cd, 0)):,.2f}", same(g, r2(store_want.get(cd, 0)), Decimal("0.011")), g)
 v = fetch("/export/accounts/project-expense/view").decode()
 ck(f"Project expense preview TOTAL line shows the total cost {PE['totals']['total']:,.2f}", money(PE["totals"]["total"]) in v)
 

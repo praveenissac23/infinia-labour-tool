@@ -183,7 +183,8 @@ def _last_rates(db):
             continue
         k = (o.order_date or date.min, o.id)
         if l.item_id not in best or k > best[l.item_id][0]:
-            best[l.item_id] = (k, float(l.rate), o.ref)
+            # the rate actually paid: after the LPO's discount (as the store's own valuation reads it)
+            best[l.item_id] = (k, float(l.rate) * (1 - float(o.discount_pct or 0) / 100.0), o.ref)
     return {i: (v[1], v[0][0], v[2]) for i, v in best.items()}
 
 
