@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 
 import main as M
 import models, auth, people, export_web
+import office_money as om
 from database import get_db
 
 router = APIRouter()
@@ -126,7 +127,18 @@ def settlement(db, emp_no, q):
     # to the total printed under them.
     yrs = max(g["service_days"] - g["unpaid_days"], 0) / 365.0
     f5 = a5 = 0.0
-    if grat:
+    # Office staff (owner, 31/10/2026): every amount exact - no rounded day rate - and paid down to the fils;
+    # anything taken from him up to the fils; the net exact to the fils, not to the whole dirham (office_money).
+    # Labour keeps its own rule here.
+    exact = bool(e.staff)
+    if grat and exact:
+        from decimal import Decimal
+        y = om.D(max(g["service_days"] - g["unpaid_days"], 0)) / Decimal(365)
+        f5 = om.pay_down(min(y, Decimal(5)) * 21 * om.D(basic) * 12 / Decimal(365))
+        a5 = om.pay_down(max(y - 5, Decimal(0)) * 30 * om.D(basic) * 12 / Decimal(365))
+        if not g.get("capped"):
+            grat = om.add2(f5, a5)
+    elif grat:
         f5 = round(min(yrs, 5) * 21 * basic * 12 / 365.0, 2)
         a5 = round(max(yrs - 5, 0) * 30 * basic * 12 / 365.0, 2)
         if not g.get("capped"):
@@ -135,14 +147,15 @@ def settlement(db, emp_no, q):
     # Unused leave, on the basic.
     auto_leave, leave_note, prof = _leave_owed(db, e, last)
     leave_days = auto_leave if q.get("leave_days") in (None, "") else max(_f(q.get("leave_days")), 0.0)
-    leave_pay = round(leave_days * day_basic, 2)
+    leave_pay = (om.pay_down(om.D(leave_days) * om.D(basic) * 12 / om.D(365)) if exact
+                 else round(leave_days * day_basic, 2))
 
     # Salary for the last month's days not yet paid.
     mdays = calendar.monthrange(last.year, last.month)[1]
     auto_sal = last.day if not (e.joined_on and e.joined_on > last.replace(day=1)) else (last - e.joined_on).days + 1
     sal_days = auto_sal if q.get("salary_days") in (None, "") else max(_f(q.get("salary_days")), 0.0)
     sal_days = min(sal_days, mdays)
-    salary = round(gross / mdays * sal_days, 2)
+    salary = om.pay_down(om.D(gross) * om.D(sal_days) / om.D(mdays)) if exact else round(gross / mdays * sal_days, 2)
     sal_label = f"Salary for {sal_days:g} day(s) of {last:%b %Y}"
     wage_auto = 0.0
     cycle_label = ""
@@ -164,9 +177,9 @@ def settlement(db, emp_no, q):
     short = notice_req - notice_srv
     notice_ded = notice_add = 0.0
     if reason == "resignation" and short > 0:
-        notice_ded = round(short * day_gross, 2)
+        notice_ded = om.take_up(om.days_cost(gross, short)) if exact else round(short * day_gross, 2)
     if reason == "termination" and short > 0:
-        notice_add = round(short * day_gross, 2)
+        notice_add = om.pay_down(om.days_cost(gross, short)) if exact else round(short * day_gross, 2)
 
     ticket = 0.0 if e.staff else max(_f(q.get("ticket")), 0.0)   # air ticket: labour only
     other_add = max(_f(q.get("other_add")), 0.0)
@@ -189,9 +202,17 @@ def settlement(db, emp_no, q):
     # Optional lines only when there is something on them.
     payables = payables[:3] + [x for x in payables[3:] if x[1]]
     deductions = [x for x in deductions if x[1]] or [("No deductions", 0.0)]
-    total_pay = round(sum(v for _, v in payables), 2)
-    total_ded = round(sum(v for _, v in deductions), 2)
-    net = float(math.floor(total_pay - total_ded + 0.5))   # whole dirhams, as on the paper
+    if exact:
+        # Typed amounts (other additions, loan, ...) are taken to the fils the same way.
+        payables = [(k, om.pay_down(v)) for k, v in payables]
+        deductions = [(k, om.take_up(v)) for k, v in deductions]
+        total_pay = om.add2(*[v for _, v in payables])
+        total_ded = om.add2(*[v for _, v in deductions])
+        net = om.add2(total_pay, -total_ded)                 # exact to the fils
+    else:
+        total_pay = round(sum(v for _, v in payables), 2)
+        total_ded = round(sum(v for _, v in deductions), 2)
+        net = float(math.floor(total_pay - total_ded + 0.5))   # whole dirhams, as on the paper
 
     docs = {d.kind: d for d in db.query(models.EmployeeDocument)
             .filter(models.EmployeeDocument.employee_id == e.id).all()}

@@ -108,7 +108,25 @@ def absence(emp_id, a, b, gross):
         return 0.0
     if unpaid >= (b - a).days + 1:
         return gross
-    return round(min(day_rate(gross) * unpaid, gross), 2)
+    return off_days(gross, unpaid, a)
+
+
+# From the November 2026 month (owner, 31/10/2026): days off cost gross x days / 30 exactly, UP to the fils;
+# salary earned so far is exact, DOWN to the fils. Earlier months: gross / 30 dropped to whole dirhams.
+from decimal import Decimal as _Dm, ROUND_FLOOR as _FLR, ROUND_CEILING as _CEIL
+FILS_FROM = date(2026, 11, 1)
+
+
+def off_days(gross, n, a):
+    if a >= FILS_FROM:
+        return min(float((_Dm(str(gross)) * _Dm(str(n)) / 30).quantize(_Dm('0.01'), rounding=_CEIL)), gross)
+    return round(min(day_rate(gross) * n, gross), 2)
+
+
+def earned(gross, done, days, a):
+    if a >= FILS_FROM:
+        return float((_Dm(str(gross)) * done / days).quantize(_Dm('0.01'), rounding=_FLR))
+    return round(gross * done / days, 2)
 
 
 def part_month(e, a, b, gross):
@@ -118,7 +136,7 @@ def part_month(e, a, b, gross):
         days += (j - a).days
     if t and a <= t < b:
         days += (b - t).days
-    return round(min(day_rate(gross) * days, gross), 2) if days else 0.0
+    return off_days(gross, days, a) if days else 0.0
 
 
 def items(emp_id, month_year):
@@ -224,7 +242,7 @@ for r in runs:
         net = round(gross - absent - ded - loan + add, 2)
         # someone on the whole month (Pay full month now for the ticked) or already paid in full shows net pay
         whole = l.get('full_month') or (l.get('pay') or {}).get('locked')
-        to_date = round(round(gross * done / days, 2) - absent + add - ded, 2) if running and not whole else net
+        to_date = round(earned(gross, done, days, a) - absent + add - ded, 2) if running and not whole else net
         mine[l['emp_no']] = dict(gross=gross, absent=absent, adjust=round(add - ded, 2),
                                  loan=loan, net=net, to_date=to_date, balance=bal, held=l['held'])
         total_lines += 1
@@ -357,7 +375,11 @@ for e in q("select * from employees where staff=1 and active=1 order by emp_no")
         amount = 0.0
     else:
         days_ = min(years, 5) * 21 + max(years - 5, 0) * 30
-        amount = min(days_ * daily, basic * 24)
+        # exact, then down to the fils (owner's rule, 31/10/2026) - worked with Decimal here
+        from decimal import Decimal as _D, ROUND_FLOOR as _F
+        y = _D(str(max(service - unpaid, 0))) / 365
+        amount = float(min((min(y, _D(5)) * 21 + max(y - 5, _D(0)) * 30) * _D(str(basic)) * 12 / 365,
+                           _D(str(basic)) * 24).quantize(_D('0.01'), rounding=_F))
     ck(f"gratuity {e['emp_no']} {e['name']}: {amount:,.2f}", same(g['amount'], amount),
        (g['amount'], amount, years, unpaid))
 

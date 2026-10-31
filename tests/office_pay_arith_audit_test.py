@@ -100,13 +100,28 @@ def judged(emp_id, a, b):
     return out
 
 
+# Owner's rule from the November 2026 month (31/10/2026): exact decimals, nothing extra even a fils - days off are
+# gross x days / 30 exactly, rounded UP to the fils (taken from him); salary earned so far, gratuity, leave pay and
+# the last days' salary are exact, rounded DOWN to the fils (paid to him). Worked here with Decimal, not the app's code.
+from decimal import Decimal as Dm, ROUND_FLOOR as _FL, ROUND_CEILING as _CE
+FILS_FROM = date(2026, 11, 1)
+def down2(x): return float(Dm(str(x)).quantize(Dm('0.01'), rounding=_FL)) if not isinstance(x, Dm) else float(x.quantize(Dm('0.01'), rounding=_FL))
+def up2(x): return float(Dm(str(x)).quantize(Dm('0.01'), rounding=_CE)) if not isinstance(x, Dm) else float(x.quantize(Dm('0.01'), rounding=_CE))
+
+
+def off_days(gross, n, a):
+    if a >= FILS_FROM:
+        return min(up2(Dm(str(gross)) * Dm(str(n)) / 30), gross)
+    return round(min(day_rate(gross) * n, gross), 2)
+
+
 def absence(emp_id, a, b, gross):
     unpaid = sum(u for _, u in judged(emp_id, a, b))
     if not unpaid:
         return 0.0
     if unpaid >= (b - a).days + 1:
         return gross
-    return round(min(day_rate(gross) * unpaid, gross), 2)
+    return off_days(gross, unpaid, a)
 
 
 def part_month(e, a, b, gross):
@@ -115,7 +130,7 @@ def part_month(e, a, b, gross):
         n += (j - a).days
     if t and a <= t < b:
         n += (b - t).days
-    return round(min(day_rate(gross) * n, gross), 2) if n else 0.0
+    return off_days(gross, n, a) if n else 0.0
 
 
 def salary_on(e, day):
@@ -239,7 +254,7 @@ def audit_run(r, today, label_extra=""):
         locked = bool((l.get('pay') or {}).get('locked'))
         # Salary to date: the month's net once the month is over, the row is on the whole month (Pay full month
         # now / approved) or it is already paid in full; otherwise earned so far (no loan - that is at month end).
-        to_date = net if (full or locked or done >= days) else round(round(gross * done / days, 2) - absent + add - ded, 2)
+        to_date = net if (full or locked or done >= days) else round((down2(Dm(str(gross)) * done / days) if a >= FILS_FROM else round(gross * done / days, 2)) - absent + add - ded, 2)
         m = dict(gross=gross, absent=absent, adjust=round(add - ded, 2), loan=loan, net=net, to_date=to_date,
                  held=bool(l['held']), route=l['pay_route'], emp_id=e['id'], code=e['emp_no'],
                  paid_full=bool((l.get('pay') or {}).get('locked')))
@@ -383,7 +398,8 @@ def audit_gratuity(today):
         if years < 1:
             amount = 0.0
         else:
-            amount = min((min(years, 5) * 21 + max(years - 5, 0) * 30) * basic * 12 / 365.0, basic * 24)
+            y = Dm(str(max(service - ns, 0))) / 365
+            amount = down2(min((min(y, Dm(5)) * 21 + max(y - 5, Dm(0)) * 30) * Dm(str(basic)) * 12 / 365, Dm(str(basic)) * 24))
         ck(f"gratuity {e['emp_no']} {e['name']}: {amount:,.2f} ({years:.3f} yrs, {ns:g} days not service)",
            same(g['amount'], amount), (g['amount'], g.get('why')))
         # The final settlement drawn on the same day must carry the same gratuity and add up.
@@ -398,11 +414,14 @@ def audit_gratuity(today):
            (s['gratuity']['amount'], g['amount']))
         ck(f"settlement {e['emp_no']}: payables add up", same(s['total_pay'], sum(x['amount'] for x in s['payables'])))
         ck(f"settlement {e['emp_no']}: deductions add up", same(s['total_ded'], sum(x['amount'] for x in s['deductions'])))
-        ck(f"settlement {e['emp_no']}: net = payable - deductions to the dirham",
-           same(s['net'], math.floor(s['total_pay'] - s['total_ded'] + 0.5)), s['net'])
-        ck(f"settlement {e['emp_no']}: leave pay = days x basic x 12 / 365",
+        ck(f"settlement {e['emp_no']}: net = payable - deductions, exact to the fils",
+           same(s['net'], round(s['total_pay'] - s['total_ded'], 2)), s['net'])
+        ck(f"settlement {e['emp_no']}: leave pay = days x basic x 12 / 365, exact, down to the fils",
            same(next(x['amount'] for x in s['payables'] if x['label'] == 'Leave encashment'),
-                s['input']['leave_days'] * round(basic * 12 / 365.0, 2)))
+                down2(Dm(str(s['input']['leave_days'])) * Dm(str(basic)) * 12 / 365)))
+        ck(f"settlement {e['emp_no']}: every amount is to the fils (2 decimals)",
+           all(abs(x['amount'] * 100 - round(x['amount'] * 100)) < 1e-6 for x in s['payables'] + s['deductions'])
+           and abs(s['net'] * 100 - round(s['net'] * 100)) < 1e-6, s['net'])
 
 
 def runs_on_file():
@@ -410,10 +429,16 @@ def runs_on_file():
 
 
 REAL_TODAY = main._dubai_today()
+# AUDIT_OPEN="November 2026": open that month's sheet for every company and statement first, so a month on the
+# to-the-fils rule is on file to check (on a COPY of the database).
+if os.environ.get('AUDIT_OPEN'):
+    for co in c.get('/employees/companies', headers=H).json():
+        for grp in ('staff', 'local'):
+            c.post('/employees/payroll/runs', json={'month_year': os.environ['AUDIT_OPEN'], 'company_id': co['id'], 'group': grp}, headers=H)
 runs = runs_on_file()
 ck("there are office cycles on file", len(runs) > 0)
 months = sorted({r['month_year'] for r in runs}, key=lambda m: datetime.strptime(m, '%B %Y'))
-latest = [m for m in months if bounds(m)[0] <= REAL_TODAY] or months
+latest = ([m for m in months if bounds(m)[0] <= REAL_TODAY] if not os.environ.get('AUDIT_OPEN') else months) or months
 newest = latest[-1]
 mid = bounds(newest)[0] + timedelta(days=14)
 _orig_today = main._dubai_today
