@@ -102,7 +102,7 @@ def score_fields(truth, fields, detail=None):
 VO_FIELDS = ("ref", "title", "submitted_amount", "revised_amount", "approved_amount", "absorbed_amount", "submitted", "approved_on", "status")
 
 
-def score_vo(truth, rows):
+def score_vo(truth, rows, detail=None):
     """Rows matched by their reference (a scan's O / 0 and I / 1 taken as the same), else by order."""
     out = []
     norm = lambda s: re.sub(r"[^a-z0-9]", "", str(s or "").lower()).replace("o", "0").replace("i", "1").replace("l", "1")
@@ -136,7 +136,12 @@ def score_vo(truth, rows):
                 ok = g is not None and norm(want) == norm(got)
             else:
                 ok = g is not None and same(k, want, got)
-            out.append({"field": k, "want": want, "got": got, "ok": ok, "missing": g is None})
+            flagged = None
+            if detail is not None and g is not None:
+                ix = next((i for i, x in enumerate(rows or []) if x is g), None)
+                if ix is not None and ix < len(detail):
+                    flagged = k in (detail[ix].get("check") or [])
+            out.append({"field": k, "want": want, "got": got, "ok": ok, "missing": g is None, "flagged": flagged})
     extra = sum(len(v) for v in by_ref.values())
     return out, extra
 
@@ -210,7 +215,7 @@ def run(corpus_dir, only=None, old=True, limit=None, real=True):
                         oldr = {"fields": {}, "error": str(e)[:200]}
                     rec["old_s"] = time.perf_counter() - t1
             if c["kind"] == "vo":
-                rec["new_fields"], rec["new_extra"] = score_vo(c["truth"], new.get("rows"))
+                rec["new_fields"], rec["new_extra"] = score_vo(c["truth"], new.get("rows"), new.get("detail"))
                 if oldr is not None:
                     rec["old_fields"], rec["old_extra"] = score_vo(c["truth"], oldr.get("rows"))
                 else:

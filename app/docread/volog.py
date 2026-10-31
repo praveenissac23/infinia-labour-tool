@@ -265,6 +265,8 @@ def read_log(doc):
         tcell = get.get("title")
         title = tcell.text.strip() if tcell is not None else ""
         ref = get["ref"].text.strip() if get.get("ref") is not None else ""
+        if r.ocr and ref:
+            ref = re.sub(r"(?i)^([a-z])\1", r"\1", ref).strip(" |:;.")      # a column rule's remains read as a letter
         if ref and tcell is get.get("ref"):
             ref = ""
         if not title and not ref:
@@ -303,7 +305,7 @@ def read_log(doc):
                 g2 = {c[2]: _cell_for(nxt, c) for c in cols if c[2]}
                 nref = g2["ref"].text.strip() if g2.get("ref") is not None else ""
                 ntitle = g2["title"].text.strip() if g2.get("title") is not None else ""
-                if not nref and ntitle and section != "absorbed":
+                if not nref and ntitle and section != "absorbed" and not re.match(r"(?i)^(grand\s+)?total|^sub[\s-]*total", ntitle):
                     parent = (ref, title)
                     continue
             if out and not ref and not st_txt:
@@ -349,8 +351,10 @@ def read_log(doc):
             row["kind"] = "Omission"
         row["notes"] = "\n".join(nts)
         row.pop("remarks", None)
+        low = sorted(k for k, c in get.items() if c is not None and c.conf < 0.85 and k in MONEY + ("ref", "title", "submitted", "approved_on"))
         detail.append({"page": r.page, "where": (get.get("title") or r.cells[0]).where(),
-                       "cells": {k: (c.where() if c is not None else None) for k, c in get.items()}, "conf": min(c.conf for c in r.cells)})
+                       "cells": {k: (c.where() if c is not None else None) for k, c in get.items()}, "conf": min(c.conf for c in r.cells),
+                       "check": low})
         out.append(row)
     for k, x in enumerate(out):
         x["seq"] = k + 1
