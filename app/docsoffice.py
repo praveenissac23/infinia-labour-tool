@@ -57,7 +57,7 @@ def _supplier_names(db):
     """The supplier list for the Supplier box: the supplier register plus
     names used on transmittals before."""
     names = {}
-    for (n,) in db.query(models.Supplier.name).all():
+    for (n,) in db.query(models.Supplier.name).filter(models.Supplier.deleted_at.is_(None)).all():
         n = " ".join((n or "").split())
         if n:
             names.setdefault(n.lower(), n)

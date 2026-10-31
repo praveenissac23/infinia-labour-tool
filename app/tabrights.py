@@ -173,9 +173,8 @@ GATES = {
     ("POST", "/store/suppliers"): ["store.purchasing.suppliers", "store.purchasing.purchase", "store.store.arrive",
                                    "store.requests.approvals", "store.requests.requests", "store.store.items"],
     ("PUT", "/store/suppliers/{supplier_id}"): ["store.purchasing.suppliers"],
-    # Delete / merge a duplicate: the same tick as Edit
+    # Delete (a used one is only taken off the list): the same tick as Edit
     ("DELETE", "/store/suppliers/{supplier_id}"): ["store.purchasing.suppliers"],
-    ("POST", "/store/suppliers/{supplier_id}/merge"): ["store.purchasing.suppliers"],
     ("GET", "/store/suppliers/{supplier_id}/usage"): ["store.purchasing.suppliers"],
     ("POST", "/store/suppliers/import"): ["store.purchasing.suppliers"],
     # Reports > Store & purchasing (Stock on hand reads the stock report too)

@@ -453,6 +453,11 @@ window.HELP_GUIDES = [
       { say: "Type the supplier name, contact person and phone.", el: "#sup-name" },
       { say: "Type the TRN, email and payment terms.", el: "#sup-trn" },
       { say: "Press Save supplier.", el: "button[onclick='saveSupplier()']" }] },
+  { id: "supplier-delete", area: "Purchasing", title: "How to delete a supplier (duplicate or wrong name)",
+    words: "supplier delete remove duplicate wrong vendor list correct",
+    go: { page: "store", tab: "purchasing", sub: "suppliers" },
+    steps: [
+      { say: "Press Delete on the supplier's row, next to Edit. A supplier nothing uses is deleted. One already used on LPOs or requests is only taken off the list and out of every supplier box - its past LPOs, requests, reports and Zoho links stay exactly as they are.", el: "#supplier-list" }] },
   { id: "petty", area: "Accounts", title: "How to enter petty cash (bill paid or cash received)",
     words: "petty cash bill receipt expense cash paid received balance amal register pro office site date range from to report",
     go: { page: "accounts", tab: "petty" },

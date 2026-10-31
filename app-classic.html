@@ -12828,95 +12828,39 @@ function renderSuppliers() {
       <td>${need(s.trn)}</td>
       <td>${need(s.email)}</td>
       <td>${need(s.payment_terms)}</td>
-      <td style="white-space:nowrap; text-align:right;"><button class="btn btn-gray" onclick="editSupplier('${(s.name || "").replace(/'/g, "\\'")}')">Edit</button>${
-        hasRight("approvals") ? ` <button class="btn btn-gray sup-del" style="color:#B03A2E;" onclick="deleteSupplier(${s.id})">Delete</button>` : ""}</td>
+      <td style="white-space:nowrap; text-align:right;"><button class="btn btn-gray" onclick="editSupplier('${(s.name || "").replace(/'/g, "\\'")}')">Edit</button> <button class="btn btn-gray sup-del" style="color:#B03A2E;" onclick="deleteSupplier(${s.id})">Delete</button></td>
     </tr>`).join("");
 }
 
-// After a delete / merge: the list redrawn, and the LPO form's supplier suggestions with it.
+// After a delete: the list redrawn, and the LPO form's supplier suggestions with it.
 async function supAfterChange() {
   await loadSuppliersScreen();
   const dl = document.getElementById("lpo-supplier-list");
   if (dl) dl.innerHTML = (suppliers || []).map(s => `<option value="${escapeAttr(s.name)}"></option>`).join("");
 }
 
-// Delete a supplier. One nothing uses goes after a yes; one that is used (LPOs, requests, a Zoho link ...)
-// is never deleted outright - it is merged into the supplier kept, which takes over everything it had.
+// Delete a supplier (same right as Edit). One nothing uses is deleted after a yes. One that is used is taken
+// off the list and out of every supplier box after a yes - what was already recorded against it (LPOs,
+// requests, reports, Zoho links, PDFs) stays exactly as it is.
 async function deleteSupplier(id) {
   const s = (suppliers || []).find(x => x.id === id); if (!s) return;
   let u;
   try { u = await apiCall(`/store/suppliers/${id}/usage`); }
   catch (e) { showStatus("sup-status", "err", errText(e)); return; }
-  if (!u.in_use) {
-    if (!await hrAsk(`Delete ${u.name}? This cannot be undone.`, "Delete", true)) return;
-    try {
-      await apiCall(`/store/suppliers/${id}`, { method: "DELETE" });
-      showStatus("sup-status", "ok", `${u.name} deleted.`);
-    } catch (e) { showStatus("sup-status", "err", errText(e)); }
-    await supAfterChange();
-    return;
-  }
-  const into = await supMergeAsk(u);
-  if (!into) return;
+  const one = { "LPOs": "LPO", "material requests": "material request", "material request lines": "material request line",
+    "return notes": "return note", "store movements (hired from it)": "store movement (hired from it)",
+    "subcontracts / LPOs on Estimation projects": "subcontract / LPO on an Estimation project", "Zoho log entries": "Zoho log entry" };
+  const parts = (u.used || []).map(x => `${x.count} ${x.count === 1 ? (one[x.what] || x.what) : x.what}`);
+  const usedTxt = parts.length > 1 ? parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1] : (parts[0] || "");
+  const msg = !u.in_use
+    ? `Delete ${u.name}? Nothing uses it. This cannot be undone.`
+    : `${u.name} is used on ${usedTxt}. Those records stay exactly as they are; the supplier is removed from the list and can't be picked again. Delete it?`;
+  if (!await hrAsk(msg, "Delete", true)) return;
   try {
-    const r = await apiCall(`/store/suppliers/${id}/merge`, { method: "POST", body: JSON.stringify({ into: into.id }) });
-    showStatus("sup-status", "ok", `${r.removed} merged into ${r.kept}: ${r.total} record(s) moved`
-      + (r.filled && r.filled.length ? `, ${r.filled.join(", ")} filled in from it` : "") + "."
-      + (r.zoho_note ? ` ${r.zoho_note}.` : "") + " LPOs already issued still show the name they were printed with.");
+    await apiCall(`/store/suppliers/${id}`, { method: "DELETE" });
+    showStatus("sup-status", "ok", u.in_use ? `${u.name} removed from the supplier list - its past records are unchanged.` : `${u.name} deleted.`);
   } catch (e) { showStatus("sup-status", "err", errText(e)); }
   await supAfterChange();
-}
-
-// The supplier it is used by, and a searchable pick of the one to merge it into (likely duplicates first).
-function supMergeAsk(u) {
-  return new Promise(resolve => {
-    const others = (suppliers || []).filter(x => x.id !== u.id);
-    const likely = new Set((u.likely || []).map(x => x.id));
-    const wrap = document.createElement("div");
-    wrap.className = "hr-ask";
-    const used = u.used.map(x => `${x.count} ${x.what}`).join(", ");
-    wrap.innerHTML = `<div class="hr-ask-box" role="dialog" aria-modal="true" style="max-width:560px; width:calc(100vw - 32px);">
-        <div class="hr-ask-msg" style="white-space:normal;"><b></b> is used by <span class="sm-used"></span>, so it cannot be deleted. Merge it into the supplier to keep: everything moves to that one, its empty boxes (TRN, email, phone, address) are filled from this one, then this one is deleted. LPOs already issued keep the name they were printed with.</div>
-        <input type="text" class="sm-q" placeholder="Search the supplier to keep" autocomplete="off" style="width:100%; margin:10px 0 6px;">
-        <div class="sm-list" style="max-height:260px; overflow-y:auto; border:1px solid #E8DFD9; border-radius:6px;"></div>
-        <div class="hr-ask-btns">
-          <button class="btn btn-gray" data-a="no">Cancel</button>
-          <button class="btn btn-danger" data-a="yes" disabled>Merge into...</button>
-        </div></div>`;
-    wrap.querySelector(".hr-ask-msg b").textContent = u.name;
-    wrap.querySelector(".sm-used").textContent = used;
-    let pick = null;
-    const list = wrap.querySelector(".sm-list"), q = wrap.querySelector(".sm-q"), go = wrap.querySelector('[data-a="yes"]');
-    const draw = () => {
-      const t = q.value.trim().toLowerCase();
-      const rows = others.filter(x => !t || (x.name || "").toLowerCase().includes(t))
-        .sort((a, b) => (likely.has(b.id) - likely.has(a.id)) || (a.name || "").localeCompare(b.name || "")).slice(0, 60);
-      list.innerHTML = rows.length ? rows.map(x => `<label style="display:flex; gap:8px; align-items:center; padding:7px 10px; border-bottom:1px solid #F2ECE8; cursor:pointer;${pick && pick.id === x.id ? " background:#FBF3EE;" : ""}">
-          <input type="radio" name="sm-pick" value="${x.id}"${pick && pick.id === x.id ? " checked" : ""}>
-          <span style="flex:1;">${escapeHtml(x.name)}${x.trn ? ` <span style="color:#888; font-size:12px;">TRN ${escapeHtml(x.trn)}</span>` : ""}</span>
-          ${likely.has(x.id) ? `<span class="pill" style="background:#FDF0D5; color:#8A6100;">looks like the same supplier</span>` : ""}</label>`).join("")
-        : `<div style="padding:10px; color:#888; font-size:13px;">No supplier matches.</div>`;
-    };
-    const done = v => { wrap.remove(); document.removeEventListener("keydown", key); resolve(v); };
-    const key = ev => { if (ev.key === "Escape") done(null); };
-    list.addEventListener("change", ev => {
-      const id = Number(ev.target.value); pick = others.find(x => x.id === id) || null;
-      go.disabled = !pick; go.textContent = pick ? `Merge into ${pick.name}` : "Merge into..."; draw();
-    });
-    q.addEventListener("input", draw);
-    wrap.addEventListener("click", async ev => {
-      if (ev.target === wrap) return done(null);
-      const a = ev.target.dataset && ev.target.dataset.a;
-      if (a === "no") return done(null);
-      if (a === "yes" && pick) {
-        const ok = await hrAsk(`Merge ${u.name} into ${pick.name}? ${used} move to ${pick.name} and ${u.name} is deleted. This cannot be undone.`, "Merge", true);
-        if (ok) done(pick);
-      }
-    });
-    document.addEventListener("keydown", key);
-    document.body.appendChild(wrap);
-    draw(); q.focus();
-  });
 }
 
 function editSupplier(name) {

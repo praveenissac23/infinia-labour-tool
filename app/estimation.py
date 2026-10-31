@@ -1161,7 +1161,7 @@ def meta(db: Session = Depends(get_db), user: models.User = VIEW):
     perms = M.effective_permissions(user)
     projects = db.query(EstProject).order_by(EstProject.code).all()
     sites = db.query(models.Site).filter(models.Site.active == True).order_by(models.Site.code).all()   # noqa: E712
-    sups = db.query(models.Supplier).filter(models.Supplier.active == True).order_by(models.Supplier.name).all()   # noqa: E712
+    sups = M.supplier_on_list(db.query(models.Supplier)).order_by(models.Supplier.name).all()   # deleted ones are off the list
     users = db.query(models.User).filter(models.User.active == True).order_by(models.User.full_name).all() if hasattr(models.User, "active") else db.query(models.User).order_by(models.User.full_name).all()  # noqa: E712
     names = {s.name for s in db.query(EstSub.name).distinct()}
     # What a subcontractor was given last time, and the trade each kind of work usually is -

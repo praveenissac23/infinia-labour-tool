@@ -1,5 +1,5 @@
 // On screen (31 Oct 2026): Purchasing > Suppliers has Delete beside Edit - an unused supplier goes after a yes,
-// a used one offers "Merge into..." with the likely duplicate first; the LPO form has a Round off box beside
+// a used one is taken off the list after a yes that says its records stay as they are (no merge); the LPO form has a Round off box beside
 // Discount, its effect shown live, saved, re-opened on edit, printed.
 // Run: node tests/supplier_delete_round_off_ui_test.js   (serve_like_nginx.py on 8032, a copy of full.db)
 const { chromium } = require('playwright');
@@ -27,30 +27,25 @@ const B = process.env.BASE || 'http://127.0.0.1:8032', SH = process.env.SHOTS ||
   // unused: a plain yes / no
   await row('Typo Supplier Zzz').locator('button', { hasText: 'Delete' }).click(); await p.waitForTimeout(700);
   const ask = await p.locator('.hr-ask .hr-ask-msg').textContent();
-  ck('unused: "Delete Typo Supplier Zzz? This cannot be undone."', ask === 'Delete Typo Supplier Zzz? This cannot be undone.', ask);
+  ck('unused: "Delete Typo Supplier Zzz? Nothing uses it. This cannot be undone."', ask === 'Delete Typo Supplier Zzz? Nothing uses it. This cannot be undone.', ask);
   await p.screenshot({ path: SH + 'sup-del-2-ask.png' });
   await p.locator('.hr-ask [data-a="yes"]').click(); await p.waitForTimeout(1200);
   ck('deleted: gone from the list, said so', await row('Typo Supplier Zzz').count() === 0 && /deleted/.test(await p.locator('#sup-status').textContent()));
 
-  // used: merge into the duplicate
+  // used: a yes, then off the list - its records stay as they are (no merge any more)
   await row('Unimix Block Industry').locator('button', { hasText: 'Delete' }).click(); await p.waitForTimeout(900);
   const msg = await p.locator('.hr-ask .hr-ask-msg').first().textContent();
-  ck('used: says what uses it and that it cannot be deleted', /is used by .*\d+ LPOs.*cannot be deleted/.test(msg), msg);
-  const first = await p.locator('.hr-ask .sm-list label').first().textContent();
-  ck('the likely duplicate is offered first: Uni Mix Block Industry', /Uni Mix Block Industry/.test(first) && /looks like the same supplier/.test(first), first);
-  await p.fill('.hr-ask .sm-q', 'uni mix'); await p.waitForTimeout(300);
-  ck('the pick can be searched', await p.locator('.hr-ask .sm-list label').count() >= 1);
-  await p.screenshot({ path: SH + 'sup-del-3-merge.png' });
-  ck('Merge stays off until a supplier is picked', await p.locator('.hr-ask [data-a="yes"]').first().isDisabled());
-  await p.locator('.hr-ask .sm-list input[type=radio]').first().check(); await p.waitForTimeout(300);
-  ck('picked: the button names it', /Merge into Uni Mix Block Industry/.test(await p.locator('.hr-ask [data-a="yes"]').first().textContent()));
-  await p.locator('.hr-ask [data-a="yes"]').first().click(); await p.waitForTimeout(500);
-  ck('asked once more before anything moves', /cannot be undone/.test(await p.locator('.hr-ask').last().textContent()));
-  await p.locator('.hr-ask').last().locator('[data-a="yes"]').click(); await p.waitForTimeout(1500);
+  ck('used: "<name> is used on N LPOs... Those records stay exactly as they are; ... can\'t be picked again"',
+     /^Unimix Block Industry is used on 1 LPO, 1 material request and 1 material request line\. Those records stay exactly as they are; the supplier is removed from the list and can't be picked again\. Delete it\?$/.test(msg), msg);
+  ck('no merge pick any more', await p.locator('.hr-ask .sm-list').count() === 0);
+  await p.screenshot({ path: SH + 'sup-del-3-used.png' });
+  await p.locator('.hr-ask [data-a="yes"]').first().click(); await p.waitForTimeout(1500);
   const st = await p.locator('#sup-status').textContent();
-  ck('merged: said how many records moved', /Unimix Block Industry merged into Uni Mix Block Industry: \d+ record\(s\) moved/.test(st), st);
-  ck('the duplicate is off the list, the kept one is there', await row('Unimix Block Industry').count() === 0 && await row('Uni Mix Block Industry').count() === 1);
-  await p.screenshot({ path: SH + 'sup-del-4-merged.png' });
+  ck('said it is off the list and its past records are unchanged', /Unimix Block Industry removed from the supplier list - its past records are unchanged/.test(st), st);
+  ck('off the list, the other one still there', await row('Unimix Block Industry').count() === 0 && await row('Uni Mix Block Industry').count() === 1);
+  const opts = await p.evaluate(() => [...document.querySelectorAll('#lpo-supplier-list option')].map(o => o.value));
+  ck('and out of the LPO form\'s supplier suggestions', !opts.includes('Unimix Block Industry'), opts.length);
+  await p.screenshot({ path: SH + 'sup-del-4-removed.png' });
 
   // ---- LPO form: Round off --------------------------------------------------------------------------------------
   await p.evaluate(() => switchScreen('purchase')); await p.waitForTimeout(600);

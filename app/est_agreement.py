@@ -809,7 +809,7 @@ async def read_agreement(request: Request, db: Session = Depends(get_db), user=E
     if nm:
         import models
         key = squash(re.sub(r"\b(llc|l\.l\.c|fze|fzc|est|establishment|co|company|trading|contracting)\b", "", nm.lower()))
-        known = [(s.id, s.name) for s in db.query(models.Supplier).all()] + [(None, x[0]) for x in db.query(E.EstSub.name).distinct().all()]
+        known = [(s.id, s.name) for s in db.query(models.Supplier).filter(models.Supplier.deleted_at.is_(None)).all()] + [(None, x[0]) for x in db.query(E.EstSub.name).distinct().all()]
         for sid, n in known:
             k2 = squash(re.sub(r"\b(llc|l\.l\.c|fze|fzc|est|establishment|co|company|trading|contracting)\b", "", (n or "").lower()))
             k2 = re.sub(r"^ms", "", k2)

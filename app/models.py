@@ -327,6 +327,10 @@ class Supplier(Base):
     # vendor it is linked to - changes here are copied there.
     zoho_id = Column(String, default="")
     zoho_err = Column(String, default="")
+    # Deleted from Purchasing > Suppliers while records still use it (31 Oct 2026, owner: "no need to merge -
+    # whatever in the past is ok"): the row is kept so past LPOs, requests, reports, Zoho links and PDFs stay
+    # exactly as they are, but it is off the list and out of every supplier picker. Empty = on the list.
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

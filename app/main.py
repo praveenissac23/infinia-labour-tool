@@ -1498,7 +1498,8 @@ ACTION_GROUPS = {
                         "hire_return_cancelled", "stock_alert_email_failed"]),
     "purchasing": ("Purchasing", ["material_request", "material_request_status", "material_request_receive",
                                   "material_request_delete", "request_line_decision", "create_lpo", "edit_lpo",
-                                  "cancel_lpo", "import_suppliers"]),
+                                  "cancel_lpo", "import_suppliers", "delete_supplier", "restore_supplier",
+                                  "merge_supplier"]),
     "accounts": ("Accounts & cheques", ["petty_cash_add", "petty_cash_edit", "petty_cash_delete", "pdc_add", "pdc_edit",
                                         "pdc_delete", "pdc_clear", "invoice_add", "invoice_edit", "invoice_cancel", "invoice_convert",
                                         "invoice_terms", "project_payment", "register_entry", "register_wrong_password",
@@ -1535,7 +1536,9 @@ ACTION_LABELS = {
     "material_request": "Material request raised", "material_request_status": "Request status changed",
     "material_request_receive": "Delivery received", "material_request_delete": "Request deleted",
     "request_line_decision": "Request line decided", "create_lpo": "Purchase order raised", "edit_lpo": "Purchase order edited",
-    "cancel_lpo": "Purchase order cancelled", "zoho_pos": "LPO and Zoho", "import_suppliers": "Suppliers imported", "create_user": "Login created",
+    "cancel_lpo": "Purchase order cancelled", "zoho_pos": "LPO and Zoho", "import_suppliers": "Suppliers imported",
+    "delete_supplier": "Supplier deleted", "restore_supplier": "Supplier added back to the list",
+    "merge_supplier": "Supplier merged (earlier feature)", "create_user": "Login created",
     "user_created": "Login created", "delete_user": "Login deleted", "set_permissions": "Rights changed",
     "role_saved": "Role saved", "role_deleted": "Role deleted", "role_assigned": "Role assigned",
     "save_company_settings": "Purchase settings saved", "upload_signature": "Signature uploaded",
@@ -4924,7 +4927,7 @@ def _supplier_from_lpo(db, supplier, src, user=None):
         if v != cur:
             setattr(supplier, field, v)
             changed.append(label)
-    if not supplier.active:
+    if not supplier.active and not getattr(supplier, "deleted_at", None):   # a deleted one stays deleted
         supplier.active = True
         changed.append("back on the list")
     return changed
@@ -4969,8 +4972,7 @@ def list_suppliers(db: Session = Depends(get_db),
              "phone": s.phone or "", "notes": s.notes or "",
              "trn": s.trn or "", "email": s.email or "",
              "payment_terms": s.payment_terms or ""}
-            for s in db.query(models.Supplier).filter(models.Supplier.active == True)  # noqa: E712
-                       .order_by(models.Supplier.name).all()]
+            for s in supplier_on_list(db.query(models.Supplier)).order_by(models.Supplier.name).all()]
 
 
 # Everything a purchase order prints. A supplier saved from the master
@@ -4998,6 +5000,10 @@ def save_supplier(payload: schemas.SupplierIn, db: Session = Depends(get_db),
                    user: models.User = Depends(require_any_screen("store", "requests", "approvals"))):
     _check_supplier_complete(payload)
     sup = _find_or_create_supplier(db, payload.name, payload.contact_person, payload.phone)
+    if sup is not None and sup.deleted_at:
+        # added again by hand under the name of one deleted earlier: the same record comes back on the list
+        sup.deleted_at, sup.active = None, True
+        log_action(db, user.id, "restore_supplier", f"Supplier {sup.name} (id {sup.id}) added back to the supplier list")
     if payload.notes:
         sup.notes = payload.notes
     # The details a purchase order needs, editable from the supplier
@@ -5021,7 +5027,7 @@ def update_supplier(supplier_id: int, payload: schemas.SupplierIn,
     records silently becoming aliases of each other is how contact
     numbers get lost."""
     sup = db.query(models.Supplier).filter(models.Supplier.id == supplier_id).first()
-    if not sup:
+    if not sup or sup.deleted_at:
         raise HTTPException(status_code=404, detail="Supplier not found.")
     _check_supplier_complete(payload)
     name = _proper_name((payload.name or "").strip())
@@ -5061,9 +5067,12 @@ def _copy_supplier_to_zoho(db, sup):
         db.rollback()
 
 
-# ---- Delete a supplier, or merge a duplicate into the one kept (Purchasing > Suppliers) ---------------------
-# Every record that points at a supplier by its id: (label, model, column). A supplier used by any of them is
-# never deleted outright - it is merged into another one, which takes all of them over.
+# ---- Delete a supplier (Purchasing > Suppliers) ------------------------------------------------------------
+# Owner, 31 Oct 2026: "No need to merge. Whatever in past is ok. I should have a delete option against supplier.
+# I will correct it myself." A supplier nothing uses is deleted outright. One that is used is taken off the list
+# (deleted_at set, the row kept): every past LPO, request, return note, report, Zoho link and PDF stays exactly
+# as it is, and the supplier can no longer be picked.
+# Every record that points at a supplier by its id: (label, model, column).
 def _supplier_refs():
     import estimation as E
     return [("LPOs", models.PurchaseOrder, "supplier_id"),
@@ -5090,120 +5099,56 @@ def _supplier_usage(db, sup):
     return out
 
 
-def _dup_score(a, b):
-    """How alike two supplier names are, 0..1: the folded names compared with the spaces taken out, so
-    "Uni Mix Block Industry" and "Unimix Block Industry" come out the same."""
-    import difflib
-    ka, kb = _supplier_key(a).replace(" ", ""), _supplier_key(b).replace(" ", "")
-    if not ka or not kb:
-        return 0.0
-    if ka == kb:
-        return 1.0
-    return difflib.SequenceMatcher(None, ka, kb).ratio()
+def _refuse_deleted_supplier(sup):
+    """A new LPO (or an LPO switched to another supplier) cannot be made out to a supplier deleted from the list."""
+    if sup is not None and getattr(sup, "deleted_at", None):
+        raise HTTPException(status_code=400, detail=f"{sup.name} was deleted from the supplier list - "
+                                                    "pick the supplier from the list.")
+
+
+def supplier_on_list(q):
+    """A Supplier query narrowed to the suppliers on the list - not switched off, not deleted. Every supplier
+    picker, search and the list itself use it; past records look their supplier up by id and still find it."""
+    return q.filter(models.Supplier.active == True, models.Supplier.deleted_at.is_(None))  # noqa: E712
 
 
 @app.get("/store/suppliers/{supplier_id}/usage")
 def supplier_usage(supplier_id: int, db: Session = Depends(get_db),
-                   user: models.User = Depends(require_screen("approvals"))):
-    """Before a delete: what uses this supplier, and the suppliers it is most likely a duplicate of."""
+                   user: models.User = Depends(require_any_screen("store", "requests", "approvals"))):
+    """Before a delete: what uses this supplier (so the question can say what stays as it is)."""
     sup = db.get(models.Supplier, supplier_id)
-    if not sup:
+    if not sup or sup.deleted_at:
         raise HTTPException(status_code=404, detail="Supplier not found.")
     used = _supplier_usage(db, sup)
-    others = db.query(models.Supplier).filter(models.Supplier.id != sup.id, models.Supplier.active == True).all()  # noqa: E712
-    scored = sorted(((round(_dup_score(sup.name, s.name), 3), s) for s in others), key=lambda t: (-t[0], t[1].name.lower()))
     return {"id": sup.id, "name": sup.name, "zoho_id": sup.zoho_id or "",
             "used": [{"what": w, "count": n} for w, n in used], "in_use": bool(used),
-            "lpos": next((n for w, n in used if w == "LPOs"), 0),
-            "likely": [{"id": s.id, "name": s.name, "score": sc} for sc, s in scored if sc >= 0.8][:5]}
+            "lpos": next((n for w, n in used if w == "LPOs"), 0)}
 
 
 @app.delete("/store/suppliers/{supplier_id}")
 def delete_supplier(supplier_id: int, db: Session = Depends(get_db),
-                    user: models.User = Depends(require_screen("approvals"))):
-    """A supplier nothing uses (no LPO, request, return note, movement, subcontract or Zoho link): gone.
-    One that is used is refused - merge it into the supplier kept instead, so nothing is left pointing nowhere."""
+                    user: models.User = Depends(require_any_screen("store", "requests", "approvals"))):
+    """Same right as Edit. Nothing uses it: the row is deleted. Something uses it: it is taken off the list
+    and out of every picker (deleted_at), the row kept so everything already recorded against it - LPOs,
+    requests, return notes, hired stock, subcontracts, Zoho links, reports, PDFs - stays exactly the same."""
     sup = db.get(models.Supplier, supplier_id)
-    if not sup:
+    if not sup or sup.deleted_at:
         raise HTTPException(status_code=404, detail="Supplier not found.")
     used = _supplier_usage(db, sup)
-    if used:
-        raise HTTPException(status_code=400, detail=f"{sup.name} is used by " + ", ".join(f"{n} {w}" for w, n in used)
-                            + " - it cannot be deleted. Merge it into the supplier to keep instead.")
     name = sup.name
-    db.delete(sup)
-    db.commit()
-    log_action(db, user.id, "delete_supplier", f"Supplier {name} (id {supplier_id}) deleted - nothing used it")
-    return {"ok": True, "deleted": name}
-
-
-@app.post("/store/suppliers/{supplier_id}/merge")
-def merge_supplier(supplier_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
-                   user: models.User = Depends(require_screen("approvals"))):
-    """A duplicate merged into the supplier kept, in one go: every record pointing at the duplicate points at
-    the kept one, the kept one's empty boxes (TRN, email, phone, address ...) are filled from the duplicate,
-    and the duplicate is deleted. The supplier name printed on LPOs and return notes already issued stays as
-    it was printed. Nothing is sent to Zoho."""
-    try:
-        into = int((payload or {}).get("into") or 0)
-    except (TypeError, ValueError):
-        into = 0
-    gone = db.get(models.Supplier, supplier_id)
-    keep = db.get(models.Supplier, into) if into else None
-    if not gone:
-        raise HTTPException(status_code=404, detail="Supplier not found.")
-    if not keep:
-        raise HTTPException(status_code=400, detail="Pick the supplier to keep.")
-    if keep.id == gone.id:
-        raise HTTPException(status_code=400, detail="Pick a different supplier to merge into.")
-    moved, filled = [], []
-    gone_name, keep_name, keep_id = gone.name, keep.name, keep.id
-    try:
-        # LPOs already issued (the duplicate's and the kept one's) keep their vendor block exactly as printed: an
-        # empty box on the order prints from its supplier's record, which the merge changes - so what it printed
-        # is written onto the order first (a single space where it printed nothing, so it stays empty).
-        for o in db.query(models.PurchaseOrder).filter(models.PurchaseOrder.supplier_id.in_([gone.id, keep.id])).all():
-            owner = gone if o.supplier_id == gone.id else keep
-            for attr, src in (("supplier_email", "email"), ("supplier_contact", "contact_person"), ("supplier_phone", "phone")):
-                if not (getattr(o, attr, "") or ""):
-                    setattr(o, attr, getattr(owner, src, "") or " ")
-        for label, model, col in _supplier_refs():
-            n = (db.query(model).filter(getattr(model, col) == gone.id)
-                   .update({getattr(model, col): keep.id}, synchronize_session=False))
-            if n:
-                moved.append((label, n))
-        n = (db.query(models.ZohoLog).filter(models.ZohoLog.source == "supplier", models.ZohoLog.item_id == gone.id)
-               .update({models.ZohoLog.item_id: keep.id}, synchronize_session=False))
-        if n:
-            moved.append(("Zoho log entries", n))
-        for field, label in (("contact_person", "contact"), ("phone", "phone"), ("trn", "TRN"), ("email", "email"),
-                             ("address", "address"), ("payment_terms", "payment terms"), ("notes", "notes")):
-            if not (getattr(keep, field, "") or "").strip() and (getattr(gone, field, "") or "").strip():
-                setattr(keep, field, getattr(gone, field))
-                filled.append(label)
-        zoho_note = ""
-        gz, kz = (gone.zoho_id or "").strip(), (keep.zoho_id or "").strip()
-        if gz and not kz:
-            keep.zoho_id, keep.zoho_err = gz, ""
-            filled.append("Zoho vendor link")
-        elif gz and kz and gz != kz:
-            zoho_note = f"; Zoho: kept {keep_name}'s vendor {kz}, {gone_name}'s vendor {gz} is no longer linked (not changed in Zoho)"
-        db.flush()
-        db.delete(gone)
+    if not used:
+        db.delete(sup)
         db.commit()
-    except HTTPException:
-        db.rollback(); raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=400, detail=f"Nothing was changed - the merge could not be done ({str(e)[:150]}).")
-    total = sum(n for _, n in moved)
-    log_action(db, user.id, "merge_supplier",
-               f"Supplier {gone_name} (id {supplier_id}) merged into {keep_name} (id {keep_id}): {total} record(s) moved"
-               + (" (" + ", ".join(f"{n} {w}" for w, n in moved) + ")" if moved else "")
-               + (f"; filled from it: {', '.join(filled)}" if filled else "") + zoho_note
-               + "; names printed on issued LPOs left as printed")
-    return {"ok": True, "kept": keep_name, "removed": gone_name, "moved": [{"what": w, "count": n} for w, n in moved],
-            "total": total, "filled": filled, "zoho_note": zoho_note.lstrip("; ")}
+        log_action(db, user.id, "delete_supplier", f"Supplier {name} (id {supplier_id}) deleted - nothing used it")
+        return {"ok": True, "deleted": name, "kept_for_records": False}
+    sup.deleted_at = datetime.now(timezone.utc)
+    sup.active = False
+    db.commit()
+    log_action(db, user.id, "delete_supplier",
+               f"Supplier {name} (id {supplier_id}) removed from the supplier list - used by "
+               + ", ".join(f"{n} {w}" for w, n in used) + "; those records stay exactly as they are")
+    return {"ok": True, "deleted": name, "kept_for_records": True,
+            "used": [{"what": w, "count": n} for w, n in used]}
 
 
 @app.post("/store/request-lines/{line_id}/decision")
@@ -8058,7 +8003,7 @@ def export_suppliers(token: str, db: Session = Depends(get_db)):
         c.font = F(bold=True, color="FFFFFF"); c.fill = PF("solid", fgColor="7B1F1A")
         c.alignment = A(horizontal="center")
         ws.column_dimensions[chr(64 + i)].width = 30 if head in ("Name", "Address") else 18
-    for s in db.query(models.Supplier).order_by(models.Supplier.name).all():
+    for s in db.query(models.Supplier).filter(models.Supplier.deleted_at.is_(None)).order_by(models.Supplier.name).all():
         ws.append([s.name, s.contact_person or "", s.phone or "", s.trn or "",
                    s.email or "", s.payment_terms or "", s.notes or ""])
     ws.freeze_panes = "A2"
@@ -8129,7 +8074,7 @@ def _supplier_report_rows(db):
               "email": s.email or "-",
               "trn": s.trn or "-",
               "payment_terms": s.payment_terms or "-"}
-            for s in db.query(models.Supplier).order_by(models.Supplier.name).all()]
+            for s in db.query(models.Supplier).filter(models.Supplier.deleted_at.is_(None)).order_by(models.Supplier.name).all()]
 
 
 @app.get("/export/store/suppliers/report")
@@ -8226,6 +8171,8 @@ async def import_suppliers(file: UploadFile = File(...), db: Session = Depends(g
         if not sup:
             skipped += 1
             continue
+        if sup.deleted_at:                     # imported again by name: back on the list, the same record
+            sup.deleted_at, sup.active = None, True
         for field, key in (("trn", "trn"), ("email", "email"),
                            ("payment_terms", "payment terms"), ("notes", "notes"),
                            ("contact_person", "contact person"), ("phone", "phone")):
@@ -8750,17 +8697,13 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
     orders = q.order_by(models.PurchaseOrder.po_no.desc()).all()
 
     sup_q, site_q, mat_q = supplier.strip().lower(), site.strip().lower(), material.strip().lower()
-    # Totalled by supplier: by the supplier record the order belongs to (its name today), so a duplicate merged
-    # into another one counts under the one kept - the name printed on the order is left as printed.
-    sup_now = {i: n for i, n in db.query(models.Supplier.id, models.Supplier.name).all()}
-    sup_of = lambda o: sup_now.get(o.supplier_id) or o.supplier_name or ""
     wanted = [m for m in measures.split(",") if m in LPO_MEASURES] or ["total"]
     group_by = group_by if group_by in LPO_GROUPS else "order"
 
     rows = {}
     counted_orders = set()
     for o in orders:
-        if sup_q and sup_q not in (o.supplier_name or "").lower() and sup_q not in sup_of(o).lower():
+        if sup_q and sup_q not in (o.supplier_name or "").lower():
             continue
         if site_q and site_q not in (o.project_location or "").lower():
             continue
@@ -8781,7 +8724,7 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
             ro = ro_part.get(id(l), 0.0)
             key = {
                 "order": o.ref,
-                "supplier": sup_of(o) or "(not named)",
+                "supplier": o.supplier_name or "(not named)",
                 "site": o.project_location or "(none given)",
                 "material": l.description or "(none)",
                 "month": o.order_date.strftime("%B %Y") if o.order_date else "-",
@@ -8975,6 +8918,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     # supplier's record, so his own contact was overwritten with ours
     # and the vendor block named the wrong person.
     supplier = _find_or_create_supplier(db, payload.supplier_name)
+    _refuse_deleted_supplier(supplier)
     # Anything typed here that the supplier record did not have is kept,
     # so the next order for the same trader needs none of it.
     sup_changed = _supplier_from_lpo(db, supplier, payload)
@@ -9296,6 +9240,8 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     before = _lpo_snap(o)
 
     supplier = _find_or_create_supplier(db, payload.supplier_name)
+    if not (supplier is not None and supplier.id == o.supplier_id):    # the order's own supplier stays, deleted or not
+        _refuse_deleted_supplier(supplier)
     sup_changed = _supplier_from_lpo(db, supplier, payload)
 
     o.po_no, o.ref = _lpo_number(db, payload.ref, current=o)
