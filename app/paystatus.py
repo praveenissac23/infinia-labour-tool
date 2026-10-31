@@ -87,6 +87,8 @@ def office_to_date(db, r, l):
     if full or done >= days:
         return _r2(l.net_pay)
     earned = (l.fixed_salary or 0) * done / days
+    if M._om.exact_month(r.month_year):      # November 2026 on: down to the fils, as the sheet (office_money)
+        earned = M._om.pay_down(M._om.D(l.fixed_salary) * done / days)
     return _r2(earned - (l.deduction or 0) - (l.statutory or 0) + (l.other_allowance or 0) + (l.leave_salary or 0) + (l.air_ticket or 0))
 
 

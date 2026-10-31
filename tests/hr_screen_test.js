@@ -44,8 +44,9 @@ const CYCLE_MONTH = '2026-08';
   ck('it opens', await p.locator('#screen-hrpayroll').isVisible());
   ck('and is titled as the office side of the app',
      (await p.locator('#screen-title').textContent()).includes('HR'));
-  ck('eight registers, one open',
-     await p.locator('.hr-tab').count() === 8 &&
+  // Seven registers since the document tracker moved to its own screen (Expiry).
+  ck('seven registers, one open',
+     await p.locator('.hr-tab').count() === 7 &&
      await p.locator('.hr-pane:visible').count() === 1);
 
   // ---- Set the month up ------------------------------------------------
@@ -137,7 +138,7 @@ const CYCLE_MONTH = '2026-08';
      await line('BT002', 'fixed_salary') === 10000, await line('BT002', 'fixed_salary'));
   ck('the unpaid day is already deducted at the daily rate',
      await line('BT002', 'deduction') === 333, await line('BT002', 'deduction'));
-  ck('the note says which day',
+  ck('the note says which day (dd/mm/yyyy)',
      (await line('BT002', 'deduction_note')).includes('11/08/2026'),
      await line('BT002', 'deduction_note'));
   ck("the loan instalment is on the other man's row",
@@ -215,7 +216,8 @@ const CYCLE_MONTH = '2026-08';
   ck('a year served, so leave salary is offered at his gross',
      (await p.inputValue('#hr-vac-salary')) === '10,000', await p.inputValue('#hr-vac-salary'));
   ck('and the form says how many days', (await p.locator('#hr-leave-hint').textContent()).includes('3 calendar days'));
-  await p.fill('#hr-vac-ticket', '1200');
+  // Air ticket allowance is for labour only (company rule): the office form hides the box.
+  ck('no air ticket box for office staff', !(await p.locator('#hr-vac-ticket').isVisible()));
   await p.click('#hr-leave-save'); await p.waitForTimeout(1300);
   ck('the vacation shows as one line, 20/08/2026 - 22/08/2026',
      (await p.locator('#hr-leave-body').textContent()).includes('20/08/2026 - 22/08/2026'),
@@ -223,7 +225,7 @@ const CYCLE_MONTH = '2026-08';
   await p.evaluate("hrTab('payroll')"); await p.waitForTimeout(400);
   let L2 = await cycleLine('BT002');
   ck('the three days are deducted with the absent day: 1,332.00', L2.deduction === 1332, L2.deduction);
-  ck('and leave salary and ticket are on the sheet', L2.leave_salary === 10000 && L2.air_ticket === 1200,
+  ck('and leave salary is on the sheet, no ticket', L2.leave_salary === 10000 && L2.air_ticket === 0,
      [L2.leave_salary, L2.air_ticket]);
 
   // Changing the entry changes the pay.
@@ -254,7 +256,8 @@ const CYCLE_MONTH = '2026-08';
      await p.evaluate(() => HR_RUN.status) === 'approved',
      await p.evaluate(() => HR_RUN.status));
   ck('a locked sheet shows figures, not boxes to type in',
-     await p.evaluate(() => document.querySelectorAll('#hr-run-body input').length === 0));
+     // (the PAY / Paid tick boxes stay: they choose who is printed or marked paid, not figures)
+     await p.evaluate(() => document.querySelectorAll('#hr-run-body input.hr-cell, #hr-run-body textarea').length === 0));
   ck('Save and Approve give way to Reopen',
      await p.locator('#hr-reopen-btn').isVisible() &&
      !(await p.locator('#hr-approve-btn').isVisible()));
@@ -305,7 +308,7 @@ const CYCLE_MONTH = '2026-08';
      (await p.locator('#hr-loan-body').textContent()).includes('2,400.00'));
 
   // ---- Every register carries the four buttons -------------------------
-  const PANES = ['payroll', 'leave', 'items', 'loans', 'staff', 'increments', 'docs', 'gratuity'];
+  const PANES = ['payroll', 'leave', 'items', 'loans', 'staff', 'increments', 'gratuity'];
   for (const tab of PANES) {
     await p.evaluate(t => hrTab(t), tab);
     await p.waitForTimeout(700);
@@ -315,8 +318,7 @@ const CYCLE_MONTH = '2026-08';
     ck(`${tab} offers a PDF`, text.includes('Export PDF'));
     ck(`${tab} offers a spreadsheet`, text.includes('Export Excel'));
   }
-  ck('the salary sheet can be printed',
-     (await p.locator('#hrpane-payroll').textContent()).includes('Print'));
+  // Printing is done from the Preview (its own Print button), so what is printed is what was checked.
 
   // ---- The registers themselves load -----------------------------------
   await p.evaluate("hrTab('staff')"); await p.waitForTimeout(900);
@@ -333,8 +335,7 @@ const CYCLE_MONTH = '2026-08';
      await p.locator('#hr-inc-edit').isVisible() && (await p.inputValue('#hr-ie-basic')) === '2,000');
   await p.evaluate('hrIncReset()');
 
-  await p.evaluate("hrTab('docs')"); await p.waitForTimeout(900);
-  ck('the document tracker loads', await p.locator('#hr-doc-body').count() === 1);
+  // (The document tracker moved to its own Expiry screen - covered by its own tests.)
 
   // ---- The preview is the printed sheet --------------------------------
   const runId = await p.evaluate(() => HR_RUN.id);
@@ -351,6 +352,7 @@ const CYCLE_MONTH = '2026-08';
      body.includes('Net Pay'));
   ck('and the three foot totals',
      body.includes('WPS TOTAL'), body.slice(0, 200));
+  ck('the salary sheet can be printed from its preview', body.includes('window.print()'));
 
   // ---- It reads properly -----------------------------------------------
   // Net pay and the remark were pushed off the right-hand edge on a
@@ -363,8 +365,8 @@ const CYCLE_MONTH = '2026-08';
       const g = document.querySelector('#hr-run-card .grid-wrap'); return [g.scrollWidth, g.clientWidth]; });
     ck(`at ${w}px the whole salary sheet fits, Net Pay and Remark included`, sw <= cw + 1, `${sw} > ${cw}`);
     const clash = await p.evaluate(() => [...document.querySelectorAll('#hr-run-foot td, #hr-run-body td.num')]
-      .filter(td => td.scrollWidth > td.clientWidth + 1).length);
-    ck(`at ${w}px no figure spills out of its cell`, clash === 0, clash);
+      .filter(td => td.scrollWidth > td.clientWidth + 1).map(td => td.textContent.trim().slice(0, 40)));
+    ck(`at ${w}px no figure spills out of its cell`, clash.length === 0, JSON.stringify(clash));
   }
   await p.setViewportSize({ width: 1500, height: 1000 });
   await p.evaluate("hrTab('leave')"); await p.waitForTimeout(400);
@@ -375,23 +377,6 @@ const CYCLE_MONTH = '2026-08';
        .every(td => getComputedStyle(td).backgroundColor !== 'rgb(252, 252, 252)')));
   ck('dates read the way the statements write them',
      !/\d{4}-\d{2}-\d{2}/.test(await p.locator('#hrpane-leave tbody').textContent()));
-  await p.evaluate(async () => {
-    await apiCall('/employees/documents', { method: 'POST', body: JSON.stringify({
-      emp_no: 'BT001', kind: 'passport', expires_on: '2026-01-01' }) });
-    await apiCall('/employees/documents', { method: 'POST', body: JSON.stringify({
-      emp_no: 'BT001', kind: 'eid', expires_on: '2030-01-01' }) });
-  });
-  await p.evaluate("hrTab('docs')"); await p.waitForTimeout(1000);
-  ck('each person is one line on the document tracker',
-     await p.evaluate(() => [...document.querySelectorAll('#hr-doc-body tr')]
-       .filter(tr => tr.textContent.includes('TEST ONE')).length) === 1);
-  ck('an expired document is marked on its own date',
-     await p.evaluate(() => [...document.querySelectorAll('#hr-doc-body tr')]
-       .find(tr => tr.textContent.includes('TEST ONE')).querySelectorAll('td.hr-d-expired').length) >= 1);
-  await p.evaluate(() => { const tr = [...document.querySelectorAll('#hr-doc-body tr')]
-       .find(tr => tr.textContent.includes('TEST ONE')); tr.querySelector('td.hr-d-expired').click(); });
-  ck('clicking a date puts it in the form for renewal',
-     (await p.inputValue('#hr-doc-emp')) === 'BT001' && (await p.inputValue('#hr-doc-kind')) === 'passport');
 
   // ---- On a phone -------------------------------------------------------
   const ph = await b.newPage({ viewport: { width: 430, height: 900 } });
@@ -405,10 +390,6 @@ const CYCLE_MONTH = '2026-08';
   await ph.evaluate("switchScreen('hrpayroll')");
   await ph.waitForTimeout(1800);
   ck('the screen opens on a phone', await ph.locator('#screen-hrpayroll').isVisible());
-  await ph.evaluate("hrTab('docs')"); await ph.waitForTimeout(700);
-  ck('on a phone every labelled box is tall enough to type in',
-     await ph.evaluate(() => [...document.querySelectorAll('#hrpane-docs .hr-field input')]
-       .every(i => i.getBoundingClientRect().height >= 30)));
   await ph.evaluate("hrTab('payroll')"); await ph.waitForTimeout(300);
   ck('and the tabs wrap rather than run off the side',
      await ph.evaluate(() => {

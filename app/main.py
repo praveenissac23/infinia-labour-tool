@@ -38,6 +38,7 @@ import payroll_cycle as pcyc
 import reports as rp
 import export_web
 import inksave  # noqa: F401  - every PDF black on white (light heading rows, no solid colour)
+import office_money as _om   # office pay to the fils from November 2026 (owner, 31/10/2026)
 
 import push  # noqa: E402  (its tables are made with the rest)
 import watch  # noqa: E402  (its table too)
@@ -10635,7 +10636,13 @@ def gratuity_detail(e, db=None, upto=None):
     out["days"] = round(days, 2)
     if amount > cap:
         amount, out["capped"] = cap, True
-    out["amount"] = round(amount, 2)
+    # Exact - no rounded day rate - and cut DOWN to the fils (owner, 31/10/2026: never a fraction of a fils extra),
+    # for office and labour alike, so the Gratuity screens agree with the final settlement paper.
+    from fractions import Fraction as _Fr
+    _yx = _Fr(str(max(service - unpaid, 0))) / 365
+    _bx = _Fr(str(basic))
+    amount = min((min(_yx, 5) * GRATUITY_DAYS_FIRST_5 + max(_yx - 5, 0) * GRATUITY_DAYS_AFTER_5) * _bx * 12 / 365, _bx * 24)
+    out["amount"] = pcyc.fils_down(amount) + 0.0
     out["why"] = (f"{years:.2f} yrs x {'21' if years <= 5 else '21/30'} days = {days:.1f} days"
                   f" x {daily:,.2f} a day (basic {basic:,.0f} x 12 / 365)"
                   + (f", {unpaid:g} absent / leave day(s) not counted" if unpaid else "")
@@ -11678,7 +11685,11 @@ def _absence_deduction(db, e, month_year, gross=None):
     if not total:
         return 0.0, ""
     g = _gross(e) if gross is None else gross
-    amount = _day_rate(g) * total
+    if _om.exact_month(month_year):
+        # From November 2026: gross / 30 x the days, exact, then up to the fils (office_money).
+        amount = _om.take_up(_om.days_cost(g, total))
+    else:
+        amount = _day_rate(g) * total
     if total >= (b - a).days + 1:
         amount = g
     # "Sick 10/09/2026; Absent 15/09/2026 (half); Vacation 20/09/2026 - 24/09/2026" - each kind
@@ -11757,7 +11768,8 @@ def _entry_dict(db, rows, e, judged_by_id, month_bounds=None):
         "days": round(days, 2), "paid_days": round(paid, 2), "unpaid_days": round(unpaid, 2),
         "pay": pay, "why": "; ".join(sorted(whys)),
         "pay_rule": first.pay_rule or "auto",
-        "cost": round(_day_rate(gross) * unpaid, 2) if month_bounds else 0.0,
+        "cost": (_om.take_up(_om.days_cost(gross, unpaid)) if month_bounds and month_bounds[0] >= _om.EXACT_FROM
+                 else round(_day_rate(gross) * unpaid, 2)) if month_bounds else 0.0,
         "certificate": bool(first.certificate), "notes": first.notes or "",
         "leave_salary": round(ls.amount, 2) if ls else 0.0,
         "air_ticket": round(at.amount, 2) if at else 0.0,
@@ -12474,7 +12486,10 @@ def _part_month(e, a, b, gross):
         notes.append(f"left {e.terminated_on.strftime('%d/%m/%Y')}")
     if not out:
         return 0.0, ""
-    amount = min(float(int(gross / 30.0)) * out, gross)
+    if a >= _om.EXACT_FROM:
+        amount = min(_om.take_up(_om.days_cost(gross, out)), gross)     # exact, up to the fils (office_money)
+    else:
+        amount = min(float(int(gross / 30.0)) * out, gross)
     return round(amount, 2), f"{' / '.join(notes).capitalize()} - {out} day(s) not employed"
 
 
@@ -12589,8 +12604,11 @@ def _run_dict(r, db):
     today = _dubai_today()
     days = (b - a).days + 1
     done = 0 if today < a else days if today > b else (today - a).days + 1
+    exact = _om.exact_month(r.month_year)
     for l in lines:
-        earned = round(l["fixed_salary"] * done / days, 2)
+        # From November 2026 the salary earned so far is exact, down to the fils (office_money).
+        earned = (_om.pay_down(_om.D(l["fixed_salary"]) * done / days) if exact
+                  else round(l["fixed_salary"] * done / days, 2))
         l["earned_to_date"] = earned
         l["to_date"] = round(earned - l["deduction"] - l["statutory"] + l["other_allowance"]
                              + l["leave_salary"] + l["air_ticket"], 2)
@@ -12608,7 +12626,10 @@ def _run_dict(r, db):
     fm_on, fm_ids = _full_month_info(db, r.month_year, r.group or "staff")
     for l in lines:
         l["full_month"] = r.status == "approved" or (fm_on and (fm_ids is None or l["employee_id"] in fm_ids))
-        if l["full_month"]:
+        # The month over, or the row already paid in full (paid early: the whole month, or a leaver): what he
+        # has to date is the month's net pay - the same as paystatus.office_to_date - not the salary earned
+        # so far without the loan instalment.
+        if l["full_month"] or done >= days or (l["pay"] or {}).get("locked"):
             l["to_date"] = l["net_pay"]
     full = r.status == "approved" or (fm_on and fm_ids is None) or bool(lines and all(l["full_month"] for l in lines))
     progress = {"day": done, "days": days, "pct": round(done * 100 / days),

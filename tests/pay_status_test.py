@@ -14,7 +14,11 @@ FAIL = []
 def ck(l, ok, x=''):
     print(('PASS ' if ok else 'FAIL ') + l + ('' if ok else f'  [{str(x)[:500]}]'))
     if not ok: FAIL.append(l)
-T = main._dubai_today()
+# Mid-month, always: on the last days of a month the salary to date IS the month's net pay, so a regular payment
+# pays everything and leaves no balance - which is why this failed on 31/10/2026 (test date, not the app).
+_t = main._dubai_today()
+T = date(_t.year, _t.month, 15)
+main._dubai_today = lambda: T
 MONTH = T.strftime('%B %Y')                       # the office month now running
 db = database.SessionLocal()
 db.add(models.User(username='admin', hashed_password=auth.hash_password('p'), full_name='Praveen', role='admin'))

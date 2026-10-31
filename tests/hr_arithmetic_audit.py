@@ -108,7 +108,25 @@ def absence(emp_id, a, b, gross):
         return 0.0
     if unpaid >= (b - a).days + 1:
         return gross
-    return round(min(day_rate(gross) * unpaid, gross), 2)
+    return off_days(gross, unpaid, a)
+
+
+# From the November 2026 month (owner, 31/10/2026): days off cost gross x days / 30 exactly, UP to the fils;
+# salary earned so far is exact, DOWN to the fils. Earlier months: gross / 30 dropped to whole dirhams.
+from decimal import Decimal as _Dm, ROUND_FLOOR as _FLR, ROUND_CEILING as _CEIL
+FILS_FROM = date(2026, 11, 1)
+
+
+def off_days(gross, n, a):
+    if a >= FILS_FROM:
+        return min(float((_Dm(str(gross)) * _Dm(str(n)) / 30).quantize(_Dm('0.01'), rounding=_CEIL)), gross)
+    return round(min(day_rate(gross) * n, gross), 2)
+
+
+def earned(gross, done, days, a):
+    if a >= FILS_FROM:
+        return float((_Dm(str(gross)) * done / days).quantize(_Dm('0.01'), rounding=_FLR))
+    return round(gross * done / days, 2)
 
 
 def part_month(e, a, b, gross):
@@ -118,7 +136,7 @@ def part_month(e, a, b, gross):
         days += (j - a).days
     if t and a <= t < b:
         days += (b - t).days
-    return round(min(day_rate(gross) * days, gross), 2) if days else 0.0
+    return off_days(gross, days, a) if days else 0.0
 
 
 def items(emp_id, month_year):
@@ -137,9 +155,12 @@ def loan_state(emp_id, month_year=None, month_end=None):
     for l in q("select * from staff_loans where employee_id=?", emp_id):
         if month_end and str(l['taken_on']) > month_end.isoformat():
             continue                          # a loan taken after the month is not recovered in it
-        reps = q("select amount, month_year, source from loan_repayments where loan_id=?", l['id'])
+        reps = q("select amount, month_year, source, paid_on from loan_repayments where loan_id=?", l['id'])
+        # An approved month is seen as it stood then: its own payroll recovery and anything repaid after
+        # its month end are put back.
         paid = sum(r['amount'] for r in reps
-                   if not (month_year and r['source'] == 'payroll' and r['month_year'] == month_year))
+                   if not (month_year and r['source'] == 'payroll' and r['month_year'] == month_year)
+                   and not (month_year and month_end and str(r['paid_on'])[:10] > month_end.isoformat()))
         left = round((l['amount'] or 0) - paid, 2)
         if left <= 0.005:
             continue
@@ -151,9 +172,13 @@ def loan_state(emp_id, month_year=None, month_end=None):
     return round(due, 2), round(balance, 2)
 
 
-c = TestClient(main.app)
-H = {'Authorization': 'Bearer ' + c.post('/auth/login', data={'username': 'admin', 'password': os.environ.get('ADMIN_PW', 'p')})
-     .json()['access_token']}
+c = TestClient(main.app); c.__enter__()   # start-up: column migrations, as the server does
+_tok = None
+for _pw in [os.environ.get('ADMIN_PW')] + ['p', 'changeme123']:      # the test database's admin, whichever it is
+    _tok = _pw and c.post('/auth/login', data={'username': 'admin', 'password': _pw}).json().get('access_token')
+    if _tok:
+        break
+H = {'Authorization': 'Bearer ' + _tok}
 
 
 def dl(path, **params):
@@ -170,7 +195,9 @@ for co in c.get('/employees/companies', headers=H).json():
 staff = c.get('/employees/staff', headers=H).json()
 staff = staff.get('rows', staff)
 codes = [s['emp_no'] for s in staff if s.get('active', True)]
-entries = [
+# AUDIT_AS_IS=1: audit the data exactly as it is (e.g. a copy of the live registers) - no example entries added.
+AS_IS = os.environ.get('AUDIT_AS_IS') == '1'
+entries = [] if AS_IS else [
     {'emp_no': codes[0], 'kind': 'sick', 'from': f'{ym}-02'},
     {'emp_no': codes[0], 'kind': 'sick', 'from': f'{ym}-03'},          # second sick day: deducted
     {'emp_no': codes[1], 'kind': 'absent', 'from': f'{ym}-04', 'half': True},
@@ -183,7 +210,7 @@ for en in entries:
     r = c.post('/employees/leave', json=en, headers=H)
     if r.status_code != 200:
         print('   leave entry refused:', en, r.text[:120])
-for code, direction, cat, amt in ((codes[0], 'add', 'taxi', 312.5), (codes[1], 'deduct', 'iloe', 241.5),
+for code, direction, cat, amt in () if AS_IS else ((codes[0], 'add', 'taxi', 312.5), (codes[1], 'deduct', 'iloe', 241.5),
                                   (codes[2], 'add', 'leave_salary', 5000), (codes[6], 'deduct', 'fine', 99.99)):
     r = c.post('/employees/pay-items', json={'emp_no': code, 'month_year': THIS, 'direction': direction,
                                              'category': cat, 'amount': amt, 'notes': 'audit'}, headers=H)
@@ -201,7 +228,8 @@ for r in runs:
     days = (b - a).days + 1
     done = 0 if today < a else days if today > b else (today - a).days + 1
     # a month the office switched to 'full month' is paid in full, not as earned so far
-    running = r['status'] != 'approved' and done < days and not ((api.get('progress') or {}).get('full_month'))
+    # (a month not begun yet is not "running" either: its sheet shows the month's net pay)
+    running = r['status'] != 'approved' and 0 < done < days and not ((api.get('progress') or {}).get('full_month'))
     mine = {}
     for l in api['lines']:
         e = q("select * from employees where id=?", l['employee_id'])[0]
@@ -212,7 +240,9 @@ for r in runs:
         due, bal = loan_state(e['id'], r['month_year'] if r['status'] == 'approved' else None, b)
         loan = l['loan_deduction'] if l['loan_edited'] else due
         net = round(gross - absent - ded - loan + add, 2)
-        to_date = round(gross * done / days - absent + add - ded, 2) if running else net
+        # someone on the whole month (Pay full month now for the ticked) or already paid in full shows net pay
+        whole = l.get('full_month') or (l.get('pay') or {}).get('locked')
+        to_date = round(earned(gross, done, days, a) - absent + add - ded, 2) if running and not whole else net
         mine[l['emp_no']] = dict(gross=gross, absent=absent, adjust=round(add - ded, 2),
                                  loan=loan, net=net, to_date=to_date, balance=bal, held=l['held'])
         total_lines += 1
@@ -308,20 +338,36 @@ for e in q("select * from employees where staff=1 and active=1 order by emp_no")
         continue
     end = today
     service = (end - d(e['joined_on'])).days + 1
-    unpaid = 0.0
-    for l in q("select * from staff_leave where employee_id=? and on_date<=?", e['id'], end.isoformat()):
-        pass  # unpaid days are judged month by month below
-    ms = {}
-    for l in q("select * from staff_leave where employee_id=? and on_date<=? order by on_date, id",
-               e['id'], end.isoformat()):
-        ms.setdefault(str(l['on_date'])[:7], []).append(l)
-    for month, rows in ms.items():
+    # Days that are not service (judged day by day, a month at a time, so the paid sick day is counted the way
+    # the salary counted it): unpaid days, every vacation day (company rule, 11 Oct 2026), and the days typed on
+    # his file as not service before the app. Only days from joining to today count; a whole month away is its
+    # calendar days, not 30. (Was: the whole month's money / 30, future days included, past days left out.)
+    unpaid = float(e.get('past_not_service') or 0)
+    ms = sorted({str(l['on_date'])[:7] for l in q("select on_date from staff_leave where employee_id=? and on_date<=? and on_date>=?",
+                                                    e['id'], end.isoformat(), e['joined_on'])})
+    for month in ms:
         y, m = map(int, month.split('-'))
         a = date(y, m, 1)
         b = date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
-        gross = 30.0
-        amt = absence(e['id'], a, b, 30 * 30)  # day rate 30 -> unpaid days = amt / 30
-        unpaid += amt / 30.0
+        sick_left = 1.0
+        for r in q("select * from staff_leave where employee_id=? and on_date>=? and on_date<=? order by on_date, id",
+                   e['id'], a.isoformat(), b.isoformat()):
+            kind = r.get('kind') or ('sick' if 'sick' in (r.get('reason') or '').lower()
+                                     else ('paid_leave' if r.get('paid') else 'absent'))
+            por, rule = r.get('portion') or 1.0, r.get('pay_rule') or 'auto'
+            if rule == 'paid':
+                paid = por
+            elif rule == 'unpaid':
+                paid = 0.0
+            elif kind == 'sick':
+                paid = min(por, max(sick_left, 0.0)); sick_left -= paid
+            elif kind in PAID_KINDS:
+                paid = por
+            else:
+                paid = 0.0
+            if d(r['on_date']) > end or d(r['on_date']) < d(e['joined_on']):
+                continue
+            unpaid += por if kind == 'vacation' else por - paid
     years = max(service - unpaid, 0) / 365.0
     basic = e['basic_salary'] or 0
     daily = basic * 12 / 365.0
@@ -329,7 +375,11 @@ for e in q("select * from employees where staff=1 and active=1 order by emp_no")
         amount = 0.0
     else:
         days_ = min(years, 5) * 21 + max(years - 5, 0) * 30
-        amount = min(days_ * daily, basic * 24)
+        # exact, then down to the fils (owner's rule, 31/10/2026) - worked with Decimal here
+        from decimal import Decimal as _D, ROUND_FLOOR as _F
+        y = _D(str(max(service - unpaid, 0))) / 365
+        amount = float(min((min(y, _D(5)) * 21 + max(y - 5, _D(0)) * 30) * _D(str(basic)) * 12 / 365,
+                           _D(str(basic)) * 24).quantize(_D('0.01'), rounding=_F))
     ck(f"gratuity {e['emp_no']} {e['name']}: {amount:,.2f}", same(g['amount'], amount),
        (g['amount'], amount, years, unpaid))
 
