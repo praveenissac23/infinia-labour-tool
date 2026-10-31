@@ -155,6 +155,10 @@ function prevCpcForm(x) {
     if (!v.claimed_cum) throw new Error("Type the work done to date from the bill.");
     const d = Object.assign({}, v, { project_id: ST.pid, adv_auto: false, ret_auto: false });
     if (d.authority == null && f.authority) d.authority = f.authority;
+    // the bill's / certificate's own figures, as printed: the official amount due for this PC (match the certificate)
+    if (f.total != null) { d.cert_due = f.total; d.cert_src = "certificate document"; }
+    if (f.vat != null) d.cert_vat = f.vat;
+    if (f.previous != null) d.cert_prev = f.previous;
     ["submitted", "period_to", "certified_on"].forEach(k => { if (!d[k]) d[k] = null; });
     if (!d.seq) delete d.seq;
     await POST("/store/est/clientpcs", d);

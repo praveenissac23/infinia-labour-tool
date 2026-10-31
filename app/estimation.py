@@ -234,6 +234,15 @@ class EstClientPC(Base):
     status = Column(String, default="Draft")        # Draft | Submitted | Certified | Invoiced | Paid
     invoice_no = Column(String, default="")
     remarks = Column(Text, default="")
+    # What the consultant's certificate itself says (owner, 31 Oct 2026: "match the certificate"). The consultant
+    # rounds to whole dirhams and books previous payments his own way, so the app's exact working can be a few fils
+    # off his figure. When the certificate's figure is known it is the official one - kept here as printed - and the
+    # app's own working is only a cross-check. Empty (None) = not known: the worked-out figure is used.
+    cert_due = Column(Float, nullable=True)         # amount due for payment, VAT included, as printed
+    cert_net = Column(Float, nullable=True)         # this certificate before VAT, as printed
+    cert_vat = Column(Float, nullable=True)         # VAT, as printed
+    cert_prev = Column(Float, nullable=True)        # previous payments / certificates, as printed
+    cert_src = Column(String, default="")           # where it came from: certificate document / bill workbook / typed
     locals().update(_audit())
 
 
@@ -726,7 +735,8 @@ KINDS = {
     "clientpcs": (EstClientPC, "project_id", {"seq": I, "pc_type": S, "period_to": D, "submitted": D, "claimed_cum": F,
                                               "certified_cum": F, "certified_on": D, "mos_cum": F, "adv_amount": F,
                                               "adv_rec_cum": F, "adv_auto": B, "ret_cum": F, "ret_auto": B, "ret_rel_cum": F,
-                                              "other_cum": F, "authority": F, "status": S, "invoice_no": S, "remarks": S, "contract_id": I}),
+                                              "other_cum": F, "authority": F, "status": S, "invoice_no": S, "remarks": S, "contract_id": I,
+                                              "cert_due": F, "cert_net": F, "cert_vat": F, "cert_prev": F, "cert_src": S}),
     "variations": (EstVariation, "project_id", {"seq": I, "title": S, "kind": S, "source": S, "ref": S, "on_date": D,
                                                 "submitted": D, "submitted_amount": F, "approved_on": D, "approved_amount": F,
                                                 "revised_amount": F, "absorbed_amount": F, "pc_ref": S,
@@ -941,19 +951,148 @@ def _sub_bundle(db, s, vos, pcs, rules):
     return out
 
 
-def _client_bundle(p, pcs, ctrs=None):
-    calc = {}
+CERT_FIELDS = ("cert_due", "cert_net", "cert_vat", "cert_prev")
+_REM_NUM = r"(-?[\d,]+(?:\.\d+)?)"
+
+
+def _num(t):
+    try:
+        return float(str(t).replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _cert_from_remarks(remarks):
+    """A previous record saved before the certificate's figures had their own place keeps them in its remarks
+    ("... previous payments 1,172,735.24 · VAT 7,292.09 · amount due 153,134.00"): read back, never rewritten."""
+    t = remarks or ""
+    m = re.search(r"amount due " + _REM_NUM, t, re.I)
+    if not m:
+        return None
+    out = {"cert_due": _num(m.group(1))}
+    m = re.search(r"\bVAT " + _REM_NUM, t)
+    if m:
+        out["cert_vat"] = _num(m.group(1))
+    m = re.search(r"previous payments " + _REM_NUM, t, re.I)
+    if m:
+        out["cert_prev"] = _num(m.group(1))
+    return out if out["cert_due"] is not None else None
+
+
+def _cert_from_bill(c, bills):
+    """The bill workbook (Estimation > Bills) for the same contract that came to this certificate's work done to
+    date: its amount due, worked out as the consultant's own Excel does (his ROUND included)."""
+    work = c._work
+    for b in bills or []:
+        if (b.contract_id or None) != (c.contract_id or None) or not (b.total_due or 0) > 0:
+            continue
+        if abs((b.work_done or 0) - work) < 0.015:
+            return {"cert_due": r2(b.total_due)}
+    return None
+
+
+def certificate_figures(c, bills=None):
+    """(figures, source) the consultant's certificate gives for this PC - stored ones first, then the ones kept
+    in an older record's remarks, then a bill workbook with the same work done - or (None, "")."""
+    if c.cert_due is not None and (c.cert_due or 0) > 0:
+        return {k: getattr(c, k) for k in CERT_FIELDS}, (c.cert_src or "certificate")
+    r = _cert_from_remarks(c.remarks)
+    if r:
+        return r, "certificate (kept in the remarks)"
+    r = _cert_from_bill(c, bills)
+    if r:
+        return r, "bill workbook"
+    return None, ""
+
+
+def _signed(v):
+    return ("\u2212" if v < 0 else "+") + f"{abs(v):,.2f}"
+
+
+def _apply_certificate(d, c, vat_pct, bills=None):
+    """The certificate's own figures on a worked-out row: amount due, net and VAT as printed become the row's
+    figures; the app's working stays beside them (calc_*) and a short note says when the two differ."""
+    cf, src = certificate_figures(c, bills)
+    d["calc_payable"], d["calc_this"], d["calc_vat"], d["calc_prev_net"] = d.get("payable", 0.0), d.get("this", 0.0), d.get("vat", 0.0), d.get("prev_net", 0.0)
+    d["cert"], d["cert_note"], d["cert_prev_note"] = None, "", ""
+    if not cf:
+        return d
+    due = r2(cf["cert_due"])
+    vat = cf.get("cert_vat")
+    net = cf.get("cert_net")
+    if vat is None and net is not None:
+        vat = due - net
+    if vat is None:
+        vat = due * (vat_pct or 0) / (100.0 + (vat_pct or 0))
+    vat = r2(vat)
+    net = r2(due - vat) if net is None else r2(net)
+    d.update({"payable": due, "vat": vat, "this": net})
+    d["cert"] = {"due": due, "vat": vat, "net": net, "prev": cf.get("cert_prev"), "source": src,
+                 "stored": c.cert_due is not None and (c.cert_due or 0) > 0}
+    diff = r2(due - d["calc_payable"])
+    if abs(diff) >= 0.005:
+        whole = abs(due - round(due)) < 0.005
+        d["cert_note"] = (f"Certificate {due:,.2f} \u00b7 worked out {d['calc_payable']:,.2f} \u00b7 difference {_signed(diff)}"
+                          + (" (consultant rounds to whole dirhams)" if whole else ""))
+    prev = cf.get("cert_prev")
+    if prev is not None:
+        pdiff = r2(prev - d["calc_prev_net"])
+        if abs(pdiff) >= 0.005:
+            d["cert_prev_note"] = (f"Previous payments on the certificate {prev:,.2f} \u00b7 worked out {d['calc_prev_net']:,.2f}"
+                                   f" \u00b7 difference {_signed(pdiff)}")
+    return d
+
+
+def _client_bundle(p, pcs, ctrs=None, bills=None):
+    calc, vat_of = {}, {}
     if ctrs:
         for k in ctrs:
             calc.update({c["id"]: c for c in chain([x for x in pcs if x.contract_id == k.id], k.adv_pct, k.ret_pct, k.vat_pct, work_key="_work")})
+            vat_of[k.id] = k.vat_pct
     else:
         calc = {c["id"]: c for c in chain(pcs, p.adv_pct, p.ret_pct, p.vat_pct, work_key="_work")}
     out = []
     for c in sorted(pcs, key=lambda c: (c.seq or 0, c.id)):
         d = _plain(c, KINDS["clientpcs"][2])
+        for k in CERT_FIELDS:                     # not known stays empty (None), not 0
+            d[k] = None if getattr(c, k) is None else r2(getattr(c, k))
         d.update(calc.get(c.id, {}))
-        out.append(d)
+        out.append(_apply_certificate(d, c, vat_of.get(c.contract_id, p.vat_pct) if ctrs else p.vat_pct, bills))
     return out
+
+
+def _fill_certificate(db, row, data):
+    """On a save or edit: a certificate's figures typed or read from the document are kept as given; a PC saved
+    without them takes them from an older record's remarks or a bill workbook with the same work done, so the
+    record holds the certified figure from now on. Records are never rewritten except when saved."""
+    data = data or {}
+    blank = lambda v: v is None or str(v).strip() in ("", "None")
+    given = {k for k in CERT_FIELDS if k in data and not blank(data[k])}
+    for k in CERT_FIELDS:                         # a new row's empty boxes came in as 0: not known (None)
+        if k not in data and getattr(row, k) == 0:
+            setattr(row, k, None)
+    for k in CERT_FIELDS:                         # blank = not known (None), not 0
+        if (k in data and blank(data[k])) or (k not in given and getattr(row, k) is not None and not (row.cert_due or 0) > 0):
+            setattr(row, k, None)
+    if given:
+        if not (data.get("cert_src") or "").strip():
+            row.cert_src = "typed"
+        return
+    if (row.cert_src or "") == "bill workbook" or row.cert_due is None:
+        import est_bills
+        bills = db.query(est_bills.EstBill).filter(est_bills.EstBill.project_id == row.project_id).all()
+        r = _cert_from_remarks(row.remarks)
+        src = "certificate (kept in the remarks)"
+        if not r:
+            r, src = _cert_from_bill(row, bills), "bill workbook"
+        if r:
+            for k in CERT_FIELDS:
+                setattr(row, k, r.get(k))
+            row.cert_src = src
+        elif (row.cert_src or "") == "bill workbook":     # the work done changed: that bill is no longer this PC's
+            for k in CERT_FIELDS:
+                setattr(row, k, None)
+            row.cert_src = ""
 
 
 # The client certificate works on what was certified once the consultant has
@@ -1068,7 +1207,7 @@ def project_bundle(db, p, rules=None, pre=None):
     files = pre["files"].get(p.id, [])
     names = _uname(db, [f.created_by for f in files]) if files else {}
     ctrs = pre["ctrs"].get(p.id, [])
-    client = _client_bundle(p, cpcs, ctrs)
+    client = _client_bundle(p, cpcs, ctrs, pre["bills"].get(p.id, []))
     received, pp_contract = pre["received"].get(p.code, 0.0), pre["pp_contract"].get(p.code, 0.0)
     invoices = pre["invoices"].get(p.code, [])
     approved_vo = r2(sum(v.approved_amount or 0 for v in vars_ if v.status == "Approved"))
@@ -1593,6 +1732,7 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
     if kind in ("subpcs", "subvos"):
         _refill_sub(db, row.sub_id)
     if kind == "clientpcs":
+        _fill_certificate(db, row, data)
         _refill_client(db, row.project_id)
     if kind == "contracts":
         _sync_contracts(db, row.project_id)
@@ -1657,6 +1797,7 @@ def edit_row(kind: str, rid: int, data: dict = Body(...), db: Session = Depends(
         db.flush()
         _refill_sub(db, row.sub_id)
     elif kind == "clientpcs":
+        _fill_certificate(db, row, data)
         db.flush()
         _refill_client(db, row.project_id)
     elif kind == "projects":
@@ -2687,7 +2828,9 @@ def _export_rows(db, what, p, q, status, sub_id):
                  "Advance": c["adv_paid_cum"], "Adv. recovery": r2(-c["adv_rec_cum"]), "Retention": r2(-c["ret_cum"]),
                  "Ret. released": c["ret_rel_cum"], "Other ded.": r2(-c["other_cum"]), "Net to date": c["net_cum"],
                  "This certificate": c["this"], "VAT": c["vat"], "Total": c["payable"], "Certified on": _d(c["certified_on"]),
-                 "Invoice": c["invoice_no"], "Status": c["status"]}
+                 "Invoice": c["invoice_no"], "Status": c["status"],
+                 # the certificate's own figure is the Total; the app's working only as a cross-check when it differs
+                 "Cross-check": " / ".join(x for x in (c.get("cert_note"), c.get("cert_prev_note")) if x)}
             if keep(r, c["status"]):
                 rows.append(r)
     elif what == "variations":

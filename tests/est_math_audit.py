@@ -131,8 +131,14 @@ for p in db.query(E.EstProject).order_by(E.EstProject.code).all():
         cc = pc_chain(cpcs, p.adv_pct, p.ret_pct, p.vat_pct, work_of)
     for x in b["clientpcs"]:
         w = cc[x["id"]]
+        # once the consultant's certificate is known its figure is the official one (this / VAT / payable as
+        # printed); the app's own working - checked here - is kept beside it as calc_*
+        cert = x.get("cert")
         for k, kk in (("net_cum", "net"), ("this", "this"), ("vat", "vat"), ("payable", "payable")):
-            same(f"{tag} client PC{x['seq']:02d} {k}", x[k], w[kk])
+            same(f"{tag} client PC{x['seq']:02d} {k}", x[("calc_" + k) if cert and k != "net_cum" else k], w[kk])
+        if cert:
+            same(f"{tag} client PC{x['seq']:02d} payable = the certificate", x["payable"], cert["due"])
+            same(f"{tag} client PC{x['seq']:02d} this + VAT = the certificate", r2(x["this"] + x["vat"]), cert["due"])
     # ---- dashboard line = project page ----
     for k in ("contract", "revised", "client_certified", "committed", "sub_certified", "sub_paid", "sub_to_pay", "approved_vo", "margin"):
         same(f"{tag}: dashboard {k} = project page", drow[p.id][k], sm[k])

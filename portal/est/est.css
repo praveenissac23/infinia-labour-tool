@@ -745,3 +745,6 @@ table.sb .resub { margin-top: 4px; }
   .cfv-doc { position: static; max-height: 52vh; min-height: 220px; }
 }
 .prev-chk summary { cursor: pointer; list-style-position: inside; }
+/* Dashboard > client payment certificates: six columns in a half-width card - headings may wrap, cells a little tighter */
+.dcpc table.t th { white-space: normal; line-height: 1.25; }
+.dcpc table.t td, .dcpc table.t th { padding-left: 6px; padding-right: 6px; }

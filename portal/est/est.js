@@ -1414,7 +1414,7 @@ SECTIONS["client.cpc"] = el => {
       right: `<span class="small muted">Retention ${p.ret_pct}% · Advance ${p.adv_pct}% · VAT ${p.vat_pct}%</span>` }) +
     (list.length ? `<div class="tw"><table class="t"><thead><tr><th>PC</th><th>Period to</th><th>Submitted</th><th class="r">Claimed to date</th><th class="r">Certified to date</th><th class="r">Adv. recovery</th><th class="r">Retention</th><th class="r">Net to date</th><th class="r">This PC</th><th class="r">With VAT</th><th>Invoice</th><th>Status</th><th></th></tr></thead><tbody>
     ${list.map(c => `<tr class="rowc" data-cpc="${c.id}"><td><b>${pad(c.seq, 2)}</b>${c.pc_type !== "Interim" ? ` <span class="small muted">${esc(c.pc_type)}</span>` : ""}</td><td>${dt(c.period_to)}</td><td>${dt(c.submitted)}</td><td class="r">${money(c.claimed_cum)}</td><td class="r">${money(c.certified_cum)}</td>
-      <td class="r neg">${c.adv_rec_cum ? "-" + money(c.adv_rec_cum) : money(0)}</td><td class="r neg">${c.ret_cum ? "-" + money(c.ret_cum) : money(0)}</td><td class="r">${money(c.net_cum)}</td><td class="r"><b>${money(c.this, false)}</b></td><td class="r">${money(c.payable, false)}</td><td>${esc(c.invoice_no)}</td><td>${st(c.status)}</td>
+      <td class="r neg">${c.adv_rec_cum ? "-" + money(c.adv_rec_cum) : money(0)}</td><td class="r neg">${c.ret_cum ? "-" + money(c.ret_cum) : money(0)}</td><td class="r">${money(c.net_cum)}</td><td class="r"><b>${money(c.this, false)}</b></td><td class="r">${money(c.payable, false)}${cpcNote(c)}</td><td>${esc(c.invoice_no)}</td><td>${st(c.status)}</td>
       <td class="nowrap">${c.status === "Draft" ? `<button class="btn btn-ghost btn-sm" data-cst="${c.id}:Submitted">Submitted</button>` : c.status === "Submitted" ? `<button class="btn btn-ghost btn-sm" data-cert="${c.id}">Certified</button>` : c.status === "Certified" ? `<button class="btn btn-ghost btn-sm" data-cst="${c.id}:Invoiced">Invoiced</button>` : c.status === "Invoiced" ? `<button class="btn btn-ok btn-sm" data-cst="${c.id}:Paid">Paid</button>` : ""}</td></tr>`).join("")}
     </tbody></table></div>` : `<div class="empty">No certificates to the consultant yet.</div>`);
   bindTools(el, () => SECTIONS["client.cpc"](el));
@@ -1428,6 +1428,18 @@ SECTIONS["client.cpc"] = el => {
       { k: "certified_on", label: "Certified on", type: "date", value: today() }],
       async v => { await PATCH(`/store/est/clientpcs/${c.id}`, Object.assign(v, { status: "Certified" })); await reload(); toast("Certified"); }); });
 };
+// The certificate's own figure is the official one (owner, 31 Oct 2026: "match the certificate"); the app's working
+// shows under it, small, only when the two differ. compact (the dashboard's half-width list): just the working and
+// the difference, the full note on hover; otherwise the full note.
+function cpcNote(c, compact) {
+  const n = [c.cert_note, c.cert_prev_note].filter(Boolean);
+  if (!c.cert || !n.length) return "";
+  const full = n.join("\n") + `\nAs certified (${c.cert.source})`;
+  const d = r2((c.payable || 0) - (c.calc_payable || 0));
+  const txt = compact ? (c.cert_note ? `worked out ${money(c.calc_payable, false)} (${d < 0 ? "\u2212" : "+"}${money(Math.abs(d), false)})` : "previous payments differ")
+                      : n.map(esc).join("<br>");
+  return `<div class="small muted cpc-note" style="font-size:11px; line-height:1.3;${compact ? " white-space:nowrap;" : " white-space:normal; max-width:320px; margin-left:auto;"}" title="${esc(full)}">${compact ? esc(txt) : txt}</div>`;
+}
 function cpcForm(c) {
   const b = ST.b, p = b.project, edit = !!c; c = c || {};
   const last = b.clientpcs[b.clientpcs.length - 1];
@@ -1440,25 +1452,29 @@ function cpcForm(c) {
     { k: "mos_cum", label: "Material on site to date", type: "money", value: c.mos_cum || "" }, { k: "other_cum", label: "Other deductions to date", type: "money", value: c.other_cum || "" },
     { k: "ret_rel_cum", label: "Retention released to date", type: "money", value: c.ret_rel_cum || "" },
     { k: "authority", label: "Authority payments (this bill)", type: "money", value: c.authority || "", tip: "Authority fees paid for the client and claimed on this bill (DEWA, Municipality, Civil Defence ...) - this bill's amount, not to date." },
+    { k: "cert_due", label: "Amount due on the certificate (AED)", type: "money", value: c.cert_due ?? "", tip: "The amount due for payment (with VAT) exactly as printed on the consultant's certificate - it becomes this PC's official figure everywhere (the consultant rounds to whole dirhams). Empty: the app's own working is used. Filled by itself from the bill workbook or the certificate read in." },
+    { k: "cert_vat", label: "VAT on the certificate (AED)", type: "money", value: c.cert_vat ?? "", tip: "The VAT as printed on the certificate. Empty: taken from the amount due." },
+    { k: "cert_prev", label: "Previous payments on the certificate (AED)", type: "money", value: c.cert_prev ?? "", tip: "Previous payments / certificates as printed on the certificate (before VAT) - kept as printed, the app's own figure shows beside it as a check." },
     { k: "status", label: "Status", type: "select", options: ["Draft", "Submitted", "Certified", "Invoiced", "Paid"], value: c.status || "Draft" },
     { k: "invoice_no", label: "Our invoice no.", type: "combo", options: (b.invoices || []).filter(i => i.kind === "tax" && i.status !== "cancelled").map(i => i.number), value: c.invoice_no || "", ph: "Pick from Accounts > Invoices", tip: "The tax invoice from Accounts > Invoices for this certificate - pick it from the list." },
     { k: "remarks", label: "Remarks", type: "area", value: c.remarks || "" },
   ], async v => { if (edit) await PATCH(`/store/est/clientpcs/${c.id}`, v); else await POST("/store/est/clientpcs", Object.assign(v, { project_id: ST.pid })); await reload(); toast("Saved"); },
-  { wide: true, doc: { kind: "clientpc", what: "payment certificate (ours or the consultant's)", want: [["claimed_cum", "Work done to date"], ["period_to", "Period up to"]] }, del: edit ? async () => { await DEL(`/store/est/clientpcs/${c.id}`); reload(); } : null });
+  { wide: true, top: edit && (c.cert_note || c.cert_prev_note) ? `<div class="muted small" style="margin-bottom:8px">${[c.cert_note, c.cert_prev_note].filter(Boolean).map(esc).join("<br>")}</div>` : "",
+    doc: { kind: "clientpc", what: "payment certificate (ours or the consultant's)", want: [["claimed_cum", "Work done to date"], ["period_to", "Period up to"]] }, del: edit ? async () => { await DEL(`/store/est/clientpcs/${c.id}`); reload(); } : null });
 }
 
 // ---------------- Dashboard > client payment certificates ----------------
 // Every IPA, oldest first, in a box that scrolls (header stays); a column heading sorts it - again turns it round.
 const DASH_CPC = { k: "seq", dir: 1 };
-const DASH_CPC_COLS = [["seq", "IPA", ""], ["period_to", "Period to", ""], ["net_cum", "Certified to date", "r"], ["authority", "Authority payments", "r"], ["status", "Status", ""]];
+const DASH_CPC_COLS = [["seq", "IPA", ""], ["period_to", "Period to", ""], ["net_cum", "Certified to date", "r"], ["authority", "Authority payments", "r"], ["payable", "Amount due", "r"], ["status", "Status", ""]];
 function dashCpcTable() {
   const b = ST.b, { k, dir } = DASH_CPC;
   const val = c => k === "status" ? STEPS_CPC.indexOf(c.status) : k === "period_to" ? (c.period_to || "") : (Number(c[k]) || 0);
   const rows = b.clientpcs.slice().sort((x, y) => { const a = val(x), z = val(y); return (a < z ? -1 : a > z ? 1 : (x.seq - y.seq) || (x.id - y.id)) * dir; });
   const tot = r2(b.clientpcs.reduce((n, c) => n + (Number(c.authority) || 0), 0));
   return `<div class="tw dcpc"><table class="t"><thead><tr>${DASH_CPC_COLS.map(([ck, l, cl]) => `<th class="${cl} sortable" data-dsort="${ck}" title="Sort by ${l.toLowerCase()} - again to turn it round">${l}${ck === k ? (dir > 0 ? " &#9650;" : " &#9660;") : ""}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map(c => `<tr><td>${pad(c.seq, 2)}</td><td>${dt(c.period_to)}</td><td class="r">${money(c.net_cum)}</td><td class="r">${c.authority ? money(c.authority) : '<span class="muted">-</span>'}</td><td>${st(c.status)}</td></tr>`).join("")}</tbody>
-    <tfoot><tr class="tot"><td colspan="3">${b.clientpcs.length} IPA${b.clientpcs.length === 1 ? "" : "s"}</td><td class="r">${money(tot, false)}</td><td></td></tr></tfoot></table></div>`;
+    <tbody>${rows.map(c => `<tr><td>${pad(c.seq, 2)}</td><td>${dt(c.period_to)}</td><td class="r">${money(c.net_cum)}</td><td class="r">${c.authority ? money(c.authority) : '<span class="muted">-</span>'}</td><td class="r">${money(c.payable)}${cpcNote(c, true)}</td><td>${st(c.status)}</td></tr>`).join("")}</tbody>
+    <tfoot><tr class="tot"><td colspan="3">${b.clientpcs.length} IPA${b.clientpcs.length === 1 ? "" : "s"}</td><td class="r">${money(tot, false)}</td><td class="r">${money(r2(b.clientpcs.reduce((n, c) => n + (Number(c.payable) || 0), 0)), false)}</td><td></td></tr></tfoot></table></div>`;
 }
 const STEPS_CPC = ["Draft", "Submitted", "Certified", "Invoiced", "Paid"];
 document.addEventListener("click", e => {

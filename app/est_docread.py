@@ -374,6 +374,10 @@ def read_clientpc(lines, flat):
     f["certified_cum"] = amt("certifiedtodate", "totalcertified", "amountcertified", "grosscertified", "certifiedvalue", "certifiedamount")
     f["mos_cum"] = amt("materialonsite", "materialsonsite", "mos")
     f["ret_rel_cum"] = amt("retentionreleased", "releaseofretention", "retentionrelease")
+    # the certificate's own figures as printed - the official amount due for the PC (owner: "match the certificate")
+    f["cert_due"] = amt("totalamountdue", "amountdueforpayment", "netamountdue", "totalamountpayable", "amountpayable", "netamountpayable")
+    f["cert_vat"] = amt("vat5", "add5vat", "vat", "valueaddedtax")
+    f["cert_prev"] = amt("lesspreviouspayments", "previouspayments", "totalpreviouslycertified", "previouslycertified", "lesspreviouscertificates")
     f["period_to"] = _date_of(lines, "periodending", "periodupto", "periodto", "valuationdate", "upto", "periodending")
     if not f["period_to"]:
         m = re.search(r"(?:period|work\s+done)\s+(?:ending|up\s*to|until|till)[^\d]{0,15}(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]{3,9}\.?,?\s+\d{4}|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})", flat, re.I)
@@ -386,7 +390,9 @@ def read_clientpc(lines, flat):
     if f.get("certified_cum") is None and re.search(r"certif", flat, re.I) and f.get("claimed_cum") is not None:
         pass
     return _out(f, [("claimed_cum", "Work done to date - claimed"), ("certified_cum", "Certified to date"), ("period_to", "Period up to"),
-                    ("submitted", "Submitted on"), ("mos_cum", "Material on site"), ("ret_rel_cum", "Retention released")])
+                    ("submitted", "Submitted on"), ("mos_cum", "Material on site"), ("ret_rel_cum", "Retention released"),
+                    ("cert_due", "Amount due on the certificate"), ("cert_vat", "VAT on the certificate"),
+                    ("cert_prev", "Previous payments on the certificate")])
 
 
 AUTH = ["DEWA", "Dubai Municipality", "DM", "Civil Defence", "DCD", "RTA", "Etisalat", "du", "Trakhees", "Nakheel", "Emaar", "Sobha", "Meraas",
