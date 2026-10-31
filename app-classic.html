@@ -3260,11 +3260,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="pdc-form">
               <label class="hr-field"><span>Payee *</span><input type="text" id="pdc-payee" list="pdc-payee-list" placeholder="e.g. Desarch Scaffolding" onchange="pdcAuto('payee')"></label>
               <datalist id="pdc-payee-list"></datalist>
-              <label class="hr-field"><span>Cheque no</span><input type="text" id="pdc-no" placeholder="e.g. 000451" oninput="this.dataset.auto = ''"></label>
+              <label class="hr-field"><span>Cheque no</span><input type="text" id="pdc-no" placeholder="e.g. 000451" oninput="this.dataset.auto = ''" onfocus="if (this.dataset.auto) setTimeout(() => this.select(), 0)"></label>
               <label class="hr-field"><span>Bank</span><input type="text" id="pdc-bank" list="pdc-bank-list" placeholder="e.g. ADCB" onchange="pdcAuto('bank')"></label>
               <datalist id="pdc-bank-list"></datalist>
               <label class="hr-field"><span>Cheque date *</span><input type="date" id="pdc-date"></label>
-              <label class="hr-field"><span>Amount (AED) *</span><input type="text" inputmode="decimal" id="pdc-amt" placeholder="0.00" oninput="this.dataset.auto = ''"></label>
+              <label class="hr-field"><span>Amount (AED) *</span><input type="text" inputmode="decimal" id="pdc-amt" placeholder="0.00" oninput="this.dataset.auto = ''" onfocus="if (this.dataset.auto) setTimeout(() => this.select(), 0)"></label>
               <label class="hr-field"><span>For / notes</span><input type="text" id="pdc-notes" placeholder="e.g. Final 30% - 906"></label>
               <label class="hr-field" id="pdc-repeat-f"><span>Months</span><select id="pdc-repeat" class="hr-dd">
                 <option value="1">Just this one</option><option value="2">2 months</option><option value="3">3 months</option>
@@ -14035,9 +14035,9 @@ function renderLpoTotals() {
   const disc = parseFloat(document.getElementById("lpo-discount").value) || 0;
   const discount = sub * disc / 100;
   const net = sub - discount;
-  const vat = disc
-    ? net * 5 / 100
-    : lpoLines.reduce((s, l) => s + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0) * (parseFloat(l.tax_pct) || 0) / 100, 0);
+  // Each line's own VAT rate on its discounted amount - the rule the saved LPO, its PDF and Zoho use
+  // (a flat 5% of the net here put VAT on a 0% line, e.g. an authority fee, whenever there was a discount).
+  const vat = lpoLines.reduce((s, l) => s + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0) * (1 - disc / 100) * (parseFloat(l.tax_pct) || 0) / 100, 0);
   document.getElementById("lpo-totals").innerHTML = `
     <div>Sub Total <strong style="margin-left:10px;">${money(sub)}</strong></div>
     ${disc ? `<div>Discount (${disc}%) <strong style="margin-left:10px;">- ${money(discount)}</strong></div>` : ""}
@@ -20771,11 +20771,21 @@ function invDrawLines() {
     <td>${INV_LINES.length > 1 ? `<button type="button" class="x" title="Remove this line" onclick="INV_LINES.splice(${i}, 1); invDrawLines()">&times;</button>` : ""}</td></tr>`).join("");
   invTotals();
 }
+// A line's VAT exactly as the saved invoice, its PDF and Zoho work it out (invoice_pdf.totals: Python's
+// round(amount x rate / 100, 2)). Math.round(a x 5) / 100 rounded a half fils up - 85,538.10 x 5% showed 4,276.91
+// on this form while the invoice saved and printed 4,276.90 (total 89,815.00, as in Zoho).
+function invVat(a, pc) {
+  const x = a * pc / 100;
+  if (Number.isInteger(x * 8) && Number.isInteger(x * 1000) && Math.abs(x * 1000) % 10 === 5) {
+    const c = Math.floor(x * 100); return (c % 2 === 0 ? c : c + 1) / 100;     // an exact tie: to even, as Python does
+  }
+  return Number(x.toFixed(2));
+}
 function invAddLine() { INV_LINES.push({ description: "", amount: "", vat: 5 }); invDrawLines(); }
 function invTotals() {
   let sub = 0, vat = 0;
   INV_LINES.forEach((l, i) => {
-    const a = Math.round(accNum(l.amount) * 100) / 100, v = Math.round(a * (l.vat || 0)) / 100;
+    const a = Math.round(accNum(l.amount) * 100) / 100, v = invVat(a, l.vat || 0);
     sub += a; vat += v;
     const lv = document.getElementById("inv-lv-" + i), lt = document.getElementById("inv-lt-" + i);
     if (lv) lv.textContent = a ? accMoney(v) : ""; if (lt) lt.textContent = a ? accMoney(a + v) : "";
