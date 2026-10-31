@@ -72,6 +72,14 @@ def _columns(header_rows, rows_below, vrules=None):
     spans = sorted({(round(c.x0, 1), round(c.x1, 1)) for c in cells})
     # the leaf columns: heading cells that contain no other (narrower) heading cell
     leaves = [s for s in spans if not any(o != s and o[0] >= s[0] - 0.01 and o[1] <= s[1] + 0.01 for o in spans)]
+    # on a page a parent heading ("Amount (AED)") is printed narrower than its sub-headings together: a heading
+    # that overlaps a heading on a lower heading row is a parent, not a column
+    lower = {}
+    for i, r in enumerate(header_rows):
+        for c in r.cells:
+            lower.setdefault((round(c.x0, 1), round(c.x1, 1)), i)
+    leaves = [s for s in leaves if not any(lower.get(s, 0) < i and min(s[1], c.x1) - max(s[0], c.x0) > 0
+                                           for i, r in enumerate(header_rows) for c in r.cells if c.text.strip())]
     for x0, x1 in leaves:
         texts = [c.text for c in cells if min(c.x1, x1) - max(c.x0, x0) > 0.3 * min(x1 - x0, c.x1 - c.x0)]
         joined = " ".join(texts)
