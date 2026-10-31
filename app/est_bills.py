@@ -92,6 +92,16 @@ def create_tables(engine):
 
 _MODEL_CACHE = {}
 _LIST_CACHE = {}
+_RECHECK = {}          # format id -> the formula check again, once the format is worked out as Excel does
+
+
+def _check_short(fmt):
+    """Whether the check kept at upload found formulas that did not give Excel's figure."""
+    try:
+        chk = json.loads(fmt.checked or "{}")
+    except ValueError:
+        return False
+    return bool(chk.get("mismatch")) or (chk.get("formulas", 0) or 0) > (chk.get("same", 0) or 0)
 
 
 def _model(fmt):
@@ -110,6 +120,10 @@ def _model(fmt):
                 pass
         if hit.get("sheets") and (hit.get("map") or {}).get("v") != BE.MAP_VERSION:
             hit["map"] = BE.find_inputs(hit)             # a format read before the latest reading rules
+        if hit.get("sheets") and not hit.get("precision_shown") and _check_short(fmt):
+            chk = BE.recover_precision_shown(hit)        # kept without Excel's "precision as displayed": worked out as Excel does
+            if chk:
+                _RECHECK[fmt.id] = chk
         _MODEL_CACHE[fmt.id] = hit
         if len(_MODEL_CACHE) > 12:
             _MODEL_CACHE.pop(next(iter(_MODEL_CACHE)))
@@ -767,7 +781,10 @@ def _save_totals(b, model, values):
     f = _facts(model, values)
     b.total_due = f["total_due"]
     try:                                           # work done to date: every % line's amount x its Total % (as the Work done step adds it up)
-        b.work_done = round(sum((l["amount"] or 0) * (l["total"] or 0) for t in _progress(model, values, {}) for l in t["lines"]), 2)
+        each = lambda v: v
+        if model.get("precision_shown"):          # Excel's "precision as displayed": each line's value is kept to the cent the
+            each = lambda v: BE._round(v, 2, BE.ROUND_HALF_UP)   # sheet shows, so the total is the sheet's (35,471.07 not .06)
+        b.work_done = round(sum(each((l["amount"] or 0) * (l["total"] or 0)) for t in _progress(model, values, {}) for l in t["lines"]), 2)
     except Exception:
         pass
     b.label = f["label"] or b.label
@@ -801,7 +818,12 @@ def list_bills(project_id: int, db: Session = Depends(get_db), user: models.User
             m = {"sheets": [{"name": x["name"], "visible": x["visible"]} for x in full.get("sheets", [])],
                  "map": {k: full.get("map", {}).get(k) for k in ("progress", "bill_no", "issue_date", "total_due")},
                  "no": _fmt_no(full, f.filename)}
+            if f.id not in _RECHECK and full.get("sheets") and not full.get("precision_shown") and _check_short(f):
+                again = BE.recover_precision_shown(full)    # the count as the bills from it are now worked out
+                if again:
+                    _RECHECK[f.id] = again
             _LIST_CACHE[f.id] = m
+        chk = _RECHECK.get(f.id) or chk
         mp = m.get("map", {})
         no = m["no"] if "no" in m else _fmt_no(m, f.filename)      # m is the full workbook when it was in use already
         out_f.append({"id": f.id, "no": no or [0, ""], "contract_id": f.contract_id, "name": f.name or f.filename, "filename": f.filename, "on": f.created_at.date().isoformat() if f.created_at else "",
@@ -1080,7 +1102,9 @@ def delete_format(fid: int, db: Session = Depends(get_db), user: models.User = E
     db.query(EstBill).filter(EstBill.format_id == fid).delete(synchronize_session=False)
     db.delete(f)
     db.commit()
-    _MODEL_CACHE.pop(fid, None); _LIST_CACHE.pop(fid, None)
+    _MODEL_CACHE.pop(fid, None); _LIST_CACHE.pop(fid, None); _RECHECK.pop(fid, None)
+    for k in [k for k in _EXP_CACHE if k[0] == fid]:
+        _EXP_CACHE.pop(k, None)
     E.M.log_action(db, user.id, "est_bill_format_removed", f"bill format #{fid} {f.filename}")
     return {"ok": True}
 

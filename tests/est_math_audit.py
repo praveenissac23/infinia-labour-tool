@@ -66,9 +66,12 @@ for p in db.query(E.EstProject).order_by(E.EstProject.code).all():
         vos = db.query(E.EstSubVO).filter_by(sub_id=s.id).all()
         pcs = db.query(E.EstSubPC).filter_by(sub_id=s.id).all()
         revised = r2((s.value or 0) + sum(v.amount or 0 for v in vos) - (s.cancelled or 0))
-        same(f"{tag} {s.name}: revised value", sb["revised"], revised)
         items = {i.id: i for i in db.query(S.EstSubItem).filter_by(sub_id=s.id).all()}
         ch = pc_chain(pcs, s.adv_pct, s.ret_pct, s.vat_pct, lambda x: x.work_cum)
+        if not (s.value or 0) and ch:                 # re-measured (no fixed value): its value is what has been measured
+            lw = ch[max(ch, key=lambda k: (db.get(E.EstSubPC, k).seq or 0, k))]
+            revised = max(revised, r2(lw["work"] + lw["var"]))
+        same(f"{tag} {s.name}: revised value", sb["revised"], revised)
         for pc in sb["pcs"]:
             w = ch[pc["id"]]
             for k, kk in (("work", "work"), ("var", "var"), ("adv_paid_cum", "adv"), ("net_cum", "net"), ("prev_net", "prev"), ("this", "this"), ("vat", "vat"), ("payable", "payable")):
@@ -92,7 +95,8 @@ for p in db.query(E.EstProject).order_by(E.EstProject.code).all():
                 same(f"{tag} {s.name} PC{pc['seq']:02d} doc: payable", d["payable"], w["payable"])
                 same(f"{tag} {s.name} PC{pc['seq']:02d} doc: A + B - C + D + MOS - E = net", r2(d["A_total"] + sum(x[2] for x in d["B"]) - d["C_total"] + sum(x[2] for x in d["D"]) + d["mos"] - d["E_total"]), d["net"])
                 same(f"{tag} {s.name} PC{pc['seq']:02d} doc: E = previous certificates", d["E_total"], w["prev"])
-                same(f"{tag} {s.name} PC{pc['seq']:02d} doc: Appendix A total = A", r2(sum(bl["cum"] for bl in d["bills"])), d["A_total"])
+                if lines:                             # a certificate typed before the schedule has no lines to list
+                    same(f"{tag} {s.name} PC{pc['seq']:02d} doc: Appendix A total = A", r2(sum(bl["cum"] for bl in d["bills"])), d["A_total"])
         last = ch[max(ch, key=lambda k: (db.get(E.EstSubPC, k).seq or 0, k))] if ch else None
         s_cert = last["net"] if last else 0.0
         s_paid = r2(sum(x.paid_amount or 0 for x in pcs))
@@ -118,7 +122,13 @@ for p in db.query(E.EstProject).order_by(E.EstProject.code).all():
     same(f"{tag}: BOQ value (in scope)", sm["boq_value"], r2(sum((r2(x.amount) if x.amount is not None else r2((x.qty or 0) * (x.rate or 0))) for x in boq if not (x.scope or ""))))
     cpcs = db.query(E.EstClientPC).filter_by(project_id=p.id).all()
     work_of = lambda x: (x.certified_cum if (x.certified_cum or 0) > 0 or x.status in ("Certified", "Invoiced", "Paid") else x.claimed_cum) or 0
-    cc = pc_chain(cpcs, p.adv_pct, p.ret_pct, p.vat_pct, work_of)
+    ks = db.query(E.EstContract).filter_by(project_id=p.id).all()
+    cc = {}
+    if ks:                                            # each contract's certificates run on their own
+        for k in ks:
+            cc.update(pc_chain([x for x in cpcs if x.contract_id == k.id], k.adv_pct, k.ret_pct, k.vat_pct, work_of))
+    else:
+        cc = pc_chain(cpcs, p.adv_pct, p.ret_pct, p.vat_pct, work_of)
     for x in b["clientpcs"]:
         w = cc[x["id"]]
         for k, kk in (("net_cum", "net"), ("this", "this"), ("vat", "vat"), ("payable", "payable")):
@@ -137,7 +147,8 @@ same("dashboard: with Accounts amount", dash["kpi"]["with_accounts_amount"], wa)
 pay = c.get("/store/est/payqueue", headers=H)
 if pay.status_code == 200:
     rows = pay.json().get("rows", [])
-    same("Accounts payments list is not empty", 1 if rows else 0, 1)
+    with_acc = db.query(E.EstSubPC).filter(E.EstSubPC.status == "MD approved").count()
+    same("Accounts payments list is not empty (when a PC is with Accounts)", 1 if rows else 0, 1 if with_acc else 0)
     allpc = {pc["id"]: pc for p in db.query(E.EstProject).all() for sb in c.get(f"/store/est/projects/{p.id}", headers=H).json()["subs"] for pc in sb["pcs"]}
     for r in rows:
         if r.get("pc_id") in allpc:

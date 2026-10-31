@@ -535,6 +535,8 @@ def read_format(data: bytes, filename: str = ""):
     except KeyError:
         pass
     model["map"] = find_inputs(model)
+    if not model.get("precision_shown"):
+        recover_precision_shown(model)          # the setting lost on the way (an .xls converted elsewhere)
     return model
 
 
@@ -2161,7 +2163,7 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
             if item.filename in hf_rels:
                 raw = _legacy_hf(_hf_stamp(raw.decode("utf-8")), "rIdInfStampHF").encode("utf-8")
         elif item.filename == "xl/workbook.xml":
-            raw = _full_calc(raw)
+            raw = _full_calc(raw, bool(model.get("precision_shown")))
             if ins:
                 xml = raw.decode("utf-8")
                 for sh, r, n, _l, _o in ins:
@@ -2228,13 +2230,35 @@ def _drop_calcchain_refs(data):
     return out.getvalue()
 
 
-def _full_calc(raw):
+def _full_calc(raw, precision_shown=False):
+    """Excel works every formula out again on opening - and, for a workbook set to "precision as displayed", the same
+    way the bill was worked out here (a format kept without the setting would otherwise come back with other figures)."""
     s = raw.decode("utf-8")
+    drop = r'\s(fullCalcOnLoad|calcCompleted' + (r'|fullPrecision' if precision_shown else '') + r')="[^"]*"'
+    add = ' fullCalcOnLoad="1"' + (' fullPrecision="0"' if precision_shown else '')
     if "<calcPr" in s:
-        s = re.sub(r"<calcPr([^>]*?)/>", lambda m: "<calcPr" + re.sub(r'\s(fullCalcOnLoad|calcCompleted)="[^"]*"', "", m.group(1)) + ' fullCalcOnLoad="1"/>', s, count=1)
+        s = re.sub(r"<calcPr([^>]*?)/>", lambda m: "<calcPr" + re.sub(drop, "", m.group(1)) + add + "/>", s, count=1)
     else:
-        s = s.replace("</workbook>", '<calcPr fullCalcOnLoad="1"/></workbook>')
+        s = s.replace("</workbook>", f'<calcPr{add}/></workbook>')
     return s.encode("utf-8")
+
+
+def recover_precision_shown(model):
+    """A format kept before "precision as displayed" was carried over from an .xls (914 / 915 MEP IPA02, uploaded
+    30 Oct 2026) has lost the setting, so its figures here are not Excel's (35,471.055 for Excel's 35,471.07).
+    When every formula gives Excel's saved figure with the setting and some do not without it, the workbook was
+    set that way: the model is marked (in memory - nothing stored changes) and the new check is returned."""
+    if model.get("precision_shown") or not model.get("sheets"):
+        return None
+    now = check_against_excel(model)
+    if not now.get("mismatch"):
+        return None
+    model["precision_shown"] = True
+    chk = check_against_excel(model)
+    if chk.get("mismatch") or chk["same"] <= now["same"]:
+        model.pop("precision_shown", None)
+        return None
+    return chk
 
 
 CELL = re.compile(r'<c\b([^>]*?)(/>|>(.*?)</c>)', re.S)

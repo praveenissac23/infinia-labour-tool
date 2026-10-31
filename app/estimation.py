@@ -2633,12 +2633,13 @@ def _export_rows(db, what, p, q, status, sub_id):
             raise HTTPException(404, "That subcontract is not there any more.")
         title = f"{s['name']} - payment certificates"
         totals = ["This certificate", "VAT", "Payable", "Paid"]      # the rest are to-date figures: never added up
-        money = ["Invoice amount", "Work done to date", "Material on site", "Advance paid", "Adv. recovery", "Retention",
+        money = ["Invoice amount", "Work done to date", "Variations to date", "Material on site", "Advance paid", "Adv. recovery", "Retention",
                  "Other ded.", "Ret. released", "Net to date", "This certificate", "VAT", "Payable", "Paid"]
         for pc in s["pcs"]:
+            # every figure that makes up Net to date is on the line (variations too - the line adds up across)
             r = {"PC No.": f"PC No. {pc['seq']:02d}" + (f" ({pc['pc_type']})" if pc["pc_type"] != "Interim" else ""),
                  "Invoice": pc["inv_ref"], "Inv. date": _d(pc["inv_date"]), "Invoice amount": pc["inv_amount"],
-                 "Work done to date": pc["work_cum"], "Material on site": pc["mos_cum"], "Advance paid": pc["adv_paid_cum"],
+                 "Work done to date": pc["work_cum"], "Variations to date": pc["var"], "Material on site": pc["mos_cum"], "Advance paid": pc["adv_paid_cum"],
                  "Adv. recovery": r2(-pc["adv_rec_cum"]), "Retention": r2(-pc["ret_cum"]), "Other ded.": r2(-pc["other_cum"]),
                  "Ret. released": pc["ret_rel_cum"], "Net to date": pc["net_cum"], "This certificate": pc["this"],
                  "VAT": pc["vat"], "Payable": pc["payable"], "Paid": pc["paid_amount"], "Status": pc["status"],
