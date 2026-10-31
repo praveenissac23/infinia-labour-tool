@@ -40,7 +40,24 @@ r = c.get("/employees/labour/F-950/settlement?salary_amount=900&ticket=1200", he
 pay2 = {p["label"]: p["amount"] for p in d2["payables"]}
 ck("wage typed in replaces the card figure", any("labour card" in k and v == 900 for k, v in pay2.items()), pay2)
 ck("air ticket paid to a labourer", pay2.get("Air ticket") == 1200, pay2)
-ck("net adds up", d2["net"] == round(d2["total_pay"] - d2["total_ded"]), d2)
+# to the exact fils, cut down - never a whole dirham, never a fraction of a fil extra (owner, 31 Oct 2026)
+ck("net adds up, to the fils", abs(d2["net"] - (d2["total_pay"] - d2["total_ded"])) <= 0.011 and round(d2["net"] * 100, 6) == round(d2["net"] * 100)
+   and d2["net"] <= round(d2["total_pay"] - d2["total_ded"], 2) + 0.01, d2)
+from fractions import Fraction as Fr
+r = c.get("/employees/labour/F-950/settlement?leave_days=30&salary_amount=0&loan=0", headers=A); d3 = r.json()
+pay3 = {p["label"]: p["amount"] for p in d3["payables"]}
+ck("leave encashment exact: 30 days x 1,000 x 12 / 365 = 986.30 (the day's basic is not rounded to 32.88 first: 986.40)",
+   pay3.get("Leave encashment") == 986.30, pay3)
+want = Fr(str(d3["gratuity"]["amount"]))  # gratuity line as shown
+exact_g = (min(Fr(str(d3["service"]["counted"])) / 365, 5) * 21 + max(Fr(str(d3["service"]["counted"])) / 365 - 5, 0) * 30) * Fr(1000) * 12 / 365
+ck("gratuity exact, cut down to the fils", d3["gratuity"]["amount"] == float((exact_g * 100).__floor__()) / 100, (d3["gratuity"]["amount"], float(exact_g)))
+ex_net = exact_g + Fr(30) * Fr(1000) * 12 / 365 + Fr(str(pay3.get("Air ticket", 0) or 0))
+ck("net = the exact sum cut down to the fils", d3["net"] == float((ex_net * 100).__floor__()) / 100, (d3["net"], float(ex_net), d3["deductions"]))
+# a negative net stays to the fils: wage 0, a recovery of 1,000,000.505 - never rounded to a dirham, and cut DOWN
+r = c.get("/employees/labour/F-950/settlement?salary_amount=0&leave_days=0&other_ded=1000000.505&loan=0", headers=A); d4 = r.json()
+ex4 = exact_g - Fr("1000000.505")
+ck("a negative net is cut down to the fils (he owes, never let off part of a fil)",
+   d4["net"] == float((ex4 * 100).__floor__()) / 100, (d4["net"], float(ex4)))
 ck("Labour payroll login may open it", c.get("/employees/labour/F-950/settlement", headers=L).status_code == 200)
 ck("office-pay-only login may not", c.get("/employees/labour/F-950/settlement", headers=O).status_code == 403)
 ck("a staff code is not a labourer", c.get("/employees/labour/IC950/settlement", headers=A).status_code == 404)

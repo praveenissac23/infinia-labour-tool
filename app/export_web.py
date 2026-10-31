@@ -325,6 +325,26 @@ SUMMARY_FIELDS = [
 ]
 
 
+def card_rounding(summary):
+    """November 2026 on (payroll_cycle.exact_fils) the final salary is the exact sum cut DOWN to the fils once, while
+    each line on the card is shown to the nearest fil - so the lines as printed can differ from the final by a fil or
+    two. That difference is printed as its own "Rounding to the fils" line, so every card adds up exactly: Payable -
+    Absence + OT + BH + additions - deductions + rounding = Final. 0.0 for a closed cycle (whole-dirham rule, its
+    cards printed as they always were) or when the shown lines already add up."""
+    import payroll_cycle as _pc
+    if not _pc.exact_fils(getattr(summary, "month_year", "")):
+        return 0.0
+    shown = lambda v: float(f"{float(v or 0):.2f}")
+    lines = (shown(summary.total_salary_component) - shown(summary.deduction) + shown(summary.ot_amount)
+             + shown(summary.bh_amount) + shown(getattr(summary, "allowances", 0)) - shown(getattr(summary, "other_deduction", 0))
+             + sum(-shown(a.amount) if a.is_deduction else shown(a.amount) for a in summary.adjustments))
+    diff = round(_adjusted_final_salary(summary) - lines, 2)
+    return diff if abs(diff) >= 0.005 else 0.0
+
+
+ROUNDING_LABEL = "Rounding to the fils"
+
+
 def _adjusted_final_salary(summary):
     total = summary.final_salary
     for adj in summary.adjustments:
@@ -680,6 +700,8 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         ws.merge_cells(start_row=r, start_column=4, end_row=r, end_column=7)
         val = ws.cell(row=r, column=4, value=value)
         val.fill = PatternFill("solid", fgColor=GREY_FILL)
+        if label == "Salary (AED):":
+            val.number_format = "#,##0.00"          # the monthly rate to the fils, like every other amount
         val.font = Font(size=10.5)
         val.alignment = Alignment(horizontal="center", vertical="center")
         val.border = box_border
@@ -782,6 +804,19 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         vcell.border = box_border
         vcell.alignment = Alignment(horizontal="right", vertical="center", indent=1)
         vcell.font = Font(size=8.5, color="C0392B" if adj.is_deduction else "2E7D32")
+        r += 1
+    rnd = card_rounding(summary)
+    if rnd:
+        lbl = ws.cell(row=r, column=4, value=ROUNDING_LABEL)
+        lbl.font = Font(bold=True, size=11)
+        lbl.fill = PatternFill("solid", fgColor=GREY_FILL)
+        lbl.border = box_border
+        lbl.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        vcell = ws.cell(row=r, column=5, value=f"{'-' if rnd < 0 else '+'} AED {abs(rnd):,.2f}")
+        vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
+        vcell.border = box_border
+        vcell.alignment = Alignment(horizontal="right", vertical="center", indent=1)
+        vcell.font = Font(size=8.5)
         r += 1
     summary_end = r
 
@@ -935,7 +970,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
         [Paragraph("Employee No:", label_style), Paragraph(summary.emp_no or "", value_style)],
         [Paragraph("Trade:", label_style), Paragraph(summary.trade or "", value_style)],
         [Paragraph("Month & Year:", label_style), Paragraph(summary.month_year or "", value_style)],
-        [Paragraph("Salary (AED):", label_style), Paragraph(f"{summary.total_salary:,.0f}", value_style)],
+        [Paragraph("Salary (AED):", label_style), Paragraph(f"{summary.total_salary:,.2f}", value_style)],
     ]
     info_tbl = Table(info_rows, colWidths=[doc_width * 0.24, doc_width * 0.40])
     info_tbl.hAlign = "CENTER"
@@ -950,6 +985,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     elements.append(Spacer(1, 6))
 
     cell_style = ParagraphStyle("CardCell", parent=styles["Normal"], fontSize=9, leading=10.3, alignment=TA_CENTER)
+    term_style = ParagraphStyle("CardCellTerm", parent=cell_style, fontSize=7.5)
     head_style = ParagraphStyle("CardHead", parent=styles["Normal"], fontSize=9, leading=10.3,
                                  textColor=colors.white, fontName="Helvetica-Bold", alignment=TA_CENTER)
     headers = ["Date", "A.M", "P.M", "OT", "BH", "Site", "Engineer", "Comments"]
@@ -964,7 +1000,10 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
             vals = [label, row.am, row.pm, _num(row.ot), _num(row.bh), row.site, row.engineer, row.comments]
         else:
             vals = [label, "", "", "", "", "", "", ""]
-        data.append([Paragraph(v or "", cell_style) for v in vals])
+        # "Terminated" does not fit the A.M / P.M column at 9 pt: it wrapped onto two lines on every day after a
+        # leaver's last day, and his card ran onto a second page. Set a size smaller there, on one line.
+        data.append([Paragraph(v or "", term_style if i in (1, 2) and v == "Terminated" else cell_style)
+                     for i, v in enumerate(vals)])
         # Remember which status each half-day carried, so the A.M and
         # P.M cells can be tinted once the table is built.
         status_cells.append((len(data) - 1, vals[1], vals[2]))
@@ -1031,6 +1070,10 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
                                           textColor=colors.HexColor("#C0392B") if adj.is_deduction else colors.HexColor("#2E7D32"))
         summary_rows.append([Paragraph(adj.description, label_style),
                               Paragraph(f"{sign} AED {adj.amount:,.2f}", adj_value_style)])
+    rnd = card_rounding(summary)
+    if rnd:
+        summary_rows.append([Paragraph(ROUNDING_LABEL, label_style),
+                             Paragraph(f"{'-' if rnd < 0 else '+'} AED {abs(rnd):,.2f}", value_right_style)])
     summary_tbl = Table(summary_rows, colWidths=[doc_width * 0.20, doc_width * 0.16])
     summary_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), grey),
@@ -1102,7 +1145,7 @@ def salary_card_html(summary, rows):
     by_date = _rows_by_date(rows)
     info = [("Employee Name", summary.emp_name or ""), ("Employee No", summary.emp_no or ""),
             ("Trade", summary.trade or ""), ("Month & Year", summary.month_year or ""),
-            ("Salary (AED)", f"{summary.total_salary:,.0f}")]
+            ("Salary (AED)", f"{summary.total_salary:,.2f}")]
     info_html = "".join(f"<tr><th>{esc(k)}:</th><td>{cell(v)}</td></tr>" for k, v in info)
 
     body = []
@@ -1136,6 +1179,9 @@ def salary_card_html(summary, rows):
         money += (f"<tr><th>{esc(adj.description)}</th>"
                   f'<td style="color:{colour}">{"-" if adj.is_deduction else "+"} '
                   f"AED {adj.amount:,.2f}</td></tr>")
+    rnd = card_rounding(summary)
+    if rnd:
+        money += f"<tr><th>{ROUNDING_LABEL}</th><td>{'-' if rnd < 0 else '+'} AED {abs(rnd):,.2f}</td></tr>"
 
     final = _adjusted_final_salary(summary)
     final_bg = STATUS_FILLS["Absent"] if final < 0 else GREEN_FILL
@@ -1248,7 +1294,11 @@ def report_table_rows(items, column_keys):
         row = {}
         for key, label, kind in cols:
             v = _report_row_value(item, key)
-            if kind in ("money", "num"):
+            if kind == "money":
+                # to the fils, as shown - so the total at the foot is the sum of the figures above it
+                # (summing the unrounded amounts left it a fils or two off the column it totals)
+                row[label] = round(float(v or 0) + (1e-9 if (v or 0) >= 0 else -1e-9), 2)
+            elif kind == "num":
                 row[label] = float(v or 0)
             else:
                 row[label] = str(v) if v not in (None, "") else "-"

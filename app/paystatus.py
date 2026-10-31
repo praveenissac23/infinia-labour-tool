@@ -334,8 +334,16 @@ def labour_figures(db, card):
            ("Fridays / Sundays", f"{(card.friday_days or 0) + (card.sunday_days or 0):g}"), ("Holidays", f"{card.holiday_days or 0:g}"),
            ("Sick / medical", f"{(card.sick_days or 0) + (card.medical_days or 0):g}"), ("Leave", f"{card.leave_days or 0:g}"),
            ("Absent", f"{card.absent_days or 0:g}"), ("Overtime hours", f"{card.ot_hours or 0:g}")]
-    return {"period": f"{card.month_year} cycle", "earnings": [(k, _r2(v)) for k, v in earn],
-            "deductions": [(k, _r2(v)) for k, v in ded], "net": services.adjusted_final_salary(card), "attendance": att, "remarks": ""}
+    earn, ded, net = [(k, _r2(v)) for k, v in earn], [(k, _r2(v)) for k, v in ded], services.adjusted_final_salary(card)
+    # November 2026 on the salary is the exact sum cut down to the fils once (payroll_cycle.fils_down), while each
+    # line here is shown to the nearest fil - so the lines can come to a fil or two more than is paid. That
+    # difference is shown as its own line, so the slip adds up to exactly what is paid.
+    if M.pcyc.exact_fils(card.month_year):
+        diff = _r2(sum(v for _, v in earn) - sum(v for _, v in ded) - net)
+        if abs(diff) >= 0.005:
+            (ded if diff > 0 else earn).append(("Rounding to the fils", abs(diff)))
+    return {"period": f"{card.month_year} cycle", "earnings": earn,
+            "deductions": ded, "net": net, "attendance": att, "remarks": ""}
 
 
 # ---- marking paid ------------------------------------------------------------------------------------------------------
@@ -400,6 +408,16 @@ def work_out(db, kind, source_id, body, commit_side_effects=False):
         q.setdefault("last_day", (e.terminated_on or M._dubai_today()).isoformat())
         if kind == "labour":
             last = M._as_date(q["last_day"])
+            # The settlement pays the wages of the card for the cycle his last day falls in, and the payment is
+            # booked against the card it was taken from - they must be the same card. Taken from another cycle's
+            # card, that card was marked settled with its own wages never paid (October's 1,472 dropped, say), and
+            # the last cycle's card still showed its wages due although the settlement had paid them.
+            last_cycle = M.pcyc.cycle_bounds_for(last)[2] if last else month
+            if last_cycle != month:
+                raise HTTPException(status_code=400, detail=(
+                    f"The last working day {last:%d/%m/%Y} is in the {last_cycle} cycle - the final settlement pays "
+                    f"that cycle's wages, so mark it on his {last_cycle} card. Pay this {month} card as a regular "
+                    f"payment (or change the last working day)."))
             if commit_side_effects:
                 e.terminated_on = last
                 db.flush()
@@ -464,7 +482,8 @@ def _full_cycle_preview(db, e, month, card):
         d += timedelta(days=1)
     comp = de.recalculate_from_daily_rows(rows, card.total_salary or e.total_salary, e.basic_salary,
                                           card.allowances or 0.0, card.other_deduction or 0.0,
-                                          pay_type=(e.pay_type or "daily"), cycle_days=(ce - cs).days + 1)
+                                          pay_type=(e.pay_type or "daily"), cycle_days=(ce - cs).days + 1,
+                                          exact_fils=M.pcyc.exact_fils(month))
     return _r2(comp["final_salary"] + sum((-a.amount if a.is_deduction else a.amount) for a in card.adjustments))
 
 
@@ -768,7 +787,9 @@ def labour_rows(month_year: str, db: Session = Depends(get_db), user: models.Use
         adj = _r2(sum((-a.amount if a.is_deduction else a.amount) for a in c.adjustments))
         groups.setdefault(e.company or "Infinia", []).append({
             "source_id": c.id, "emp_no": e.emp_no, "name": e.name, "trade": e.trade or "", "active": bool(e.active),
-            "days": _r2((c.present_days or 0) + (c.friday_days or 0) + (c.sunday_days or 0) + (c.holiday_days or 0)),
+            # the paid days the card's salary is for - sick and medical days are paid too (data_engine)
+            "days": _r2((c.present_days or 0) + (c.friday_days or 0) + (c.sunday_days or 0) + (c.holiday_days or 0)
+                        + (c.sick_days or 0) + (c.medical_days or 0)),
             "ot": _r2(c.ot_hours), "salary": _r2(c.final_salary), "adjust": adj, "net": net, "pay_route": e.pay_route or "wps",
             "pay": st})
     db.commit()

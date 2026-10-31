@@ -128,7 +128,7 @@ button{{font:600 14px Arial;padding:9px 18px;border-radius:7px;border:1px solid 
     return await _default_http_handler(request, exc)
 
 
-def drop_leaver_cards(db, month_year=None):
+def drop_leaver_cards(db, month_year=None, closed_too=True):
     """A labourer who has left has no card in the cycles after he left.
 
     A card is taken away only when it pays nothing - no working, rest,
@@ -146,6 +146,8 @@ def drop_leaver_cards(db, month_year=None):
         e = emps.get(sm.emp_no)
         if e is not None and e.staff:
             continue
+        if not closed_too and not pcyc.exact_fils(sm.month_year):
+            continue                     # the start-up sweep leaves October 2026 and earlier exactly as they are
         try:
             cs, ce, _ = pcyc.cycle_bounds_for(datetime.strptime(f"25 {sm.month_year}", "%d %B %Y").date())
         except ValueError:
@@ -290,7 +292,7 @@ def seed_on_startup():
         _recalculate_all_summaries(db)
         _store_is_not_a_site(db)
         _household_into_office(db)
-        drop_leaver_cards(db)
+        drop_leaver_cards(db, closed_too=False)
         try:
             _suppliers_from_old_lpos(db)
         except Exception as e:  # never keep the app from starting over this
@@ -632,6 +634,11 @@ def _recalculate_all_summaries(db):
     for emp_no, month_year in pairs:
         emp = by_no.get(emp_no)
         if emp is None:
+            continue
+        # A cycle before the exact-fils rule (October 2026 and earlier) is closed and paid at the whole dirham:
+        # a restart never rewrites it (owner, 31 Oct 2026). Editing its attendance still works it out again, by
+        # the rule it was paid under.
+        if not pcyc.exact_fils(month_year):
             continue
         try:
             services.recalculate_summary(db, emp, month_year)
@@ -2646,7 +2653,7 @@ def summaries_by_site(month_year: str, date_from: str = None, date_to: str = Non
     range, uses every date on file for the cycle; with one, costs only
     that exact window.
     """
-    daily_rows = db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all()
+    daily_rows = _drop_after_leaving(db, db.query(models.DailyRow).filter(models.DailyRow.month_year == month_year).all())
     summaries2 = db.query(models.EmployeeSummary).filter(models.EmployeeSummary.month_year == month_year).all()
     filters = {}
     if date_from:
@@ -2744,6 +2751,18 @@ class _SitedDay:
         return getattr(self._r, k)
 
 
+def _drop_after_leaving(db, rows):
+    """Attendance rows without the days after each man's leaving date - the days his card counts as Terminated."""
+    if not rows:
+        return rows
+    left = dict(db.query(models.Employee.emp_no, models.Employee.terminated_on)
+                  .filter(models.Employee.terminated_on.isnot(None),
+                          models.Employee.emp_no.in_({r.emp_no for r in rows})).all())
+    if not left:
+        return rows
+    return [r for r in rows if not (left.get(r.emp_no) and r.full_date and r.full_date > left[r.emp_no])]
+
+
 def _with_day_sites(db, rows):
     """Every paid or unpaid day is charged to a site (Praveen, 28 Oct 2026: "even if it is leave or sick,
     I mark a site - so the cost can be allocated to the site itself").
@@ -2756,6 +2775,11 @@ def _with_day_sites(db, rows):
     from collections import defaultdict
     # a day after he left is not part of any site's cost, nor a "no site" line
     rows = [r for r in rows if not ((r.am or "") == "Terminated" and (r.pm or "") == "Terminated" and not (r.site or "").strip())]
+    # ... nor is a day after his leaving date that the sheet still shows worked (the leaving date entered after the
+    # attendance, a final settlement say): his card counts it as Terminated and pays nothing for it
+    # (services.card_rows), so the reports leave it out too - otherwise his card's pay was spread over days he
+    # was not paid for and the site costs added up to more than the cards.
+    rows = _drop_after_leaving(db, rows)
     blank = [r for r in rows if not (r.site or "").strip() and (r.am or "") != "Terminated"]
     if not blank:
         return rows
@@ -3056,6 +3080,28 @@ def get_live_card(emp_no: str, month_year: str, db: Session = Depends(get_db),
     }
 
 
+def _carry_if_paid(db, summary):
+    """An addition or deduction changed on a labour card already paid in full: the difference goes to next
+    cycle's card straight away - the same as a change of attendance does (services.recalculate_summary) -
+    rather than only once someone opened the Paid status card."""
+    if summary is None:
+        return
+    try:
+        e = db.get(models.Employee, summary.employee_id) or \
+            db.query(models.Employee).filter(models.Employee.emp_no == summary.emp_no).first()
+        if e is None or e.staff:
+            return
+        if db.query(models.PayPayment.id).filter(models.PayPayment.kind == "labour", models.PayPayment.employee_id == e.id,
+                                                 models.PayPayment.month_year == summary.month_year,
+                                                 models.PayPayment.void == False).first():  # noqa: E712
+            import paystatus as _ps
+            db.expire(summary)
+            _ps.labour_carry(db, e, summary.month_year)
+            db.commit()
+    except Exception as ex:
+        db.rollback(); print("labour carry:", ex)
+
+
 @app.post("/summaries/{summary_id}/adjustments", response_model=schemas.SalaryAdjustmentOut)
 def add_adjustment(summary_id: int, adj: schemas.SalaryAdjustmentIn, db: Session = Depends(get_db),
                     user: models.User = Depends(require_screen("adjustments"))):
@@ -3066,6 +3112,7 @@ def add_adjustment(summary_id: int, adj: schemas.SalaryAdjustmentIn, db: Session
     db.add(new_adj)
     db.commit()
     db.refresh(new_adj)
+    _carry_if_paid(db, summary)
     log_action(db, user.id, "add_adjustment",
                f"{summary.emp_no} - {adj.description}: {'-' if adj.is_deduction else '+'}{adj.amount}")
     return new_adj
@@ -3090,6 +3137,7 @@ def edit_adjustment(summary_id: int, adjustment_id: int, adj: schemas.SalaryAdju
     row.description, row.amount, row.is_deduction = desc, round(float(adj.amount), 2), bool(adj.is_deduction)
     db.commit()
     db.refresh(row)
+    _carry_if_paid(db, summary)
     log_action(db, user.id, "edit_adjustment",
                f"{summary.emp_no if summary else ''} - {before} -> {row.description}: {sign(row.is_deduction)}{row.amount:.2f}")
     return row
@@ -3111,6 +3159,7 @@ def remove_adjustment(summary_id: int, adjustment_id: int, db: Session = Depends
     detail = f"{summary.emp_no} - {adj.description}" if summary else adj.description
     db.delete(adj)
     db.commit()
+    _carry_if_paid(db, summary)
     log_action(db, user.id, "remove_adjustment", detail)
     return {"ok": True}
 
@@ -3310,13 +3359,13 @@ def error_check(month_year: str, db: Session = Depends(get_db),
             adj = sum((-a.amount if a.is_deduction else a.amount) for a in s.adjustments)
             out.append({
                 "emp_no": s.emp_no, "name": name_now.get(s.emp_no) or s.emp_name, "date": "-", "site": "-",
-                "issue": (f"Final salary AED {take_home:,.0f} is {pct:.0f}% of the "
-                          f"AED {so_far:,.0f} for the {entered} day(s) entered so far "
-                          f"- below the 40% minimum (AED {floor:,.0f})."
+                "issue": (f"Final salary AED {take_home:,.2f} is {pct:.0f}% of the "
+                          f"AED {so_far:,.2f} for the {entered} day(s) entered so far "
+                          f"- below the 40% minimum (AED {floor:,.2f})."
                           if partial else
-                          f"Final salary AED {take_home:,.0f} is {pct:.0f}% of the "
-                          f"AED {total:,.0f} total - below the 40% minimum "
-                          f"(AED {floor:,.0f})."),
+                          f"Final salary AED {take_home:,.2f} is {pct:.0f}% of the "
+                          f"AED {total:,.2f} total - below the 40% minimum "
+                          f"(AED {floor:,.2f})."),
                 "kind": "Pay below 40%",
                 "severity": "legal",
                 "detail": {
@@ -3329,7 +3378,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
                     "Absence deduction": f"AED {s.deduction:,.2f}",
                     "Adjustments": (f"AED {adj:,.2f}" if s.adjustments else "none"),
                     "What the adjustments were":
-                        ", ".join(f"{a.description} {'-' if a.is_deduction else '+'}{a.amount:,.0f}"
+                        ", ".join(f"{a.description} {'-' if a.is_deduction else '+'}{a.amount:,.2f}"
                                   for a in s.adjustments) or "-",
                 },
             })
@@ -3398,7 +3447,7 @@ def export_excel(month_year: str, token: str, emp_no: str = "", emp_nos: str = "
         rows = db.query(models.DailyRow).filter(
             and_(models.DailyRow.emp_no == s.emp_no, models.DailyRow.month_year == month_year)
         ).all()
-        pairs.append((s, rows))
+        pairs.append((s, _card_grid_rows(db, s, month_year, rows)))
     buf = export_web.build_combined_excel(pairs)
     safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
     fname = (f"Infinia_Card_{summaries[0].emp_no}_{safe_name}.xlsx" if emp_no.strip()
@@ -3430,7 +3479,7 @@ def export_pdf(month_year: str, token: str, emp_no: str = "", emp_nos: str = "",
         rows = db.query(models.DailyRow).filter(
             and_(models.DailyRow.emp_no == s.emp_no, models.DailyRow.month_year == month_year)
         ).all()
-        pairs.append((s, rows))
+        pairs.append((s, _card_grid_rows(db, s, month_year, rows)))
     buf = export_web.build_combined_pdf(pairs)
     safe_name = "".join(c if c.isalnum() else "_" for c in month_year)
     fname = (f"Infinia_Card_{summaries[0].emp_no}_{safe_name}.pdf" if emp_no.strip()
@@ -3470,7 +3519,7 @@ def view_salary_cards(month_year: str, token: str, emp_no: str = "", emp_nos: st
         rows = db.query(models.DailyRow).filter(
             and_(models.DailyRow.emp_no == sm.emp_no,
                  models.DailyRow.month_year == month_year)).all()
-        cards.append(export_web.salary_card_html(sm, rows))
+        cards.append(export_web.salary_card_html(sm, _card_grid_rows(db, sm, month_year, rows)))
     who = (f"{summaries[0].emp_name} ({summaries[0].emp_no})" if emp_no.strip()
            else f"{len(summaries)} worker(s)")
     base = f"/export/{quote(month_year, safe='')}"
@@ -3558,6 +3607,20 @@ def _cards_page(title, subtitle, cards, pdf_url, excel_url):
 </body></html>""")
 
 
+def _card_grid_rows(db, sm, month_year, rows):
+    """The days printed on a salary card (Excel, PDF, preview) are the days the card is worked out on
+    (services.card_rows): a day after a leaver's last day reads Terminated, and a cycle paid early shows its
+    days still to come as paid in advance - so the grid always adds up to the totals printed under it."""
+    e = db.query(models.Employee).filter(models.Employee.emp_no == sm.emp_no).first()
+    if e is None or e.staff:
+        return rows
+    try:
+        return services.card_rows(db, e, month_year, rows)
+    except Exception as ex:                      # the print must never fail over this
+        print("card rows:", ex)
+        return rows
+
+
 def _pick_cards(db, summaries, month_year, emp_nos):
     """Labour salary cards: only the workers ticked under PAY on the Paid status card (emp_nos = '1001,1002').
     A worker already paid who was ticked again carries "(Already paid)" after his name on the printed card.
@@ -3597,7 +3660,7 @@ def _get_summary_pairs(month_year: str, db: Session, emp_nos: str = ""):
         rows = db.query(models.DailyRow).filter(
             and_(models.DailyRow.emp_no == s.emp_no, models.DailyRow.month_year == month_year)
         ).all()
-        pairs.append((s, rows))
+        pairs.append((s, _card_grid_rows(db, s, month_year, rows)))
     return pairs
 
 

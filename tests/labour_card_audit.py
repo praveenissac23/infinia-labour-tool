@@ -43,14 +43,26 @@ for (sid, no, label, total, pres, absn, sun, hol, term, ot, bh, final, allow, od
         comp = min((paid + off) * day, rate_total); ded = min(off * day, comp)
     else:
         comp = paid * day; ded = day * cnt.get("absent", 0)
-    want = rnd(comp + day / 8 * o + day / 8 * b + (allow or 0) - ded - (odd or 0))
+    if e >= date(2026, 11, 25):
+        # November 2026 on: exact, cut DOWN to the fils (owner, 31 Oct 2026) - worked out in exact fractions
+        from fractions import Fraction as Fr
+        fx = lambda v: Fr(str(float(v or 0)))
+        R = fx(rate_total); D = R / 30; P = sum(fx(v) for k, v in cnt.items() if k in PAID)
+        if emp[no][1] == "fixed":
+            OFF = fx(cnt.get("absent", 0)) + fx(cnt.get("leave", 0)); C = min((P + OFF) * D, R); DD = min(OFF * D, C)
+        else:
+            C = P * D; DD = D * fx(cnt.get("absent", 0))
+        X = C + D / 8 * (fx(o) + fx(b)) + fx(allow) - DD - fx(odd)
+        want = (X * 100).__floor__() / 100
+    else:
+        want = rnd(comp + day / 8 * o + day / 8 * b + (allow or 0) - ded - (odd or 0))
     checked += 1
     probs = []
     if abs((pres or 0) - cnt.get("present", 0)) > 1e-6: probs.append(f"present {pres} vs {cnt.get('present', 0)}")
     if abs((absn or 0) - cnt.get("absent", 0)) > 1e-6: probs.append(f"absent {absn} vs {cnt.get('absent', 0)}")
     if abs((ot or 0) - o) > 1e-6: probs.append(f"OT {ot} vs {o}")
     if abs((total or 0) - rate_total) > 0.01: probs.append(f"rate {total} vs {rate_total}")
-    if int(final) != want: probs.append(f"final {final} vs {want}")
+    if abs(final - float(want)) > 1e-6: probs.append(f"final {final} vs {float(want)}")
     if probs:
         bad += 1
         print(f"FAIL {no} {label}: " + "; ".join(probs))
