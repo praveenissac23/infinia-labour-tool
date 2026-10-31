@@ -62,6 +62,17 @@ ok([(l["description"], l["quantity"], l["rate"], l["tax_id"]) for l in body["lin
 ok(all(l["account_id"] == "ACC-CON" for l in body["line_items"]), "each line carries the picked account (Zoho refuses 'non-purchase item' without)")
 ok(body.get("discount_account_id") == "ACC-ADM", "discount booked to the account his own POs use")
 ok(body["discount"] == "2.0%" and body["is_discount_before_tax"] and "918" in body["reference_number"], "discount and project 918 carried")
+# A discount worked back from a round total (IC/LPO/20260131 live: 7.5811%) - Zoho keeps a % to 2 places
+# ("7.58%" made its PO 66,701.12 against the LPO's 66,700.34), so it goes as the amount the portal takes off.
+odd = po(20260190, sup, lines=[("Block 20cm", 2, 1762, 5)], disc=0.0053)
+odd.zoho_account = "Concrete Materials"; s.commit()
+body2 = pozoho._body(s, odd)
+gross = 2 * 1762
+ok(body2["discount"] == f"{round(gross * 0.0053 / 100, 2):.2f}" == "0.19" and body2["is_discount_before_tax"],
+   f"discount 0.0053% sent as AED 0.19 off (not '0.01%', which made Zoho's PO 3,699.83 vs 3,700.00): {body2['discount']}")
+net = gross - 0.19
+ok(round(net + round(net * 0.05, 2), 2) == pozoho._total(odd) == 3700.0, "Zoho's total from that amount = the LPO total 3,700.00")
+s.delete(odd); s.query(models.PurchaseOrderLine).filter(models.PurchaseOrderLine.order_id == odd.id).delete(); s.commit()
 s.refresh(a)
 ok(a.zoho_status == "sent" and a.zoho_id == "purchaseorder:PO1", "marked sent with the Zoho PO")
 ok(pozoho.send({}, s, u)["sent"] == 0 and len(POSTED) == 1, "pressing Send again sends nothing twice")

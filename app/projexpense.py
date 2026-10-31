@@ -245,7 +245,9 @@ def _petty(db, match, d1, d2):
         salary = bool(SALARY_WORDS.search(desc))
         # a bill with VAT on it costs the project its amount without the VAT - the VAT is claimed back, the
         # same as on an LPO (the box holds the receipt total, VAT included)
-        vat = round(paid * 5 / 105, 2) if getattr(p, "vat", False) else 0.0
+        # (VAT the chief accountant marked "not claimable" is not claimed back: it stays in the cost - the same rule
+        # as a bank expense below)
+        vat = round(paid * 5 / 105, 2) if (getattr(p, "vat", False) and (getattr(p, "vat_claim", "") or "claim") == "claim") else 0.0
         out.append({"sites": sites, "how": how, "salary": salary, "date": p.on_date, "book": p.book or "",
                     "description": desc, "supplier": p.supplier or "", "amount": round(paid - vat, 2), "vat": vat, "id": p.id})
     # A bank payment entered as an expense for a site (Bank > Paid - expense, site filled in) is a project cost
