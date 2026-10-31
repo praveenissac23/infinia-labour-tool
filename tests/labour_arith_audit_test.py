@@ -11,7 +11,9 @@ imported from the app's own calculation:
   Present, Sick, Medical, Friday, Sunday, Holiday are paid days; a half day is half;
   daily pay: Payable = paid days x day, Deduction = absent days x day (an absent day is not earned AND costs a day);
   fixed pay: Payable = min((paid + absent + leave) x day, rate), Deduction = min((absent + leave) x day, Payable);
-  OT and BH = hours x day / 8; Final = Payable + OT + BH - Deduction, rounded to the dirham, half away from zero;
+  OT and BH = hours x day / 8; Final = Payable + OT + BH - Deduction,
+    up to October 2026: rounded to the dirham, half away from zero;
+    from the November 2026 cycle: exact, cut DOWN to the fils (never a fraction of a fil extra; owner 31 Oct 2026);
   a day after the leaving date counts as Terminated; additions / deductions are added to Final afterwards.
 Then it checks the same worker's figure is the same on: the stored card (DB), the salary cards screen
 (/summaries), the live card, the Paid status card (Labour payroll), the report table (rows, Excel),
@@ -92,12 +94,20 @@ def expected(db, e, s):
         ded = cnt['absent'] * day
     ota, bha = day / 8 * ot, day / 8 * bh
     allow, oded = F(str(s.allowances or 0)), F(str(s.other_deduction or 0))
-    final = half_up(comp + ota + bha + allow - ded - oded)
+    exact = comp + ota + bha + allow - ded - oded
+    final = pay_rule(s.month_year, exact)
     adj = sum((-F(str(a.amount)) if a.is_deduction else F(str(a.amount))) for a in s.adjustments)
     return {'rate': rate, 'present': cnt['present'], 'absent': cnt['absent'], 'sick': cnt['sick'], 'medical': cnt['medical'],
             'sunday': cnt['sunday'], 'holiday': cnt['holiday'], 'leave': cnt['leave'], 'terminated': cnt['terminated'],
             'paid_days': paid, 'ot_h': ot, 'bh_h': bh, 'comp': comp, 'ded': ded, 'ota': ota, 'bha': bha,
-            'final': final, 'adj': adj, 'net': final + adj}
+            'final': final, 'exact': exact, 'adj': adj, 'net': final + adj}
+
+
+def pay_rule(label, x):
+    """The card's final salary from the exact sum: the whole dirham up to October 2026, the fils (cut down) after."""
+    if pcyc.exact_fils(label):
+        return F((x * 100).__floor__(), 100)
+    return half_up(x)
 
 
 def fils(x):
@@ -248,11 +258,17 @@ for lab in cycles:
             ck(f'day / hour count: {who} {fld}', near(getattr(s, fld) or 0, x[k]), (getattr(s, fld), float(x[k])))
         for fld, k in (('total_salary_component', 'comp'), ('deduction', 'ded'), ('ot_amount', 'ota'), ('bh_amount', 'bha')):
             ck(f'money line: {who} {fld}', near(getattr(s, fld) or 0, x[k]), (getattr(s, fld), float(x[k])))
-        ck(f'final salary: {who}', s.final_salary == x['final'], (s.final_salary, x['final'], float(x['comp'] + x['ota'] + x['bha'] - x['ded'])))
+        ck(f'final salary: {who}', near(s.final_salary, x['final'], 0.0001), (s.final_salary, float(x['final']), float(x['exact'])))
+        if pcyc.exact_fils(lab):
+            # to the fils: two decimals at most, never more than the exact amount, less by under a fil
+            ck(f'to the fils, never a fraction extra: {who}', round(s.final_salary * 100, 6) == round(s.final_salary * 100)
+               and F(str(s.final_salary)) <= x['exact'] < F(str(s.final_salary)) + F(1, 100), (s.final_salary, float(x['exact'])))
+        else:
+            ck(f'closed cycle stays at the whole dirham: {who}', s.final_salary == int(s.final_salary), s.final_salary)
         ck(f'final + additions / deductions: {who}', near(services.adjusted_final_salary(s), x['net']), (services.adjusted_final_salary(s), float(x['net'])))
         # the salary cards screen shows the stored card
         y = scr.get(s.emp_no)
-        ck(f'screen = stored card: {who}', y is not None and y['final_salary'] == s.final_salary
+        ck(f'screen = stored card: {who}', y is not None and near(y['final_salary'], s.final_salary, 0.0001)
            and near(sum((-a['amount'] if a['is_deduction'] else a['amount']) for a in y['adjustments']), x['adj']), (y and y['final_salary'], s.final_salary))
 say(f'{n_cards} labour cards in {len(cycles)} cycles ({", ".join(cycles)}) worked out again from the attendance')
 
@@ -272,7 +288,7 @@ for (no, lab), x in EXP.items():
     if r.status_code != 200:
         ck(f'live card opens: {no} {lab}', False, r.text[:200]); continue
     j = r.json(); sm = j['summary'] or {}
-    ck(f'live card = card: {no} {lab}', sm.get('final_salary') == x['final'], (sm.get('final_salary'), x['final']))
+    ck(f'live card = card: {no} {lab}', near(sm.get('final_salary') or 0, x['final'], 0.0001), (sm.get('final_salary'), float(x['final'])))
     lc_n += 1
 say(f'live card checked for {lc_n} cards')
 
@@ -289,7 +305,7 @@ for lab in cycles:
             x = EXP.get((row['emp_no'], lab))
             if not x:
                 continue
-            ck(f'paid status card salary = card: {row["emp_no"]} {lab}', row['salary'] == x['final'], (row['salary'], x['final']))
+            ck(f'paid status card salary = card: {row["emp_no"]} {lab}', near(row['salary'], x['final'], 0.0001), (row['salary'], float(x['final'])))
             ck(f'paid status card net = card + adjustments: {row["emp_no"]} {lab}', near(row['net'], x['net']), (row['net'], float(x['net'])))
             ck(f'paid status card days = paid days: {row["emp_no"]} {lab}', near(row['days'], x['paid_days']), (row['days'], float(x['paid_days'])))
             if not row['pay']['payments']:
@@ -308,7 +324,7 @@ for lab in cycles:
         x = EXP.get((row['Emp No'], lab))
         if not x:
             continue
-        ck(f'report row final: {row["Emp No"]} {lab}', row['Final Salary'] == x['final'], (row['Final Salary'], x['final']))
+        ck(f'report row final: {row["Emp No"]} {lab}', near(row['Final Salary'], x['final'], 0.0001), (row['Final Salary'], float(x['final'])))
         ck(f'report row adjusted final: {row["Emp No"]} {lab}', near(row['Adjusted Final Salary'], x['net']), (row['Adjusted Final Salary'], float(x['net'])))
         ck(f'report row OT amount (to the fils): {row["Emp No"]} {lab}', near(row['OT Amount'], fils(x['ota']), 0.0001), (row['OT Amount'], float(x['ota'])))
     xr = c.get(f'/export/{lab}/report-table', params={'token': dl(), 'columns': COLS, 'format': 'excel'})
@@ -416,7 +432,7 @@ for lab in cycles:
     rows = [x for x in j['rows'] if (x.get('emp_no'), lab) in EXP]
     for x in rows:
         e_ = EXP[(x['emp_no'], lab)]
-        ck(f'report builder final: {x["emp_no"]} {lab}', near(x.get('final_salary', 0), e_['final']), (x.get('final_salary'), e_['final']))
+        ck(f'report builder final: {x["emp_no"]} {lab}', near(x.get('final_salary', 0), e_['final'], 0.0001), (x.get('final_salary'), float(e_['final'])))
         ck(f'report builder adjusted final: {x["emp_no"]} {lab}', near(x.get('adjusted_final_salary', 0), e_['net']), (x.get('adjusted_final_salary'), float(e_['net'])))
     if j.get('totals') and 'adjusted_final_salary' in j['totals']:
         ck(f'report builder total = sum of rows: {lab}', near(j['totals']['adjusted_final_salary'], sum(x.get('adjusted_final_salary', 0) for x in j['rows']), 0.01),
@@ -452,6 +468,14 @@ if sm:
         ck('payslip net = payment', near(figs['net'], p.amount), (figs['net'], p.amount))
         e_sum = sum(v for _, v in figs['earnings']) - sum(v for _, v in figs['deductions'])
         ck('payslip lines add up to its net (to the rounding of the card)', abs(e_sum - figs['net']) <= 0.5 + 1e-6, (e_sum, figs['net'], figs['earnings'], figs['deductions']))
+    # November 2026 on: a payslip adds up to the fil (a "Rounding to the fils" line takes up the part of a fil)
+    smn = db.query(models.EmployeeSummary).filter_by(emp_no='AUD-01', month_year=CUR).first()
+    if smn:
+        import paystatus as _ps
+        fg = _ps.labour_figures(db, smn)
+        tot = round(sum(v for _, v in fg['earnings']) - sum(v for _, v in fg['deductions']), 2)
+        ck('payslip (November 2026 on) adds up to its net exactly, to the fils', near(tot, fg['net'], 0.001) and near(fg['net'], EXP[('AUD-01', CUR)]['net'], 0.0001),
+           (tot, fg['net'], fg['earnings'], fg['deductions']))
         row = next(rw for g in c.get('/employees/pay/labour', params={'month_year': PREV}, headers=H).json()['groups'] for rw in g['rows'] if rw['emp_no'] == 'AUD-01')
         ck('paid status card shows it paid in full, no balance', row['pay']['state'] in ('paid', 'todate') and near(row['pay']['balance'], 0), row['pay'])
         # a change after payment is carried to the next cycle, to the fils
@@ -506,9 +530,9 @@ if sm and T < bounds(CUR)[1]:
             cnt['sunday' if d.weekday() == 6 else 'present'] += 1
         d += timedelta(days=1)
     day = rate_for(db, e, ce) / 30
-    full = half_up(sum(cnt[k] for k in PAID) * day + day / 8 * ot - cnt['absent'] * day)
+    full = pay_rule(CUR, sum(cnt[k] for k in PAID) * day + day / 8 * ot - cnt['absent'] * day)
     adj = sum((-F(str(a.amount)) if a.is_deduction else F(str(a.amount))) for a in sm.adjustments)
-    ck('early full cycle: preview = worked out by hand', near(pv.get('amount', 0), full + adj), (pv, full + adj))
+    ck('early full cycle: preview = worked out by hand', near(pv.get('amount', 0), full + adj, 0.0001), (pv, float(full + adj)))
     mk = c.post('/employees/pay/mark', headers=H, json={'kind': 'labour', 'source_id': sm.id, 'type': 'early_full', 'mode': 'cash'})
     ck('early full cycle: marked paid', mk.status_code == 200, mk.text[:300])
     if mk.status_code == 200:
@@ -516,6 +540,13 @@ if sm and T < bounds(CUR)[1]:
         sm = db.query(models.EmployeeSummary).filter_by(emp_no='AUD-01', month_year=CUR).first()
         ck('early full cycle: paid = preview = the card afterwards', near(mk.json()['payment']['amount'], pv.get('amount', 0))
            and near(services.adjusted_final_salary(sm), pv.get('amount', 0)), (mk.json()['payment']['amount'], pv.get('amount'), services.adjusted_final_salary(sm)))
+        # a deduction with fils after it is paid: carried to the next cycle to the fil (November 2026 card)
+        c.post(f'/summaries/{sm.id}/adjustments', headers=H, json={'description': 'Late fine', 'amount': 12.34, 'is_deduction': True})
+        db.expire_all()
+        pid = mk.json()['payment']['id']
+        carry = db.query(models.PayCarry).filter(models.PayCarry.payment_id == pid).first()
+        ck('a fils change after an early full payment is carried to next cycle (-12.34)', carry is not None and near(carry.amount, -12.34, 0.0001),
+           carry and carry.amount)
     say('early full cycle checked')
 
 db.close()
