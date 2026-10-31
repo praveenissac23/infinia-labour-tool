@@ -120,17 +120,47 @@ def analyse(doc):
                 if c.num is not None or any(n[6] and not n[1] for n in cell_numbers(c, ocr)):
                     continue
                 r = col_roles(c.text)
-                if r and len(c.text) <= 48:
+                words = re.sub(r"\((aed|dhs?|%)\)", "", c.text, flags=re.I).split()
+                if r and len(c.text) <= 48 and len(words) <= 6:
                     heads.append((c, r))
             money_toks = [t for t in toks if not t.pct and t.money_like and abs(t.value) >= 1]
             strong = [h for h in heads if set(h[1]) & {"p", "t", "c", "pct", "qty", "rate", "contract", "claimed", "certified"} and len(h[0].text) <= 25]
-            if not money_toks and (len(heads) >= 2 or strong):
+            filled = [c for c in row.cells if c.text.strip()]
+            mostly = len(heads) >= max(2, 0.6 * len(filled)) or (strong and len(filled) <= 2 and len(heads) == len(filled))
+            if not money_toks and mostly:
                 ri.header = heads
             infos.append(ri)
+    # a heading row must have figures under it: within the next few rows, a figure standing under one of its
+    # headings ("Contract Value: Re-measurable ..." is a label, not a table heading)
+    for i, ri in enumerate(infos):
+        if ri.header is None:
+            continue
+        ok, seen = False, 0
+        for o in infos[i + 1:]:
+            if o.row.page != ri.row.page:
+                break
+            if o.header is not None:
+                continue
+            seen += 1
+            if seen > 5:
+                break
+            for t in o.toks:
+                if t.pct and not any("pct" in r for _, r in ri.header):
+                    continue
+                if any(min(c.x1, t.x1) - max(c.x0, t.x0) > 0 for c, _ in ri.header):
+                    ok = True
+                    break
+            if ok:
+                break
+        if not ok:
+            # a heading directly over another heading row passes on to it
+            nxt = infos[i + 1] if i + 1 < len(infos) else None
+            if not (nxt is not None and nxt.header is not None and nxt.row.page == ri.row.page):
+                ri.header = None
     return infos
 
 
-def assign_roles(infos, max_gap_rows=60, max_gap_pt=600):
+def assign_roles(infos, max_gap_rows=40, max_gap_pt=600):
     """Each figure gets the column heading above it."""
     by_page = {}
     for i, ri in enumerate(infos):
@@ -165,7 +195,8 @@ def assign_roles(infos, max_gap_rows=60, max_gap_pt=600):
                         # no overlap: the nearest heading within half a column
                         for c, r in heads:
                             d = abs(c.xc - (t.x0 + t.x1) / 2)
-                            if d < max(20, (c.x1 - c.x0)) and (best is None or d < abs(best[0].xc - (t.x0 + t.x1) / 2)):
+                            lim = 0.6 if ri.grid else max(20, (c.x1 - c.x0))
+                            if d < lim and (best is None or d < abs(best[0].xc - (t.x0 + t.x1) / 2)):
                                 best = (c, r)
                     if best:
                         heads_txt.append(best[0].text)

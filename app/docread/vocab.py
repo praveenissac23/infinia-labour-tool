@@ -27,6 +27,8 @@ TYPO = {"retension": "retention", "retentions": "retention", "recovry": "recover
 
 @lru_cache(maxsize=20000)
 def _fix_word(w):
+    if any(w.startswith(k) or k.startswith(w) for k in KEYWORDS if len(k) >= 4):
+        return w                       # contractor, payments, certificates: real words, not misspellings
     close = difflib.get_close_matches(w, KEYWORDS, n=1, cutoff=0.84)
     return close[0] if close else w
 
@@ -135,6 +137,7 @@ ROW = {
         (r" (amount|sum) (certified )?for payment", 0.8, None, None),
         (r" (total )?amount (due|payable)", 0.5, r" excluding| before vat", None),
     ],
+    "ded": [(r" total (of )?(the )?deductions?| total less| deductions? total| total (amount )?deducted", 0.9, None, None)],
     "auth": [(r" (payments? (paid )?to |add )?authorit(y|ies)( fees?| payments?)?| dewa fees| municipality fees", 0.9, None, None)],
     "contract": [(r" (original |revised |total |adjusted )?(sub )?contract (value|sum|amount|price)", 0.9, r" work| variation", None)],
     "extra": [(r"^ (add|less)\b", 0.5, None, None)],
@@ -154,11 +157,11 @@ COL = {
           (r" present( bill| period)?", 0.9), (r" during (this|the) (period|month)", 0.9), (r" for the (period|month)", 0.7), (r" الحالي", 0.9)],
     "c": [(r" cumulative( to date| total| value)?", 0.95), (r" (up )?to date", 0.9), (r" gross certified", 0.85), (r" total to date", 0.95),
           (r" till date", 0.9), (r" total( value| amount| work done)? $", 0.55), (r" التراكمي| الإجمالي", 0.9)],
-    "pct": [(r" %| percent(age)?| progress", 0.9)],
+    "pct": [(r" %| percent(age)?| progress %| % (of )?(work )?(complete|completed|done|progress)", 0.9)],
     "amount": [(r" amount( aed)?| value( aed)?| aed| dhs| sum", 0.6), (r" المبلغ| القيمة", 0.6)],
-    "contract": [(r" (contract|boq|original|budget(ed)?|tender) (value|amount|sum)?", 0.8)],
-    "qty": [(r" (quantity|qty|nos)", 0.9)], "rate": [(r" (unit )?rate|unit price", 0.9)], "unit": [(r"^ (unit|uom)\s*$", 0.9)],
-    "desc": [(r" description|particulars|details|item description|scope| البيان| الوصف", 0.9)],
+    "contract": [(r" (contract|boq|original|budget|budgeted|tender)( value| amount| sum)?\b", 0.8)],
+    "qty": [(r" (quantity|qty|nos)\b", 0.9)], "rate": [(r" (unit )?rate\b| unit price\b", 0.9)], "unit": [(r"^ (unit|uom)\s*$", 0.9)],
+    "desc": [(r" description| particulars| item description| البيان| الوصف", 0.9)],
     "claimed": [(r" claimed|contractor('?s)? (claim|application)|submitted|applied", 0.85)],
     "certified": [(r" certified|approved|consultant('?s)?|engineer('?s)?", 0.6)],
     "remarks": [(r" remarks?|notes?|comments?", 0.9)],
@@ -202,6 +205,8 @@ def row_concepts(label):
     if "vat" in out and ("total" in out or "net" in out):
         if re.search(r" (amount|total|due|payable).*(including|with|plus) (vat|tax)", n):
             out.pop("vat")
+    if "ded" in out:
+        out.pop("contra", None)
     if "extra" in out and len(out) > 1:
         out.pop("extra")
     return tuple(sorted(((k, s, h) for k, (s, h) in out.items()), key=lambda x: -x[1]))

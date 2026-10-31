@@ -169,7 +169,8 @@ def _explain(best, cur, order, doms, rels, optional, rounds=4):
                         ok2, _, _ = evaluate(r, _getter(t2))
                         if not ok2:
                             continue
-                        s2 = score_of(t2, rels)
+                        frozen = set(sub) | ({added} if added else set())
+                        t2, s2 = _climb(t2, score_of(t2, rels), order, doms, rels, passes=2, frozen=frozen)
                         if s2 > top_s + 1e-9:
                             top, top_s = t2, s2
         if top is None:

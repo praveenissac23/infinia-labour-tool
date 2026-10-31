@@ -22,8 +22,31 @@ from .solve import Cand, Rel, evaluate, solve, statuses
 from .tables import analyse, assign_roles
 from .vocab import row_concepts
 
-FLOW = ("work", "var", "gross", "mos", "ret", "rel", "adv", "advpay")
+FLOW = ("work", "var", "gross", "mos", "ret", "rel", "adv", "advpay", "ded")
 SIGNED = ("net", "extra")
+
+
+def _labels_for(infos, i):
+    """[(label, weight)]: the row's own label; for a row of figures only, the lines with words just above and
+    below (nearest first, a little less sure)."""
+    ri = infos[i]
+    if ri.label:
+        return [(ri.label, 1.0)]
+    out = []
+    for j in range(max(0, i - 3), min(len(infos), i + 4)):
+        if j == i:
+            continue
+        o = infos[j]
+        if o.row.page != ri.row.page or not o.label or o.header is not None:
+            continue
+        if any(not t.pct and t.money_like for t in o.toks):
+            continue
+        d = abs(o.row.y - ri.row.y)
+        lim = 1.5 if ri.grid else 16
+        if d <= lim:
+            out.append((d, o.label))
+    out.sort()
+    return [(lab, 0.95 if k == 0 else 0.45) for k, (d, lab) in enumerate(out[:2])]
 
 
 def _label_for(infos, i):
@@ -87,6 +110,8 @@ def _vars_for(concept, role, hint, i, label):
         return [(f"contra@{i}_{'c' if r == 's' else r}", 1.0)]
     if concept == "extra":
         return [(f"extra@{i}", 1.0)] if r in ("s", "t") else []
+    if concept == "pitem":
+        return [(f"pitem@{i}", 1.0)] if r in ("s", "c") else []
     if concept == "net":
         if r != "s":
             return [(f"net_{r}", 1.0)]
@@ -112,6 +137,7 @@ def candidates(doc):
     multi = {}                     # contra@i / extra@i -> label
     words_total = []
     zone = _summary_zone(infos)
+    section = None
     for i, ri in enumerate(infos):
         if ri.header is not None:
             continue
@@ -120,10 +146,26 @@ def candidates(doc):
             w = kv.words_amount(txt)
             if w:
                 words_total.append(w)
-        label = _label_for(infos, i)
-        if not label:
+        labs = _labels_for(infos, i)
+        concepts, label = [], ""
+        for lab, lw in labs:
+            cs_ = row_concepts(lab)
+            if cs_:
+                concepts = [(c, s * lw, h) for c, s, h in cs_]
+                label = lab
+                break
+        has_fig = any(not t.pct and (t.money_like or t.raw) for t in ri.toks)
+        top = concepts[0][0] if concepts else None
+        # "LESS: PREVIOUSLY CERTIFIED" opens a list of earlier certificates; each line is a previous payment,
+        # not an advance or a deduction, until the net / VAT / total lines
+        if top == "prev" and not has_fig:
+            section = ("prev", ri.row.page)
             continue
-        concepts = row_concepts(label)
+        if section and (top in ("net", "total", "vat", "work", "gross", "ret") or (section[1] != ri.row.page)):
+            section = None
+        if section and top != "prev" and has_fig:
+            concepts = [("pitem", 0.8, None)]
+            label = label or ri.label or ri.row.text[:40]
         if not concepts:
             continue
         money = [t for t in ri.toks if not t.pct and t.role not in ("pct", "qty", "rate") and (t.money_like or t.raw)]
@@ -173,6 +215,8 @@ def candidates(doc):
                     dom[var].append(Cand(var, round(v, 2), round(prior, 4), t, label))
                     if "@" in var:
                         multi[var] = label
+                    if concept == "pitem":
+                        dom[var][-1].value = abs(dom[var][-1].value)
     return dom, multi, words_total, infos
 
 
@@ -193,6 +237,9 @@ def relations(dom, multi, vat_rate=5.0):
         return w + (get(f"var_{k}") or 0) + (get(f"mos_{k}") or 0)
 
     def ded(get, k):
+        t = get(f"ded_{k}")
+        if t is not None:
+            return t - (get(f"rel_{k}") or 0) - ((get("advpay_c") or 0) if k == "c" else 0)
         d = (get(f"ret_{k}") or 0) + (get(f"adv_{k}") or 0) + sum(get(f"{c}_{k}") or 0 for c in contra) - (get(f"rel_{k}") or 0)
         if k == "c":
             d -= get("advpay_c") or 0
@@ -202,7 +249,7 @@ def relations(dom, multi, vat_rate=5.0):
         return [f"gross_{k}", f"work_{k}", f"var_{k}", f"mos_{k}"]
 
     def dvars(k):
-        return [f"ret_{k}", f"adv_{k}", f"rel_{k}"] + [f"{c}_{k}" for c in contra] + (["advpay_c"] if k == "c" else [])
+        return [f"ded_{k}", f"ret_{k}", f"adv_{k}", f"rel_{k}"] + [f"{c}_{k}" for c in contra] + (["advpay_c"] if k == "c" else [])
 
     for X in list(FLOW) + ["net"] + contra:
         def col(get, X=X):
@@ -226,6 +273,28 @@ def relations(dom, multi, vat_rate=5.0):
             return g - ded(get, k), n
         rels.append(Rel(f"net:{k}", gvars(k) + dvars(k) + [f"net_{k}"], net, tol=0.06, w=2.5, text="work - deductions = net"))
 
+    for k in ("p", "t", "c"):
+        def dedsum(get, k=k):
+            t = get(f"ded_{k}")
+            if t is None:
+                return None
+            parts = [get(f"ret_{k}"), get(f"adv_{k}")] + [get(f"{c}_{k}") for c in contra]
+            if all(p is None for p in parts):
+                return None
+            return sum(p or 0 for p in parts), t
+        rels.append(Rel(f"ded:{k}", [f"ded_{k}", f"ret_{k}", f"adv_{k}"] + [f"{c}_{k}" for c in contra], dedsum, tol=0.06, w=2.0,
+                        text="the deductions add up to the total deductions"))
+
+    pitems = sorted(v for v in multi if v.startswith("pitem@"))
+    if pitems:
+        def prevsum(get):
+            p = get("net_p")
+            xs = [get(v) for v in pitems]
+            if p is None or all(x is None for x in xs):
+                return None
+            return sum(x or 0 for x in xs), p
+        rels.append(Rel("prevsum", ["net_p"] + pitems, prevsum, tol=0.06, w=1.5, text="the earlier certificates add up to the previously certified"))
+
     def due(get):
         n, p, g = get("net_t"), get("net_p"), G(get, "c")
         if n is None or p is None or g is None:
@@ -246,7 +315,13 @@ def relations(dom, multi, vat_rate=5.0):
         t, n = get("total"), get("net_t")
         if t is None or n is None:
             return None
-        return n + (get("vat") or 0) + (get("auth") or 0) + sum(get(e) or 0 for e in extras), t
+        rest = (get("auth") or 0) + sum(get(e) or 0 for e in extras)
+        if get("vat") is None:
+            # VAT not read (or not charged): the total is the net, or the net plus VAT
+            r = (get("vat_pct") or vat_rate) / 100.0
+            a, b = n + rest, n * (1 + r) + rest
+            return (a if abs(a - t) <= abs(b - t) else b), t
+        return n + get("vat") + rest, t
     rels.append(Rel("total", ["total", "net_t", "vat", "auth"] + extras, total, tol=1.0, w=2.0, text="net + VAT = amount due"))
 
     def total2(get):
@@ -301,6 +376,8 @@ CHECK_NAMES = {
     "total": "Net + VAT = total amount due",
     "total2": "The lines add up to the amount due",
     "gross:c": "Work + variations = total work executed",
+    "prevsum": "The earlier certificates add up to the previously certified",
+    "ded:c": "The deductions add up to the total deductions",
     "retpct": "Retention is its % of the work",
     "advpct": "Advance recovered is its % of the work",
 }
@@ -308,7 +385,7 @@ CHECK_NAMES = {
 
 def _optional(v):
     """Lines a bill may or may not have - left out when the sum says they are not the bill's."""
-    return v.split("_")[0] in ("var", "mos", "rel", "advpay", "auth", "adv", "ret") or v.startswith(("contra@", "extra@"))
+    return v.split("_")[0] in ("var", "mos", "rel", "advpay", "auth", "adv", "ret", "ded") or v.startswith(("contra@", "extra@", "pitem@"))
 
 
 def run(doc, vat_rate=5.0, beam=150, kind="subpc"):
@@ -405,7 +482,8 @@ def _derive(asg, rels):
     out = {}
     for _ in range(2):
         for r in rels:
-            missing = [v for v in r.vars if v not in asg and v in DERIVABLE]
+            missing = [v for v in r.vars if v not in asg and v in DERIVABLE and not (v == "gross_c" and "work_c" in asg)
+                       and not (v == "work_c" and "gross_c" in asg)]
             if len(missing) != 1:
                 continue
             v = missing[0]
@@ -420,7 +498,7 @@ def _derive(asg, rels):
                 continue
             # needs the relation's real terms present (not a sum of nothing)
             present = [u for u in r.vars if u in asg]
-            if len(present) < 2:
+            if len(present) < (1 if r.name == "prevsum" else 2):
                 continue
             asg[v] = Cand(v, x, 0.5, None, note=f"worked out: {CHECK_NAMES.get(r.name, r.text)}")
             out[v] = r.name
