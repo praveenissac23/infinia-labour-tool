@@ -85,9 +85,15 @@ ck('a stale row is still served correctly on the card',
 
 d = database.SessionLocal()
 main._recalculate_all_summaries(d)
+# A restart leaves a closed cycle (October 2026 and earlier) exactly as it was paid - nothing on its stored cards
+# is rewritten (owner, 31 Oct 2026); the screens read the name from the master record anyway (above). Working
+# the card out again - what any edit of his attendance or record does - brings the stored copy into line.
+kept = d.query(models.EmployeeSummary).filter_by(emp_no='F-764', month_year=CYCLE).first()
+ck('a restart leaves the closed September card as it is', kept.emp_name == 'GANESH KUMAR', kept.emp_name)
+services.recalculate_summary(d, d.query(models.Employee).filter_by(emp_no='F-764').first(), CYCLE)
 healed = d.query(models.EmployeeSummary).filter_by(emp_no='F-764', month_year=CYCLE).first()
-ck('a restart repairs the stored name', healed.emp_name == 'MOHAMMED ZUBAIR', healed.emp_name)
-ck('a restart repairs the stored trade', healed.trade == 'CARPENTER', healed.trade)
+ck('working the card out again repairs the stored name', healed.emp_name == 'MOHAMMED ZUBAIR', healed.emp_name)
+ck('working the card out again repairs the stored trade', healed.trade == 'CARPENTER', healed.trade)
 
 # And none of this may move a single dirham.
 before = healed.final_salary
