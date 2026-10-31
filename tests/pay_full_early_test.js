@@ -10,9 +10,16 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   // The browser's calendar follows the server's (SRV_TODAY), so the month and the labour cycle it opens on are
   // the ones the server is in the middle of.
   if (process.env.SRV_TODAY) await p.clock.setFixedTime(new Date(process.env.SRV_TODAY + 'T10:00:00'));
-  await p.goto(B + '/?p=payroll#hrpayroll'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
-  await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(4500);
-  // Needs the server mid-month (SRV_TODAY=2026-10-20 python3 tests/serve_like_nginx.py) and the month starting
+  await p.goto(B + '/?p=payroll'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
+  await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(2500);
+  // The Payroll page opens on its first tab: go to Office HR & Payroll > Salary cycle (the #hrpayroll link no
+  // longer picks the tab, so the sheet was never shown and the test stopped on its first click).
+  await p.evaluate("localStorage.setItem('infinia_hr_tab', 'payroll')");
+  await p.evaluate("pgGo('payroll')"); await p.waitForTimeout(1500);   // login lands on the Dashboard
+  await p.click('#pg-tabs .pg-tab[data-tab="hrpayroll"]'); await p.waitForTimeout(4200);
+  // Needs the server mid-month AND mid labour cycle with the cycle's attendance not all in yet:
+  //   SRV_TODAY=2026-11-10 python3 tests/serve_like_nginx.py   (on a copy of full.db; with 2026-10-20 the October
+  //   labour cycle's attendance is already complete in that copy, so the labour cards cannot rise), and the month starting
   // on the salary to date: a copy of the live data may already have "Pay full month now" pressed for it.
   await p.evaluate(async () => { for (const group of ['staff', 'local']) await apiCall('/employees/payroll/full-month',
     { method: 'POST', body: JSON.stringify({ month_year: hrCycleName(document.getElementById('hr-run-month').value), group, on: false }) }); });
