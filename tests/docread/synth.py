@@ -191,6 +191,8 @@ def _txt(c, st):
     if c["k"] == "text":
         return c["v"]
     if c["k"] == "num":
+        if c["v"] < 0 and not c.get("neg"):
+            return fmt(c["v"], dict(st, neg=st["neg"] if st["neg"] in ("-", "()") else "-"), True)   # a minus figure shows its sign
         return fmt(c["v"], st, c.get("neg") and st["neg"] in ("-", "()"))
     if c["k"] == "pct":
         return f"{c['v']:.2f}%" if c["v"] != int(c["v"]) else f"{int(c['v'])}%"
@@ -334,7 +336,7 @@ def head_block(pg, rng, F, kind, ncols, ls=1):
         lab = rng.choice(["IPC No.", "PC No.", "Payment Certificate No."])
         no = rng.choice([f"{F['seq']}", f"PC-{F['seq']:02d}", f"{F['seq']:02d}"])
     if ncols - 2 > ls:
-        pg.row(T(0, lab, span=ls), T(ls, no), T(ncols - 2, rng.choice(["Date:", "Issue Date:", "Date of issue:"])), D(ncols - 1, F["date"], f=rng.choice(["%d/%m/%Y", "%d.%m.%Y", "%d-%b-%Y"])))
+        pg.row(T(0, lab, span=ls), T(ls, no), T(ncols - 2, rng.choice(["Date:", "Issue Date:", "Date of issue:"]), align="r"), D(ncols - 1, F["date"], f=rng.choice(["%d/%m/%Y", "%d.%m.%Y", "%d-%b-%Y"])))
     else:
         pg.row(T(0, lab, span=ls), T(ls, no))
         pg.row(T(0, rng.choice(["Date:", "Issue Date:"]), span=ls), D(ls, F["date"]))
@@ -783,7 +785,8 @@ def team_vo_logs(out, rng, scans=True):
         seen = set()
         for r in rows:
             key = (r["ref"], r["title"])
-            if key in seen or not r["ref"] or r["status"] == "Absorbed" and not r["absorbed_amount"]:
+            if key in seen or not r["ref"] or r["status"] not in ("Approved", "Submitted", "Rejected", "Absorbed", "Identified") or \
+                    r["status"] == "Absorbed" and not r["absorbed_amount"]:
                 continue
             seen.add(key)
             cells = []

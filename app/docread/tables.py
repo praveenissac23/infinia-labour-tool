@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from .model import Row
+from .model import Cell, Row
 from .numparse import numbers
 from .vocab import col_roles
 
@@ -81,6 +81,33 @@ def _span_x(c, a, b):
     return min(x for x, _ in xs), max(x for _, x in xs)
 
 
+def _split_headings(cells):
+    """Column headings printed close together are read as one cell ("Contract Value Previous Certified This
+    Certificate"): a cell that holds two or more column meanings is cut at its widest gaps between words."""
+    out = []
+    for c in cells:
+        r = col_roles(c.text)
+        kinds = set(r) & {"p", "t", "c", "contract", "pct", "qty", "rate", "claimed"}
+        if len(c.words) < 3 or len(kinds) < 2:
+            out.append(c)
+            continue
+        ws = sorted(c.words, key=lambda w: w.x0)
+        gaps = [ws[i + 1].x0 - ws[i].x1 for i in range(len(ws) - 1)]
+        med = sorted(gaps)[len(gaps) // 2]
+        cut = [i for i, g in enumerate(gaps) if g >= max(2.5, 1.7 * med) and g > med + 1.0]
+        if not cut:
+            out.append(c)
+            continue
+        start = 0
+        for i in cut + [len(ws) - 1]:
+            part = ws[start:i + 1]
+            if part:
+                out.append(Cell(text=" ".join(w.text for w in part), x0=part[0].x0, x1=part[-1].x1, y0=c.y0, y1=c.y1, page=c.page,
+                                src=c.src, conf=c.conf, words=part))
+            start = i + 1
+    return out
+
+
 def analyse(doc):
     """Every row -> RowInfo (its label, its figures); heading rows are marked."""
     infos = []
@@ -133,7 +160,7 @@ def analyse(doc):
             ri = RowInfo(row=row, label=label, toks=toks, grid=reg.kind in ("sheet", "docx", "grid"))
             # a heading row: two or more cells that read as column headings, figures few
             heads = []
-            for c in row.cells:
+            for c in _split_headings(row.cells):
                 if c.num is not None or any(n[6] and not n[1] for n in cell_numbers(c, ocr)):
                     continue
                 r = col_roles(c.text)

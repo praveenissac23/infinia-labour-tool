@@ -44,7 +44,7 @@ def words_to_rows(words, page, rules=None, ocr=False, src="", gap_k=0.9):
                 gap = w.x0 - cur["x1"]
                 if gap > max(3.0, h * gap_k):
                     split = True
-                elif any(cur["x1"] - 1 <= rx <= w.x0 + 1 and ry0 <= ln["cy"] <= ry1 for rx, ry0, ry1 in rules):
+                elif any(cur["x1"] - 2.5 <= rx <= w.x0 + 2.5 and ry0 - 2 <= ln["cy"] <= ry1 + 2 for rx, ry0, ry1 in rules):
                     split = True
             if split:
                 cur = {"w": [w], "x0": w.x0, "x1": w.x1}
@@ -90,15 +90,17 @@ def read_pdf(data, name="", ocr=True, dpi=300, parallel=2):
                 regions.append(Region(name=f"Page {pn}", page=pn, rows=[], kind="scan", width=float(page.width), height=float(page.height)))
                 continue
             words = [Word(w["text"], float(w["x0"]), float(w["top"]), float(w["x1"]), float(w["bottom"])) for w in ws]
-            rows = words_to_rows(words, pn, _rules(page))
-            regions.append(Region(name=f"Page {pn}", page=pn, rows=rows, kind="page", width=float(page.width), height=float(page.height)))
+            rules = _rules(page)
+            rows = words_to_rows(words, pn, rules)
+            regions.append(Region(name=f"Page {pn}", page=pn, rows=rows, kind="page", width=float(page.width), height=float(page.height),
+                                  vrules=rules))
     doc = Doc(regions=regions, kind="pdf", name=name)
     if scanned and ocr:
         from .ocr import ocr_pdf_pages
         got = ocr_pdf_pages(data, scanned, dpi=dpi, parallel=parallel)
         for r in doc.regions:
             if r.page in got:
-                r.rows = got[r.page]
+                r.rows, r.vrules = got[r.page]
         doc.ocr_pages = scanned
         if len(scanned) == len(regions):
             doc.kind = "scan"

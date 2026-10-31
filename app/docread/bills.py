@@ -170,7 +170,13 @@ def candidates(doc):
             continue
         money = [t for t in ri.toks if not t.pct and t.role not in ("pct", "qty", "rate") and (t.money_like or t.raw)]
         pcts = [t for t in ri.toks if t.pct or t.role == "pct"]
-        # three figures with no headings where one is the sum of the other two: previous, this, cumulative
+        # three figures with no headings (or headings that did not tell them apart) where one is the sum of the
+        # other two: previous, this, cumulative
+        roles_ = [t.role for t in money if t.role in ("p", "t", "c")]
+        if money and len(roles_) != len(set(roles_)):
+            for t in money:
+                if t.role in ("p", "t", "c"):
+                    t.role, t.role_score = "", 0.0
         if money and not any(t.role in ("p", "t", "c") for t in money) and len(money) >= 3:
             for a in range(len(money) - 2):
                 x, y, z = money[a:a + 3]

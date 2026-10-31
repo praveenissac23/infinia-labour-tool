@@ -65,13 +65,27 @@ def date_field(rows, pat):
         d = a_date(v) if v else None
         if d and 1990 < d.year < 2100:
             return d.isoformat(), c
+    # the label run into another cell's text ("914/IPA/17 R1 Date of issue:  01.07.2026")
+    rx = re.compile(r"(?:" + pat + r")(?![a-z])", re.I)
+    for r in rows:
+        for j, c in enumerate(r.cells):
+            m = rx.search(c.text)
+            if not m or m.start() == 0:
+                continue
+            rest = c.text[m.end():].strip(" :")
+            d = a_date(rest) if rest else None
+            if d is None and j + 1 < len(r.cells):
+                d, c = a_date(r.cells[j + 1].text), r.cells[j + 1]
+            if d and 1990 < d.year < 2100:
+                return d.isoformat(), c
     return "", None
 
 
 def seq_of(label):
     """A bill / certificate number from its label: the last number once the revision and a year are taken off -
     "VE207/IPA/03 R1" -> 3, "914-IPA-07" -> 7, "IPA 07/2026" -> 7, "IPC 12" -> 12, "2-R2" -> 2."""
-    t = re.sub(r"[\s\-/(]*\b(R|Rev\.?|Revision)\s*\.?\s*\d+\s*\)?\s*$", "", label or "", flags=re.I)
+    t = re.split(r"(?i)(?<=[\dA-Za-z])\s*(?=(?:date|issue|period|dated)\b)", label or "")[0]
+    t = re.sub(r"[\s\-/(]*\b(R|Rev\.?|Revision)\s*\.?\s*\d+\s*\)?\s*$", "", t, flags=re.I)
     nums = [n for n in re.findall(r"\d+", t) if not (len(n) == 4 and 1990 <= int(n) <= 2100)]
     return int(nums[-1]) if nums else None
 

@@ -86,34 +86,34 @@ def deskew_angle(img):
 def prepare(img):
     """Grey, straightened, rules out. Returns (image for Tesseract, vertical rules [(x, y0, y1)] in pixels, angle)."""
     img = ImageOps.grayscale(img)
-    if img.width < 1600:                           # a small photo / low-dpi scan: enlarge so letters are ~30 px high
-        k = 1800 / img.width
-        img = img.resize((int(img.width * k), int(img.height * k)), Image.LANCZOS)
     ang = deskew_angle(img)
     if abs(ang) >= 0.15:
         img = img.rotate(ang, resample=Image.BICUBIC, fillcolor=255, expand=False)
     a = np.asarray(img, dtype=np.uint8)
-    t = _otsu(a)
-    dark = a < max(t, 60)
+    # rules are found on a half-size picture (4x less work), then painted out on the full one
+    half = img.resize((img.width // 2, img.height // 2), Image.BOX)
+    h_ = np.asarray(half, dtype=np.uint8)
+    t = _otsu(h_)
+    dark = h_ < max(t, 60)
     h, w = dark.shape
-    hk, vk = max(60, w // 12), max(40, h // 25)
+    hk, vk = max(30, w // 12), max(20, h // 25)
     hor = _runs(dark, hk, axis=1)
     ver = _runs(dark, vk, axis=0)
     rules = []
     if ver.any():
         cols = np.where(ver.any(axis=0))[0]
         if cols.size:
-            groups = np.split(cols, np.where(np.diff(cols) > 3)[0] + 1)
+            groups = np.split(cols, np.where(np.diff(cols) > 2)[0] + 1)
             for g in groups:
-                x = int(g.mean())
+                x = int(g.mean()) * 2
                 ys = np.where(ver[:, g].any(axis=1))[0]
-                rules.append((x, int(ys.min()), int(ys.max())))
+                rules.append((x, int(ys.min()) * 2, int(ys.max()) * 2))
     lines = hor | ver
     if lines.any():
-        # thicken by one pixel so the anti-aliased edge of a rule goes too
-        lines = lines | np.roll(lines, 1, 0) | np.roll(lines, -1, 0) | np.roll(lines, 1, 1) | np.roll(lines, -1, 1)
+        m = Image.fromarray((lines * 255).astype(np.uint8)).resize(img.size, Image.NEAREST).filter(ImageFilter.MaxFilter(7))
+        mask = np.asarray(m) > 0
         a = a.copy()
-        a[lines] = 255
+        a[mask] = 255
     return Image.fromarray(a), rules, ang
 
 
@@ -174,8 +174,32 @@ def _reread_numbers(img, words):
     return words
 
 
-def ocr_image(img, page, scale=1.0, reread=True):
+def _split_on_rules(raw, rules):
+    """A word Tesseract read across a column rule ("2025:.14") is two cells' text: cut where the rule runs
+    (letters taken as equally wide), the rule's remains (| ! : .) dropped at the cut."""
+    out = []
+    for wd in raw:
+        t, x0, y0, x1, y1 = wd[:5]
+        cuts = [x for x, ry0, ry1 in rules if x0 + 4 < x < x1 - 4 and ry0 - 5 <= (y0 + y1) / 2 <= ry1 + 5]
+        if not cuts or len(t) < 2:
+            out.append(wd)
+            continue
+        pos, prev_x = 0, x0
+        for x in sorted(cuts) + [x1]:
+            k = round(len(t) * (x - x0) / max(1, x1 - x0))
+            piece = t[pos:k].strip("|!:;.,'`") if x != x1 else t[pos:].strip("|!:;'`")
+            if piece:
+                out.append((piece, int(prev_x), y0, int(x), y1) + tuple(wd[5:]))
+            pos, prev_x = k, x
+    return out
+
+
+def ocr_image(img, page, scale=1.0, reread=True, with_rules=False):
     """One page picture -> rows of cells (coordinates in points: pixels x scale)."""
+    if img.width < 2000:              # a low-resolution scan or photo: enlarged to about 300 dpi for Tesseract
+        k = 2480 / img.width
+        img = img.resize((int(img.width * k), int(img.height * k)), Image.LANCZOS)
+        scale /= k
     prep, rules, ang = prepare(img)
     raw = _tsv(prep, psm=6)
     # psm 6 reads a page as one block; where it found little (a sparse form), psm 11 finds scattered words
@@ -185,6 +209,7 @@ def ocr_image(img, page, scale=1.0, reread=True):
             raw = raw2
     if reread:
         raw = _reread_numbers(prep, raw)
+    raw = _split_on_rules(raw, rules)
     words = []
     for t, x0, y0, x1, y1, conf, _ in raw:
         if conf < 10 and not re.search(r"\d", t):
@@ -196,7 +221,10 @@ def ocr_image(img, page, scale=1.0, reread=True):
             continue
         words.append(Word(t, x0 * scale, y0 * scale, x1 * scale, y1 * scale, max(0.0, min(1.0, conf / 100.0))))
     rr = [(x * scale, y0 * scale, y1 * scale) for x, y0, y1 in rules]
-    return words_to_rows(words, page, rr, ocr=True, gap_k=1.0)
+    rows = words_to_rows(words, page, rr, ocr=True, gap_k=1.0)
+    if with_rules:
+        return rows, rr
+    return rows
 
 
 def render_pdf_pages(data, pages, dpi=300):
@@ -218,12 +246,46 @@ def render_pdf_pages(data, pages, dpi=300):
     return out
 
 
+def embedded_scans(data, pages):
+    """A scanned page is usually one JPEG covering the page: taken out as it is (no re-rendering, its own
+    resolution) -> {page: (image, points per pixel)}. Pages that are not like that are left for pdftoppm."""
+    import pdfplumber
+    out = {}
+    try:
+        with pdfplumber.open(io.BytesIO(data)) as pdf:
+            for pn in pages:
+                page = pdf.pages[pn - 1]
+                ims = page.images
+                if len(ims) != 1:
+                    continue
+                im = ims[0]
+                if (im["x1"] - im["x0"]) < 0.8 * float(page.width) or (im["bottom"] - im["top"]) < 0.8 * float(page.height):
+                    continue
+                st = im["stream"]
+                flt = st.get_filters() if hasattr(st, "get_filters") else []
+                names = [str(f[0]) if isinstance(f, tuple) else str(f) for f in flt]
+                if not any("DCT" in n for n in names):
+                    continue
+                raw = st.get_rawdata() if hasattr(st, "get_rawdata") else st.rawdata
+                pic = Image.open(io.BytesIO(raw))
+                pic.load()
+                out[pn] = (pic.convert("L"), (im["x1"] - im["x0"]) / pic.width)
+    except Exception:
+        return out
+    return out
+
+
 def ocr_pdf_pages(data, pages, dpi=300, parallel=2):
-    imgs = render_pdf_pages(data, pages, dpi)
-    scale = 72.0 / dpi
+    got = embedded_scans(data, pages)
+    imgs = {pn: x[0] for pn, x in got.items()}
+    scales = {pn: x[1] for pn, x in got.items()}
+    rest = [p for p in pages if p not in imgs]
+    if rest:
+        for pn, im in render_pdf_pages(data, rest, dpi).items():
+            imgs[pn], scales[pn] = im, 72.0 / dpi
 
     def one(pn):
-        return pn, ocr_image(imgs[pn], pn, scale)
+        return pn, ocr_image(imgs[pn], pn, scales[pn], with_rules=True)
     with ThreadPoolExecutor(max_workers=max(1, parallel)) as ex:
         return dict(ex.map(one, [p for p in pages if p in imgs]))
 
@@ -242,6 +304,6 @@ def read_image(data, name=""):
     regions = []
     for i, fr in enumerate(frames):
         dpi = (img.info.get("dpi") or (300, 300))[0] or 300
-        rows = ocr_image(fr, i + 1, 72.0 / float(dpi))
-        regions.append(Region(name=f"Page {i + 1}", page=i + 1, rows=rows, kind="scan"))
+        rows, rr = ocr_image(fr, i + 1, 72.0 / float(dpi), with_rules=True)
+        regions.append(Region(name=f"Page {i + 1}", page=i + 1, rows=rows, kind="scan", vrules=rr))
     return Doc(regions=regions, kind="image", name=name, ocr_pages=[r.page for r in regions])

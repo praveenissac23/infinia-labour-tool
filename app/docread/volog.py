@@ -63,7 +63,7 @@ def _is_header(row):
     return len(keys) >= 3 and ("title" in keys or "ref" in keys) and nums <= 1
 
 
-def _columns(header_rows, rows_below):
+def _columns(header_rows, rows_below, vrules=None):
     """[(x0, x1, role, heading text)] for the heading block (one, two or three rows deep)."""
     cols = []
     base = max(header_rows, key=lambda r: len(r.cells))
@@ -103,6 +103,34 @@ def _columns(header_rows, rows_below):
                 c[2] = "submitted" if c[2] == "submitted_amount" else "approved_on"
             elif kinds == "money" and c[2] in ("submitted", "approved_on"):
                 c[2] = "submitted_amount" if c[2] == "submitted" else "approved_amount"
+    # on a page (not a spreadsheet), headings are narrower than their columns: each column runs to halfway
+    # to the next heading, so a right-aligned figure under a centred heading still falls in it
+    if not all(float(c[0]).is_integer() and float(c[1]).is_integer() for c in cols):
+        cols.sort(key=lambda c: c[0])
+        hy = header_rows[-1].y
+        rl = sorted(x for x, y0, y1 in (vrules or []) if y0 - 4 <= hy <= y1 + 30)
+        data = [c for r in rows_below[:30] for c in r.cells]
+        bounds = []
+        for k in range(len(cols) - 1):
+            a, b = cols[k][1], cols[k + 1][0]
+            between = [x for x in rl if min(a, b) - 2 <= x <= max(a, b) + 2]
+            if between:
+                bounds.append(between[len(between) // 2])          # the ruled line between the two headings
+                continue
+            if b <= a:
+                bounds.append((a + b) / 2)
+                continue
+            # the clearest white channel down the data between the two headings, nearest the middle
+            best = None
+            for i in range(int(a), int(b) + 1):
+                cov = sum(1 for c in data if c.x0 - 0.5 <= i <= c.x1 + 0.5)
+                key = (cov, abs(i - (a + b) / 2))
+                if best is None or key < best[0]:
+                    best = (key, i)
+            bounds.append(best[1])
+        for k in range(len(cols)):
+            cols[k][0] = bounds[k - 1] if k else cols[k][0] - 60
+            cols[k][1] = bounds[k] if k < len(bounds) else cols[k][1] + 60
     # one column per meaning: the first
     seen = set()
     for c in cols:
@@ -137,6 +165,8 @@ def _cell_for(row, col):
     best, bo = None, 0.0
     for c in row.cells:
         ov = min(c.x1, col[1]) - max(c.x0, col[0])
+        if ov > 0 and not row.cells[0].col and not (col[0] <= c.xc <= col[1]) and (c.x1 - c.x0) > 0 and ov < 0.5 * (c.x1 - c.x0):
+            continue                     # a page: the cell mostly in the next column is that column's
         if ov > bo:
             best, bo = c, ov
     if best is None:
@@ -220,7 +250,8 @@ def read_log(doc):
                     j += 1
                 else:
                     break
-            cols = _columns(block, all_rows[j:j + 25])
+            reg = next((g for g in doc.regions if g.page == r.page), None)
+            cols = _columns(block, all_rows[j:j + 25], reg.vrules if reg is not None else None)
             hdr_idx = i
             i = j
             continue

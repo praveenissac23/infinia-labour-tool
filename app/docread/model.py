@@ -76,6 +76,7 @@ class Region:
     kind: str = "page"              # "sheet" | "page" | "scan" | "docx"
     width: float = 0.0
     height: float = 0.0
+    vrules: list = field(default_factory=list)   # vertical table rules (x, y0, y1) on a page
 
 
 @dataclass
