@@ -329,7 +329,7 @@ class Book:
         # request lines: what came in on them that no LPO receipt already accounts for
         on_mrl = defaultdict(float)
         for r in self.receipts:
-            if r.request_line_id and r.kind in ("delivered", "rentals"):
+            if r.request_line_id and r.kind in ("delivered", "rentals", "service"):
                 on_mrl[r.request_line_id] += float(r.qty or 0)
         pool = {l.id: max(0.0, float(l.qty_received or 0) - on_mrl.get(l.id, 0.0)) for l in self.mr_lines}
         # Rentals: hire-ins not already tied to an LPO line
@@ -419,7 +419,12 @@ class Book:
             st = "part"
         else:
             st = "ordered"
-        return {"id": o.id, "ref": o.ref, "status": st, "lines": lines, "related": [x.id for x in related]}
+        # raised straight away by the purchaser: no site's request behind it (only the tracking it made for itself)
+        own = lambda mrl: (self.req_by_id.get(mrl.request_id) is not None and
+                           (self.req_by_id[mrl.request_id].lpo_id == o.id or
+                            (self.req_by_id[mrl.request_id].notes or "").startswith("Stock for the store, ordered on")))
+        direct = not _ids(o.request_line_ids) and all(own(x) for x in related)
+        return {"id": o.id, "ref": o.ref, "status": st, "lines": lines, "related": [x.id for x in related], "direct": direct}
 
     def of(self, o):
         return self.out.get(o.id if hasattr(o, "id") else o)
@@ -523,22 +528,28 @@ def book_delivery(db, o, entries, dn_no, dn_date, user_id=None, location=None, t
         base = dict(order_id=o.id, line_id=l.id, item_id=l.item_id, line_key=plain(l.description), dn_no=dn_no,
                     dn_date=dn_date, location=loc, tag=tag, created_by=user_id, notes=(notes or "")[:300])
         if qty > EPS:
+            # the request line this LPO line stands for comes in with it (Order follow-up, the request's status)
+            mrl = _mr_line_for(book, o, l, it, exclude=used_mrl)
+            on_req = f" (on {mrl.request.ref})" if mrl else ""
             if p["service"]:
-                db.add(models.LpoReceipt(kind="service", qty=qty, **base))
-                done.append(f"{name}: {qty:g} {p['unit']} done (service - no stock, cost to {p['site']})")
+                db.add(models.LpoReceipt(kind="service", qty=qty, request_line_id=mrl.id if mrl else None, **base))
+                done.append(f"{name}: {qty:g} {p['unit']} done (service - no stock, cost to {p['site']}){on_req}")
             elif p["rental_ids"] and o.supplier_id:
+                first = True
                 for rid in p["rental_ids"]:
                     ri = book.items.get(rid)
                     m = models.StoreMovement(item_id=rid, kind="in", qty=qty, location=loc, owner_id=o.supplier_id,
                                              supplier=o.supplier_name or "", reference=dn_no,
-                                             notes=f"{o.ref} line: {name}", moved_on=dn_date, created_by=user_id)
+                                             notes=f"{o.ref} line: {name}", moved_on=dn_date, created_by=user_id,
+                                             request_id=mrl.request_id if mrl else None)
                     db.add(m); db.flush()
-                    db.add(models.LpoReceipt(kind="rentals", qty=qty, movement_id=m.id, **base))
-                    done.append(f"{name}: {qty:g} booked in on hire as {ri.name if ri else rid} at {loc or M.CENTRAL_LABEL}")
+                    db.add(models.LpoReceipt(kind="rentals", qty=qty, movement_id=m.id,
+                                             request_line_id=(mrl.id if (mrl and first) else None), **base))
+                    first = False
+                    done.append(f"{name}: {qty:g} booked in on hire as {ri.name if ri else rid} at {loc or M.CENTRAL_LABEL}{on_req}")
             else:
                 if not l.item_id:
                     raise HTTPException(status_code=400, detail=f"{name} is not on the material list, so it cannot go into stock.")
-                mrl = _mr_line_for(book, o, l, it, exclude=used_mrl)
                 m = models.StoreMovement(item_id=l.item_id, kind="in", qty=qty, location=loc,
                                          supplier=o.supplier_name or "", unit_cost=round(float(l.rate or 0) * (1 - disc / 100.0), 4),
                                          reference=dn_no, notes=f"Against {o.ref}" + (f" ({mrl.request.ref})" if mrl else ""),
@@ -546,11 +557,11 @@ def book_delivery(db, o, entries, dn_no, dn_date, user_id=None, location=None, t
                 db.add(m); db.flush()
                 db.add(models.LpoReceipt(kind="delivered", qty=qty, movement_id=m.id,
                                          request_line_id=mrl.id if mrl else None, **base))
-                if mrl:
-                    take = min(qty, (mrl.qty_requested or 0) - (mrl.qty_received or 0))
-                    mrl.qty_received = (mrl.qty_received or 0) + take
-                    used_mrl.add(mrl.id); touched.add(mrl.request)
-                done.append(f"{name}: {qty:g} {p['unit']} in at {loc or M.CENTRAL_LABEL}" + (f" (on {mrl.request.ref})" if mrl else ""))
+                done.append(f"{name}: {qty:g} {p['unit']} in at {loc or M.CENTRAL_LABEL}{on_req}")
+            if mrl:
+                take = min(qty, (mrl.qty_requested or 0) - (mrl.qty_received or 0))
+                mrl.qty_received = (mrl.qty_received or 0) + take
+                used_mrl.add(mrl.id); touched.add(mrl.request)
         if e.get("close"):
             rest = round(p["remaining"] - qty, 6)
             if rest > EPS:
@@ -648,20 +659,23 @@ def deliveries(show: str = "open", db: Session = Depends(get_db),
     or straight away - line by line. show=all: delivered ones too."""
     b = Book(db)
     names = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
-    out, covered = [], set()
+    out, covered, line_lpo = [], set(), {}
     for o in sorted(b.orders, key=lambda o: (o.order_date or date.min, o.id), reverse=True):
         p = b.of(o)
         if p["status"] in ("cancelled", "superseded"):
             continue
         covered |= set(p["related"])
+        for i in p["related"]:
+            line_lpo.setdefault(i, o.id)
         if show != "all" and p["status"] in ("delivered", "closed"):
             continue
         out.append({"id": o.id, "ref": o.ref, "date": o.order_date.isoformat() if o.order_date else "",
                     "supplier": o.supplier_name or "", "site": o.project_location or "",
                     "deliver_to": b.sites.key(o), "status": p["status"], "status_word": STATUS_WORDS[p["status"]],
-                    "from_request": bool(p["related"]), "by": names.get(o.created_by, ""),
+                    "from_request": bool(p["related"]), "direct": p["direct"], "by": names.get(o.created_by, ""),
                     "lines": p["lines"]})
-    return {"orders": out, "covered_request_lines": sorted(covered), "service_words": SERVICE_WORDS}
+    return {"orders": out, "covered_request_lines": sorted(covered), "request_line_lpo": line_lpo,
+            "service_words": SERVICE_WORDS}
 
 
 @router.get("/store/purchase/orders/{order_id}/deliveries")
