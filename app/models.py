@@ -449,6 +449,9 @@ class PurchaseOrder(Base):
 
     discount_pct = Column(Float, default=0.0)
     tax_pct = Column(Float, default=5.0)
+    # Round off (like Zoho's "Adjustment"): a few fils added to or taken off the total so the LPO comes to the
+    # supplier's invoice exactly (13,660.50 -> 13,661.00). -0.99 to +0.99, no VAT on it; 0 / empty = none.
+    round_off = Column(Float, default=0.0, nullable=True)
     notes = Column(Text, default="")
     terms_text = Column(Text, default="")
     status = Column(String, default="issued")        # issued | cancelled

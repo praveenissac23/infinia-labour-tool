@@ -500,6 +500,8 @@ class PurchaseOrderIn(BaseModel):
     job_scope: str = ""
     project_location: str = ""
     discount_pct: float = 0.0
+    # Round off to match the supplier's invoice: -0.99 to +0.99, no VAT on it. None on an edit = keep it.
+    round_off: float | None = None
     notes: str = ""
     terms_text: str = ""
     request_line_ids: list[int] = []

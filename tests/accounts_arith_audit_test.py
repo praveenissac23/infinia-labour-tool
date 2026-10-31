@@ -260,7 +260,8 @@ def seed():
     sup = models.Supplier(name="Audit Supplier", name_key=main._supplier_key("Audit Supplier"), active=True)
     db.add(sup); db.flush()
     po = models.PurchaseOrder(po_no=990001, ref="IC/LPO/AUD1", order_date=d_(m1, 6), supplier_id=sup.id, supplier_name=sup.name,
-                              project_location="906 Villa", discount_pct=7.5, tax_pct=5, status="issued")
+                              project_location="906 Villa", discount_pct=7.5, tax_pct=5, status="issued",
+                              round_off=-0.37)     # a round off to the supplier's invoice: on the total, no VAT on it
     db.add(po); db.flush()
     it = models.StoreItem(code="AUD-REBAR", name="Audit Rebar", unit="nos", item_type="consumable"); db.add(it); db.flush()
     for desc, q, rate, tax in (("Rebar", 3.333, 1234.567, 5), ("Cement", 7, 18.25, 5), ("DM fee", 1, 105, 0)):
@@ -269,7 +270,7 @@ def seed():
     # issued from the store to 906 (no cost on the movement: valued at the last LPO rate, after its 7.5% discount)
     db.add(models.StoreMovement(item_id=it.id, kind="out", qty=2, from_location="", location="906", moved_on=d_(m1, 9)))
     po2 = models.PurchaseOrder(po_no=990002, ref="IC/LPO/AUD2", order_date=d_(m1, 7), supplier_id=sup.id, supplier_name=sup.name,
-                               project_location="915", discount_pct=0, tax_pct=5, status="cancelled")
+                               project_location="915", discount_pct=0, tax_pct=5, status="cancelled", round_off=0.5)
     db.add(po2); db.flush()
     db.add(models.PurchaseOrderLine(order_id=po2.id, description="Sand", qty=10, rate=50, tax_pct=5, unit="nos"))
     for code in ("906", "915"):
@@ -717,8 +718,9 @@ def lpo_fig(o):
     net = gross * keep
     vat = sum(D(l["qty"]) * D(l["rate"]) * keep * D(l["tax_pct"]) / 100 for l in ls)
     vat_per_line = sum(r2(r2(D(l["qty"]) * D(l["rate"]) * keep) * D(l["tax_pct"]) / 100) for l in ls)
-    return {"gross": gross, "net": net, "vat": vat, "total": r2(net + vat), "vat_line": vat_per_line,
-            "total_line": r2(sum(r2(D(l["qty"]) * D(l["rate"]) * keep) for l in ls) + vat_per_line)}
+    ro = r2(o.get("round_off") or 0)          # round off (Zoho's adjustment): after VAT, no VAT on it
+    return {"gross": gross, "net": net, "vat": vat, "ro": ro, "total": r2(net + vat + ro), "vat_line": vat_per_line,
+            "total_line": r2(sum(r2(D(l["qty"]) * D(l["rate"]) * keep) for l in ls) + vat_per_line + ro)}
 
 
 reg = {r["id"]: r for r in get("/store/purchase/orders?limit=5000")}
@@ -732,9 +734,16 @@ for o in pos:
     html = c.get(f"/export/purchase/{o['id']}/view?token={dl()}")
     if html.status_code == 200 and "text/html" in html.headers.get("content-type", ""):
         ck(f"LPO {o['ref']} printed page: total AED {e['total']:,.2f}", f"AED {money(e['total'])}" in html.text)
+        ck(f"LPO {o['ref']} printed page: a Round off line only when it has one ({e['ro']})",
+           (f'<td>Round off</td><td class="r">{money(e["ro"])}</td>' in html.text) if e["ro"] else ("Round off" not in html.text))
+_zl = c.get("/store/zoho/pos", headers=H)
+zl = {r["id"]: r for r in _zl.json()["rows"]} if _zl.status_code == 200 else {}
+for o in pos:
+    if o["id"] in zl:
+        ck(f"LPO {o['ref']} on Send to Zoho: total {lpo_fig(o)['total']:,.2f}", same(zl[o["id"]]["total"], lpo_fig(o)["total"]), zl[o["id"]]["total"])
 issued = [o for o in pos if o["status"] != "cancelled"]
 rep = get("/store/purchase/report?group_by=order&status=all")
-want = r2(sum(lpo_fig(o)["net"] + lpo_fig(o)["vat"] for o in issued))
+want = r2(sum(lpo_fig(o)["net"] + lpo_fig(o)["vat"] + lpo_fig(o)["ro"] for o in issued))
 ck(f"Purchase report (all, cancelled struck out): {len(issued)} orders, total {want:,.2f}", same(rep["totals"]["total"], want, Decimal("0.011")), rep["totals"])
 rep_i = get("/store/purchase/report?group_by=supplier")
 not_issued = [o for o in issued if o["status"] != "issued"]
@@ -807,10 +816,10 @@ for o in pos:
         continue
     cs = codes_in(o["project_location"]) or codes_in(o["job_scope"]) or codes_in(rs)
     for cd in cs:
-        lpo_want[cd] = lpo_want.get(cd, D(0)) + r2(r2(lpo_fig(o)["net"]) / len(cs))
+        lpo_want[cd] = lpo_want.get(cd, D(0)) + r2(r2(r2(lpo_fig(o)["net"]) + lpo_fig(o)["ro"]) / len(cs))
 for cd in sorted(set(lpo_want) | {k for k, r in rows.items() if r["lpo"]}):
     g = rows.get(cd, {}).get("lpo", 0)
-    ck(f"Project expense {cd} LPO cost net of discount and VAT: {r2(lpo_want.get(cd, 0)):,.2f}", same(g, r2(lpo_want.get(cd, 0)), Decimal("0.011")), g)
+    ck(f"Project expense {cd} LPO cost net of discount and VAT, round off included: {r2(lpo_want.get(cd, 0)):,.2f}", same(g, r2(lpo_want.get(cd, 0)), Decimal("0.011")), g)
 # materials sent from the store: valued at the cost on the movement, else the last LPO rate actually paid (after the
 # LPO's discount, as the store's own valuation reads it), else the item's estimated price
 items = {i["id"]: i for i in raw("select * from store_items")} if has_table("store_items") else {}

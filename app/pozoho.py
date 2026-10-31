@@ -141,6 +141,17 @@ def _body(db, o):
             body["discount"] = f"{round(o.discount_pct, 2)}%"
         body["is_discount_before_tax"] = True
         body["discount_account_id"] = dacc
+    ro = M.lpo_round_off(o)
+    if ro:
+        # The round off squaring the LPO with the supplier's invoice goes as Zoho's own "Adjustment" (after tax,
+        # no VAT on it), so the PO in Zoho totals the same as the LPO: 13,660.50 + 0.50 = 13,661.00.
+        body["adjustment"] = ro
+        body["adjustment_description"] = "Round off"
+    elif (o.zoho_status or "") in ("sent", "changed"):
+        # an update of a PO already in Zoho: no round off here = none there (one taken off on an edit goes
+        # in Zoho too), so the PO in Zoho keeps the LPO's total
+        body["adjustment"] = 0
+        body["adjustment_description"] = ""
     return body
 
 
@@ -216,9 +227,8 @@ def _start(db):
 
 
 def _total(o):
-    sub = sum((l.qty or 0) * (l.rate or 0) for l in o.lines)
-    sub -= sub * (o.discount_pct or 0) / 100
-    return round(sub + sum((l.qty or 0) * (l.rate or 0) * (1 - (o.discount_pct or 0) / 100) * (l.tax_pct or 0) / 100 for l in o.lines), 2)
+    """The LPO total as Zoho's PO should read it: net after discount + VAT + round off (Zoho's adjustment)."""
+    return M.lpo_total(o)
 
 
 def _last_account(db, o):
@@ -272,7 +282,9 @@ def pos(db: Session = Depends(get_db), user: models.User = ZG):
                      "total": _total(o), "site": _site(db, o), "linked": bool(_vendor(db, o)), "status": st,
                      "cancelled": o.status == "cancelled", "cancel_reason": o.cancel_reason or "",
                      "note": nt.get("items") if fresh else [],
-                     "split": [{"to": "Store" if k == "STORE" else k, "amount": round(n_ + v_, 2)} for k, n_, v_ in M.lpo_split(o)],
+                     "round_off": M.lpo_round_off(o),
+                     "split": [{"to": "Store" if k == "STORE" else k, "amount": round(n_ + v_ + r_, 2)}
+                               for k, n_, v_, r_ in M.lpo_split(o, with_ro=True)],
                      "err": "" if (o.zoho_err or "").startswith("sending@") else (o.zoho_err or "")})
     return {"rows": rows, "hint": not M.get_setting(db, f"hint_lpo_open:{user.id}"), "may_delete": (user.role or "") == "admin"}
 

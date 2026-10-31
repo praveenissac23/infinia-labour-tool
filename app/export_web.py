@@ -2386,7 +2386,9 @@ def build_lpo_pdf(po: dict):
     # each line's own VAT on its discounted amount (main._lpo_net_vat)
     vat = sum(float(l.get("qty") or 0) * float(l.get("rate") or 0) * (1 - disc / 100.0) *
               float(l.get("tax_pct") or 0) / 100.0 for l in po.get("lines", []))
-    total = net + vat
+    # the round off squaring it with the supplier's invoice - after VAT, no VAT on it (main.lpo_total)
+    ro = round(float(po.get("round_off") or 0), 2)
+    total = net + vat + ro
 
     money = [[P("Sub Total", 8.5, align=TA_RIGHT), P(f"{sub:,.2f}", 8.5, align=TA_RIGHT)]]
     if disc:
@@ -2394,6 +2396,8 @@ def build_lpo_pdf(po: dict):
                       P(f"(-) {discount:,.2f}", 8.5, align=TA_RIGHT)])
     money.append([P(f"Standard Rate ({po.get('tax_pct', 5):g}%)", 8.5, align=TA_RIGHT),
                   P(f"{vat:,.2f}", 8.5, align=TA_RIGHT)])
+    if ro:
+        money.append([P("Round off", 8.5, align=TA_RIGHT), P(f"{ro:,.2f}", 8.5, align=TA_RIGHT)])
     money.append([P("<b>Total</b>", 10, align=TA_RIGHT), P(f"<b>AED {total:,.2f}</b>", 10, align=TA_RIGHT)])
     mt = Table(money, colWidths=[W * 0.24, W * 0.20])
     mt.setStyle(TableStyle([
@@ -2596,6 +2600,9 @@ def build_lpo_excel(po: dict):
     money(f"Standard Rate ({po.get('tax_pct', 5):g}%)",
           f"=SUM(F{first_line}:F{last_line})" if not disc
           else f"=SUM(F{first_line}:F{last_line})*(1-{disc}/100)")
+    ro = round(float(po.get("round_off") or 0), 2)
+    if ro:
+        money("Round off", ro)               # after VAT, no VAT on it - the Total below adds it in
     money("Total", f"=SUM(G{money_start}:G{r-1})", bold=True, size=11)
 
     nr = money_start

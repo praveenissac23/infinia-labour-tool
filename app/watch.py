@@ -49,6 +49,8 @@ FROM_LOG = {
     # Purchasing and accounts
     "edit_lpo": "LPO edited",
     "cancel_lpo": "LPO cancelled",
+    "delete_supplier": "Supplier deleted",
+    "merge_supplier": "Supplier merged into another (duplicate)",
     "invoice_edit": "Invoice edited",
     "invoice_cancel": "Invoice cancelled",
     "credential_shown": "Password shown / copied (Credentials)",

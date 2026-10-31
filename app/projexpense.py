@@ -9,7 +9,9 @@ Four kinds of cost are gathered per project (the site code - 906, 915 ...):
   Materials - LPO   purchase orders placed for a site. The site is read from the
                     order's project location (and the request it came from);
                     an order naming two sites is split equally. Net of VAT -
-                    VAT is recovered, not a cost. Orders delivered to the store
+                    VAT is recovered, not a cost; the order's round off (to match
+                    the supplier's invoice) is a cost and is included - shared
+                    over a combined LPO's sites. Orders delivered to the store
                     are stock, not a project cost, until they are issued.
   Materials - store consumables sent from the store to a site, less what came
                     back (transfers move the cost with the goods), valued at the
@@ -158,19 +160,20 @@ def _lpos(db, match, d1, d2):
         items = lambda ls: ", ".join((l.description or "")[:40] for l in ls[:4]) + (" ..." if len(ls) > 4 else "")
         if getattr(o, "combined", False):
             # Combined LPO: each site pays for its own lines; the store's lines are stock
-            for to, n_, v_ in M.lpo_split(o):
+            # (its round off shared over the sites in proportion, the parts adding up to it exactly)
+            for to, n_, v_, ro_ in M.lpo_split(o, with_ro=True):
                 mine = [l for l in lines if ((l.cost_to or "").strip() or "?") == to]
                 st = to.upper() == "STORE"
                 out.append({"sites": [] if st else match(to), "to_store": st, "date": o.order_date,
                             "ref": (o.ref or f"LPO {o.po_no}") + " (combined)", "supplier": o.supplier_name or "",
-                            "location": "Store" if st else to, "items": items(mine), "net": n_, "vat": v_, "id": o.id})
+                            "location": "Store" if st else to, "items": items(mine), "net": round(n_ + ro_, 2), "vat": v_, "id": o.id})
             continue
         to_store = req_site.upper() == "STORE"
         sites = [] if to_store else (match(o.project_location, o.plot_no, o.job_scope) or match(req_site))
         out.append({"sites": sites, "to_store": to_store, "date": o.order_date, "ref": o.ref or f"LPO {o.po_no}",
                     "supplier": o.supplier_name or "", "location": o.project_location or req_site,
                     "items": ", ".join((l.description or "")[:40] for l in lines[:4]) + (" ..." if len(lines) > 4 else ""),
-                    "net": round(net, 2), "vat": round(vat, 2), "id": o.id})
+                    "net": round(net + M.lpo_round_off(o), 2), "vat": round(vat, 2), "id": o.id})
     return out
 
 

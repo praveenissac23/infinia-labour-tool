@@ -301,6 +301,13 @@ def check(lid: int, db: Session = Depends(get_db), user: models.User = ZG):
     diffs = []
     if live["amount"] is not None and l.kind != "purchaseorder" and abs((live["amount"] or 0) - (l.amount or 0)) > 0.005:
         diffs.append(f"Amount in Zoho {live['amount']:,.2f} - portal sent {l.amount:,.2f}")
+    if live["amount"] is not None and l.kind == "purchaseorder" and l.source == "lpo" and l.item_id:
+        # A PO is checked against the LPO as it stands now (after any edit): net + VAT + round off
+        o = db.get(models.PurchaseOrder, l.item_id)
+        if o and (o.status or "") != "cancelled" and abs((live["amount"] or 0) - M.lpo_total(o)) > 0.005:
+            ro = M.lpo_round_off(o)
+            diffs.append(f"Total in Zoho {live['amount']:,.2f} - the LPO comes to {M.lpo_total(o):,.2f}"
+                         + (f" (round off {ro:+.2f} included)" if ro else ""))
     for k, lab in (("from", "From"), ("to", "To")):
         mine = getattr(l, k + "_acc")
         if live[k] and mine and l.kind not in ("purchaseorder", "invoice") and _leaf(live[k]) != _leaf(mine):

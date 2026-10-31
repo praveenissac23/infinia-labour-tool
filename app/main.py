@@ -5061,6 +5061,149 @@ def _copy_supplier_to_zoho(db, sup):
         db.rollback()
 
 
+# ---- Delete a supplier, or merge a duplicate into the one kept (Purchasing > Suppliers) ---------------------
+# Every record that points at a supplier by its id: (label, model, column). A supplier used by any of them is
+# never deleted outright - it is merged into another one, which takes all of them over.
+def _supplier_refs():
+    import estimation as E
+    return [("LPOs", models.PurchaseOrder, "supplier_id"),
+            ("material requests", models.MaterialRequest, "supplier_id"),
+            ("material request lines", models.MaterialRequestLine, "supplier_id"),
+            ("return notes", models.HireReturn, "supplier_id"),
+            ("store movements (hired from it)", models.StoreMovement, "owner_id"),
+            ("subcontracts / LPOs on Estimation projects", E.EstSub, "supplier_id")]
+
+
+def _supplier_usage(db, sup):
+    """What uses this supplier: [(label, count)] for the non-zero ones, plus its Zoho link."""
+    out = []
+    for label, model, col in _supplier_refs():
+        n = db.query(func.count(model.id)).filter(getattr(model, col) == sup.id).scalar() or 0
+        if n:
+            out.append((label, int(n)))
+    zlog = db.query(func.count(models.ZohoLog.id)).filter(models.ZohoLog.source == "supplier",
+                                                          models.ZohoLog.item_id == sup.id).scalar() or 0
+    if zlog:
+        out.append(("Zoho log entries", int(zlog)))
+    if (sup.zoho_id or "").strip():
+        out.append(("link to a Zoho vendor", 1))
+    return out
+
+
+def _dup_score(a, b):
+    """How alike two supplier names are, 0..1: the folded names compared with the spaces taken out, so
+    "Uni Mix Block Industry" and "Unimix Block Industry" come out the same."""
+    import difflib
+    ka, kb = _supplier_key(a).replace(" ", ""), _supplier_key(b).replace(" ", "")
+    if not ka or not kb:
+        return 0.0
+    if ka == kb:
+        return 1.0
+    return difflib.SequenceMatcher(None, ka, kb).ratio()
+
+
+@app.get("/store/suppliers/{supplier_id}/usage")
+def supplier_usage(supplier_id: int, db: Session = Depends(get_db),
+                   user: models.User = Depends(require_screen("approvals"))):
+    """Before a delete: what uses this supplier, and the suppliers it is most likely a duplicate of."""
+    sup = db.get(models.Supplier, supplier_id)
+    if not sup:
+        raise HTTPException(status_code=404, detail="Supplier not found.")
+    used = _supplier_usage(db, sup)
+    others = db.query(models.Supplier).filter(models.Supplier.id != sup.id, models.Supplier.active == True).all()  # noqa: E712
+    scored = sorted(((round(_dup_score(sup.name, s.name), 3), s) for s in others), key=lambda t: (-t[0], t[1].name.lower()))
+    return {"id": sup.id, "name": sup.name, "zoho_id": sup.zoho_id or "",
+            "used": [{"what": w, "count": n} for w, n in used], "in_use": bool(used),
+            "lpos": next((n for w, n in used if w == "LPOs"), 0),
+            "likely": [{"id": s.id, "name": s.name, "score": sc} for sc, s in scored if sc >= 0.8][:5]}
+
+
+@app.delete("/store/suppliers/{supplier_id}")
+def delete_supplier(supplier_id: int, db: Session = Depends(get_db),
+                    user: models.User = Depends(require_screen("approvals"))):
+    """A supplier nothing uses (no LPO, request, return note, movement, subcontract or Zoho link): gone.
+    One that is used is refused - merge it into the supplier kept instead, so nothing is left pointing nowhere."""
+    sup = db.get(models.Supplier, supplier_id)
+    if not sup:
+        raise HTTPException(status_code=404, detail="Supplier not found.")
+    used = _supplier_usage(db, sup)
+    if used:
+        raise HTTPException(status_code=400, detail=f"{sup.name} is used by " + ", ".join(f"{n} {w}" for w, n in used)
+                            + " - it cannot be deleted. Merge it into the supplier to keep instead.")
+    name = sup.name
+    db.delete(sup)
+    db.commit()
+    log_action(db, user.id, "delete_supplier", f"Supplier {name} (id {supplier_id}) deleted - nothing used it")
+    return {"ok": True, "deleted": name}
+
+
+@app.post("/store/suppliers/{supplier_id}/merge")
+def merge_supplier(supplier_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                   user: models.User = Depends(require_screen("approvals"))):
+    """A duplicate merged into the supplier kept, in one go: every record pointing at the duplicate points at
+    the kept one, the kept one's empty boxes (TRN, email, phone, address ...) are filled from the duplicate,
+    and the duplicate is deleted. The supplier name printed on LPOs and return notes already issued stays as
+    it was printed. Nothing is sent to Zoho."""
+    try:
+        into = int((payload or {}).get("into") or 0)
+    except (TypeError, ValueError):
+        into = 0
+    gone = db.get(models.Supplier, supplier_id)
+    keep = db.get(models.Supplier, into) if into else None
+    if not gone:
+        raise HTTPException(status_code=404, detail="Supplier not found.")
+    if not keep:
+        raise HTTPException(status_code=400, detail="Pick the supplier to keep.")
+    if keep.id == gone.id:
+        raise HTTPException(status_code=400, detail="Pick a different supplier to merge into.")
+    moved, filled = [], []
+    gone_name, keep_name, keep_id = gone.name, keep.name, keep.id
+    try:
+        # LPOs already issued keep their vendor block exactly as printed: an empty box on the order was
+        # printed from the duplicate's record, so its value is written onto the order before the switch.
+        for o in db.query(models.PurchaseOrder).filter(models.PurchaseOrder.supplier_id == gone.id).all():
+            for attr, src in (("supplier_email", "email"), ("supplier_contact", "contact_person"), ("supplier_phone", "phone")):
+                if not (getattr(o, attr, "") or "").strip() and (getattr(gone, src, "") or "").strip():
+                    setattr(o, attr, getattr(gone, src))
+        for label, model, col in _supplier_refs():
+            n = (db.query(model).filter(getattr(model, col) == gone.id)
+                   .update({getattr(model, col): keep.id}, synchronize_session=False))
+            if n:
+                moved.append((label, n))
+        n = (db.query(models.ZohoLog).filter(models.ZohoLog.source == "supplier", models.ZohoLog.item_id == gone.id)
+               .update({models.ZohoLog.item_id: keep.id}, synchronize_session=False))
+        if n:
+            moved.append(("Zoho log entries", n))
+        for field, label in (("contact_person", "contact"), ("phone", "phone"), ("trn", "TRN"), ("email", "email"),
+                             ("address", "address"), ("payment_terms", "payment terms"), ("notes", "notes")):
+            if not (getattr(keep, field, "") or "").strip() and (getattr(gone, field, "") or "").strip():
+                setattr(keep, field, getattr(gone, field))
+                filled.append(label)
+        zoho_note = ""
+        gz, kz = (gone.zoho_id or "").strip(), (keep.zoho_id or "").strip()
+        if gz and not kz:
+            keep.zoho_id, keep.zoho_err = gz, ""
+            filled.append("Zoho vendor link")
+        elif gz and kz and gz != kz:
+            zoho_note = f"; Zoho: kept {keep_name}'s vendor {kz}, {gone_name}'s vendor {gz} is no longer linked (not changed in Zoho)"
+        db.flush()
+        db.delete(gone)
+        db.commit()
+    except HTTPException:
+        db.rollback(); raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Nothing was changed - the merge could not be done ({str(e)[:150]}).")
+    total = sum(n for _, n in moved)
+    log_action(db, user.id, "merge_supplier",
+               f"Supplier {gone_name} (id {supplier_id}) merged into {keep_name} (id {keep_id}): {total} record(s) moved"
+               + (" (" + ", ".join(f"{n} {w}" for w, n in moved) + ")" if moved else "")
+               + (f"; filled from it: {', '.join(filled)}" if filled else "") + zoho_note
+               + "; names printed on issued LPOs left as printed")
+    return {"ok": True, "kept": keep_name, "removed": gone_name, "moved": [{"what": w, "count": n} for w, n in moved],
+            "total": total, "filled": filled, "zoho_note": zoho_note.lstrip("; ")}
+
+
 @app.post("/store/request-lines/{line_id}/decision")
 def decide_request_line(line_id: int, payload: schemas.LineDecisionIn,
                          db: Session = Depends(get_db),
@@ -8428,6 +8571,59 @@ def _lpo_net_vat(o):
     vat = sum((l.qty or 0) * (l.rate or 0) * keep * (l.tax_pct or 0) / 100.0 for l in o.lines)
     return net, vat
 
+
+def lpo_round_off(o):
+    """The order's round off (Zoho's "Adjustment"): 2 decimals, 0 when none. No VAT is charged on it."""
+    try:
+        return round(float(getattr(o, "round_off", 0) or 0), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def lpo_total(o):
+    """What the order comes to: net after discount + VAT + round off - every place an LPO total is shown."""
+    net, vat = _lpo_net_vat(o)
+    return round(net + vat + lpo_round_off(o), 2)
+
+
+def split_round_off(ro, weights):
+    """A round off shared out in proportion to the weights, in whole fils, the parts adding up to it exactly:
+    each part rounded down to the fils, the largest share takes what is left over."""
+    ro = round(float(ro or 0), 2)
+    n = len(weights)
+    if not n:
+        return []
+    cents = int(round(ro * 100))
+    w = [abs(float(x or 0)) for x in weights]
+    tot = sum(w)
+    if not cents:
+        return [0.0] * n
+    big = max(range(n), key=lambda i: w[i])
+    if tot <= 0:
+        parts = [0] * n
+    else:
+        sign = 1 if cents > 0 else -1
+        parts = [sign * int(abs(cents) * w[i] / tot) for i in range(n)]
+    parts[big] += cents - sum(parts)
+    return [p / 100.0 for p in parts]
+
+
+def check_round_off(v):
+    """The round off as typed: blank = 0; else a number from -0.99 to +0.99 with at most 2 decimals."""
+    import math
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return 0.0
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Round off must be a number from -0.99 to 0.99.")
+    if math.isnan(f) or math.isinf(f) or abs(f) >= 1:
+        raise HTTPException(status_code=400, detail="Round off must be less than 1.00 either way (-0.99 to 0.99) - "
+                                                    "it only squares the LPO with the supplier's invoice.")
+    if abs(f * 100 - round(f * 100)) > 1e-6:
+        raise HTTPException(status_code=400, detail="Round off takes 2 decimals at most (for example 0.50 or -0.40).")
+    return round(f, 2)
+
 @app.get("/store/purchase/orders")
 def list_purchase_orders(q: str = "", limit: int = 200, db: Session = Depends(get_db),
                           user: models.User = Depends(require_screen("approvals"))):
@@ -8437,7 +8633,6 @@ def list_purchase_orders(q: str = "", limit: int = 200, db: Session = Depends(ge
     needle = q.strip().lower()
     out = []
     for o in rows:
-        net, vat_amt = _lpo_net_vat(o)
         blob = " ".join([o.ref, o.supplier_name or "", o.project_location or "",
                          o.job_scope or "", o.supplier_ref or ""] +
                         [l.description or "" for l in o.lines]).lower()
@@ -8448,7 +8643,7 @@ def list_purchase_orders(q: str = "", limit: int = 200, db: Session = Depends(ge
                     "supplier": o.supplier_name, "site": o.project_location,
                     "job_scope": o.job_scope, "status": o.status,
                     "lines": len(o.lines),
-                    "total": round(net + vat_amt, 2),
+                    "total": lpo_total(o), "round_off": lpo_round_off(o),
                     "request_id": o.request_id})
         if len(out) >= limit:
             break
@@ -8553,17 +8748,26 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
     orders = q.order_by(models.PurchaseOrder.po_no.desc()).all()
 
     sup_q, site_q, mat_q = supplier.strip().lower(), site.strip().lower(), material.strip().lower()
+    # Totalled by supplier: by the supplier record the order belongs to (its name today), so a duplicate merged
+    # into another one counts under the one kept - the name printed on the order is left as printed.
+    sup_now = {i: n for i, n in db.query(models.Supplier.id, models.Supplier.name).all()}
+    sup_of = lambda o: sup_now.get(o.supplier_id) or o.supplier_name or ""
     wanted = [m for m in measures.split(",") if m in LPO_MEASURES] or ["total"]
     group_by = group_by if group_by in LPO_GROUPS else "order"
 
     rows = {}
     counted_orders = set()
     for o in orders:
-        if sup_q and sup_q not in (o.supplier_name or "").lower():
+        if sup_q and sup_q not in (o.supplier_name or "").lower() and sup_q not in sup_of(o).lower():
             continue
         if site_q and site_q not in (o.project_location or "").lower():
             continue
         lines = o.lines
+        # The order's round off goes on its total (no VAT on it), shared over its lines in proportion to each
+        # line's amount incl. VAT - so totalled by material the parts still add up to it exactly.
+        _keep = 1 - (o.discount_pct or 0) / 100.0
+        ro_part = dict(zip((id(l) for l in o.lines), split_round_off(lpo_round_off(o), [
+            (l.qty or 0) * (l.rate or 0) * _keep * (1 + (l.tax_pct or 0) / 100.0) for l in o.lines])))
         if mat_q:
             lines = [l for l in lines if mat_q in (l.description or "").lower()]
             if not lines:
@@ -8572,16 +8776,17 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
             counted_orders.add(o.po_no)
             amount = (l.qty or 0) * (l.rate or 0) * (1 - (o.discount_pct or 0) / 100.0)
             vat = amount * (l.tax_pct or 0) / 100.0
+            ro = ro_part.get(id(l), 0.0)
             key = {
                 "order": o.ref,
-                "supplier": o.supplier_name or "(not named)",
+                "supplier": sup_of(o) or "(not named)",
                 "site": o.project_location or "(none given)",
                 "material": l.description or "(none)",
                 "month": o.order_date.strftime("%B %Y") if o.order_date else "-",
                 "job": o.job_scope or "(none given)",
             }[group_by]
             r = rows.setdefault(key, {"label": key, "orders": set(), "lines": 0, "qty": 0.0,
-                                      "sub_total": 0.0, "vat": 0.0, "total": 0.0,
+                                      "sub_total": 0.0, "vat": 0.0, "round_off": 0.0, "total": 0.0,
                                       "date": o.order_date.isoformat() if o.order_date else "",
                                       "supplier": o.supplier_name or "", "site": o.project_location or "",
                                       "job": o.job_scope or "", "status": o.status, "id": o.id,
@@ -8597,14 +8802,20 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
             r["qty"] += (l.qty or 0)
             r["sub_total"] += amount
             r["vat"] += vat
-            r["total"] += amount + vat
+            r["round_off"] += ro
+            r["total"] += amount + vat + ro
 
     out = []
     for r in rows.values():
         r["orders"] = len(r["orders"])
-        for k in ("qty", "sub_total", "vat", "total"):
+        for k in ("qty", "sub_total", "vat", "round_off", "total"):
             r[k] = round(r[k], 2)
         out.append(r)
+    # A round off on any order shown gets its own column just before Total, so Sub Total + VAT + Round off
+    # = Total reads across the row. Not a box to tick: there only when it is needed.
+    if "total" in wanted and "round_off" not in wanted and \
+            any(r["round_off"] for r in out if r["status"] != "cancelled" or status == "cancelled"):
+        wanted.insert(wanted.index("total"), "round_off")
     out.sort(key=lambda x: (-x["total"]) if group_by != "order" else x["label"], reverse=(group_by == "order"))
 
     counts = [r for r in out if r["status"] != "cancelled" or status == "cancelled"]
@@ -8618,7 +8829,7 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
         totals["orders"] = len(counted_orders)
     return {
         "group_by": group_by, "group_label": LPO_GROUPS[group_by],
-        "measures": [{"key": m, "label": LPO_MEASURES[m]} for m in wanted],
+        "measures": [{"key": m, "label": LPO_MEASURES.get(m) or "Round off (AED)"} for m in wanted],
         "rows": out, "totals": totals,
         "catalog": {"groups": [{"key": k, "label": v} for k, v in LPO_GROUPS.items()],
                     "measures": [{"key": k, "label": v} for k, v in LPO_MEASURES.items()]},
@@ -8718,6 +8929,7 @@ def _lpo_dict(o):
         "request_id": o.request_id, "plot_no": o.plot_no, "contact_person": o.contact_person,
         "mobile": o.mobile, "email": o.email, "job_scope": o.job_scope,
         "project_location": o.project_location, "discount_pct": o.discount_pct,
+        "round_off": lpo_round_off(o), "total": lpo_total(o),
         "tax_pct": o.tax_pct, "notes": o.notes, "terms_text": o.terms_text, "status": o.status,
         "cancel_reason": getattr(o, "cancel_reason", "") or "",
         "cancelled_on": o.cancelled_at.strftime("%d/%m/%Y") if getattr(o, "cancelled_at", None) else "",
@@ -8754,6 +8966,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     if not payload.lines:
         raise HTTPException(status_code=400, detail="An order needs at least one line.")
     _check_combined(payload)
+    round_off = check_round_off(payload.round_off)
 
     # Contact Person and Mobile on the order are OURS - the man on site
     # the supplier should call. Passing them in here wrote them onto the
@@ -8784,6 +8997,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
         mobile=payload.mobile or "", email=payload.email or "purchase@infinia.ae",
         job_scope=payload.job_scope or "", project_location=payload.project_location or "",
         discount_pct=payload.discount_pct or 0.0,
+        round_off=round_off,
         notes=payload.notes or "",
         terms_text=(payload.terms_text or DEFAULT_LPO_TERMS),
         combined=bool(payload.combined),
@@ -8837,6 +9051,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     db.refresh(o)
     log_action(db, user.id, "create_lpo",
                f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s))"
+               + (f", round off {round_off:+.2f}, total AED {lpo_total(o):,.2f}" if round_off else "")
                + (f", {len(placed)} request line(s) marked ordered" if placed else "")
                + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else "")
                + (f"; added to the material list: {', '.join(new_items)}" if new_items else ""))
@@ -8966,7 +9181,8 @@ def _lpo_snap(o):
     return {"supplier": o.supplier_name or "", "date": o.order_date.strftime("%d/%m/%Y") if o.order_date else "",
             "delivery": o.delivery_date.strftime("%d/%m/%Y") if o.delivery_date else (getattr(o, "delivery_note", "") or ""),
             "discount": round(o.discount_pct or 0, 2), "supplier_ref": o.supplier_ref or "", "site": o.project_location or "",
-            "terms": o.terms or "", "lines": lines, "total": tot(lines, o.discount_pct),
+            "terms": o.terms or "", "lines": lines,
+            "round_off": lpo_round_off(o), "total": round(tot(lines, o.discount_pct) + lpo_round_off(o), 2),
             "combined": bool(getattr(o, "combined", False))}
 
 
@@ -8975,8 +9191,10 @@ def _to_word(v):
     return "-" if not v else ("Store" if v.upper() == "STORE" else v)
 
 
-def lpo_split(o):
-    """Combined LPO: [(cost_to, net, vat)] - each line's share, discount applied. [] for an ordinary LPO."""
+def lpo_split(o, with_ro=False):
+    """Combined LPO: [(cost_to, net, vat)] - each line's share, discount applied. [] for an ordinary LPO.
+    with_ro: [(cost_to, net, vat, round_off)] - the order's round off shared over the sites in proportion to
+    each one's amount incl. VAT, the parts adding up to it exactly (the largest share takes the odd fils)."""
     if not getattr(o, "combined", False):
         return []
     disc, acc = float(o.discount_pct or 0), {}
@@ -8984,7 +9202,11 @@ def lpo_split(o):
         k = (getattr(l, "cost_to", "") or "").strip() or "?"
         net = float(l.qty or 0) * float(l.rate or 0) * (1 - disc / 100.0)
         a = acc.setdefault(k, [0.0, 0.0]); a[0] += net; a[1] += net * float(l.tax_pct or 0) / 100.0
-    return [(k, round(v[0], 2), round(v[1], 2)) for k, v in sorted(acc.items(), key=lambda kv: (kv[0] != "STORE", kv[0]))]
+    out = [(k, round(v[0], 2), round(v[1], 2)) for k, v in sorted(acc.items(), key=lambda kv: (kv[0] != "STORE", kv[0]))]
+    if not with_ro:
+        return out
+    parts = split_round_off(lpo_round_off(o), [n_ + v_ for _, n_, v_ in out])
+    return [(k, n_, v_, p) for (k, n_, v_), p in zip(out, parts)]
 
 
 def _lpo_changes(a, b):
@@ -8998,6 +9220,9 @@ def _lpo_changes(a, b):
             out.append(f"{lab}: {a[k] or '-'} -> {b[k] or '-'}")
     if a["discount"] != b["discount"]:
         out.append(f"Discount: {n(a['discount'])}% -> {n(b['discount'])}%")
+    if (a.get("round_off") or 0) != (b.get("round_off") or 0):
+        ro = lambda v: f"{v:+.2f}" if v else "none"
+        out.append(f"Round off: {ro(a.get('round_off') or 0)} -> {ro(b.get('round_off') or 0)}")
     if a.get("combined") != b.get("combined"):
         out.append("Made a combined LPO (items for different sites)" if b.get("combined") else "No longer a combined LPO")
     left = list(enumerate(a["lines"], 1))
@@ -9062,6 +9287,8 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     if not payload.lines:
         raise HTTPException(status_code=400, detail="An order needs at least one line.")
     _check_combined(payload)
+    # Not sent (an older screen): the round off already on the order stays.
+    round_off = lpo_round_off(o) if payload.round_off is None else check_round_off(payload.round_off)
     _lpo_amt = lambda lines: round(sum((l.qty or 0) * (l.rate or 0) for l in lines), 2)
     amount_was = _lpo_amt(o.lines)
     before = _lpo_snap(o)
@@ -9089,6 +9316,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     o.job_scope = payload.job_scope or ""
     o.project_location = payload.project_location or ""
     o.discount_pct = payload.discount_pct or 0.0
+    o.round_off = round_off
     o.notes = payload.notes or ""
     o.terms_text = payload.terms_text or DEFAULT_LPO_TERMS
     o.combined = bool(payload.combined)
@@ -9572,13 +9800,16 @@ def _lpo_html(o):
             f'<td class="r">{amount:,.2f}</td></tr>')
     discount = sub * (o.discount_pct or 0) / 100.0
     net, vat = _lpo_net_vat(o)
-    total = net + vat
+    ro = lpo_round_off(o)
+    total = net + vat + ro
 
     money = [f'<tr><td>Sub Total</td><td class="r">{sub:,.2f}</td></tr>']
     if o.discount_pct:
         money.append(f'<tr><td>Discount({o.discount_pct:,.2f}%)</td>'
                      f'<td class="r">(-) {discount:,.2f}</td></tr>')
     money.append(f'<tr><td>Standard Rate ({(o.tax_pct or 5):g}%)</td><td class="r">{vat:,.2f}</td></tr>')
+    if ro:
+        money.append(f'<tr><td>Round off</td><td class="r">{ro:,.2f}</td></tr>')
     money.append(f'<tr class="tot"><td>Total</td><td class="r">AED {total:,.2f}</td></tr>')
 
     def pair(k, v):

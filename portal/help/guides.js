@@ -1210,6 +1210,7 @@ window.HELP_TIPS = {
   "#lpo-location": "The site to deliver to. Typing a site fills the plot, the engineer and his number.",
   "#lpo-scope": "What the material is for - filled from the requests.",
   "#lpo-discount": "Percentage off the whole order, before VAT.",
+  "#lpo-roundoff": "Optional. A few fils added to or taken off the total so the LPO comes to the supplier's invoice exactly - like Zoho's Adjustment (LPO 13,660.50, invoice 13,661.00: type 0.50; LPO 4,649.40, invoice 4,649.00: type -0.40). From -0.99 to 0.99, no VAT on it. Prints as a Round off line between VAT and Total and goes to Zoho as the PO's adjustment. Empty = none.",
   "#lpo-termsset": "Standard terms for materials or rentals - edit the text below if needed.",
   "#hin-date": "Starts as today and moves on each day the screen is left open.",
   "#hin-location": "Where the hired item arrived - central store or a site.",
