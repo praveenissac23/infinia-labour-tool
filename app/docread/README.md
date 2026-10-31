@@ -16,7 +16,7 @@ stored: the file is read in memory and dropped.
      cells joined between the table's horizontal rules (`merge_bands`). A page with no text layer goes to OCR.
    * Scans / photos (`ocr.py`): the scan's own JPEG taken out of the PDF (else pdftoppm at 300 dpi), straightened,
      table rules found and painted out (their positions still split cells), Tesseract (TSV word boxes + confidence),
-     unsure figures re-read enlarged with digits only. Two pages at a time.
+     unsure figures re-read enlarged with digits only. One page at a time (DOCREAD_PARALLEL=2 reads two).
    * Word (`other.py`): paragraphs and table rows. The browser's existing lines (`from_lines`) work too.
 2. **Table understanding** (`tables.py`, `vocab.py`): heading rows (one to three deep, merged) found and validated
    (figures must stand under them); every figure gets its column meaning — previous / this period / cumulative /
@@ -53,11 +53,34 @@ read_lines(lines, "subpc", subs)   # the browser's lines (what /store/est/read/<
 `docread.legacy.to_lines(doc)` turns a server-read file into the browser's line format, so the existing readers can
 be run on it side by side during roll-out.
 
+## In the portal (app/est_fileread.py, portal/est/confirm.js)
+
+| Screen | What is sent | Read by |
+|---|---|---|
+| Previous records - client bills, subcontractor PCs | the file (`addFile`: whole, or in pieces via `/store/est/ipa/format/part`) to `/store/est/read/ipa` / `subpc` | `read_doc_kind`: docread, with the older reader (est_prevread) beside it on the same text |
+| Read from document - project form, client bill form | the file to `/store/est/read/project` / `clientpc` | the same (est_docread's readers beside it) |
+| Read from agreement (subcontract form, Previous records > Contracts) | the file to `/store/est/subs/agreement/read` | `read_agreement_doc`: header by docread and est_agreement together, the schedule by est_agreement, checked against the contract value |
+| Import log (Variations, Previous records > Variations) | the file to `/store/est/projects/{pid}/variations/import`; Save sends back the lines read (`rows`), the file is not read twice | `read_vo_file`: the team's own Excel log by est_voimport when it reads it fully (OHP sheet kept), else docread (+ the OHP lines) |
+
+Where the two readers differ, the field is marked `check` with the other reading in its note; a field only the older
+reader found is added as `check`. Every reply carries `detail` (status / confidence / where), `sums`, `flagged` and
+`pages` (page sizes in points, for the highlight). The other Estimation forms still send the browser's text.
+
+When a package is missing on the server the reply is **501** with the reason ("Scanned files need the OCR package
+installed on the server (tesseract-ocr) ..."); the browser then reads the file itself (portal/est/agreement.js, as before)
+and sends its text, which goes through the same readers (`read_lines`). Excel and Word never need the OCR package.
+One file is read at a time (`DOCREAD_JOBS`, default 1) and scanned pages one at a time (`DOCREAD_PARALLEL`, default 1).
+
+The confirm screen: the page from the file the browser still holds (PDF.js, a small grid for Excel, the picture for a
+photo) beside the form; a chip on each box read - green ok, amber check, blue derived; tapping a box or its chip marks
+its source; the sums with tick / cross at the top; Save waits until every amber box is confirmed (tap its chip) or
+corrected. Nothing is saved until Save. On a phone the page sits above the boxes.
+
 ## Server needs
 
 ```
 sudo apt-get install -y tesseract-ocr tesseract-ocr-eng poppler-utils
-pip install "pdfplumber==0.11.*" "numpy>=1.26" "Pillow>=10" "python-docx>=1.1"   # openpyxl, xlrd already in requirements
+pip install -r requirements.txt     # pdfplumber, python-docx, Pillow, numpy (openpyxl, xlrd were there already)
 ```
 (LibreOffice only for an `.xls` xlrd cannot open.) No GPU, no models, no network.
 

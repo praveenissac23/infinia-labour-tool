@@ -6,6 +6,7 @@ const { execSync } = require('child_process');
 const B = process.env.BASE || 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/estdoc_';
 let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  ' + JSON.stringify(i === undefined ? '' : i).slice(0, 400))); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const confirmAll = async p => { for (const k of await p.$$eval('#m-body .cfchip.check:not(.done):not(.static)', a => a.map(c => c.dataset.cfk))) { await p.click(`#m-body .cfchip.check[data-cfk="${k}"]`); await new Promise(r => setTimeout(r, 60)); } };   // the confirm screen: every amber figure looked at
 const C = JSON.parse(execSync(`python3 ${__dirname}/est_docimport_fixtures.py /tmp/claude-0/estdocs`).toString());
 (async () => {
   const br = await chromium.launch(); const p = await (await br.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
@@ -32,6 +33,8 @@ const C = JSON.parse(execSync(`python3 ${__dirname}/est_docimport_fixtures.py /t
   await p.setInputFiles('#imp-vo-f', C.volog.file); await p.waitForSelector('#m-save', { state: 'visible', timeout: 60000 }); await sleep(400);
   ck('VO log preview: 3 variations', /Add 3 variations/.test(await p.textContent('#m-save')), await p.textContent('#m-save'));
   await p.screenshot({ path: SH + 'volog.png' });
+  ck('VO log: read on the server, the page beside the lines', !!(await p.$('#m-body .cfv-doc')) && (await p.$$('#vo-lines .cfchip')).length === 3);
+  await confirmAll(p);
   await p.click('#m-save'); await sleep(1800);
   b = await api(`/store/est/projects/${P}`);
   const added = b.variations.slice(before);
@@ -39,7 +42,7 @@ const C = JSON.parse(execSync(`python3 ${__dirname}/est_docimport_fixtures.py /t
   const got = added.map(v => [v.title, v.submitted_amount, v.approved_amount || 0]);
   ck('VO log saved: titles (a wrapped one joined), submitted and approved amounts', JSON.stringify(got) === JSON.stringify(want), got);
   ck('VO log: numbered on from the project\'s own V-numbers', added.every(v => /^V\d{2}$/.test(v.ref || '')), added.map(v => v.ref));
-  ck('no file was ever sent to the server', uploads.length === 0, uploads);
+  ck('only the variation log was sent to the server (read there, not kept)', uploads.every(u => /\/variations\/import$/.test(u)), uploads);
   ck('no page errors', !errs.length, errs);
   await br.close(); console.log(bad ? `\n${bad} FAILED` : '\nALL PASS'); process.exit(bad ? 1 : 0);
 })();

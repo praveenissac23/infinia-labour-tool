@@ -206,18 +206,29 @@ def _best(new, old):
 
 # ---- the readings -----------------------------------------------------------------------------------------------
 
+def old_lines(data, name, doc):
+    """The text the older readers are used to: the browser's own lines for Excel, Word and a typed PDF (emulated
+    exactly, cheap); for a scan or photo the server's recognised lines (never recognised twice)."""
+    from docread.legacy import browser_lines, to_lines
+    if doc.kind in ("xlsx", "xls", "docx") or (doc.kind == "pdf" and not doc.ocr_pages):
+        try:
+            return browser_lines(data, name)
+        except Exception:
+            pass
+    return to_lines(doc)
+
+
 DOC_KINDS = ("ipa", "subpc", "clientpc", "project")
 
 
 def read_doc_kind(kind, data=None, name="", lines=None, subs=None):
     """A bill / certificate / contract: the file (data, name) or the browser's lines -> one reading for the form."""
     from docread import read_doc
-    from docread.legacy import to_lines
     from docread.other import from_lines
     doc = None
     if data is not None:
         doc = load_doc(data, name)
-        lines = to_lines(doc)
+        lines = old_lines(data, name, doc)
     else:
         doc = from_lines(lines or [], name)
     try:
@@ -241,15 +252,11 @@ def read_agreement_doc(data=None, name="", lines=None, trades=None):
     the team's reader beside it; the priced schedule by the team's reader (est_agreement), checked against the value."""
     import est_agreement as A
     from docread.contract import read_contract
-    from docread.legacy import to_lines
     from docread.other import from_lines
     doc = None
     if data is not None:
         doc = load_doc(data, name)
-        lines = to_lines(doc)
-        if doc.kind == "docx":                      # Word: each paragraph and table row as the browser gives it
-            for l in lines:
-                l.pop("sheet", None)
+        lines = old_lines(data, name, doc)
     old = A.read(lines or [], trades=trades or [])
     try:
         new = read_contract(doc if doc is not None else from_lines(lines or []), "agreement")

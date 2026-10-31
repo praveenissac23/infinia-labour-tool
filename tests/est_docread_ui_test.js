@@ -1,6 +1,8 @@
 // "Read from document" on every Estimation form: a letter of award, a tender invitation, a subcontractor's
 // invoice, a variation quotation, a cost proposal, an interim payment certificate, an RFI, a NOC - and a PDF
-// priced schedule into a subcontract's item schedule. The file is read in the browser; nothing is uploaded.
+// priced schedule into a subcontract's item schedule. A letter of award (project) and a payment certificate (client
+// bill) go to the server and are read there, the form opening as the confirm screen (the page beside the boxes, a chip
+// on each box read); the other forms read the file in the browser - nothing of theirs is uploaded.
 //   AGREEMENT_FILE=<909 agreement.pdf> node tests/est_docread_ui_test.js
 const { chromium } = require('playwright');
 const { execSync } = require('child_process');
@@ -33,9 +35,15 @@ const cancelForm = async () => { await p.click('#m-cancel'); await sleep(300); i
     }
     ck(`${kind}: every detail filled in (${Object.keys(e).filter(k => k !== 'sub' && k !== 'lines').join(', ')})`, !miss.length, miss);
   };
+  const confirmScreen = async kind => {
+    await p.waitForSelector('#m-body .cfv-doc', { timeout: 20000 }).catch(() => {});
+    ck(`${kind}: read on the server - the page beside the form, a chip on the boxes read`, !!(await p.$('#m-body .cfv-doc')) && (await p.$$('#m-body .frm .cfchip')).length >= 2,
+       await p.$$eval('#m-body .frm .cfchip', a => a.map(c => c.dataset.cfk)));
+  };
   // 1. new project from a letter of award
   await go('909', 'home.dash');
   await read('project', () => p.evaluate(() => newProject()));
+  await confirmScreen('project');
   await p.screenshot({ path: SH + 'project.png' }); await cancelForm();
   // 2. tender
   await p.goto(B + '/portal/est-app.html?view=tenders'); await sleep(1500);
@@ -75,6 +83,7 @@ const cancelForm = async () => { await p.click('#m-cancel'); await sleep(300); i
   await p.screenshot({ path: SH + 'variation.png' }); await cancelForm();
   await go('909', 'client.cpc');
   await read('clientpc', () => p.evaluate(() => cpcForm()));
+  await confirmScreen('clientpc');
   await cancelForm();
   // 7. RFI, 8. NOC
   await go('909', 'site.rfi');
@@ -97,7 +106,8 @@ const cancelForm = async () => { await p.click('#m-cancel'); await sleep(300); i
     ck('schedule: saved - 26 lines, 534,000.00', its.items.length === 26 && Math.abs(its.total - 534000) < .005, [its.items.length, its.total]);
     await api(`/store/est/subs/${sid}`, { method: 'DELETE' });
   }
-  ck('no file was ever sent to the server', uploads.length === 0, uploads);
+  const others = uploads.filter(u => !/\/store\/est\/read\/(project|clientpc)$/.test(new URL(u).pathname));
+  ck('only the letter of award and the payment certificate were sent to the server (read there, not kept)', uploads.length === 2 && !others.length, uploads);
   ck('no page errors', !errs.length, errs);
   await br.close(); console.log(bad ? `\n${bad} FAILED` : '\nALL PASS'); process.exit(bad ? 1 : 0);
 })();
