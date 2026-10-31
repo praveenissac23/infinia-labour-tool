@@ -129,6 +129,7 @@
   </div>
 </div>
 
+<script src="/portal/dmy-dates.js?v=1f264dbd2f"></script>
 <script>
 const API = "https://infinia-labour-tool-api.onrender.com";
 const STATUS_OPTIONS = ["Present", "Absent", "Sick", "Medical", "Friday", "Holiday", "Leave"];
@@ -233,7 +234,8 @@ async function loadDate(dateStr, preserveStatus) {
 
   const dateObj = new Date(dateStr + "T00:00:00");
   document.getElementById("viewing-label").textContent =
-    "Viewing: " + dateObj.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    "Viewing: " + dateObj.toLocaleDateString("en-GB", { weekday: "long" }) + " "
+    + [dateObj.getDate(), dateObj.getMonth() + 1].map(n => String(n).padStart(2, "0")).join("/") + "/" + dateObj.getFullYear();
 
   document.getElementById("loading").style.display = "none";
   document.getElementById("grid-table").style.display = "table";
