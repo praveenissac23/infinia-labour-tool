@@ -453,6 +453,30 @@ if sm:
             ck('a change after payment is carried to next cycle (12.50)', carry is not None and near(carry.amount, 12.5), carry and carry.amount)
 say('mark paid / payslip / carry checked')
 
+# ---- 7b. a final settlement is booked on the card of the cycle his last day is in -------------------------------------
+# It pays that cycle's card wages; taken from another cycle's card it marked that card settled with its own wages
+# unpaid, and left the last cycle's wages showing due a second time (found 31 Oct 2026: October 1,472 dropped,
+# November 269 payable twice).
+smp = db.query(models.EmployeeSummary).filter_by(emp_no='AUD-05', month_year=PREV).first()
+smc = db.query(models.EmployeeSummary).filter_by(emp_no='AUD-01', month_year=CUR).first()
+if smp and T > bounds(PREV)[1]:
+    r = c.post('/employees/pay/preview', headers=H, json={'kind': 'labour', 'source_id': smp.id, 'type': 'final',
+                                                         'last_day': T.isoformat(), 'reason': 'resignation'})
+    ck('final settlement from an earlier cycle\'s card is refused (it would drop that card\'s wages)',
+       r.status_code == 400 and CUR in r.text, (r.status_code, r.text[:200]))
+    r = c.post('/employees/pay/mark', headers=H, json={'kind': 'labour', 'source_id': smp.id, 'type': 'final',
+                                                      'last_day': T.isoformat(), 'reason': 'resignation', 'mode': 'cash'})
+    db.expire_all()
+    ck('... and nothing is paid or changed', r.status_code == 400 and not db.query(models.PayPayment).filter_by(source_id=smp.id).count()
+       and db.query(models.Employee).filter_by(emp_no='AUD-05').first().terminated_on is None, r.text[:200])
+if smc:
+    r = c.post('/employees/pay/preview', headers=H, json={'kind': 'labour', 'source_id': smc.id, 'type': 'final',
+                                                         'last_day': T.isoformat(), 'reason': 'resignation'})
+    j = r.json() if r.status_code == 200 else {}
+    ck('final settlement on the last cycle\'s card: allowed, its wages are that card', r.status_code == 200 and any(
+        CUR in k and near(a, services.adjusted_final_salary(smc)) for k, a in j.get('lines', [])), (r.status_code, r.text[:300]))
+say('final settlement is booked on the right card')
+
 # ---- 8. paying a running cycle early, for the whole cycle: preview = payment = card -----------------------------------
 sm = db.query(models.EmployeeSummary).filter_by(emp_no='AUD-01', month_year=CUR).first()
 if sm and T < bounds(CUR)[1]:

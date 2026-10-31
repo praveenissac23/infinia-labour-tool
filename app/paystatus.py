@@ -398,6 +398,16 @@ def work_out(db, kind, source_id, body, commit_side_effects=False):
         q.setdefault("last_day", (e.terminated_on or M._dubai_today()).isoformat())
         if kind == "labour":
             last = M._as_date(q["last_day"])
+            # The settlement pays the wages of the card for the cycle his last day falls in, and the payment is
+            # booked against the card it was taken from - they must be the same card. Taken from another cycle's
+            # card, that card was marked settled with its own wages never paid (October's 1,472 dropped, say), and
+            # the last cycle's card still showed its wages due although the settlement had paid them.
+            last_cycle = M.pcyc.cycle_bounds_for(last)[2] if last else month
+            if last_cycle != month:
+                raise HTTPException(status_code=400, detail=(
+                    f"The last working day {last:%d/%m/%Y} is in the {last_cycle} cycle - the final settlement pays "
+                    f"that cycle's wages, so mark it on his {last_cycle} card. Pay this {month} card as a regular "
+                    f"payment (or change the last working day)."))
             if commit_side_effects:
                 e.terminated_on = last
                 db.flush()
