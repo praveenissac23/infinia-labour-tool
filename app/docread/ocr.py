@@ -300,7 +300,7 @@ def ocr_pdf_pages(data, pages, dpi=300, parallel=None):
         return dict(ex.map(one, [p for p in pages if p in imgs]))
 
 
-def read_image(data, name=""):
+def read_image(data, name="", max_pages=None):
     from .model import Doc, Region
     img = Image.open(io.BytesIO(data))
     img = ImageOps.exif_transpose(img)
@@ -311,6 +311,9 @@ def read_image(data, name=""):
             frames.append(img.convert("L"))
     except Exception:
         frames = [img.convert("L")]
+    total = len(frames)
+    if max_pages and total > int(max_pages):
+        frames = frames[:int(max_pages)]
     regions = []
     for i, fr in enumerate(frames):
         dpi = (img.info.get("dpi") or (300, 300))[0] or 300
@@ -319,4 +322,8 @@ def read_image(data, name=""):
         from .model import merge_bands
         regions.append(merge_bands(Region(name=f"Page {i + 1}", page=i + 1, rows=rows, kind="scan", vrules=rr, hrules=hr,
                                           width=round(fr.width * sc, 1), height=round(fr.height * sc, 1))))
-    return Doc(regions=regions, kind="image", name=name, ocr_pages=[r.page for r in regions])
+    doc = Doc(regions=regions, kind="image", name=name, ocr_pages=[r.page for r in regions])
+    if len(frames) < total:
+        doc.notes.append(f"Only the first {len(frames)} of {total} pages were read - check the rest against the file.")
+        doc.timing["pages_cut"] = [len(frames), total]
+    return doc

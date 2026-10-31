@@ -86,11 +86,13 @@ def _hrules(page):
     return out
 
 
-def read_pdf(data, name="", ocr=True, dpi=300, parallel=None):
+def read_pdf(data, name="", ocr=True, dpi=300, parallel=None, max_pages=None):
     import pdfplumber
     regions, scanned = [], []
     with pdfplumber.open(io.BytesIO(data)) as pdf:
-        for i, page in enumerate(pdf.pages):
+        pages = pdf.pages
+        cut = len(pages) if not max_pages else min(len(pages), int(max_pages))
+        for i, page in enumerate(pages[:cut]):
             pn = i + 1
             try:
                 ws = page.extract_words(x_tolerance=1.5, y_tolerance=2.5, keep_blank_chars=False, use_text_flow=False)
@@ -107,7 +109,11 @@ def read_pdf(data, name="", ocr=True, dpi=300, parallel=None):
             reg = Region(name=f"Page {pn}", page=pn, rows=rows, kind="page", width=float(page.width), height=float(page.height),
                          vrules=rules, hrules=_hrules(page))
             regions.append(merge_bands(reg))
+        total = len(pages)
     doc = Doc(regions=regions, kind="pdf", name=name)
+    if cut < total:
+        doc.notes.append(f"Only the first {cut} of {total} pages were read - check the rest against the file.")
+        doc.timing["pages_cut"] = [cut, total]
     if scanned and ocr:
         from .ocr import ocr_pdf_pages
         got = ocr_pdf_pages(data, scanned, dpi=dpi, parallel=parallel)

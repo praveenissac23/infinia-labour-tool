@@ -21,12 +21,12 @@ def sniff(data, name=""):
     return ext.lstrip(".") or "unknown"
 
 
-def load(data, name="", ocr=True, dpi=300) -> Doc:
+def load(data, name="", ocr=True, dpi=300, max_pages=None) -> Doc:
     t0 = time.perf_counter()
     kind = sniff(data, name)
     if kind == "pdf":
         from .pdf import read_pdf
-        doc = read_pdf(data, name, ocr=ocr, dpi=dpi)
+        doc = read_pdf(data, name, ocr=ocr, dpi=dpi, max_pages=max_pages)
     elif kind == "xls":
         from .excel import read_xls
         doc = read_xls(data, name)
@@ -38,7 +38,7 @@ def load(data, name="", ocr=True, dpi=300) -> Doc:
         doc = read_docx(data, name)
     elif kind == "image":
         from .ocr import read_image
-        doc = read_image(data, name)
+        doc = read_image(data, name, max_pages=max_pages)
     else:
         raise ValueError(f"Can't read that kind of file ({kind}).")
     doc.timing["load"] = round(time.perf_counter() - t0, 3)

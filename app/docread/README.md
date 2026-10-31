@@ -69,7 +69,7 @@ reader found is added as `check`. Every reply carries `detail` (status / confide
 When a package is missing on the server the reply is **501** with the reason ("Scanned files need the OCR package
 installed on the server (tesseract-ocr) ..."); the browser then reads the file itself (portal/est/agreement.js, as before)
 and sends its text, which goes through the same readers (`read_lines`). Excel and Word never need the OCR package.
-One file is read at a time (`DOCREAD_JOBS`, default 1) and scanned pages one at a time (`DOCREAD_PARALLEL`, default 1).
+Scans are read in their own process (`app/docread_child.py`): memory cap `DOCREAD_MEM_MB` (600, RLIMIT_AS - tesseract included), time limit `DOCREAD_TIMEOUT` (90 s, the process group killed), page cap `DOCREAD_MAX_PAGES` (15 - the rest marked as not read), one scan at a time across all workers (a file lock; others are told the server is busy at once) and only when MemAvailable is at least the cap + 150 MB. Any of these -> 501, the browser reads it. Excel / Word / typed PDF stay in the web process with `DOCREAD_LIGHT_TIMEOUT` (30 s). Scanned pages one at a time (`DOCREAD_PARALLEL`, default 1).
 
 The confirm screen: the page from the file the browser still holds (PDF.js, a small grid for Excel, the picture for a
 photo) beside the form; a chip on each box read - green ok, amber check, blue derived; tapping a box or its chip marks

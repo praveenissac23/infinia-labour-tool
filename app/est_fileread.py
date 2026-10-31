@@ -10,12 +10,16 @@ whatever they find that the new reader did not is added for checking, and where 
 marked check with the other reading in its note. When the server has no PDF / OCR packages, the file is read on the
 computer instead (the browser's text, as before) - the reply says so with a clear message (Unavailable).
 
-Memory: the server has about 1 GB, so one file is read at a time (DOCREAD_JOBS) and scanned pages one at a time
-(DOCREAD_PARALLEL, default 1).
+Memory: the server has about 1 GB and runs the whole portal. A scan is read in its own process (docread_child.py) with
+a memory cap (DOCREAD_MEM_MB, 600), a time limit (DOCREAD_TIMEOUT, 90 s) and a page cap (DOCREAD_MAX_PAGES, 15), one
+scan at a time across every worker (a file lock), and only when the server has the memory free - otherwise the
+browser reads it, as when the OCR package is missing. Excel, Word and typed PDFs are read here, with their own time
+limit (DOCREAD_LIGHT_TIMEOUT, 30 s); scanned pages one at a time (DOCREAD_PARALLEL, default 1).
 """
 import os
 import re
 import shutil
+import tempfile
 import threading
 from datetime import date
 
@@ -62,8 +66,111 @@ def caps(refresh=False):
     return c
 
 
+BUSY_MSG = "Server busy reading another scan - read on this computer instead."
+FAIL_MSG = "That scan could not be read on the server - read on this computer instead."
+SLOW_MSG = "That file took too long to read on the server - read on this computer instead."
+
+
+def _env_int(k, d):
+    try:
+        return int(os.environ.get(k) or d)
+    except ValueError:
+        return d
+
+
+def limits():
+    """DOCREAD_MEM_MB: the scan reader's memory cap (its own process, tesseract included); DOCREAD_TIMEOUT: seconds
+    for a scan; DOCREAD_LIGHT_TIMEOUT: seconds for Excel / Word / a typed PDF; DOCREAD_MAX_PAGES: pages of a scan read."""
+    return {"mem_mb": _env_int("DOCREAD_MEM_MB", 600), "timeout": _env_int("DOCREAD_TIMEOUT", 90),
+            "light_timeout": _env_int("DOCREAD_LIGHT_TIMEOUT", 30), "max_pages": _env_int("DOCREAD_MAX_PAGES", 15)}
+
+
+def mem_available_mb():
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except OSError:
+        pass
+    return None
+
+
+LOCK_FILE = os.path.join(tempfile.gettempdir(), "infinia_docread_scan.lock")
+
+
+def run_scan(data, name):
+    """A scan (scanned PDF pages, a photo) read in its own process - never inside the web worker: memory capped
+    (RLIMIT_AS, tesseract included), a time limit, one scan at a time across every worker (a file lock). Busy, short
+    of memory, over the cap or too slow -> Unavailable: the browser reads it instead, as before."""
+    import fcntl
+    import pickle
+    import signal
+    import subprocess
+    import sys
+    L = limits()
+    free = mem_available_mb()
+    if free is not None and free < L["mem_mb"] + 150:
+        raise Unavailable(BUSY_MSG)
+    lf = open(LOCK_FILE, "a+")
+    try:
+        try:
+            fcntl.flock(lf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise Unavailable(BUSY_MSG)
+        with tempfile.TemporaryDirectory(prefix="docread_") as d:
+            src, out = os.path.join(d, "in"), os.path.join(d, "out.pkl")
+            with open(src, "wb") as fh:
+                fh.write(data)
+            cap = L["mem_mb"] * 1024 * 1024
+
+            def limit():
+                import resource
+                resource.setrlimit(resource.RLIMIT_AS, (cap, cap))
+            env = dict(os.environ, OMP_THREAD_LIMIT="1", OPENBLAS_NUM_THREADS="1", OMP_NUM_THREADS="1")
+            child = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docread_child.py")
+            pr = subprocess.Popen([sys.executable, child, src, name or "file", out, str(L["max_pages"])], preexec_fn=limit,
+                                  start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=env)
+            try:
+                _, err = pr.communicate(timeout=L["timeout"])
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(pr.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                pr.wait()
+                raise Unavailable(SLOW_MSG)
+            if pr.returncode != 0 or not os.path.exists(out):
+                txt = (err or b"").decode("utf-8", "replace")
+                if pr.returncode == 3 or pr.returncode < 0 or re.search(r"memory|alloc", txt, re.I):
+                    raise Unavailable(BUSY_MSG)
+                raise Unavailable(FAIL_MSG)
+            with open(out, "rb") as fh:
+                return pickle.load(fh)
+    finally:
+        try:
+            fcntl.flock(lf, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        lf.close()
+
+
+def _light(fn, *a, **kw):
+    """Excel / Word / a typed PDF in this process, with a time limit (the reading thread is left to finish on its own)."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TO
+    ex = ThreadPoolExecutor(max_workers=1)
+    fut = ex.submit(fn, *a, **kw)
+    try:
+        return fut.result(timeout=limits()["light_timeout"])
+    except _TO:
+        raise Unavailable(SLOW_MSG)
+    finally:
+        ex.shutdown(wait=False)
+
+
 def load_doc(data, name):
-    """The file -> docread's layout model, or Unavailable when a package it needs is missing here."""
+    """The file -> docread's layout model, or Unavailable when this server cannot read it now (a package missing,
+    busy with another scan, short of memory, too slow) - the browser then reads it instead."""
     from docread.load import load, sniff
     k = sniff(data, name)
     c = caps()
@@ -77,17 +184,25 @@ def load_doc(data, name):
         if k == "doc":
             raise HTTPException(400, "Old .doc files cannot be read - save it as .docx (Word: File > Save As) or PDF.")
         raise HTTPException(400, "Choose a PDF, Word (.docx), Excel file or a photo.")
-    with _JOBS:
-        try:
-            doc = load(data, name, ocr=c["ocr"])
-        except (Unavailable, HTTPException):
-            raise
-        except ImportError as e:
-            raise Unavailable(OCR_MSG if any(x in str(e) for x in ("numpy", "PIL")) else PDF_MSG)
-        except Exception as e:
-            raise HTTPException(400, f"That file could not be opened ({str(e)[:120] or 'unreadable'}).")
-    if k == "pdf" and not c["ocr"] and any(r.kind == "scan" and not r.rows for r in doc.regions):
-        raise Unavailable(OCR_MSG)
+    try:
+        if k == "image":
+            doc = run_scan(data, name)
+        else:
+            with _JOBS:
+                doc = _light(load, data, name, ocr=False)     # the text layer only - light
+            if k == "pdf" and any(r.kind == "scan" and not r.rows for r in doc.regions):
+                if not c["ocr"]:
+                    raise Unavailable(OCR_MSG)
+                doc = run_scan(data, name)                     # scanned pages: OCR in its own process
+    except (Unavailable, HTTPException):
+        raise
+    except ImportError as e:
+        raise Unavailable(OCR_MSG if any(x in str(e) for x in ("numpy", "PIL")) else PDF_MSG)
+    except Exception as e:
+        raise HTTPException(400, f"That file could not be opened ({str(e)[:120] or 'unreadable'}).")
+    cut = doc.timing.get("pages_cut") if isinstance(getattr(doc, "timing", None), dict) else None
+    if cut:
+        doc.pages_cut = cut
     return doc
 
 
@@ -189,7 +304,17 @@ def finish(r, doc=None):
     if doc is not None:
         r["pages"] = pages_of(doc)
         r["doc_kind"] = doc.kind
+        mark_partial(r, doc, "sums")
     return r
+
+
+def mark_partial(r, doc, key):
+    """A scan longer than DOCREAD_MAX_PAGES: only its first pages were read - said at the top, as a sum not agreeing."""
+    cut = getattr(doc, "pages_cut", None)
+    if cut:
+        r["partial"] = cut
+        r.setdefault(key, [])
+        r[key].insert(0, {"name": f"Only the first {cut[0]} of {cut[1]} pages were read", "ok": False, "detail": "check the rest against the file"})
 
 
 def _best(new, old):
@@ -312,6 +437,8 @@ def read_agreement_doc(data=None, name="", lines=None, trades=None):
     finish(r, doc)
     r["checks"] = c
     r["sums"] = sums
+    if doc is not None:
+        mark_partial(r, doc, "sums")
     return r
 
 
@@ -350,8 +477,11 @@ def read_vo_file(data, name):
         if not old:
             raise
     nrows = (new or {}).get("rows") or []
-    info = {"engine": "docread", "checks": (new or {}).get("checks") or [], "notes": list((new or {}).get("notes") or []),
+    info = {"engine": "docread", "checks": list((new or {}).get("checks") or []), "notes": list((new or {}).get("notes") or []),
             "pages": pages_of(doc) if doc is not None else [], "doc_kind": doc.kind if doc is not None else k}
+    if doc is not None:
+        mark_partial(info, doc, "checks")
+        info["notes"] = list(doc.notes) + info["notes"]
 
     def tot(rows, key):
         return round(sum(r.get(key) or 0 for r in rows if r.get("kind") != "Coordination"), 2)
