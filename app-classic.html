@@ -15321,13 +15321,13 @@ function hrRunHead(run, sheet) {
   const pension = run.lines.some(l => l.pension);
   const running = run.progress && run.progress.running;
   return `<tr><th style="width:3.5%;" title="Tick who goes on the Preview, Export PDF / Excel and Pay full month now">Pay</th><th style="width:4.5%;">Code</th><th class="txt" style="width:12%;">Employee</th>
-    <th class="num" style="width:6.5%;">Basic</th><th class="num" style="width:6.5%;">Fix Allown.</th><th class="num" style="width:7.5%;">Add / Ded.</th>
+    <th class="num" style="width:6.5%;">Basic</th><th class="num" style="width:6.5%;">Fix Allown.</th><th class="num" style="width:8.5%;">Add / Ded.</th>
     <th class="num" style="width:7%;">Absent Ded.</th><th class="num" style="width:8%;">Loan</th>
     <th class="num" style="width:9%;"${sheet ? ' id="hr-th-net"' : ""}>${running ? "Salary To Date" : "Net Pay"}</th>
     <th class="txt" style="width:13%;" title="Tick people here, then Mark selected as paid"><input type="checkbox" class="pay-pick-all" style="width:auto; margin:0 4px 0 0; vertical-align:-2px;"
         onclick="payPickAll(this)" title="Tick everyone not yet paid">Paid</th>
     ${pension ? `<th class="num" style="width:5%;"${sheet ? ' id="hr-run-pension-h"' : ""}>Pension</th>` : ""}
-    <th class="txt" style="width:${pension ? 9 : 14}%;">Remark</th><th class="txt" style="width:9%;">Payslip</th></tr>`;
+    <th class="txt" style="width:${pension ? 8 : 13}%;">Remark</th><th class="txt" style="width:9%;">Payslip</th></tr>`;
 }
 function hrRunRows(r) {
   const approved = r.status === "approved";
@@ -15373,13 +15373,16 @@ function renderRunFoot() {
   if (HR_ALL_MODE) { hrAllRenderFoot(HR_RUN); return; }
   document.getElementById("hr-run-foot").innerHTML = hrRunFootHtml(HR_RUN);
 }
+const hrNetField = run => (run && run.progress && run.progress.running ? "to_date" : "net_pay");
 function hrRunFootHtml(R) {
   const paid = hrSelLines(R);            // the TOTAL is the people ticked under PAY - the same as the Preview
   const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
   const pension = R.lines.some(l => l.pension);
   const tot = fn => paid.reduce((a, l) => a + fn(l), 0);
+  // The last money column shows the salary to date while the month runs (Net Pay otherwise), so its TOTAL
+  // adds up the same figures the rows show - the same total the Preview / PDF / Excel print.
   const cells = [sum("basic"), sum("allowance"), tot(hrAdjust), sum("deduction"),
-                 sum("loan_deduction"), sum("net_pay")];
+                 sum("loan_deduction"), sum(hrNetField(R))];
   const paidOut = R.lines.reduce((a, l) => a + Number((l.pay && l.pay.paid) || 0), 0);
   return `<tr class="hr-foot">
        <td colspan="3" class="txt">TOTAL - ${paid.length} of ${R.lines.filter(l => !l.held).length} staff ticked${R.lines.some(l => l.held) ? `, ${R.lines.filter(l => l.held).length} held over` : ""}</td>
@@ -16467,14 +16470,16 @@ function hrAllRenderGrand() {
   if (!staff) { el.innerHTML = ""; return; }
   const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
   const adj = paid.reduce((a, l) => a + hrAdjust(l), 0);
+  // Each company's rows show salary to date while its month runs: the grand total adds what the rows show.
+  const net = all.reduce((a, r) => a + hrSelLines(r).reduce((b, l) => b + Number(l[hrNetField(r)] || 0), 0), 0);
   const out = all.flatMap(r => r.lines).reduce((a, l) => a + Number((l.pay && l.pay.paid) || 0), 0);
   el.innerHTML = `<table class="hr-grid"><tfoot><tr class="hr-foot">
       <td class="txt" style="width:20%;">GRAND TOTAL - ${paid.length} of ${staff} staff ticked${held ? `, ${held} held over` : ""}</td>
       <td class="num" style="width:6.5%;">${hrMoney(sum("basic"))}</td><td class="num" style="width:6.5%;">${hrMoney(sum("allowance"))}</td>
-      <td class="num" style="width:7.5%;">${adj ? hrMoney(adj) : "-"}</td><td class="num" style="width:7%;">${hrMoney(sum("deduction"))}</td>
-      <td class="num" style="width:8%;">${hrMoney(sum("loan_deduction"))}</td><td class="num" style="width:9%;">${hrMoney(sum("net_pay"))}</td>
+      <td class="num" style="width:8.5%;">${adj ? hrMoney(adj) : "-"}</td><td class="num" style="width:7%;">${hrMoney(sum("deduction"))}</td>
+      <td class="num" style="width:8%;">${hrMoney(sum("loan_deduction"))}</td><td class="num" style="width:9%;">${hrMoney(net)}</td>
       <td class="txt" style="width:12%;">${out ? hrMoney(out) + " paid" : ""}</td>
-      <td style="width:24%;"></td></tr></tfoot></table>`;
+      <td style="width:23%;"></td></tr></tfoot></table>`;
 }
 // Opening an earlier month for one company from the all-companies view.
 async function hrAllOpen(companyId) {

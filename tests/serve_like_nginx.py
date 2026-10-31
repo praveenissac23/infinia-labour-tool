@@ -107,9 +107,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 def main():
     env = dict(os.environ)
     env.setdefault("DATABASE_URL", "sqlite:////tmp/audit_app.db")
-    api = subprocess.Popen([sys.executable, "-m", "uvicorn", "main:app",
-                            "--port", str(API_PORT), "--log-level", "warning"],
-                           cwd=os.path.join(ROOT, "app"), env=env)
+    if env.get("SRV_TODAY"):
+        # Tests only: the application believes it is this day (yyyy-mm-dd) - e.g. the middle of a salary
+        # month, so the "salary to date" figures can be checked whatever day the test runs on.
+        cmd = [sys.executable, "-c",
+               "import datetime, os, uvicorn, main; "
+               "main._dubai_today = lambda: datetime.date.fromisoformat(os.environ['SRV_TODAY']); "
+               f"uvicorn.run(main.app, host='127.0.0.1', port={API_PORT}, log_level='warning')"]
+    else:
+        cmd = [sys.executable, "-m", "uvicorn", "main:app", "--port", str(API_PORT), "--log-level", "warning"]
+    api = subprocess.Popen(cmd, cwd=os.path.join(ROOT, "app"), env=env)
     for _ in range(60):
         try:
             urllib.request.urlopen(f"http://127.0.0.1:{API_PORT}/health", timeout=1)

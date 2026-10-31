@@ -12601,7 +12601,10 @@ def _run_dict(r, db):
     fm_on, fm_ids = _full_month_info(db, r.month_year, r.group or "staff")
     for l in lines:
         l["full_month"] = r.status == "approved" or (fm_on and (fm_ids is None or l["employee_id"] in fm_ids))
-        if l["full_month"]:
+        # The month over, or the row already paid in full (paid early: the whole month, or a leaver): what he
+        # has to date is the month's net pay - the same as paystatus.office_to_date - not the salary earned
+        # so far without the loan instalment.
+        if l["full_month"] or done >= days or (l["pay"] or {}).get("locked"):
             l["to_date"] = l["net_pay"]
     full = r.status == "approved" or (fm_on and fm_ids is None) or bool(lines and all(l["full_month"] for l in lines))
     progress = {"day": done, "days": days, "pct": round(done * 100 / days),
