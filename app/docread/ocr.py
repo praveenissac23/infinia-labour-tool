@@ -7,7 +7,7 @@
   4. Tesseract reads the page and gives every word with its box and confidence (TSV);
   5. figures it was unsure of are read again on their own, enlarged, with only digits allowed.
 
-Pages are read two at a time (the server has two cores). Needs: tesseract-ocr (+ eng data) and poppler-utils.
+Pages are read one at a time by default (DOCREAD_PARALLEL=1: the server has about 1 GB of memory; 2 reads two at once). Needs: tesseract-ocr (+ eng data) and poppler-utils.
 """
 import io
 import os
@@ -285,7 +285,7 @@ def embedded_scans(data, pages):
 
 def ocr_pdf_pages(data, pages, dpi=300, parallel=None):
     if parallel is None:                 # pages read at once (DOCREAD_PARALLEL=1 on a small server keeps memory down)
-        parallel = int(os.environ.get("DOCREAD_PARALLEL", "2"))
+        parallel = int(os.environ.get("DOCREAD_PARALLEL", "1") or 1)
     got = embedded_scans(data, pages)
     imgs = {pn: x[0] for pn, x in got.items()}
     scales = {pn: x[1] for pn, x in got.items()}
@@ -314,7 +314,9 @@ def read_image(data, name=""):
     regions = []
     for i, fr in enumerate(frames):
         dpi = (img.info.get("dpi") or (300, 300))[0] or 300
-        rows, rr, hr = ocr_image(fr, i + 1, 72.0 / float(dpi), with_rules=True)
+        sc = 72.0 / float(dpi)
+        rows, rr, hr = ocr_image(fr, i + 1, sc, with_rules=True)
         from .model import merge_bands
-        regions.append(merge_bands(Region(name=f"Page {i + 1}", page=i + 1, rows=rows, kind="scan", vrules=rr, hrules=hr)))
+        regions.append(merge_bands(Region(name=f"Page {i + 1}", page=i + 1, rows=rows, kind="scan", vrules=rr, hrules=hr,
+                                          width=round(fr.width * sc, 1), height=round(fr.height * sc, 1))))
     return Doc(regions=regions, kind="image", name=name, ocr_pages=[r.page for r in regions])

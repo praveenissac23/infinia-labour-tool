@@ -175,9 +175,16 @@ def read_contract(doc, kind="project"):
     cands = _value_cands(doc, flat)
     sched = _schedule_total(doc)
     words = None
-    for r in rows:
+    numw = set(kv._ONES) | set(kv._TENS) | {"hundred", "thousand", "lac", "million", "and", "only", "fils"}
+    for i, r in enumerate(rows):
         if re.search(r"dirhams?|only", r.text, re.I) and re.search(r"thousand|hundred|million|lac", r.text, re.I):
-            words = kv.words_amount(r.text)
+            t = r.text
+            # the words run on to the next line ("... One Hundred and Seventeen" / "Thousand Only) exclusive of VAT")
+            last = re.findall(r"[a-z]+", t.lower())
+            nxt = re.findall(r"[a-z]+", rows[i + 1].text.lower())[:1] if i + 1 < len(rows) else []
+            if last and last[-1] in numw and nxt and nxt[0] in numw:
+                t = t + " " + rows[i + 1].text
+            words = kv.words_amount(t)
             if words:
                 break
     if sched:

@@ -18,10 +18,12 @@ office uses rather than on one company's template:
 
 What is not found is left for the user and said, never guessed.
 """
+import json
 import re
 from datetime import date, timedelta
 
-from fastapi import Body, Depends, HTTPException
+from fastapi import Body, Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -427,18 +429,42 @@ READERS = {"project": read_project, "tender": read_tender, "invoice": read_invoi
 
 
 @router.post("/store/est/read/{kind}")
-def read_document(kind: str, payload: dict = Body(...), db: Session = Depends(get_db), user=E.VIEW):
-    """The text of a document opened in the browser -> the fields of one Estimation form. Nothing is saved."""
+async def read_document(kind: str, request: Request, db: Session = Depends(get_db), user=E.VIEW):
+    """A document -> the fields of one Estimation form. Nothing is saved, nothing of the file is kept.
+    Sent as the file itself (multipart: file, or upload_id / parts / filename for a big one in pieces) for a bill,
+    certificate or contract (ipa, subpc, clientpc, project): read on the server by app/docread, every field with
+    its status and where it was found, for the confirm screen. Sent as the browser's text ({"lines": [...]}) for the
+    other forms, and as the fallback when this server cannot read the file itself (501 + the reason)."""
     if kind not in READERS:
         raise HTTPException(404, "Nothing reads that kind of document.")
+    import est_fileread as F
+    if (request.headers.get("content-type") or "").startswith("multipart/"):
+        if kind not in F.DOC_KINDS:
+            raise HTTPException(400, "This form reads the document's text - pick the file again.")
+        form = await request.form()
+        data, fname = await E.upload_data(form.get("file") or None, form.get("upload_id") or "", int(form.get("parts") or 0), form.get("filename") or "", user)
+        if len(data) > E.MAX_FILE:
+            raise HTTPException(413, "That file is over 25 MB.")
+        try:
+            subs = json.loads(form.get("subs") or "[]")
+        except ValueError:
+            subs = []
+        try:
+            return await run_in_threadpool(F.read_doc_kind, kind, data, fname, None, subs)
+        except F.Unavailable as e:
+            raise HTTPException(501, str(e))
+    payload = await request.json()
     lines = payload.get("lines") or []
     if not isinstance(lines, list) or not lines:
         raise HTTPException(400, "No text came from that file.")
     if len(lines) > 20000:
         raise HTTPException(400, "That file is too long to read here.")
-    if kind in ("ipa", "subpc"):          # previous records: a scan's figures put back beside their words first
-        import est_prevread as _P
-        lines = _P._join_ocr(lines)
+    if kind in F.DOC_KINDS:               # the browser's text of a bill / certificate / contract: the same reading
+        return await run_in_threadpool(F.read_doc_kind, kind, None, payload.get("name") or "", lines, payload.get("subs") or [])
+    return await run_in_threadpool(_read_lines, kind, lines, payload)
+
+
+def _read_lines(kind, lines, payload):
     lines = A.clean_lines(lines)
     flat = _flat(lines)
     if kind == "invoice":
