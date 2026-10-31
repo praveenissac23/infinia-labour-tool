@@ -177,7 +177,9 @@ for co in c.get('/employees/companies', headers=H).json():
 staff = c.get('/employees/staff', headers=H).json()
 staff = staff.get('rows', staff)
 codes = [s['emp_no'] for s in staff if s.get('active', True)]
-entries = [
+# AUDIT_AS_IS=1: audit the data exactly as it is (e.g. a copy of the live registers) - no example entries added.
+AS_IS = os.environ.get('AUDIT_AS_IS') == '1'
+entries = [] if AS_IS else [
     {'emp_no': codes[0], 'kind': 'sick', 'from': f'{ym}-02'},
     {'emp_no': codes[0], 'kind': 'sick', 'from': f'{ym}-03'},          # second sick day: deducted
     {'emp_no': codes[1], 'kind': 'absent', 'from': f'{ym}-04', 'half': True},
@@ -190,7 +192,7 @@ for en in entries:
     r = c.post('/employees/leave', json=en, headers=H)
     if r.status_code != 200:
         print('   leave entry refused:', en, r.text[:120])
-for code, direction, cat, amt in ((codes[0], 'add', 'taxi', 312.5), (codes[1], 'deduct', 'iloe', 241.5),
+for code, direction, cat, amt in () if AS_IS else ((codes[0], 'add', 'taxi', 312.5), (codes[1], 'deduct', 'iloe', 241.5),
                                   (codes[2], 'add', 'leave_salary', 5000), (codes[6], 'deduct', 'fine', 99.99)):
     r = c.post('/employees/pay-items', json={'emp_no': code, 'month_year': THIS, 'direction': direction,
                                              'category': cat, 'amount': amt, 'notes': 'audit'}, headers=H)
