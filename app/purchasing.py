@@ -163,6 +163,20 @@ class _Maps:
             if r.lpo_key:
                 self.by_key[r.lpo_key].add(r.rental_item_id)
         self.rental = rental_item_ids(db)
+        # who we hire from: a trader something was ever booked in on hire from, or one an LPO ordered a Rentals
+        # material from. Only their LPO lines are read as hired - the same 'Ledger 1.2m' bought from a trader
+        # is our own stock.
+        self.hire_sups = {s for (s,) in db.query(models.StoreMovement.owner_id).filter(models.StoreMovement.owner_id.isnot(None)).distinct()}
+        if self.rental:
+            self.hire_sups |= {s for (s,) in db.query(models.PurchaseOrder.supplier_id).join(
+                models.PurchaseOrderLine, models.PurchaseOrderLine.order_id == models.PurchaseOrder.id)
+                .filter(models.PurchaseOrderLine.item_id.in_(list(self.rental))).distinct() if s}
+
+    def for_order(self, o, line, item_name=""):
+        """The Rentals materials of an LPO line - only on an LPO from a trader we hire from."""
+        if not o.supplier_id or (o.supplier_id not in self.hire_sups and (line.item_id or 0) not in self.rental):
+            return []
+        return self.of(line, item_name)
 
     def of(self, line, item_name=""):
         """The Rentals materials an LPO line is booked in as ([] when it is not a hired material)."""
@@ -234,8 +248,8 @@ def prefill_maps(db, user_id=None, questionnaire=True):
     for l, o in (db.query(models.PurchaseOrderLine, models.PurchaseOrder)
                    .join(models.PurchaseOrder, models.PurchaseOrder.id == models.PurchaseOrderLine.order_id)
                    .filter(models.PurchaseOrder.supplier_id.in_(hire_sups or {-1})).all()):
-        if l.item_id in rental:
-            continue
+        if l.item_id in rental and (items[l.item_id].name or "").strip().lower().startswith("rental"):
+            continue                                # ordered under its Rentals name already
         for nm in {l.description or "", (items[l.item_id].name if l.item_id in items else "")}:
             k = plain(nm)
             if not k or k in seen:
@@ -326,6 +340,10 @@ class Book:
         rec_by_order = defaultdict(list)
         for r in self.receipts:
             rec_by_order[r.order_id].append(r)
+        # which Rentals material each Rentals receipt booked (a line booked as two materials needs both)
+        mids = [r.movement_id for r in self.receipts if r.kind == "rentals" and r.movement_id]
+        self.mv_item = dict(self.db.query(models.StoreMovement.id, models.StoreMovement.item_id)
+                            .filter(models.StoreMovement.id.in_(mids)).all()) if mids else {}
         # request lines: what came in on them that no LPO receipt already accounts for
         on_mrl = defaultdict(float)
         for r in self.receipts:
@@ -347,6 +365,7 @@ class Book:
         self.out = {}
         for o in self.orders:
             self.out[o.id] = self._one(o, rec_by_order.get(o.id, []), pool, rpool)
+        self.pool_left = pool            # what came in on each request line that no LPO line has taken
 
     def _one(self, o, recs, pool, rpool):
         live = (o.status or "issued") != "cancelled"
@@ -359,10 +378,18 @@ class Book:
             it = self.items.get(l.item_id)
             service = is_service(l, it)
             loc = self.sites.location(o, l)
-            rmap = [] if service else self.maps.of(l, it.name if it else "")
+            rmap = [] if service else self.maps.for_order(o, l, it.name if it else "")
             rs = by_line.get(l.id, [])
             ordered = float(l.qty or 0)
-            booked = sum(float(r.qty or 0) for r in rs if r.kind in ("delivered", "service", "rentals"))
+            booked = sum(float(r.qty or 0) for r in rs if r.kind in ("delivered", "service"))
+            rent = defaultdict(float)
+            for r in rs:
+                if r.kind == "rentals":
+                    rent[self.mv_item.get(r.movement_id)] += float(r.qty or 0)
+            if rent:
+                # one LPO line booked on Rentals as two materials (pin + nut/bolt) has come when both have
+                booked += min(rent.get(i, 0.0) for i in rmap) if rmap and set(rmap) <= set(rent) else \
+                    (min(rent.values()) if not rmap else 0.0)
             closed = sum(float(r.qty or 0) for r in rs if r.kind == "not_needed")
             how, legacy = [], 0.0
             due = ordered - booked - closed
@@ -492,7 +519,7 @@ def _mr_line_for(book, o, l, it, exclude=()):
     return None
 
 
-def book_delivery(db, o, entries, dn_no, dn_date, user_id=None, location=None, tag="", notes="", check=True):
+def book_delivery(db, o, entries, dn_no, dn_date, user_id=None, location=None, tag="", notes="", check=True, stock=True):
     """Book what came against an LPO. entries: [{"line_id", "qty", "close": bool}] - close = the rest of the line
     will not come. Material: stock in at the LPO's site (the store for a store LPO) unless another place is
     given; a hired material: booked in on Rentals under its Rentals name(s), owned by the supplier; a service:
@@ -547,6 +574,11 @@ def book_delivery(db, o, entries, dn_no, dn_date, user_id=None, location=None, t
                                              request_line_id=(mrl.id if (mrl and first) else None), **base))
                     first = False
                     done.append(f"{name}: {qty:g} booked in on hire as {ri.name if ri else rid} at {loc or M.CENTRAL_LABEL}{on_req}")
+            elif not stock:
+                # delivered, but not to a place stock is kept (an office, a number that is not a site): recorded
+                # against the LPO only
+                db.add(models.LpoReceipt(kind="delivered", qty=qty, request_line_id=mrl.id if mrl else None, **base))
+                done.append(f"{name}: {qty:g} {p['unit']} delivered to {loc or M.CENTRAL_LABEL} (not a store or site - no stock){on_req}")
             else:
                 if not l.item_id:
                     raise HTTPException(status_code=400, detail=f"{name} is not on the material list, so it cannot go into stock.")
@@ -575,7 +607,44 @@ def book_delivery(db, o, entries, dn_no, dn_date, user_id=None, location=None, t
     for mr in [x for x in touched if x]:
         _settle(mr)
     db.flush()
+    settle_tracking(db, o)
     return done
+
+
+def settle_tracking(db, o):
+    """The requests an LPO made for itself follow it: a material the LPO has had in full (or closed) is no
+    longer 'to arrive' on them, however it was booked. Returns [what changed]. Site requests are left alone -
+    what they asked for may be on more than one LPO."""
+    book = Book(db)
+    p = book.of(o)
+    if not p:
+        return []
+    done_lines = [x for x in p["lines"] if x["remaining"] <= EPS]
+    m = _REV.match(o.ref or "")
+    refs = {o.ref, m.group(1).strip()} if m and m.group(1).rstrip()[-1:].isdigit() else {o.ref}
+    own = [r for r in book.reqs if r.lpo_id == o.id
+           or any((r.notes or "") == f"Stock for the store, ordered on {x}" for x in refs)]
+    out, touched = [], set()
+    for mr in own:
+        for mrl in book.by_req.get(mr.id, []):
+            if (mrl.status or "pending") == "rejected" or (mrl.qty_received or 0) >= (mrl.qty_requested or 0) - EPS:
+                continue
+            for x in done_lines:
+                l = next((y for y in o.lines if y.id == x["line_id"]), None)
+                if l is not None and _fits(l, book.items.get(l.item_id), mrl, book.items.get(mrl.item_id)):
+                    before = mrl.qty_received or 0
+                    got = min(float(mrl.qty_requested or 0), x["delivered"]) if x["closed"] > EPS else float(mrl.qty_requested or 0)
+                    if x["closed"] > EPS and got < (mrl.qty_requested or 0):
+                        mrl.qty_requested = mrl.qty_approved = max(got, float(before))
+                    mrl.qty_received = max(float(before), got)
+                    touched.add(mr)
+                    out.append(f"{mr.ref} {mrl.description or (book.items[mrl.item_id].name if mrl.item_id in book.items else '')}: "
+                               f"received {before:g} -> {mrl.qty_received:g} ({o.ref} has had it)")
+                    break
+    for mr in touched:
+        _settle(mr)
+    db.flush()
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -595,7 +664,7 @@ def earlier_versions(db, o):
             if (x.ref or "").strip().upper() in names and (x.status or "") != "cancelled"]
 
 
-def apply_revision(db, o, user):
+def apply_revision(db, o, user, call_zoho=True):
     """A revision replaces the order before it everywhere: the material requests, what was booked in against it
     and its place on the lists move to the revision; the older one is cancelled ('Replaced by ...')."""
     olds = earlier_versions(db, o)
@@ -611,7 +680,7 @@ def apply_revision(db, o, user):
         old.request_line_ids = ""
         old.request_id = None
         M._cancel_lpo_core(db, old, f"Replaced by {o.ref}", not_needed=False, user=user, release=False,
-                           superseded_by=o.ref)
+                           superseded_by=o.ref, call_zoho=call_zoho)
     if olds:
         db.flush()
         rekey_receipts(db, o)
