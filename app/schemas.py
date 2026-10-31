@@ -476,6 +476,7 @@ class PurchaseOrderLineIn(BaseModel):
     rate: float = 0.0
     tax_pct: float = 5.0
     cost_to: str = ""            # combined LPO: "STORE" or a site code
+    service: bool | None = None  # ticked = a service (no stock); None = decided by the words
 
 
 class PurchaseOrderIn(BaseModel):

@@ -5786,8 +5786,10 @@ def _hire_to_requests(db, sup, location, moves, order=None):
     if not cands:
         return []
     name = lambda l: (l.item.name if l.item else "") or l.description or ""
-    fits = lambda l, item: (l.item_id and l.item_id == item.id) or _same_material(name(l), item.name) \
-        or _same_material(l.description or "", item.name)
+    import purchasing as _pu
+    _maps = _pu._Maps(db)        # the LPO name <-> Rentals name links (Purchasing > Rentals links)
+    fits = lambda l, item: (l.item_id and l.item_id == item.id) or item.id in _maps.of(l, name(l)) \
+        or _same_material(name(l), item.name) or _same_material(l.description or "", item.name)
     by_req = {}
     for l in cands:
         by_req.setdefault(l.request_id, []).append(l)
@@ -7117,9 +7119,28 @@ def _mr_out(mr: models.MaterialRequest) -> dict:
         ls = ln.supplier
         d["lines"][i]["status"] = ln.status or "pending"
         d["lines"][i]["reject_reason"] = ln.reject_reason or ""
+        d["lines"][i]["source"] = getattr(ln, "source", "") or ""          # "petty" = bought with petty cash
         d["lines"][i]["supplier"] = ({"id": ls.id, "name": ls.name,
                                        "contact_person": ls.contact_person or "",
                                        "phone": ls.phone or ""} if ls else None)
+    return d
+
+
+def _mr_freed_view(d, freed):
+    """A line still marked ordered from a supplier whose every LPO is cancelled reads 'To order' - no supplier,
+    waiting to be ordered, with the cancelled LPO named - and the request with it ('Office approved', not
+    'Ordered'). Worked out when read, so cancellations from before this was kept show right too."""
+    hit = False
+    for l in d.get("lines") or []:
+        ref = freed.get(l.get("id"))
+        if ref:
+            l["supplier"], l["supplier_id"], l["lpo_cancelled"] = None, None, ref
+            hit = True
+    if hit and d.get("status") in ("ordered", "arranging", "lpo_sent"):
+        live = [l for l in d["lines"] if (l.get("status") or "pending") != "rejected"]
+        if not any(l.get("supplier") for l in live):
+            d["status"] = "approved"
+        d["supplier"] = None
     return d
 
 
@@ -7140,9 +7161,15 @@ def list_material_requests(status: str = None, site: str = None,
     rows = q.order_by(models.MaterialRequest.id.desc()).all()
     office = user.role == "admin" or "approvals" in effective_permissions(user)
     with_lpo = {rid for (rid,) in db.query(models.PurchaseOrder.request_id).filter(models.PurchaseOrder.request_id.isnot(None)).distinct()}
+    import purchasing as _pu
+    try:
+        freed = _pu.freed_lines(db)
+    except Exception as e:          # never keep the list from showing over this
+        print("freed lines:", e); freed = {}
     out = []
     for m in rows:
         d = _mr_out(m)
+        _mr_freed_view(d, freed)
         # may the person looking correct or delete it (his own, or anyone's for the office, while untouched)
         untouched = ((m.status or "pending") == "pending" and m.id not in with_lpo
                      and all((l.status or "pending") == "pending" and not (l.qty_received or 0) and not l.supplier_id for l in m.lines))
@@ -8308,11 +8335,16 @@ def lpo_pending_lines(db: Session = Depends(get_db),
                           "address": s.address or "", "map_url": s.map_url or ""}
                  for s in db.query(models.Site).all()}
     out = []
+    import purchasing as _pu
+    try:
+        freed = _pu.freed_lines(db)               # placed only on LPOs since cancelled: to be ordered again
+    except Exception as e:
+        print("freed lines:", e); freed = {}
     for mr in reqs:
         for l in mr.lines:
             if (l.status or "pending") != "approved":
                 continue
-            if l.supplier_id:                       # already placed with somebody
+            if l.supplier_id and l.id not in freed:  # already placed with somebody
                 continue
             outstanding = (l.qty_approved or l.qty_requested or 0) - (l.qty_received or 0)
             if outstanding <= 0:
@@ -8752,10 +8784,22 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
             r["total"] += amount + vat + ro
 
     out = []
+    deliv, by_id = {}, {o.id: o for o in orders}
+    if group_by == "order":
+        try:
+            import purchasing as _pu
+            deliv = _pu.lpo_status_map(db)          # Ordered / Part delivered / Delivered, from the deliveries
+        except Exception as e:
+            print("lpo delivery status:", e)
     for r in rows.values():
         r["orders"] = len(r["orders"])
         for k in ("qty", "sub_total", "vat", "round_off", "total"):
             r[k] = round(r[k], 2)
+        if group_by == "order" and r["id"] in by_id:
+            o = by_id[r["id"]]
+            r["delivery"] = deliv.get(o.id, "")
+            r["superseded_by"] = getattr(o, "superseded_by", "") or ""
+            r["bill_no"], r["bill_checked"] = (o.bill_no or ""), bool(o.bill_checked)
         out.append(r)
     # A round off on any order shown gets its own column just before Total, so Sub Total + VAT + Round off
     # = Total reads across the row. Not a box to tick: there only when it is needed.
@@ -8880,10 +8924,18 @@ def _lpo_dict(o):
         "cancel_reason": getattr(o, "cancel_reason", "") or "",
         "cancelled_on": o.cancelled_at.strftime("%d/%m/%Y") if getattr(o, "cancelled_at", None) else "",
         "combined": bool(getattr(o, "combined", False)),
+        "superseded_by": getattr(o, "superseded_by", "") or "",
         "lines": [{"id": l.id, "item_id": l.item_id, "description": l.description,
                    "description2": l.description2, "qty": l.qty, "unit": l.unit,
-                   "rate": l.rate, "tax_pct": l.tax_pct, "cost_to": getattr(l, "cost_to", "") or ""} for l in o.lines],
+                   "rate": l.rate, "tax_pct": l.tax_pct, "cost_to": getattr(l, "cost_to", "") or "",
+                   "service": getattr(l, "service", None),
+                   "service_now": _is_service_line(l)} for l in o.lines],
     }
+
+
+def _is_service_line(l):
+    import purchasing as _pu
+    return _pu.is_service(l, getattr(l, "item", None))
 
 
 def _cost_to(payload, l):
@@ -8959,7 +9011,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
             order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
             description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
             rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0,
-            cost_to=_cost_to(payload, l)))
+            cost_to=_cost_to(payload, l), service=getattr(l, "service", None)))
     db.flush()
     new_items = []
     _lpo_lines_to_materials(db, o, new_items)
@@ -8993,11 +9045,16 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     # What the LPO orders beyond the requests it was raised from (all of it, when it was raised straight away)
     # is still chased and booked in when it comes: a request of its own per site, already ordered from this
     # supplier, on Order follow-up and Material arrived like every other order.
-    _track_lpo(db, o, user, creating=True)
+    # A revision (IC/LPO/20260150R1) takes over the order it replaces - its requests and what came on it - and
+    # the older one is cancelled everywhere.
+    import purchasing as _pu
+    replaced = _pu.apply_revision(db, o, user)
+    _track_lpo(db, o, user, creating=not replaced)
     db.commit()
     db.refresh(o)
     log_action(db, user.id, "create_lpo",
                f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s))"
+               + (f"; replaces {', '.join(replaced)} (cancelled - superseded)" if replaced else "")
                + (f", round off {round_off:+.2f}, total AED {lpo_total(o):,.2f}" if round_off else "")
                + (f", {len(placed)} request line(s) marked ordered" if placed else "")
                + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else "")
@@ -9283,7 +9340,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
             order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
             description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
             rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0,
-            cost_to=_cost_to(payload, l)))
+            cost_to=_cost_to(payload, l), service=getattr(l, "service", None)))
     db.flush()
     db.expire(o, ["lines"])          # the collection still held the lines just deleted
     new_items = []
@@ -9300,8 +9357,13 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
             _settle_request_lines(db, o, gone, False, "")
             keep = [i for i in ids if i not in {g.id for g in gone}]
             o.request_line_ids = ("," + ",".join(map(str, keep)) + ",") if keep else ""
+    import purchasing as _pu
+    replaced = _pu.apply_revision(db, o, user)      # renumbered to a revision (R1): the older order is replaced
     _track_lpo(db, o, user)
+    _pu.rekey_receipts(db, o)                       # what came against it finds its (rewritten) line again
     changes = _lpo_changes(before, _lpo_snap(o))
+    if replaced:
+        changes.append(f"Replaces {', '.join(replaced)} (cancelled - superseded)")
     zoho = ""
     if changes and (o.zoho_status or "") in ("sent", "changed"):
         # Already a purchase order in Zoho: updated there to match; if Zoho refuses, flagged for accounts.
@@ -9334,17 +9396,40 @@ def cancel_purchase_order(order_id: int, payload: dict = Body(default={}), db: S
     reason = " ".join(str((payload or {}).get("reason") or "").split())[:200]
     if not reason:
         raise HTTPException(status_code=400, detail="Say why it is cancelled - for example: site says the material is no longer needed.")
+    not_needed = bool((payload or {}).get("not_needed"))
+    zoho, freed = _cancel_lpo_core(db, o, reason, not_needed=not_needed, user=user)
+    db.commit()
+    what = ("request line(s) closed - not needed" if not_needed else "request line(s) back to waiting for an order")
+    log_action(db, user.id, "cancel_lpo", f"{o.ref} ({o.supplier_name}) - {reason}"
+               + (f" - {freed} {what}" if freed else "") + (f"; {zoho}" if zoho else ""))
+    return {"ok": True, "zoho": zoho, "freed": freed,
+            "detail": f"{o.ref} cancelled."
+                      + ((f" {freed} material(s) taken off the request - no longer on Approvals or Order follow-up." if not_needed
+                          else f" {freed} material(s) are back on the list waiting to be ordered.") if freed else "")
+                      + (f" {zoho}." if zoho else "") + " Accounts have been told."}
+
+
+def _cancel_lpo_core(db, o, reason, not_needed=False, user=None, release=True, superseded_by=None, call_zoho=True):
+    """Cancel an LPO everywhere (nothing committed here): struck through with the reason; in Zoho too (or
+    accounts told to do it); what it ordered for itself closes; the request lines it was for are taken off
+    (not needed) or go back to waiting to be ordered. A revision's older order (superseded_by) hands its
+    requests to the revision instead (release=False). Returns (what Zoho said, request lines freed)."""
     o.status = "cancelled"
-    o.cancel_reason, o.cancelled_at, o.cancelled_by = reason, datetime.now(timezone.utc), user.id
+    o.cancel_reason, o.cancelled_at, o.cancelled_by = reason, datetime.now(timezone.utc), (user.id if user else None)
+    if superseded_by:
+        o.superseded_by = superseded_by
     zoho = ""
     if (o.zoho_status or "") in ("sent", "changed"):
-        import pozoho
-        zoho = pozoho.zoho_cancel(db, o)
+        if call_zoho:
+            import pozoho
+            zoho = pozoho.zoho_cancel(db, o)
+        else:
+            o.zoho_err = "Cancelled here - cancel the PO in Zoho too"
+            zoho = "Not cancelled in Zoho from here - cancel the PO in Zoho by hand, then press Done"
     total = _lpo_snap(o)["total"]
     _tell_accounts(db, o, "cancel", [f"Cancelled - {reason}", f"Total was AED {total:,.2f}"], zoho, user)
-    # The materials: no longer needed (the request closes - off Approvals and Order follow-up), or still
-    # needed (back to waiting to be ordered from someone else).
-    not_needed = bool((payload or {}).get("not_needed"))
+    if not release:
+        return zoho, 0
     # What the LPO ordered for itself (nobody's request) closes with it - it is not put back to be ordered.
     for mr in _lpo_tracked_requests(db, o):
         live = [x for x in mr.lines if (x.status or "pending") != "rejected" and (x.qty_received or 0) < (x.qty_requested or 0) - 1e-9]
@@ -9355,16 +9440,10 @@ def cancel_purchase_order(order_id: int, payload: dict = Body(default={}), db: S
                 x.status, x.reject_reason = "rejected", f"{o.ref} cancelled: {reason}"[:300]
         _settle_status(mr)
         mr.office_remark = ((mr.office_remark + " | ") if (mr.office_remark or "").strip() else "") + f"{o.ref} cancelled - {reason}"
+    # The materials: no longer needed (the request closes - off Approvals and Order follow-up), or still
+    # needed (back to waiting to be ordered from someone else).
     freed = _release_lpo_lines(db, o, not_needed=not_needed, why=reason)
-    db.commit()
-    what = ("request line(s) closed - not needed" if not_needed else "request line(s) back to waiting for an order")
-    log_action(db, user.id, "cancel_lpo", f"{o.ref} ({o.supplier_name}) - {reason}"
-               + (f" - {freed} {what}" if freed else "") + (f"; {zoho}" if zoho else ""))
-    return {"ok": True, "zoho": zoho, "freed": freed,
-            "detail": f"{o.ref} cancelled."
-                      + ((f" {freed} material(s) taken off the request - no longer on Approvals or Order follow-up." if not_needed
-                          else f" {freed} material(s) are back on the list waiting to be ordered.") if freed else "")
-                      + (f" {zoho}." if zoho else "") + " Accounts have been told."}
+    return zoho, freed
 
 
 def _release_lpo_lines(db, o, not_needed=False, why=""):
@@ -9402,9 +9481,19 @@ def _release_lpo_lines(db, o, not_needed=False, why=""):
         models.MaterialRequestLine.supplier_id == o.supplier_id,
         models.MaterialRequest.status.in_(["ordered", "partial", "approved"]))
     freed, touched = 0, set()
+    import purchasing as _pu
+    _items = {}
+    def _it(i):
+        if i and i not in _items:
+            _items[i] = db.get(models.StoreItem, i)
+        return _items.get(i)
     for l in q.all():
         mine = (o.request_id and l.request_id == o.request_id) or (l.item_id and l.item_id in items) or \
                (not l.item_id and (l.description or "").strip().lower() in descs)
+        if not mine and l.request and l.request.requested_on and o.order_date \
+                and o.order_date - timedelta(days=21) <= l.request.requested_on <= o.order_date + timedelta(days=1):
+            # the same material by another name ('Cement 50KG cemex' on the LPO, 'Cement 50KG' on the request)
+            mine = any(_pu._fits(y, _it(y.item_id), l, _it(l.item_id)) for y in o.lines)
         if not mine or (l.qty_received or 0) > 0:
             continue
         if covered(l):
@@ -14962,6 +15051,8 @@ import camp  # noqa: E402
 app.include_router(camp.router)
 import pozoho  # noqa: E402
 app.include_router(pozoho.router)
+import purchasing  # noqa: E402  - deliveries against LPOs, Rentals links, bill check (31 Oct 2026)
+app.include_router(purchasing.router)
 import ppe  # noqa: E402
 app.include_router(ppe.router)
 import forms  # noqa: E402  - Admin > Forms

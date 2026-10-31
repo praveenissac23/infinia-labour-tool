@@ -475,6 +475,20 @@ class PurchaseOrder(Base):
     # Combined LPO: one order from one supplier, items for different sites. Each line says who pays
     # (PurchaseOrderLine.cost_to) - for accounts and site costs only, never printed on the LPO.
     combined = Column(Boolean, default=False)
+    # The purchaser's check of the supplier's bill (31 Oct 2026, questionnaire Q14): the bill's number, date and
+    # amount as printed on it, and the tick "checked against the LPO and the delivery note" - before the chief
+    # accountant books it. Nothing here changes the LPO's own figures. (No column defaults: nothing is written
+    # to the existing rows when the columns are added.)
+    bill_no = Column(String, nullable=True)
+    bill_date = Column(Date, nullable=True)
+    bill_amount = Column(Float, nullable=True)
+    bill_checked = Column(Boolean, nullable=True)
+    bill_checked_by = Column(Integer, nullable=True)
+    bill_checked_at = Column(DateTime(timezone=True), nullable=True)
+    bill_note = Column(String, nullable=True)
+    # A revision (IC/LPO/20260150R1) replaces the order before it: the older one is cancelled everywhere and
+    # names the revision that took its place.
+    superseded_by = Column(String, nullable=True)
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -499,6 +513,9 @@ class PurchaseOrderLine(Base):
     rate = Column(Float, default=0.0)
     cost_to = Column(String, default="")             # combined LPO only: "STORE" or a site code - not printed
     tax_pct = Column(Float, default=5.0)
+    # A service (pump, temperature control, transport, installation, printing, charges): never stock - its cost
+    # is the LPO's site's. None = decided by the words and the material's type; True / False = ticked on the LPO.
+    service = Column(Boolean, nullable=True)
 
     order = relationship("PurchaseOrder", back_populates="lines")
     item = relationship("StoreItem")
@@ -673,6 +690,10 @@ class MaterialRequestLine(Base):
     # whether to order, and it stops "200 bags of cement" arriving with
     # nobody remembering which job it was for.
     purpose = Column(String, default="")
+    # How it was bought when no LPO was raised: "petty" = paid from petty cash (owner, 31 Oct 2026), and the
+    # petty cash bill line it was paid on when known. No LPO cost is made up for it.
+    source = Column(String, nullable=True)
+    petty_cash_id = Column(Integer, nullable=True)
 
     request = relationship("MaterialRequest", back_populates="lines")
     item = relationship("StoreItem")
@@ -1522,4 +1543,53 @@ class Payslip(Base):
     slip_type = Column(String, default="payslip")              # payslip | settlement
     data = Column(Text, default="")                            # JSON: everything printed - so it never changes
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# ----------------------------------------------------------------------
+# PURCHASING - deliveries against LPOs, and LPO names <-> Rentals names
+# (31 Oct 2026, from the purchaser's questionnaire). See purchasing.py.
+# ----------------------------------------------------------------------
+class LpoReceipt(Base):
+    """What came against one line of an LPO - the LPO's own delivery record.
+
+    kind:
+      delivered  - material that arrived; movement_id is the stock 'in' it made (or, for one booked before this
+                   record existed, the booking it was matched to)
+      service    - a service line done (pump, transport ...): never stock, its cost is the site's
+      rentals    - hired material booked in on Rentals (movement_id = that hire-in); nothing is booked twice
+      not_needed - the rest of the line closed: it will not come (damaged and returned, no longer needed)
+    The line is kept by id and by material, so an edited LPO (its lines are rewritten) finds it again."""
+    __tablename__ = "lpo_receipts"
+    id = Column(Integer, primary_key=True)
+    order_id = Column(Integer, nullable=False, index=True)
+    line_id = Column(Integer, nullable=True, index=True)
+    item_id = Column(Integer, nullable=True)
+    line_key = Column(String, default="")
+    kind = Column(String, default="delivered", index=True)
+    qty = Column(Float, default=0.0)
+    dn_no = Column(String, default="")
+    dn_date = Column(Date, nullable=True)
+    location = Column(String, default="")          # "" = central store
+    movement_id = Column(Integer, nullable=True, index=True)
+    request_line_id = Column(Integer, nullable=True, index=True)
+    notes = Column(String, default="")
+    tag = Column(String, default="")              # e.g. "purchasing questionnaire 31/10/2026"
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class RentalMap(Base):
+    """An LPO's material and the Rentals material it is booked in as ('Ledger 1.2m' on the LPO is 'Rental
+    Ledger 1.2M' on Rentals). One LPO material can be two Rentals materials ('Spigot / Nut & Bolt' = 'Spigot
+    Pin' + 'Spigot Pin Nut/Bolt'), and two LPO materials one Rentals material. Matched by the LPO material's id,
+    or by its name made plain (case, spaces and units ignored)."""
+    __tablename__ = "rental_maps"
+    id = Column(Integer, primary_key=True)
+    lpo_item_id = Column(Integer, nullable=True, index=True)
+    lpo_key = Column(String, default="", index=True)
+    lpo_name = Column(String, default="")
+    rental_item_id = Column(Integer, nullable=False, index=True)
+    source = Column(String, default="")           # auto | questionnaire | manual
+    created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

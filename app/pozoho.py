@@ -283,6 +283,11 @@ def pos(db: Session = Depends(get_db), user: models.User = ZG):
                      "cancelled": o.status == "cancelled", "cancel_reason": o.cancel_reason or "",
                      "note": nt.get("items") if fresh else [],
                      "round_off": M.lpo_round_off(o),
+                     # the purchaser's check of the supplier's bill (against the LPO and the delivery note)
+                     "bill_no": o.bill_no or "", "bill_amount": o.bill_amount,
+                     "bill_date": o.bill_date.isoformat() if o.bill_date else "",
+                     "bill_checked": bool(o.bill_checked),
+                     "bill_diff": (round(float(o.bill_amount) - _total(o), 2) if o.bill_amount is not None else None),
                      "split": [{"to": "Store" if k == "STORE" else k, "amount": round(n_ + v_ + r_, 2)}
                                for k, n_, v_, r_ in M.lpo_split(o, with_ro=True)],
                      "err": "" if (o.zoho_err or "").startswith("sending@") else (o.zoho_err or "")})
