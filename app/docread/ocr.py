@@ -283,7 +283,9 @@ def embedded_scans(data, pages):
     return out
 
 
-def ocr_pdf_pages(data, pages, dpi=300, parallel=2):
+def ocr_pdf_pages(data, pages, dpi=300, parallel=None):
+    if parallel is None:                 # pages read at once (DOCREAD_PARALLEL=1 on a small server keeps memory down)
+        parallel = int(os.environ.get("DOCREAD_PARALLEL", "2"))
     got = embedded_scans(data, pages)
     imgs = {pn: x[0] for pn, x in got.items()}
     scales = {pn: x[1] for pn, x in got.items()}

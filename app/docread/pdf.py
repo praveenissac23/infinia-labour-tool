@@ -86,7 +86,7 @@ def _hrules(page):
     return out
 
 
-def read_pdf(data, name="", ocr=True, dpi=300, parallel=2):
+def read_pdf(data, name="", ocr=True, dpi=300, parallel=None):
     import pdfplumber
     regions, scanned = [], []
     with pdfplumber.open(io.BytesIO(data)) as pdf:
