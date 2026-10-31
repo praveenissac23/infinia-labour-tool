@@ -205,6 +205,7 @@ function modal(title, fields, onSave, opts = {}) {
   $("#m-foot").innerHTML = (opts.del ? `<button class="btn btn-ghost left" id="m-del">Delete</button>` : "") +
     (opts.extra || "") + `<button class="btn btn-plain" id="m-cancel">Cancel</button><button class="btn btn-primary" id="m-save">${esc(opts.save || "Save")}</button>`;
   $(".mbox").classList.toggle("wide", !!opts.wide);
+  if (window.cfvReset) cfvReset();                 // a document's confirm screen (confirm.js) goes with the form it was on
   $("#modal").classList.remove("hide");
   fields.forEach(f => (f.quick || []).forEach((x, i) => { const b = $(`[data-q="${f.k}:${i}"]`); if (b) b.onclick = () => { x[1]($("#f-" + f.k)); if (opts.live) opts.live(); }; }));
   if (opts.live) { $$("#m-body input, #m-body select").forEach(el => el.addEventListener("input", opts.live)); opts.live(); }
@@ -789,13 +790,15 @@ function subForm(s, pre) {
   }, { del: edit ? async () => { await DEL(`/store/est/subs/${s.id}`); closeDrawer(); reload(); toast("Removed"); } : null, wide: true,
     after: () => { subAutoFill(edit, s); agreementBar(edit, s, r => { ag = r; }); recShow(); const m = $("#f-adv_rec_mode"); if (m) m.addEventListener("change", recShow); } });
 }
-// Read from a document - on any Estimation form. The file is opened on this computer (portal/est/agreement.js);
-// only its words go to /store/est/read/<kind>, which finds the form's details. Nothing is uploaded or kept.
+// Read from a document - on any Estimation form. A contract / letter of award (project) or a payment certificate
+// (clientpc) goes to the server and is read there (app/docread), the form becoming the confirm screen (confirm.js);
+// the other forms open the file on this computer (portal/est/agreement.js) and send only its words to
+// /store/est/read/<kind>. Nothing of the file is kept.
 //   doc = { kind, what: "tender invitation", extra: () => ({...}), keep: r => {...} }
 function docBar(doc) {
   const body = $("#m-body"); if (!body || !window.readAgreement) return;
   const bar = h(`<div class="agbar"><div class="agrow"><button type="button" class="btn btn-ghost" id="doc-pick">Read from document</button>
-      <span class="small muted">Read from the ${esc(doc.what)} - the form fills in for you to check. ${tip("The file is opened on this computer only: it is not uploaded or kept anywhere. Its words are read for the details of this form; check them, then Save.")}</span>
+      <span class="small muted">Read from the ${esc(doc.what)} - the form fills in for you to check. ${tip(DOC_SERVER.includes(doc.kind) ? "The file is read on the server and not kept anywhere. The page shows beside the form; every box read has a chip - amber ones need a look before Save." : "The file is opened on this computer only: it is not uploaded or kept anywhere. Its words are read for the details of this form; check them, then Save.")}</span>
       <input type="file" id="doc-file" accept=".pdf,.docx,.xlsx,.xlsm,.xls,.jpg,.jpeg,.png,image/*" hidden></div><div id="doc-out"></div></div>`);
   body.insertBefore(bar, body.firstChild);
   $("#doc-pick").onclick = () => $("#doc-file").click();
@@ -803,17 +806,21 @@ function docBar(doc) {
     const file = e.target.files[0]; e.target.value = ""; if (!file) return;
     const out = $("#doc-out"); out.innerHTML = `<div class="agnote">Reading ${esc(file.name)} ...</div>`;
     try {
-      const d = await readAgreement(file, m => { out.innerHTML = `<div class="agnote">${esc(m)}</div>`; });
-      const r = await POST(`/store/est/read/${doc.kind}`, Object.assign({ lines: d.lines }, doc.extra ? doc.extra() : {}));
+      const say = m => { out.innerHTML = `<div class="agnote">${esc(m)}</div>`; };
+      let r;
+      if (DOC_SERVER.includes(doc.kind)) r = await cfvRead(`/store/est/read/${doc.kind}`, file, doc.extra ? doc.extra() : {}, say);
+      else { const d = await readAgreement(file, say); r = await POST(`/store/est/read/${doc.kind}`, Object.assign({ lines: d.lines }, doc.extra ? doc.extra() : {})); }
       const filled = docFill(r.fields || {});
       if (doc.keep) doc.keep(r);
       const miss = (doc.want || []).filter(w => !filled.includes(w[0])).map(w => w[1]);
       out.innerHTML = `<div class="agres"><div><b>Read from ${esc(file.name)}</b></div>
         <div class="small">${r.found && r.found.length ? "Filled in: " + r.found.map(esc).join(", ") : "Nothing on this form could be found in the file - type it in."}${miss.length && r.found && r.found.length ? `<br><span class="warn-t">Not found - type it: ${miss.map(esc).join(", ")}</span>` : ""}</div>
-        ${(r.notes || []).map(n => `<div class="small warn-t">${esc(n)}</div>`).join("")}${doc.more ? doc.more(r) : ""}</div>`;
+        ${(r.notes || []).map(n => `<div class="small warn-t">${esc(n)}</div>`).join("")}${doc.more ? doc.more(r) : ""}${r.sums && r.sums.length ? prevChecks({ checks: r.sums }) : ""}</div>`;
+      if (r.detail && DOC_SERVER.includes(doc.kind)) confirmView(r, file, null);
     } catch (er) { out.innerHTML = `<div class="agnote bad">${esc(er.message || String(er))}</div>`; }
   };
 }
+const DOC_SERVER = ["project", "clientpc"];         // the forms whose document is read on the server (confirm screen)
 // Put what was read into the form's boxes; a list picks the choice that matches; notes are added to, not replaced.
 function docFill(f) {
   const done = [];
@@ -835,7 +842,7 @@ function agreementBar(edit, s, keep) {
   const body = $("#m-body"); if (!body || !window.readAgreement) return;
   const has = edit && (s.items || 0) > 0;
   const bar = h(`<div class="agbar"><div class="agrow"><button type="button" class="btn btn-ghost" id="ag-pick">Read from agreement</button>
-      <span class="small muted">The details and the priced schedule are filled in for you to check. ${tip("The file is opened on this computer only: it is not uploaded or kept anywhere. Its text is read for the subcontractor, agreement no. and date, contract value and type, advance, retention, payment terms and every priced line of the schedule. Check what is filled in, then Save.")}</span>
+      <span class="small muted">The details and the priced schedule are filled in for you to check. ${tip("The file is read on the server and not kept anywhere. Its text is read for the subcontractor, agreement no. and date, contract value and type, advance, retention, payment terms and every priced line of the schedule (checked against the contract value). The page shows beside the form; amber boxes need a look before Save.")}</span>
       <input type="file" id="ag-file" accept=".pdf,.docx,.xlsx,.xlsm,.xls,.jpg,.jpeg,.png,image/*" hidden></div><div id="ag-out"></div></div>`);
   body.insertBefore(bar, body.firstChild);
   $("#ag-pick").onclick = () => $("#ag-file").click();
@@ -843,9 +850,9 @@ function agreementBar(edit, s, keep) {
     const file = e.target.files[0]; e.target.value = ""; if (!file) return;
     const out = $("#ag-out"); out.innerHTML = `<div class="agnote">Reading ${esc(file.name)} ...</div>`;
     try {
-      const doc = await readAgreement(file, m => { out.innerHTML = `<div class="agnote">${esc(m)}</div>`; });
-      const r = await POST("/store/est/subs/agreement/read", { lines: doc.lines, trades: ST.meta.trades });
+      const r = await cfvRead("/store/est/subs/agreement/read", file, { trades: ST.meta.trades }, m => { out.innerHTML = `<div class="agnote">${esc(m)}</div>`; });
       keep(r); agreementFill(r, file.name, has, out);
+      if (r.detail) confirmView(r, file, null);
     } catch (er) { out.innerHTML = `<div class="agnote bad">${esc(er.message || String(er))}</div>`; }
   };
 }
@@ -874,7 +881,7 @@ function agreementFill(r, fname, has, out) {
       <details><summary>See the lines</summary><div class="tw"><table class="t"><thead><tr><th>Bill</th><th>No</th><th>Description</th><th class="r">Qty</th><th>Unit</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>
       ${it.map(x => `<tr><td>${esc(x.bill)}</td><td>${esc(x.no)}</td><td class="d">${esc(x.description)}</td><td class="r">${x.qty ?? ""}</td><td>${esc(x.unit)}</td><td class="r">${x.rate ? money(x.rate) : ""}</td><td class="r">${money(x.amount)}</td></tr>`).join("")}
       </tbody></table></div></details></div>` : ""}
-    ${(r.notes || []).map(n => `<div class="small warn-t">${esc(n)}</div>`).join("")}</div>`;
+    ${(r.notes || []).map(n => `<div class="small warn-t">${esc(n)}</div>`).join("")}${r.sums && r.sums.length ? prevChecks({ checks: r.sums }) : ""}</div>`;
 }
 // The next agreement number on this project: IC/912/SCA/03/26 after .../02/...
 function nextAgreement() {
@@ -1519,24 +1526,45 @@ function voTable(list) {
     ${sumRow("Total" + (groups.some(g => g[0].startsWith("Coord")) ? " (coordination left out)" : ""), all, "tot")}
     </tbody></table></div>`;
 }
-// The QS variation log Excel: shows what will come in, then puts it in.
-async function voImport(file) {
+// The variation log - the QS Excel, any other layout, a PDF or a scan - read on the server (app/est_fileread.py): shows
+// what will come in beside the page (confirm.js), then puts in the lines as read (not read again). When the server
+// cannot read a PDF / scan itself it is read on this computer and its words sent (import-text), as before.
+// opts.quiet: a file that turns out not to be a log says nothing (Previous records then opens it as one variation).
+// -> true when the import opened
+async function voImport(file, opts = {}) {
   const cid = () => ($("#vo-ctr") && $("#vo-ctr").value) || "";
-  let send = async (save, off) => { const fd = new FormData(); await addFile(fd, file); fd.append("save", save ? "1" : "0"); fd.append("take_off_contract", off ? "1" : "0"); fd.append("contract_id", cid()); return api(`/store/est/projects/${ST.pid}/variations/import`, { method: "POST", body: fd }); };
-  if (isDoc(file)) {                     // a PDF, Word file or scan: read here, only its words are sent
-    let d; try { d = await readAgreement(file, m => toast(m)); } catch (e) { return fail(e); }
-    send = (save, off) => POST(`/store/est/projects/${ST.pid}/variations/import-text`, { lines: d.lines, save: save ? 1 : 0, take_off_contract: off ? 1 : 0, contract_id: cid() || null });
+  let r, rows = null;
+  let send = async (save, off) => {
+    const fd = new FormData();
+    if (save && rows) fd.append("rows", JSON.stringify(rows)); else await addFile(fd, file);
+    fd.append("save", save ? "1" : "0"); fd.append("take_off_contract", off ? "1" : "0"); fd.append("contract_id", cid());
+    return api(`/store/est/projects/${ST.pid}/variations/import`, { method: "POST", body: fd });
+  };
+  try {
+    if (!opts.quiet) toast(`Reading ${file.name} ...`, { ms: 60000 });
+    r = await send(false);
+  } catch (e) {
+    if (e.status === 501 && isDoc(file)) {     // this server cannot read it: read here, only its words sent
+      let d; try { d = await readAgreement(file, m => toast(m)); } catch (e2) { if (!opts.quiet) fail(e2); return false; }
+      send = (save, off) => POST(`/store/est/projects/${ST.pid}/variations/import-text`, { lines: d.lines, save: save ? 1 : 0, take_off_contract: off ? 1 : 0, contract_id: cid() || null });
+      try { r = await send(false); r.notes = [e.message].concat(r.notes || []); } catch (e3) { if (!opts.quiet) fail(e3); return false; }
+    } else { $$(".toast").forEach(t => t.remove()); if (!opts.quiet) fail(e); return false; }
   }
-  let r; try { r = await send(false); } catch (e) { return fail(e); }
+  $$(".toast").forEach(t => t.remove());
+  if (opts.quiet && (!r.rows || r.rows < 2)) return false;
+  rows = r.rows_read || null;
   const by = Object.entries(r.by_status).map(([k, n]) => `${st(k)} ${n}`).join(" ");
   const orig = r2(r.contract - r.approved);
   modal(`Import ${file.name}`, [], async () => { const off = $("#vo-off") && $("#vo-off").checked; const x = await send(true, off); await reload(); toast(`${x.added ?? x.rows} variations added${x.skipped ? ` - ${x.skipped} already in the app, not added again` : ""}${off ? " - contract set to " + money(x.contract, false) : ""}`, { ms: x.skipped ? 7000 : 2600 }); }, {
     wide: true, save: `Add ${r.rows} variations`,
     top: `${CTRS().length ? `<div class="frm"><div class="f full"><label for="vo-ctr">These variations are for the contract</label><select id="vo-ctr"><option value="">- Pick the contract -</option>${CTRS().map(k => `<option value="${k.id}" ${k.id === ctrPick() ? "selected" : ""}>${esc(k.name)}</option>`).join("")}</select></div></div>` : ""}${r.have ? `<div class="warn">This project already has ${r.have} variation(s). These are added after them - nothing is replaced.</div>` : ""}
+      ${(r.sums && r.sums.length) || (r.notes && r.notes.length) ? prevChecks({ checks: r.sums || [], notes: r.notes || [] }) : ""}
       <div class="strip"><div class="fig"><div class="l">Lines</div><div class="v">${r.rows}</div></div><div class="fig green"><div class="l">Approved</div><div class="v">${money(r.approved, false)}</div></div><div class="fig"><div class="l">Submitted</div><div class="v">${money(r.submitted, false)}</div></div>${r.absorbed ? `<div class="fig"><div class="l">Absorbed</div><div class="v">${money(r.absorbed, false)}</div></div>` : ""}</div>
       <div class="small" style="margin:6px 0">${by}</div>
       ${r.approved ? `<label class="chk" style="display:flex;gap:8px;align-items:flex-start;margin:8px 0"><input type="checkbox" id="vo-off"><span>The contract value (${money(r.contract, false)}) already includes these approved variations - set it to the original ${money(orig, false)} so they aren't counted twice.</span></label>` : ""}
-      <div class="tw" style="max-height:340px;overflow:auto"><table class="t"><thead><tr><th>Ref.</th><th>Description</th><th class="r">Submitted</th><th class="r">Approved</th><th class="r">Absorbed</th><th>Status</th></tr></thead><tbody>${r.lines.map(x => `<tr><td class="nowrap">${esc(x.ref)}</td><td>${esc(x.title)}</td><td class="r">${x.submitted_amount ? money(x.submitted_amount) : ""}</td><td class="r">${x.approved_amount ? money(x.approved_amount) : ""}</td><td class="r">${x.absorbed_amount ? money(x.absorbed_amount) : ""}</td><td>${st(x.status)}</td></tr>`).join("")}</tbody></table></div>` });
+      <div class="tw" style="max-height:340px;overflow:auto"><table class="t" id="vo-lines"><thead><tr><th>Ref.</th><th>Description</th><th class="r">Submitted</th><th class="r">Approved</th><th class="r">Absorbed</th><th>Status</th></tr></thead><tbody>${r.lines.map(x => `<tr><td class="nowrap">${esc(x.ref)}</td><td>${esc(x.title)}</td><td class="r">${x.submitted_amount ? money(x.submitted_amount) : ""}</td><td class="r">${x.approved_amount ? money(x.approved_amount) : ""}</td><td class="r">${x.absorbed_amount ? money(x.absorbed_amount) : ""}</td><td>${st(x.status)}</td></tr>`).join("")}</tbody></table></div>` });
+  if (r.detail) confirmRows(r, file, $("#vo-lines"));
+  return true;
 }
 function voForm(v) {
   v = v || {};

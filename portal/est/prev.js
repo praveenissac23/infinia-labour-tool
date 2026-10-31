@@ -1,9 +1,11 @@
 // Estimation > a project > Previous records - bringing in what happened before the app: certified client bills,
 // subcontractor payment certificates, contracts and variations.
-// Each file is opened on this computer (portal/est/agreement.js: Excel, PDF, a scanned PDF or a photo - text
-// recognition runs here); only its words go to the server, which reads the figures (app/est_prevread.py) and checks
-// them against the certificate's own arithmetic. The QS checks every figure on the form and saves; nothing is saved
-// unread and nothing of the file is kept - its name goes on the record so the original can always be found.
+// Each file goes to the server and is read there (app/est_fileread.py + app/docread: Excel, PDF, a scanned PDF or a
+// photo - no AI), every figure chosen so the certificate's own sums agree; when the server cannot read it itself the
+// file is read on this computer as before (portal/est/agreement.js) and its words are sent. The form opens as the
+// confirm screen (confirm.js): the page beside the boxes, a chip on each figure, the sums at the top. The QS checks
+// every amber figure and saves; nothing is saved unread and nothing of the file is kept - its name goes on the record
+// so the original can always be found.
 const PREV = { q: [], busy: false };
 const PREV_KINDS = {
   clientpc: { label: "Client bills (IPAs)", sub: "certified by the consultant / client", accept: ".xlsx,.xlsm,.xls,.pdf,.jpg,.jpeg,.png,image/*" },
@@ -19,7 +21,7 @@ SECTIONS["prev.rec"] = el => {
   const counts = { clientpc: b.clientpcs.length, subpc: nPc, contract: b.subs.length, variation: b.variations.length };
   const q = PREV.q.filter(x => x.pid === ST.pid);
   el.innerHTML = `<div class="prev-wrap"><h3>Previous records - ${esc(b.project.code)}<span class="spacer"></span><span class="small muted">for going live: bring in what happened before the app</span></h3>
-      <div class="small muted" style="margin:-4px 0 12px">Pick the files (many at once is fine) - Excel, PDF, a scanned PDF or a photo, any size. Each is read on this computer and opened on its form with every figure filled in and checked against the certificate's own sums. Check it and Save; the next one opens. Nothing of the file is kept: its name goes on the record.
+      <div class="small muted" style="margin:-4px 0 12px">Pick the files (many at once is fine) - Excel, PDF, a scanned PDF or a photo, any size. Each is read on the server and opened on its form beside the page, every figure filled in and checked against the certificate's own sums. Check the amber ones and Save; the next one opens. Nothing of the file is kept: its name goes on the record.
         ${tip("Bring the certificates in the order they were made (PC 01, 02, 03 ...) - each one's previous figures are checked against the ones already brought in. A figure the certificate's arithmetic does not agree with is shown in red before you save.")}</div>
       <div class="prev-cards">${Object.entries(PREV_KINDS).map(([k, x]) => `<div class="prev-card"><b>${esc(x.label)}</b><span class="small muted">${esc(x.sub)}</span>
         <div class="n">${counts[k]}<span class="small muted"> in the app</span></div>
@@ -73,10 +75,9 @@ async function prevRun() {
   PREV.busy = true;
   try {
     if (x.kind === "clientpc" || x.kind === "subpc") {
-      x.st = "reading"; x.note = "Opening the file ..."; prevDraw();
-      const d = await readAgreement(x.file, m => { x.note = m; prevDraw(); });
+      x.st = "reading"; x.note = "Sending the file ..."; prevDraw();
       const subs = ST.b.subs.map(s => ({ id: s.id, name: s.name }));
-      x.read = await POST(`/store/est/read/${x.kind === "clientpc" ? "ipa" : "subpc"}`, { lines: d.lines, subs });
+      x.read = await cfvRead(`/store/est/read/${x.kind === "clientpc" ? "ipa" : "subpc"}`, x.file, { subs }, m => { x.note = m; prevDraw(); });
       const f = x.read.fields || {};
       x.bad = (x.read.checks || []).filter(c => !c.ok).length;
       if (x.kind === "clientpc") { x.as = `Bill ${f.bill_label || f.seq || "?"}${f.submitted ? " · " + dt(f.submitted) : ""}`; x.todate = f.claimed_cum; x.due = f.total; }
@@ -160,8 +161,15 @@ function prevCpcForm(x) {
   }, { wide: true, save: "Save bill",
        top: `${dup ? `<div class="warn">Bill ${esc(String(f.seq))} is already in the app - saving adds it again. Skip it if it is the same bill.</div>` : ""}${prevChecks(x.read)}`,
        bottom: xl ? `<label class="chk" style="margin-top:8px"><input type="checkbox" id="pv-fmt" ${prevLatest(x, "clientpc") ? "checked" : ""}> Also use this workbook as the bill format - the next bill (in Bills) is made from it, line by line ${tip("Tick it for the LAST bill: the whole workbook is kept on the server and next month's bill starts from it, with every % line, the layout, logo and formulas.")}</label>` : "" });
+  confirmView(x.read, x.file, PREV_CPC_MAP);
   prevWatch(x);
 }
+// the bill form's boxes and the reading each comes from (a box filled from another: certified = claimed unless the copy says)
+const PREV_CPC_MAP = { seq: "seq", submitted: "submitted", period_to: "period_to", claimed_cum: "claimed_cum", certified_cum: "certified_cum|claimed_cum",
+                       adv_rec_cum: "adv_rec_cum", ret_cum: "ret_cum", ret_rel_cum: "ret_rel_cum" };
+const PREV_PC_MAP = { sub_id: "sub_name", seq: "seq", inv_ref: "inv_ref", inv_date: "inv_date", received: "received", measured_on: "measured_on", issued: "issued",
+                      work_cum: "work_cum", var_cum: "var_cum", adv_cum: "adv_cum", adv_rec_cum: "adv_rec_cum", ret_cum: "ret_cum", ret_rel_cum: "ret_rel_cum",
+                      other_cum: "other_cum", other_note: "other_note", paid_amount: "total" };
 function prevLatest(x, kind) {           // the highest bill no. among the files picked of this kind
   const n = y => +((y.read && y.read.fields && y.read.fields.seq) || 0);
   const all = PREV.q.filter(y => y.pid === x.pid && y.kind === kind && y.st !== "skipped");
@@ -275,6 +283,7 @@ function prevPcForm(x, keepSub) {
   };
   live();
   $("#m-body").addEventListener("change", e => { if (e.target && e.target.id === "pv-open") live(); });
+  confirmView(x.read, x.file, PREV_PC_MAP);
   prevWatch(x);
 }
 
@@ -299,7 +308,13 @@ function prevContract(x) {
 }
 // ---- variations: a log (Excel) through the log import; a letter / cost proposal on the variation form ----------
 function prevVariation(x) {
-  x.as = /\.xls[xm]?$/i.test(x.file.name) ? "Variation log" : "Variation";
-  if (/\.xls[xm]?$/i.test(x.file.name)) { voImport(x.file).then(() => { if (!$("#modal").classList.contains("hide")) prevWatch(x); else { x.st = "error"; x.err = "Nothing could be read from it as a variation log."; prevDraw(); prevRun(); } }); return; }
-  voForm(); prevHand("#doc-file", x.file); prevWatch(x);
+  const xl = /\.xls[xm]?$/i.test(x.file.name);
+  x.as = xl ? "Variation log" : "Variation";
+  // a log (Excel, or a PDF / scan with a table of variations) through the log import; a single letter / cost
+  // proposal on the variation form
+  voImport(x.file, { quiet: !xl }).then(ok => {
+    if (ok && !$("#modal").classList.contains("hide")) { x.as = "Variation log"; prevWatch(x); return; }
+    if (xl) { x.st = "error"; x.err = "Nothing could be read from it as a variation log."; prevDraw(); prevRun(); return; }
+    voForm(); prevHand("#doc-file", x.file); prevWatch(x);
+  });
 }
