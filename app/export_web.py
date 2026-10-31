@@ -680,6 +680,8 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         ws.merge_cells(start_row=r, start_column=4, end_row=r, end_column=7)
         val = ws.cell(row=r, column=4, value=value)
         val.fill = PatternFill("solid", fgColor=GREY_FILL)
+        if label == "Salary (AED):":
+            val.number_format = "#,##0.00"          # the monthly rate to the fils, like every other amount
         val.font = Font(size=10.5)
         val.alignment = Alignment(horizontal="center", vertical="center")
         val.border = box_border
@@ -935,7 +937,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
         [Paragraph("Employee No:", label_style), Paragraph(summary.emp_no or "", value_style)],
         [Paragraph("Trade:", label_style), Paragraph(summary.trade or "", value_style)],
         [Paragraph("Month & Year:", label_style), Paragraph(summary.month_year or "", value_style)],
-        [Paragraph("Salary (AED):", label_style), Paragraph(f"{summary.total_salary:,.0f}", value_style)],
+        [Paragraph("Salary (AED):", label_style), Paragraph(f"{summary.total_salary:,.2f}", value_style)],
     ]
     info_tbl = Table(info_rows, colWidths=[doc_width * 0.24, doc_width * 0.40])
     info_tbl.hAlign = "CENTER"
@@ -1106,7 +1108,7 @@ def salary_card_html(summary, rows):
     by_date = _rows_by_date(rows)
     info = [("Employee Name", summary.emp_name or ""), ("Employee No", summary.emp_no or ""),
             ("Trade", summary.trade or ""), ("Month & Year", summary.month_year or ""),
-            ("Salary (AED)", f"{summary.total_salary:,.0f}")]
+            ("Salary (AED)", f"{summary.total_salary:,.2f}")]
     info_html = "".join(f"<tr><th>{esc(k)}:</th><td>{cell(v)}</td></tr>" for k, v in info)
 
     body = []

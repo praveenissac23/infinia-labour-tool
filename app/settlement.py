@@ -175,6 +175,26 @@ def settlement(db, emp_no, q):
     loan = auto_loan if q.get("loan") in (None, "") else max(_f(q.get("loan")), 0.0)
     other_ded = max(_f(q.get("other_ded")), 0.0)
 
+    # A labourer's settlement to the exact fils, never a fraction extra (owner, 31 Oct 2026): every line is worked
+    # out in exact fractions - the day's basic is NOT rounded before it is multiplied (30 days on a basic of 1,000 is
+    # 986.30, not 986.40) - and the net is cut DOWN to the fils once, at the end (payroll_cycle.fils_down, Decimal
+    # ROUND_FLOOR): -175.50 stays -175.50, never a whole dirham either way. On the paper a payable line is shown cut
+    # down to the fils and a deduction cut up, so no line ever reads more in his favour than it is.
+    exact = not e.staff
+    if exact:
+        from fractions import Fraction as Fr
+        fx = lambda v: Fr(str(float(v or 0)))
+        dayB = fx(basic) * 12 / 365
+        yrsF = max(fx(g["service_days"]) - fx(g["unpaid_days"]), 0) / 365
+        f5x = min(yrsF, 5) * 21 * dayB if grat else Fr(0)
+        a5x = max(yrsF - 5, 0) * 30 * dayB if grat else Fr(0)
+        grat = (fx(basic) * 24 if g.get("capped") else f5x + a5x) if grat else Fr(0)
+        f5, a5 = M.pcyc.fils_down(f5x), M.pcyc.fils_down(a5x)
+        leave_pay = fx(leave_days) * dayB
+        dayG = fx(gross) / 30
+        notice_ded = fx(short) * dayG if notice_ded else Fr(0)
+        notice_add = fx(short) * dayG if notice_add else Fr(0)
+        salary, ticket, other_add, loan, other_ded = fx(salary), fx(ticket), fx(other_add), fx(loan), fx(other_ded)
     payables = [("End of service gratuity", grat),
                 ("Leave encashment", leave_pay),
                 (sal_label, salary)]
@@ -192,6 +212,16 @@ def settlement(db, emp_no, q):
     total_pay = round(sum(v for _, v in payables), 2)
     total_ded = round(sum(v for _, v in deductions), 2)
     net = float(math.floor(total_pay - total_ded + 0.5))   # whole dirhams, as on the paper
+    if exact:
+        net = M.pcyc.fils_down(sum(v for _, v in payables) - sum(v for _, v in deductions))
+        total_pay = M.pcyc.fils_down(sum(v for _, v in payables))
+        total_ded = M.pcyc.fils_up(sum(v for _, v in deductions))
+        payables = [(k, M.pcyc.fils_down(v)) for k, v in payables]
+        deductions = [(k, M.pcyc.fils_up(v)) for k, v in deductions]
+        grat_x, grat = grat, M.pcyc.fils_down(grat)
+        leave_pay = M.pcyc.fils_down(leave_pay)
+        salary, ticket, other_add, loan, other_ded = (float(salary), float(ticket), float(other_add), float(loan),
+                                                      float(other_ded))
 
     docs = {d.kind: d for d in db.query(models.EmployeeDocument)
             .filter(models.EmployeeDocument.employee_id == e.id).all()}
@@ -234,7 +264,8 @@ def settlement(db, emp_no, q):
         "gratuity": {"amount": grat, "entitled": g["entitled"], "capped": g.get("capped", False),
                      "first5": round(min(yrs, 5), 3), "after5": round(max(yrs - 5, 0), 3),
                      "days": g["days"], "why": g["why"], "first5_amt": f5, "after5_amt": a5,
-                     "cap_cut": round(f5 + a5 - grat, 2) if grat and g.get("capped") else 0.0},
+                     "cap_cut": (M.pcyc.fils_up(f5x + a5x - grat_x) if exact else round(f5 + a5 - grat, 2))
+                                if grat and g.get("capped") else 0.0},
         "payables": [{"label": k, "amount": round(v, 2)} for k, v in payables],
         "deductions": [{"label": k, "amount": round(v, 2)} for k, v in deductions],
         "total_pay": total_pay, "total_ded": total_ded, "net": net,

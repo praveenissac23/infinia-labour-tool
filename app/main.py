@@ -3357,13 +3357,13 @@ def error_check(month_year: str, db: Session = Depends(get_db),
             adj = sum((-a.amount if a.is_deduction else a.amount) for a in s.adjustments)
             out.append({
                 "emp_no": s.emp_no, "name": name_now.get(s.emp_no) or s.emp_name, "date": "-", "site": "-",
-                "issue": (f"Final salary AED {take_home:,.0f} is {pct:.0f}% of the "
-                          f"AED {so_far:,.0f} for the {entered} day(s) entered so far "
-                          f"- below the 40% minimum (AED {floor:,.0f})."
+                "issue": (f"Final salary AED {take_home:,.2f} is {pct:.0f}% of the "
+                          f"AED {so_far:,.2f} for the {entered} day(s) entered so far "
+                          f"- below the 40% minimum (AED {floor:,.2f})."
                           if partial else
-                          f"Final salary AED {take_home:,.0f} is {pct:.0f}% of the "
-                          f"AED {total:,.0f} total - below the 40% minimum "
-                          f"(AED {floor:,.0f})."),
+                          f"Final salary AED {take_home:,.2f} is {pct:.0f}% of the "
+                          f"AED {total:,.2f} total - below the 40% minimum "
+                          f"(AED {floor:,.2f})."),
                 "kind": "Pay below 40%",
                 "severity": "legal",
                 "detail": {
@@ -3376,7 +3376,7 @@ def error_check(month_year: str, db: Session = Depends(get_db),
                     "Absence deduction": f"AED {s.deduction:,.2f}",
                     "Adjustments": (f"AED {adj:,.2f}" if s.adjustments else "none"),
                     "What the adjustments were":
-                        ", ".join(f"{a.description} {'-' if a.is_deduction else '+'}{a.amount:,.0f}"
+                        ", ".join(f"{a.description} {'-' if a.is_deduction else '+'}{a.amount:,.2f}"
                                   for a in s.adjustments) or "-",
                 },
             })

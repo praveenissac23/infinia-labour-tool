@@ -332,8 +332,16 @@ def labour_figures(db, card):
            ("Fridays / Sundays", f"{(card.friday_days or 0) + (card.sunday_days or 0):g}"), ("Holidays", f"{card.holiday_days or 0:g}"),
            ("Sick / medical", f"{(card.sick_days or 0) + (card.medical_days or 0):g}"), ("Leave", f"{card.leave_days or 0:g}"),
            ("Absent", f"{card.absent_days or 0:g}"), ("Overtime hours", f"{card.ot_hours or 0:g}")]
-    return {"period": f"{card.month_year} cycle", "earnings": [(k, _r2(v)) for k, v in earn],
-            "deductions": [(k, _r2(v)) for k, v in ded], "net": services.adjusted_final_salary(card), "attendance": att, "remarks": ""}
+    earn, ded, net = [(k, _r2(v)) for k, v in earn], [(k, _r2(v)) for k, v in ded], services.adjusted_final_salary(card)
+    # November 2026 on the salary is the exact sum cut down to the fils once (payroll_cycle.fils_down), while each
+    # line here is shown to the nearest fil - so the lines can come to a fil or two more than is paid. That
+    # difference is shown as its own line, so the slip adds up to exactly what is paid.
+    if M.pcyc.exact_fils(card.month_year):
+        diff = _r2(sum(v for _, v in earn) - sum(v for _, v in ded) - net)
+        if abs(diff) >= 0.005:
+            (ded if diff > 0 else earn).append(("Rounding to the fils", abs(diff)))
+    return {"period": f"{card.month_year} cycle", "earnings": earn,
+            "deductions": ded, "net": net, "attendance": att, "remarks": ""}
 
 
 # ---- marking paid ------------------------------------------------------------------------------------------------------
