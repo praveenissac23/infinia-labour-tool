@@ -138,7 +138,9 @@ def read_contract(doc, kind="project"):
         if m and "infinia" not in m.group(1).lower():
             name = _strip_ms(m.group(1))
         if not name:
-            v, c = kv.text_field(rows, r"(sub-?\s*contractor|vendor|supplier|to|messrs\.?)(\s+name)?\s*:", 100, below=False)
+            v, c = kv.text_field(rows, r"(sub-?\s*contractor|vendor|supplier|messrs\.?)(\s+name)?\s*:?", 100, below=False)
+            if not v:
+                v, c = kv.text_field(rows, r"to\s*:", 100, below=False)
             if v and "infinia" not in v.lower():
                 name = re.split(r"\s+(?:P\.?\s*O\.?\s*Box|Tel|Mob|TRN|,)", _strip_ms(v), maxsplit=1, flags=re.I)[0].strip(" .,")
         if not name:
@@ -250,7 +252,7 @@ def read_contract(doc, kind="project"):
     dt("start_date", r"commencement\s+date|start\s+date|date\s+of\s+commencement|site\s+possession(?:\s+date)?|commence(?:ment)?\s+on")
     dt("end_date", r"completion\s+date|date\s+of\s+completion|end\s+date|to\s+be\s+completed\s+by")
     if kind == "agreement":
-        d, c = kv.date_field(rows, r"(agreement\s+)?date\s*:?")
+        d, c = kv.date_field(rows, r"((agreement|issue|order|lpo)\s+)?date\s*:?|issued\s+on\s*:?|dated\s*:?")
         if not d:
             m = re.search(r"made\s+(?:on|this)\s+(?:the\s+)?(.{0,40}?\d{4})", flat, re.I)
             x = a_date(m.group(1)) if m else None
