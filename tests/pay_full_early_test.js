@@ -7,8 +7,16 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   const b = await chromium.launch(); let bad = 0;
   const ck = (n, ok, info) => { if (!ok) bad++; console.log(`${ok ? 'PASS' : 'FAIL'} ${n}${ok ? '' : '  ' + JSON.stringify(info)}`); };
   const p = await b.newPage({ viewport: { width: 1440, height: 900 } }); const errs = []; p.on('pageerror', e => errs.push(e.message));
+  // The browser's calendar follows the server's (SRV_TODAY), so the month and the labour cycle it opens on are
+  // the ones the server is in the middle of.
+  if (process.env.SRV_TODAY) await p.clock.setFixedTime(new Date(process.env.SRV_TODAY + 'T10:00:00'));
   await p.goto(B + '/?p=payroll#hrpayroll'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(4500);
+  // Needs the server mid-month (SRV_TODAY=2026-10-20 python3 tests/serve_like_nginx.py) and the month starting
+  // on the salary to date: a copy of the live data may already have "Pay full month now" pressed for it.
+  await p.evaluate(async () => { for (const group of ['staff', 'local']) await apiCall('/employees/payroll/full-month',
+    { method: 'POST', body: JSON.stringify({ month_year: hrCycleName(document.getElementById('hr-run-month').value), group, on: false }) }); });
+  await p.evaluate('openPayrollCycle()'); await p.waitForTimeout(3000);
   const grand = () => p.evaluate(() => { const r = Object.values(HR_ALL_RUNS)[0]; return r && { running: r.progress.running, head: document.querySelector('#hr-all-body th.num.net, #hr-all-body th:nth-last-child(2)') && [...document.querySelectorAll('#hr-all-body thead th')].map(t => t.textContent.trim()).join('|') }; });
   for (const g of ['staff', 'local']) {
     await p.click(`#hr-grp-seg button[data-v="${g}"]`); await p.waitForTimeout(3500);

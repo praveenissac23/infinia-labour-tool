@@ -137,9 +137,12 @@ def loan_state(emp_id, month_year=None, month_end=None):
     for l in q("select * from staff_loans where employee_id=?", emp_id):
         if month_end and str(l['taken_on']) > month_end.isoformat():
             continue                          # a loan taken after the month is not recovered in it
-        reps = q("select amount, month_year, source from loan_repayments where loan_id=?", l['id'])
+        reps = q("select amount, month_year, source, paid_on from loan_repayments where loan_id=?", l['id'])
+        # An approved month is seen as it stood then: its own payroll recovery and anything repaid after
+        # its month end are put back.
         paid = sum(r['amount'] for r in reps
-                   if not (month_year and r['source'] == 'payroll' and r['month_year'] == month_year))
+                   if not (month_year and r['source'] == 'payroll' and r['month_year'] == month_year)
+                   and not (month_year and month_end and str(r['paid_on'])[:10] > month_end.isoformat()))
         left = round((l['amount'] or 0) - paid, 2)
         if left <= 0.005:
             continue
@@ -151,9 +154,13 @@ def loan_state(emp_id, month_year=None, month_end=None):
     return round(due, 2), round(balance, 2)
 
 
-c = TestClient(main.app)
-H = {'Authorization': 'Bearer ' + c.post('/auth/login', data={'username': 'admin', 'password': os.environ.get('ADMIN_PW', 'p')})
-     .json()['access_token']}
+c = TestClient(main.app); c.__enter__()   # start-up: column migrations, as the server does
+_tok = None
+for _pw in [os.environ.get('ADMIN_PW')] + ['p', 'changeme123']:      # the test database's admin, whichever it is
+    _tok = _pw and c.post('/auth/login', data={'username': 'admin', 'password': _pw}).json().get('access_token')
+    if _tok:
+        break
+H = {'Authorization': 'Bearer ' + _tok}
 
 
 def dl(path, **params):
@@ -201,7 +208,8 @@ for r in runs:
     days = (b - a).days + 1
     done = 0 if today < a else days if today > b else (today - a).days + 1
     # a month the office switched to 'full month' is paid in full, not as earned so far
-    running = r['status'] != 'approved' and done < days and not ((api.get('progress') or {}).get('full_month'))
+    # (a month not begun yet is not "running" either: its sheet shows the month's net pay)
+    running = r['status'] != 'approved' and 0 < done < days and not ((api.get('progress') or {}).get('full_month'))
     mine = {}
     for l in api['lines']:
         e = q("select * from employees where id=?", l['employee_id'])[0]
@@ -212,7 +220,9 @@ for r in runs:
         due, bal = loan_state(e['id'], r['month_year'] if r['status'] == 'approved' else None, b)
         loan = l['loan_deduction'] if l['loan_edited'] else due
         net = round(gross - absent - ded - loan + add, 2)
-        to_date = round(gross * done / days - absent + add - ded, 2) if running else net
+        # someone on the whole month (Pay full month now for the ticked) or already paid in full shows net pay
+        whole = l.get('full_month') or (l.get('pay') or {}).get('locked')
+        to_date = round(round(gross * done / days, 2) - absent + add - ded, 2) if running and not whole else net
         mine[l['emp_no']] = dict(gross=gross, absent=absent, adjust=round(add - ded, 2),
                                  loan=loan, net=net, to_date=to_date, balance=bal, held=l['held'])
         total_lines += 1
@@ -308,20 +318,36 @@ for e in q("select * from employees where staff=1 and active=1 order by emp_no")
         continue
     end = today
     service = (end - d(e['joined_on'])).days + 1
-    unpaid = 0.0
-    for l in q("select * from staff_leave where employee_id=? and on_date<=?", e['id'], end.isoformat()):
-        pass  # unpaid days are judged month by month below
-    ms = {}
-    for l in q("select * from staff_leave where employee_id=? and on_date<=? order by on_date, id",
-               e['id'], end.isoformat()):
-        ms.setdefault(str(l['on_date'])[:7], []).append(l)
-    for month, rows in ms.items():
+    # Days that are not service (judged day by day, a month at a time, so the paid sick day is counted the way
+    # the salary counted it): unpaid days, every vacation day (company rule, 11 Oct 2026), and the days typed on
+    # his file as not service before the app. Only days from joining to today count; a whole month away is its
+    # calendar days, not 30. (Was: the whole month's money / 30, future days included, past days left out.)
+    unpaid = float(e.get('past_not_service') or 0)
+    ms = sorted({str(l['on_date'])[:7] for l in q("select on_date from staff_leave where employee_id=? and on_date<=? and on_date>=?",
+                                                    e['id'], end.isoformat(), e['joined_on'])})
+    for month in ms:
         y, m = map(int, month.split('-'))
         a = date(y, m, 1)
         b = date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
-        gross = 30.0
-        amt = absence(e['id'], a, b, 30 * 30)  # day rate 30 -> unpaid days = amt / 30
-        unpaid += amt / 30.0
+        sick_left = 1.0
+        for r in q("select * from staff_leave where employee_id=? and on_date>=? and on_date<=? order by on_date, id",
+                   e['id'], a.isoformat(), b.isoformat()):
+            kind = r.get('kind') or ('sick' if 'sick' in (r.get('reason') or '').lower()
+                                     else ('paid_leave' if r.get('paid') else 'absent'))
+            por, rule = r.get('portion') or 1.0, r.get('pay_rule') or 'auto'
+            if rule == 'paid':
+                paid = por
+            elif rule == 'unpaid':
+                paid = 0.0
+            elif kind == 'sick':
+                paid = min(por, max(sick_left, 0.0)); sick_left -= paid
+            elif kind in PAID_KINDS:
+                paid = por
+            else:
+                paid = 0.0
+            if d(r['on_date']) > end or d(r['on_date']) < d(e['joined_on']):
+                continue
+            unpaid += por if kind == 'vacation' else por - paid
     years = max(service - unpaid, 0) / 365.0
     basic = e['basic_salary'] or 0
     daily = basic * 12 / 365.0

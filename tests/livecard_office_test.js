@@ -20,6 +20,20 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await p.screenshot({ path: `${SH}${u}_${w}.png` });
     return { n, cnt, card, errs };
   };
+  // The office login this checks (an assistant accountant's: Attendance > Live card) - made here when the
+  // database copy does not have it (it was never in the shared test database, so the test saw 0 workers).
+  {
+    const p = await (await br.newContext()).newPage();
+    await p.goto(B + '/'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()'); await sleep(3000);
+    const msg = await p.evaluate(async () => {
+      let u = (await apiCall('/users')).find(x => x.username === 'lc_office');
+      if (!u) u = await apiCall('/users', { method: 'POST', body: JSON.stringify({ username: 'lc_office', password: 'pass12345', full_name: 'Live card office', role: 'office' }) });
+      await apiCall(`/users/${u.id}/permissions`, { method: 'POST', body: JSON.stringify({ permissions: 'livecard' }) });
+      return u.username;
+    }).catch(e => String(e));
+    ck('the office login is on file (lc_office, Live card)', msg === 'lc_office', msg);
+    await p.context().close();
+  }
   const a = await look('admin', 'changeme123', 1440, 900);
   const o = await look('lc_office', 'pass12345', 1366, 768);
   ck(`office login sees the same workers as admin (${o.n} / ${a.n}) ${o.cnt}`, o.n === a.n && a.n > 10, [a, o]);
