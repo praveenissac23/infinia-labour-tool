@@ -120,7 +120,10 @@ function prevChecks(r) {
   const cs = r.checks || [];
   const rows = cs.map(c => `<div class="${c.ok ? "ok" : "bad"}">${c.ok ? "&#10003;" : "&#10007;"} ${esc(c.name)} <span class="muted">- ${esc(c.detail)}</span></div>`).join("");
   const notes = (r.notes || []).map(n => `<div class="warn-t">${esc(n)}</div>`).join("");
-  return `<div class="prev-chk">${rows || '<div class="warn-t">The certificate\'s figures could not all be checked - compare every figure with the file.</div>'}${notes}</div>`;
+  // many sums: one line saying how many agree, the list folded under it (open when one does not agree)
+  const nBad = cs.filter(c => !c.ok).length;
+  const body = cs.length > 4 ? `<details ${nBad ? "open" : ""}><summary class="${nBad ? "bad" : "ok"}">${nBad ? "&#10007;" : "&#10003;"} ${cs.length - nBad} of ${cs.length} of the document's sums agree${nBad ? ` - ${nBad} do${nBad > 1 ? "" : "es"} not` : ""}</summary>${rows}</details>` : rows;
+  return `<div class="prev-chk">${body || '<div class="warn-t">The certificate\'s figures could not all be checked - compare every figure with the file.</div>'}${notes}</div>`;
 }
 const prevN = v => Number(String(v ?? "").replace(/,/g, "")) || 0;
 

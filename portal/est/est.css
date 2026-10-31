@@ -744,3 +744,4 @@ table.sb .resub { margin-top: 4px; }
   .cfv { grid-template-columns: minmax(0, 1fr); }
   .cfv-doc { position: static; max-height: 52vh; min-height: 220px; }
 }
+.prev-chk summary { cursor: pointer; list-style-position: inside; }
