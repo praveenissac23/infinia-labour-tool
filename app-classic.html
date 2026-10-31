@@ -649,6 +649,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dq-tile { position: relative; } .dq-badge { position: absolute; top: 8px; right: 8px; min-width: 20px; height: 20px; border-radius: 10px; background: #C0392B; color: #fff; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; box-sizing: border-box; }
   .pz { display: inline-flex; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; font-weight: 800; align-items: center; justify-content: center; margin-left: 6px; vertical-align: 1px; cursor: help; }
   .pz.ok { background: #E3F2E6; color: #2E7D32; } .pz.app { background: #E8EEFB; color: #2F5BB7; } .pz.wait { background: #FFF1D9; color: #A86A00; } .pz.bad { background: #FDECEA; color: #B03A2E; } .pz.skip { background: #EEE; color: #888; }
+  .zh-advsub { display: block; font-size: 11px; font-weight: 500; line-height: 1.1; }
+  .zs-advbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0; }
   #screen-zoho .zh-pane { display: none; } #screen-zoho .zh-tabs { min-height: 35px; }
   .zh-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 10px; border-bottom: 1px solid #EFEBE6; padding-bottom: 10px; }
   /* Same look as the page's sub-tabs: white pill, the chosen one pale red with a red edge. */
@@ -3811,10 +3813,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <label class="pc-f"><span>What</span><select id="zs-src" onchange="zsLoad()"><option value="">Everything</option><option value="petty">Petty cash</option><option value="bank">Bank</option><option value="lpo">LPOs</option><option value="loan">Staff loans</option><option value="invoice">Tax invoices</option><option value="supplier">Suppliers</option></select></label>
                 <label class="pc-f"><span>Search</span><input type="search" id="zs-q" placeholder="Description, account, number" oninput="zsDraw()"></label>
                 <label class="zs-all"><input type="checkbox" id="zs-allc" onchange="zsLoad()"> All changes <small>(supplier updates, deletes, refusals)</small></label>
-                <div class="exp-btns zs-exp"><button type="button" class="btn btn-dark" onclick="zsLoad()" title="Read the list again">Refresh</button><button type="button" class="btn btn-dark" onclick="zsExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="zsExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="zsExport('excel')">Export Excel</button></div>
+                <div class="exp-btns zs-exp"><button type="button" class="btn btn-gray" onclick="zsAdvOpen(0)" title="Payments to suppliers not set against a bill - advances / payments on account, to adjust later">Supplier advances</button><button type="button" class="btn btn-dark" onclick="zsLoad()" title="Read the list again">Refresh</button><button type="button" class="btn btn-dark" onclick="zsExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="zsExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="zsExport('excel')">Export Excel</button></div>
               </div>
               <div class="pc-stats" id="zs-stats"></div>
               <div class="grid-wrap" style="max-height:640px;"><table class="pc-table zs-table" data-nomove><thead><tr><th class="l" style="width:92px;">Sent</th><th class="l">Portal line</th><th class="l" style="width:130px;">In Zoho</th><th class="l">Where it went in Zoho</th><th class="n" style="width:104px;">Amount</th><th style="width:262px;"></th></tr></thead><tbody id="zs-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody></table></div>
+              <div id="zs-adv" style="display:none;"></div>
             </div>
             <div class="zh-pane" data-pane="suppliers">
               <div class="zh-intro"><b>Suppliers in Zoho</b> - the portal's supplier list is the master. Each supplier is linked once to its Zoho supplier; a supplier's LPOs and bills need that link. Linking creates or changes nothing in Zoho.</div>
@@ -18563,6 +18566,7 @@ async function zhLoad() {
                       kind: r.zoho_kind === "payment" ? "payment" : "expense", vendor_id: r.vendor_id || (g ? g.id : ""), vendor: r.vendor || (g ? g.name : ""),
                       bill_id: r.bill_id || "", bill_no: r.bill_no || "" }; });
   zhDraw();
+  ZH.rows.forEach(r => { if (r.kind === "paid" && ZH_PICK[r.id].kind === "payment" && ZH_PICK[r.id].vendor_id) zhBillsLoad(r.id); });
 }
 function zhConnDraw(cached) {
   const c = cached || (ZH && ZH.conn) || {}, el = document.getElementById("zh-conn");
@@ -18803,11 +18807,43 @@ function zsDraw() {
       + (r.can_reverse && ZS.may_reverse ? `<button class="btn btn-gray btn-sm zs-revb" onclick="zsReverse(${r.id})" title="Delete it in Zoho and put the line back to waiting">Reverse</button>` : "");
     return `<tr class="${r.reversed || !r.ok ? "zs-dim" : ""}"><td class="l">${zsWhen(r.at)}</td>
       <td class="l"><b class="zs-src">${escapeHtml(r.source_label)}</b> ${escapeHtml(r.item || r.ref)}<span class="sub">${escapeHtml(r.ref)}${r.by ? " · by " + escapeHtml(r.by) : ""}${r.reversed ? ` · reversed by ${escapeHtml(r.reversed_by)}: ${escapeHtml(r.reverse_reason)}` : ""}${!r.ok ? " · " + escapeHtml(r.error) : ""}</span></td>
-      <td class="l">${tag}<span class="sub">${escapeHtml(r.kind_label)}${r.number ? " " + escapeHtml(r.number) : ""}</span></td>
+      <td class="l">${tag}${r.ok && !r.reversed && r.action === "create" && r.advance > 0 ? ` <span class="zx-tag zx-wait zs-advtag" title="${r.applied > 0 ? `${pcMoney(r.applied)} set against the bill; ` : "No bill applied; "}${pcMoney(r.advance)} stays in Zoho as the supplier's unused amount - apply it to his next bill">Advance – to be adjusted</span>` : ""}<span class="sub">${escapeHtml(r.kind_label)}${r.number ? " " + escapeHtml(r.number) : ""}${r.ok && r.advance > 0 ? ` · ${r.applied > 0 ? `applied ${pcMoney(r.applied)} · ` : ""}advance ${pcMoney(r.advance)}` : ""}</span></td>
       <td class="l"><div class="zs-ft"><span class="zs-k">From</span><span class="zs-from">${zsAcc(r.from)}</span><span class="zs-k zs-kto">To →</span><span class="zs-to">${zsAcc(r.to)}</span></div>${extra ? `<span class="sub">${extra}</span>` : ""}<div class="zs-chk" id="zs-chk-${r.id}"></div></td>
       <td class="n">${r.action === "create" ? pcMoney(r.amount) : ""}</td>
       <td><div class="zh-acts">${acts}</div></td></tr>`;
   }).join("") || `<tr><td colspan="6" class="sub" style="padding:16px;">Nothing sent to Zoho in this period.</td></tr>`;
+}
+// Supplier advances: what the portal paid suppliers that is not set against a bill, per supplier.
+let ZS_ADV = null;
+function zsAdvShow(on) {
+  const grid = document.querySelector("#zs-body").closest(".grid-wrap");
+  [grid, document.getElementById("zs-stats"), document.querySelector("#screen-zoho .zs-filters")].forEach(el => { if (el) el.style.display = on ? "none" : ""; });
+  document.getElementById("zs-adv").style.display = on ? "block" : "none";
+}
+async function zsAdvOpen(live) {
+  const box = document.getElementById("zs-adv"); zsAdvShow(true);
+  if (!ZS_ADV || live) box.innerHTML = `<div class="sub" style="padding:10px 0;">${live ? "Reading the unused amounts from Zoho..." : "Loading..."}</div>`;
+  try { ZS_ADV = await apiCall(`/store/zoho/advances${live ? "?live=1" : ""}`); } catch (e) { box.innerHTML = `<div class="zx-tag zx-bad">${escapeHtml(errText(e))}</div>`; return; }
+  zsAdvDraw();
+}
+function zsAdvDraw() {
+  const d = ZS_ADV, box = document.getElementById("zs-adv"); if (!d) return;
+  const live = d.live;
+  box.innerHTML = `<div class="zs-advbar"><button type="button" class="btn btn-gray" onclick="zsAdvShow(false)">← Back to Sent to Zoho</button>
+      <span class="sub" style="display:inline;">${d.count} payment${d.count === 1 ? "" : "s"} · advance <b>AED ${pcMoney(d.total)}</b>${d.note ? " · " + escapeHtml(d.note) : ""}</span>
+      <div class="exp-btns" style="margin-left:auto;"><button type="button" class="btn btn-gray" onclick="zsAdvOpen(1)" title="Read each payment's unused amount from Zoho now (nothing is changed in Zoho)">Read unused from Zoho</button><button type="button" class="btn btn-dark" onclick="zsAdvExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="zsAdvExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="zsAdvExport('excel')">Export Excel</button></div></div>
+    <div class="zh-intro" style="margin-top:6px;"><b>Supplier advances</b> - payments sent to a supplier that were not (all) set against a bill: Send Anyway (no open bill), Send Excess (more than the bill) and bank payments with less typed against bills. Zoho keeps each as the supplier's <b>unused amount</b>: apply it to his bill in Zoho when the bill comes.</div>
+    <div class="grid-wrap" style="max-height:640px;"><table class="pc-table zs-table" data-nomove><thead><tr><th class="l" style="width:20%;">Supplier</th><th class="l" style="width:92px;">Date</th><th class="l">Portal line</th><th class="l" style="width:130px;">In Zoho</th><th class="n" style="width:100px;">Paid</th><th class="n" style="width:100px;">On bills</th><th class="n" style="width:104px;">Advance</th>${live ? `<th class="n" style="width:116px;">Unused in Zoho</th>` : ""}<th style="width:70px;"></th></tr></thead><tbody>
+    ${d.suppliers.map(g => g.rows.map((r, i) => `<tr><td class="l">${i ? "" : `<b>${escapeHtml(g.supplier)}</b>${g.rows.length > 1 ? `<span class="sub">${g.rows.length} payments · advance ${pcMoney(g.advance)}</span>` : ""}`}</td>
+        <td class="l">${pcDate(r.date)}</td><td class="l"><b class="zs-src">${escapeHtml(r.source_label)}</b> ${escapeHtml(r.item || r.ref)}<span class="sub">${escapeHtml(r.ref)}${r.by ? " · by " + escapeHtml(r.by) : ""}</span></td>
+        <td class="l">Payment Made ${escapeHtml(r.number || "")}</td><td class="n">${pcMoney(r.amount)}</td><td class="n">${r.applied ? pcMoney(r.applied) : "-"}</td><td class="n"><b>${pcMoney(r.advance)}</b></td>
+        ${live ? `<td class="n">${r.unused === null || r.unused === undefined ? "-" : pcMoney(r.unused) + (r.unused < r.advance - 0.005 ? `<span class="sub">${r.unused > 0.005 ? "partly" : "fully"} adjusted</span>` : "")}</td>` : ""}
+        <td style="text-align:right;">${r.web ? `<a class="btn btn-gray btn-sm" href="${escapeAttr(r.web)}" target="_blank" rel="noopener" title="Open the payment in Zoho Books">Open</a>` : ""}</td></tr>`).join("")).join("")
+      || `<tr><td colspan="${live ? 9 : 8}" class="sub" style="padding:16px;">No supplier advances - every supplier payment the portal sent is set against a bill.</td></tr>`}</tbody></table></div>`;
+}
+async function zsAdvExport(kind) {
+  await refreshDownloadToken();
+  window.open(`${API}/export/zoho/advances?format=${kind}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 async function zsCheck(id, btn) {
   const box = document.getElementById(`zs-chk-${id}`); btn.disabled = true; box.innerHTML = `<span class="sub">Reading Zoho…</span>`;
@@ -18862,10 +18898,56 @@ function zhFlags(r) {
     // Payment Made: the account rules do not apply; the supplier (and his bill) do.
     const keep = out.filter(f => /VAT|Correct it/.test(f));
     if (!p.vendor_id) keep.push(p.vendor_typed ? "Pick the supplier from the list" : "Pick the supplier");
-    else if (p.bills && !p.bills.length && !p.bill_id) keep.push("No open bill in Zoho for this supplier - send as an expense, or on account");
     return keep;
   }
   return out;
+}
+// Supplier advance: no open bill (Send Anyway) or more than the bill's balance (Send Excess).
+// The line goes only after the chief accountant confirms what Zoho will record.
+function zhAdvNeed(r) {
+  const p = ZH_PICK[r.id];
+  if (!p || r.kind !== "paid" || p.kind !== "payment" || !p.vendor_id || !p.bills) return null;
+  if (!p.bills.length && !p.bill_id) return { type: "advance", adv: r.amount };
+  const b = p.bill_id && p.bills.find(x => x.id === p.bill_id);
+  if (b && r.amount > b.balance + 0.005) return { type: "excess", bill: b, applied: b.balance, adv: Math.round((r.amount - b.balance) * 100) / 100 };
+  return null;
+}
+// Not ready to tick: something to put right, his bills still loading, or an advance not yet confirmed.
+function zhBlocked(r) {
+  if (zhFlags(r).length) return true;
+  const p = ZH_PICK[r.id];
+  if (r.kind === "paid" && p.kind === "payment" && p.vendor_id && p.bills === undefined) return true;
+  const n = zhAdvNeed(r);
+  return !!n && p.advance !== n.type;
+}
+function zhAdvText(r, n) {
+  return n.type === "advance" ? `No open bill in Zoho for this supplier · advance ${pcMoney(n.adv)}`
+    : `Bill ${n.bill.number} balance ${pcMoney(n.bill.balance)} · applied ${pcMoney(n.applied)} · advance ${pcMoney(n.adv)}`;
+}
+// The confirm box for advances - petty cash and bank alike. items: [{ title, supplier, amount, applied, bill, adv, from }]
+function zhAdvAsk(items, go) {
+  return new Promise(res => {
+    const ov = document.createElement("div"); ov.className = "zx-modal";
+    const one = items.length === 1, excess = items.some(i => i.applied > 0);
+    ov.innerHTML = `<div class="zx-box" style="width:560px;"><h3 style="margin:0 0 6px;">${escapeHtml(go)} - supplier advance</h3>
+      ${items.map(i => `<div style="border:1px solid #EFE6DC;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:13px;">
+        <b>${escapeHtml(i.supplier)}</b> · AED ${pcMoney(i.amount)}<span class="sub" style="display:block;">${escapeHtml(i.title)}${i.from ? " · paid from " + escapeHtml(i.from) : ""}</span>
+        <div style="margin-top:4px;">${i.applied > 0 ? `${i.bill ? `Bill${/,/.test(i.bill) ? "s" : ""} ${escapeHtml(i.bill)}` : "Bills"}${i.balance !== undefined ? ` balance ${pcMoney(i.balance)}` : ""} · applied ${pcMoney(i.applied)} · <b>advance ${pcMoney(i.adv)}</b>` : `No bill applied · <b>advance ${pcMoney(i.adv)}</b>`}</div></div>`).join("")}
+      <div style="font-size:13px;margin:4px 0 10px;">Zoho records ${one ? "one Payment Made" : `${items.length} Payments Made`} to the supplier${excess ? " - the bill balance is set against the bill (it becomes paid) and the rest" : " with no bill applied - the whole amount"} stays with the supplier as his <b>unused amount (supplier advance / payment on account)</b>, to apply to his next bill in Zoho. It shows on Sent to Zoho as <b>Advance - to be adjusted</b>.</div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;"><button type="button" class="btn btn-gray" id="za-no">Cancel</button><button type="button" class="btn btn-primary" id="za-yes">${escapeHtml(go)}</button></div></div>`;
+    document.body.appendChild(ov);
+    ov.querySelector("#za-no").onclick = () => { ov.remove(); res(false); };
+    ov.querySelector("#za-yes").onclick = () => { ov.remove(); res(true); };
+  });
+}
+async function zhAdvConfirm(id, btn) {
+  const r = ZH.rows.find(x => x.id === id), p = ZH_PICK[id], n = r && zhAdvNeed(r);
+  if (!n || zhFlags(r).length) return;
+  const ok = await zhAdvAsk([{ title: `${r.description}${r.receipt_no ? " · rcpt " + r.receipt_no : ""} · ${pcDate(r.date)}`, supplier: p.vendor || r.supplier, amount: r.amount,
+                               applied: n.applied || 0, bill: n.bill ? n.bill.number : "", balance: n.bill ? n.bill.balance : undefined, adv: n.adv, from: r.book_label + " petty cash" }], n.type === "advance" ? "Send Anyway" : "Send Excess");
+  if (!ok) return;
+  p.advance = n.type;
+  zhApprove([id], btn);
 }
 function zhShort(a) {
   // "01. Preliminaries Including Mobilization › Authority Payments" -> "01 › Authority Payments"
@@ -18887,6 +18969,7 @@ function zhDraw() {
   zhConnDraw(); zhPendDraw(); zhLoansDraw(); zhTodoDraw(); zhPosDraw(); zhBankDraw(); zhTabsDraw();
   const rows = zhShown();
   const fix = rows.filter(r => zhFlags(r).length).length;
+  rows.forEach(r => { if (zhBlocked(r)) ZH_PICK[r.id].on = false; });
   document.getElementById("zh-stats").innerHTML =
     `<div class="pc-stat"><span>Waiting - ${rows.length} line${rows.length === 1 ? "" : "s"}</span><b>Paid ${pcMoney(rows.filter(r => r.kind !== "received").reduce((a, r) => a + r.amount, 0))}${rows.some(r => r.kind === "received") ? ` · In ${pcMoney(rows.filter(r => r.kind === "received").reduce((a, r) => a + r.amount, 0))}` : ""}</b></div>
      <div class="pc-stat${fix ? " hand neg" : ""}"><span>Fix first (red)</span><b>${fix} line${fix === 1 ? "" : "s"}</b></div>
@@ -18913,16 +18996,20 @@ function zhDraw() {
     const acc = kindSel + (payment ? payRow : `<div class="zh-accrow">` + (sp.length ? `<button type="button" class="zh-splitshow" onclick="zhSplit(${r.id})" title="${escapeAttr(sp.map(s => zhShort(s.account) + " " + pcMoney(+s.amount || 0)).join(" | "))}">Split over ${sp.length} cost heads</button>`
       : zaButton(p.account, r.kind === "received" ? "received" : "paid", `zhSet(${r.id},'account',V)`, "zh-acc"))
       + (r.kind === "paid" ? `<button type="button" class="zh-splitbtn" onclick="zhSplit(${r.id})" title="Spread this receipt over several cost heads">${sp.length ? "Edit" : "Split"}</button>` : "") + `</div>`);
-    return `<tr class="${f.length ? "zh-fix" : ""}"><td><input type="checkbox" ${p.on ? "checked" : ""} ${f.length ? "disabled" : ""} onchange="zhSet(${r.id},'on',this.checked)"></td>
+    const adv = f.length ? null : zhAdvNeed(r), advOk = adv && p.advance === adv.type;
+    const advNote = adv ? `<div class="zh-flags"><span class="zx-tag zx-wait" title="${adv.type === "advance" ? "Send Anyway records it in Zoho as a supplier advance (payment on account), to adjust against his bill later" : "Send Excess pays the bill in full and leaves the rest with the supplier as an advance"}">${escapeHtml(zhAdvText(r, adv))}</span></div>` : "";
+    const sendBtn = adv ? `<button class="btn btn-primary btn-sm" onclick="zhAdvConfirm(${r.id}, this)" title="${adv.type === "advance" ? "No open bill: record it as a supplier advance / payment on account - you confirm first" : "More than the bill: pay the bill, the rest as a supplier advance - you confirm first"}">${adv.type === "advance" ? `Send Anyway<span class="zh-advsub">(advance)</span>` : "Send Excess"}</button>`
+      : `<button class="btn btn-primary btn-sm" onclick="zhApprove([${r.id}], this)" title="Approve this line alone for Zoho" ${zhBlocked(r) ? "disabled" : ""}>Send</button>`;
+    return `<tr class="${f.length ? "zh-fix" : ""}"><td><input type="checkbox" ${p.on ? "checked" : ""} ${zhBlocked(r) && !advOk ? "disabled" : ""} onchange="zhSet(${r.id},'on',this.checked)"></td>
       <td class="l">${escapeHtml(r.book_label)}</td><td class="l">${pcDate(r.date)}</td>
-      <td class="l">${escapeHtml(r.description)}${r.changed ? ` <span class="zx-tag zx-bad" title="It was changed here after it went to Zoho. Make the same change in Zoho, then press Corrected in Zoho - it is not sent again.">Changed after Zoho${r.zoho_ref ? " - " + escapeHtml(r.zoho_ref) : ""}</span>` : ""}<span class="sub">${r.supplier ? `<b style="color:#4A433D;font-weight:600;">${escapeHtml(r.supplier)}</b>` : "No supplier"}${r.receipt_no ? " · rcpt " + escapeHtml(r.receipt_no) : ""}${r.by ? " · by " + escapeHtml(r.by) : ""}</span>${f.length ? `<div class="zh-flags">${f.map(x => `<span class="zx-tag zx-bad">${escapeHtml(x)}</span>`).join("")}</div>` : ""}</td>
+      <td class="l">${escapeHtml(r.description)}${r.changed ? ` <span class="zx-tag zx-bad" title="It was changed here after it went to Zoho. Make the same change in Zoho, then press Corrected in Zoho - it is not sent again.">Changed after Zoho${r.zoho_ref ? " - " + escapeHtml(r.zoho_ref) : ""}</span>` : ""}<span class="sub">${r.supplier ? `<b style="color:#4A433D;font-weight:600;">${escapeHtml(r.supplier)}</b>` : "No supplier"}${r.receipt_no ? " · rcpt " + escapeHtml(r.receipt_no) : ""}${r.by ? " · by " + escapeHtml(r.by) : ""}</span>${f.length ? `<div class="zh-flags">${f.map(x => `<span class="zx-tag zx-bad">${escapeHtml(x)}</span>`).join("")}</div>` : ""}${advNote}</td>
       <td class="l">${site}</td>
       <td class="l">${acc}</td>
       <td class="l">${vat}</td><td class="n">${r.kind === "received" ? "+" : ""}${pcMoney(r.amount)}</td>
-      <td><div class="zh-acts">${r.changed ? `<button class="btn btn-primary btn-sm" onclick="zhCorrected(${r.id})">Corrected in Zoho</button>` : `${f.length ? "" : `<button class="btn btn-primary btn-sm" onclick="zhApprove([${r.id}], this)" title="Approve this line alone for Zoho">Send</button>`}<button class="btn btn-gray btn-sm" onclick="zhSkip(${r.id})" title="Prime Infinia's, or already counted in another book">Not for Zoho</button>`}</div></td></tr>`;
+      <td><div class="zh-acts">${r.changed ? `<button class="btn btn-primary btn-sm" onclick="zhCorrected(${r.id})">Corrected in Zoho</button>` : `${f.length ? "" : sendBtn}<button class="btn btn-gray btn-sm" onclick="zhSkip(${r.id})" title="Prime Infinia's, or already counted in another book">Not for Zoho</button>`}</div></td></tr>`;
   }).join("") || `<tr><td colspan="9" style="color:#999; padding:18px;">Nothing waiting - every petty cash line from ${pcDate(ZH.start)} is approved for Zoho.</td></tr>`;
   const n = rows.filter(r => ZH_PICK[r.id].on).length;
-  document.getElementById("zh-all").checked = n && n === rows.filter(r => !zhFlags(r).length).length;
+  document.getElementById("zh-all").checked = n && n === rows.filter(r => !zhBlocked(r)).length;
   const go = document.getElementById("zh-go");
   go.textContent = n ? `Approve ${n} for Zoho` : "Approve for Zoho"; go.disabled = !n;
 }
@@ -18953,7 +19040,7 @@ function zhVendorGuess(sup) {
 }
 function zhVendor(id, name) {
   const p = ZH_PICK[id], v = (ZH_VENDORS || []).find(x => x.name.toLowerCase() === String(name || "").trim().toLowerCase());
-  p.vendor_typed = name; p.vendor_id = v ? v.id : ""; p.vendor = v ? v.name : ""; p.bill_id = ""; p.bill_no = ""; p.bills = undefined;
+  p.vendor_typed = name; p.vendor_id = v ? v.id : ""; p.vendor = v ? v.name : ""; p.bill_id = ""; p.bill_no = ""; p.bills = undefined; p.advance = "";
   if (!String(name || "").trim()) { p.vendor_typed = ""; }
   zhDraw();
   if (p.vendor_id) zhBillsLoad(id);
@@ -18977,12 +19064,12 @@ async function zhBillsLoad(id) {
 }
 function zhBill(id, bid) {
   const p = ZH_PICK[id], b = (p.bills || []).find(x => x.id === bid);
-  p.bill_id = b ? b.id : ""; p.bill_no = b ? b.number : "";
+  p.bill_id = b ? b.id : ""; p.bill_no = b ? b.number : ""; p.advance = "";
   zhDraw();
 }
 function zhSet(id, k, v) {
   const p = ZH_PICK[id]; p[k] = v;
-  if (k !== "on") { const r = ZH.rows.find(x => x.id === id); p.on = !zhFlags(r).length; }
+  if (k !== "on") { const r = ZH.rows.find(x => x.id === id); p.on = !zhBlocked(r); }
   zhDraw();
 }
 // One receipt over several cost heads: parts that must add up to the bill.
@@ -19066,10 +19153,10 @@ function zhList(kind, rows, elId, title, intro, empty, before, after) {
     ${rows.length ? `<div class="grid-wrap" style="max-height:none;"><table class="pc-table zh-lt"><thead><tr><th style="width:34px;"><input type="checkbox" ${n && n === ok.length ? "checked" : ""} onchange="zhSelAll('${kind}',this.checked)" title="Tick all"></th>
       <th class="l" style="width:84px;">Date</th><th class="l">What</th><th class="n" style="width:120px;">Amount</th><th class="l" style="width:30%;">Status</th><th style="width:90px;"></th></tr></thead><tbody>
       ${rows.map(r => `<tr class="${r.block ? "zh-fix" : ""}"><td><input type="checkbox" ${sel.has(r.id) ? "checked" : ""} ${r.block ? "disabled" : ""} onchange="zhSel('${kind}',${r.id},this.checked)"></td>
-        <td class="l">${pcDate(r.date)}</td><td class="l">${r.view ? `<a href="#" class="zh-open" onclick="event.preventDefault(); event.stopPropagation(); ${r.view}" title="Open the LPO">${escapeHtml(r.main || "-")}</a>` : `<b>${escapeHtml(r.main || "-")}</b>`}${r.sub ? `<span class="sub">${escapeHtml(r.sub)}</span>` : ""}${r.accPick ? `<div class="zh-poacc">${zaButton(r.acc || "", "paid-cost", r.accPick, "zh-acc")}</div>` : ""}</td>
+        <td class="l">${pcDate(r.date)}</td><td class="l">${r.view ? `<a href="#" class="zh-open" onclick="event.preventDefault(); event.stopPropagation(); ${r.view}" title="Open the LPO">${escapeHtml(r.main || "-")}</a>` : `<b>${escapeHtml(r.main || "-")}</b>`}${r.sub ? `<span class="sub">${escapeHtml(r.sub)}</span>` : ""}${r.adv ? `<div class="zh-flags"><span class="zx-tag zx-wait" title="Not set against a bill - Zoho keeps it as the supplier's advance (payment on account)">${r.adv.applied > 0 ? `Bills ${escapeHtml(r.adv.bill)} applied ${pcMoney(r.adv.applied)} · advance ${pcMoney(r.adv.adv)}` : `No bill · advance ${pcMoney(r.adv.adv)}`}</span></div>` : ""}${r.accPick ? `<div class="zh-poacc">${zaButton(r.acc || "", "paid-cost", r.accPick, "zh-acc")}</div>` : ""}</td>
         <td class="n">${r.out ? "" : "+"}${pcMoney(r.amount)}</td>
         <td class="l">${r.block ? `<span class="zx-tag zx-bad">${escapeHtml(r.block)}</span>` : r.err ? `<span class="zx-tag zx-bad" title="${escapeAttr(r.err)}">Zoho refused</span><span class="sub">${escapeHtml(r.err.slice(0, 90))}</span>` : `<span class="zx-tag zx-app">Not in Zoho yet</span>`}</td>
-        <td style="text-align:right;white-space:nowrap;">${r.block ? "" : `<button type="button" class="btn btn-gray btn-sm" onclick="zhSendIds('${kind}',[${r.id}],this)" ${can ? "" : "disabled"}>Send</button>`}${r.del ? ` <button type="button" class="btn btn-gray btn-sm" onclick="${r.del}" title="Delete this LPO everywhere (made by mistake)">Delete</button>` : ""}</td></tr>`).join("")}</tbody></table></div>
+        <td style="text-align:right;white-space:nowrap;">${r.block ? "" : `<button type="button" class="btn btn-gray btn-sm" onclick="zhSendIds('${kind}',[${r.id}],this)" ${can ? "" : "disabled"}>${r.adv ? (r.adv.applied > 0 ? "Send Excess" : `Send Anyway<span class="zh-advsub">(advance)</span>`) : "Send"}</button>`}${r.del ? ` <button type="button" class="btn btn-gray btn-sm" onclick="${r.del}" title="Delete this LPO everywhere (made by mistake)">Delete</button>` : ""}</td></tr>`).join("")}</tbody></table></div>
       <div class="zh-foot"><span>${n ? `<b>${n} ${n === 1 ? w[0] : w[1]} ticked</b> · AED ${pcMoney(tot)}` : `Tick lines to send several at once.`}${ZH.connected ? "" : " Connect Zoho first."}</span>
         <span style="display:flex;gap:8px;"><button type="button" class="btn btn-gray" onclick="zhSelAll('${kind}',${n === ok.length ? "false" : "true"})" ${ok.length ? "" : "disabled"}>${n && n === ok.length ? "Untick all" : `Tick all ${ok.length}`}</button>
         <button type="button" class="btn btn-primary" onclick="zhSendIds('${kind}',[...ZH_SEL.${kind}],this)" ${n && can ? "" : "disabled"}>Send ${n || ""} ticked to Zoho</button></span></div>`
@@ -19087,7 +19174,10 @@ async function zhSendIds(kind, ids, btn) {
   ids = (ids || []).filter(Boolean);
   if (!ids.length) return;                       // never an empty list - the server reads that as 'all'
   const rows = (ZH[kind + "_rows"] || []).filter(r => ids.includes(r.id)), w = ZH_WORD[kind];
-  if (ids.length > 1 && !confirm(`Send ${ids.length} ${w[1]} (AED ${pcMoney(rows.reduce((a, r) => a + (+r.amount || 0), 0))}) to Zoho now?`)) return;
+  const adv = rows.filter(r => r.adv);
+  if (adv.length) { if (!(await zhAdvAsk(adv.map(r => r.adv), adv.some(r => r.adv.applied > 0) ? "Send Excess" : "Send Anyway"))) return;
+                    if (ids.length > adv.length && !confirm(`Also send the other ${ids.length - adv.length} ${w[1]} - ${ids.length} in all (AED ${pcMoney(rows.reduce((a, r) => a + (+r.amount || 0), 0))})?`)) return; }
+  else if (ids.length > 1 && !confirm(`Send ${ids.length} ${w[1]} (AED ${pcMoney(rows.reduce((a, r) => a + (+r.amount || 0), 0))}) to Zoho now?`)) return;
   btn.disabled = true; const was = btn.textContent; btn.textContent = "Sending...";
   // A few at a time: each press of Send stays well under the server's 60 s.
   let sent = 0, failed = 0;
@@ -19103,7 +19193,11 @@ async function zhSendIds(kind, ids, btn) {
 function zhBankDraw() {
   const L = ZH.bank || [];
   zhList("bank", L.map(r => ({ id: r.id, date: r.date, main: r.party || (r.kind === "transfer" ? "To " + r.account : r.kind === "charge" ? "Bank charge" : r.kind_label),
-      sub: [r.kind_label, r.mode, r.reference].filter(Boolean).join(" · ") + (r.by ? " · by " + r.by : ""), amount: r.amount, out: r.out, err: r.zoho_err })),
+      sub: [r.kind_label, r.mode, r.reference].filter(Boolean).join(" · ") + (r.by ? " · by " + r.by : ""), amount: r.amount, out: r.out, err: r.zoho_err,
+      // a supplier payment with less against bills than paid: the rest stays in Zoho as his advance
+      adv: r.advance > 0 ? { supplier: r.party, amount: r.amount, applied: Math.round((r.amount - r.advance) * 100) / 100, adv: r.advance,
+                             bill: (r.docs || []).map(x => x.number).filter(Boolean).join(", "), from: "ADCB",
+                             title: [r.kind_label, r.mode, r.reference, pcDate(r.date)].filter(Boolean).join(" · ") } : null })),
     "zh-bank", "Bank (ADCB)", "Lines entered on Accounts > Bank that are not in Zoho yet, from every month.", "No bank lines waiting - every bank line is in Zoho.");
 }
 // The tabs: what is waiting where, with counts.
@@ -19223,13 +19317,14 @@ async function zhOctConfirm() {
         showStatus("zh-status", "ok", `${d.marked} line${d.marked === 1 ? "" : "s"} marked as already in Zoho - they will not be sent.`); await zhLoad(); await zhOct(); }
   catch (e) { showStatus("zh-status", "err", errText(e)); }
 }
-function zhAll(on) { zhShown().forEach(r => { ZH_PICK[r.id].on = on && !zhFlags(r).length; }); zhDraw(); }
+function zhAll(on) { zhShown().forEach(r => { ZH_PICK[r.id].on = on && !zhBlocked(r); }); zhDraw(); }
 async function zhApprove(only, btn) {
-  const lines = zhShown().filter(r => (only ? only.includes(r.id) : ZH_PICK[r.id].on) && !zhFlags(r).length)
+  const lines = zhShown().filter(r => (only ? only.includes(r.id) : ZH_PICK[r.id].on) && !zhBlocked(r))
     .map(r => { const p = ZH_PICK[r.id], sp = (p.splits || []).filter(s => s.account || +s.amount);
       return { id: r.id, account: sp.length ? sp[0].account : p.account, site: p.site || "", trn: p.trn || "", vat_claim: p.vat_claim || "", splits: sp,
                zoho_kind: r.kind === "received" ? "" : p.kind, vendor_id: r.kind === "received" || p.kind !== "payment" ? "" : (p.vendor_id || ""), vendor: p.vendor || "",
-               bill_id: p.kind === "payment" ? (p.bill_id || "") : "", bill_no: p.kind === "payment" ? (p.bill_no || "") : "" }; });
+               bill_id: p.kind === "payment" ? (p.bill_id || "") : "", bill_no: p.kind === "payment" ? (p.bill_no || "") : "",
+               ...(zhAdvNeed(r) && p.advance === zhAdvNeed(r).type ? { advance: p.advance } : {}) }; });
   if (!lines.length) return;
   if (!only && lines.length > 1 && !confirm(`Approve ${lines.length} petty cash lines (AED ${pcMoney(zhShown().filter(r => lines.some(l => l.id === r.id)).reduce((a, r) => a + r.amount, 0))}) for Zoho now?`)) return;
   const go = btn || document.getElementById("zh-go"); go.disabled = true;
