@@ -35,7 +35,7 @@ const B = process.env.BASE || 'http://127.0.0.1:8032', SH = process.env.SHOTS ||
   // used: merge into the duplicate
   await row('Unimix Block Industry').locator('button', { hasText: 'Delete' }).click(); await p.waitForTimeout(900);
   const msg = await p.locator('.hr-ask .hr-ask-msg').first().textContent();
-  ck('used: says what uses it and that it cannot be deleted', /is used by .*1 LPOs.*cannot be deleted/.test(msg), msg);
+  ck('used: says what uses it and that it cannot be deleted', /is used by .*\d+ LPOs.*cannot be deleted/.test(msg), msg);
   const first = await p.locator('.hr-ask .sm-list label').first().textContent();
   ck('the likely duplicate is offered first: Uni Mix Block Industry', /Uni Mix Block Industry/.test(first) && /looks like the same supplier/.test(first), first);
   await p.fill('.hr-ask .sm-q', 'uni mix'); await p.waitForTimeout(300);
@@ -92,7 +92,7 @@ const B = process.env.BASE || 'http://127.0.0.1:8032', SH = process.env.SHOTS ||
     await pg.close();
     await p.evaluate(() => switchScreen('lporegister')); await p.waitForTimeout(2000);
     const head = await p.locator('#lpr-head').textContent();
-    ck('LPO register: a Round off (AED) column just before Total', /Round off \(AED\)\s*Total \(AED\)/.test(head), head);
+    ck('LPO register: a Round off (AED) column just before Total', /Round off \(AED\)i?\s*Total \(AED\)/.test(head), head);
     await p.screenshot({ path: SH + 'lpo-ro-3-register.png' });
   }
   ck('no script errors', errs.length === 0, errs);

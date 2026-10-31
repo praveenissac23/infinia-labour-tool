@@ -12833,6 +12833,13 @@ function renderSuppliers() {
     </tr>`).join("");
 }
 
+// After a delete / merge: the list redrawn, and the LPO form's supplier suggestions with it.
+async function supAfterChange() {
+  await loadSuppliersScreen();
+  const dl = document.getElementById("lpo-supplier-list");
+  if (dl) dl.innerHTML = (suppliers || []).map(s => `<option value="${escapeAttr(s.name)}"></option>`).join("");
+}
+
 // Delete a supplier. One nothing uses goes after a yes; one that is used (LPOs, requests, a Zoho link ...)
 // is never deleted outright - it is merged into the supplier kept, which takes over everything it had.
 async function deleteSupplier(id) {
@@ -12846,7 +12853,7 @@ async function deleteSupplier(id) {
       await apiCall(`/store/suppliers/${id}`, { method: "DELETE" });
       showStatus("sup-status", "ok", `${u.name} deleted.`);
     } catch (e) { showStatus("sup-status", "err", errText(e)); }
-    await loadSuppliersScreen(); try { await loadSuppliers(); } catch (e) {}
+    await supAfterChange();
     return;
   }
   const into = await supMergeAsk(u);
@@ -12857,7 +12864,7 @@ async function deleteSupplier(id) {
       + (r.filled && r.filled.length ? `, ${r.filled.join(", ")} filled in from it` : "") + "."
       + (r.zoho_note ? ` ${r.zoho_note}.` : "") + " LPOs already issued still show the name they were printed with.");
   } catch (e) { showStatus("sup-status", "err", errText(e)); }
-  await loadSuppliersScreen(); try { await loadSuppliers(); } catch (e) {}
+  await supAfterChange();
 }
 
 // The supplier it is used by, and a searchable pick of the one to merge it into (likely duplicates first).
