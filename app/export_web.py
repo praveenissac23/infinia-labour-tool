@@ -950,6 +950,7 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
     elements.append(Spacer(1, 6))
 
     cell_style = ParagraphStyle("CardCell", parent=styles["Normal"], fontSize=9, leading=10.3, alignment=TA_CENTER)
+    term_style = ParagraphStyle("CardCellTerm", parent=cell_style, fontSize=7.5)
     head_style = ParagraphStyle("CardHead", parent=styles["Normal"], fontSize=9, leading=10.3,
                                  textColor=colors.white, fontName="Helvetica-Bold", alignment=TA_CENTER)
     headers = ["Date", "A.M", "P.M", "OT", "BH", "Site", "Engineer", "Comments"]
@@ -964,7 +965,10 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
             vals = [label, row.am, row.pm, _num(row.ot), _num(row.bh), row.site, row.engineer, row.comments]
         else:
             vals = [label, "", "", "", "", "", "", ""]
-        data.append([Paragraph(v or "", cell_style) for v in vals])
+        # "Terminated" does not fit the A.M / P.M column at 9 pt: it wrapped onto two lines on every day after a
+        # leaver's last day, and his card ran onto a second page. Set a size smaller there, on one line.
+        data.append([Paragraph(v or "", term_style if i in (1, 2) and v == "Terminated" else cell_style)
+                     for i, v in enumerate(vals)])
         # Remember which status each half-day carried, so the A.M and
         # P.M cells can be tinted once the table is built.
         status_cells.append((len(data) - 1, vals[1], vals[2]))
@@ -1248,7 +1252,11 @@ def report_table_rows(items, column_keys):
         row = {}
         for key, label, kind in cols:
             v = _report_row_value(item, key)
-            if kind in ("money", "num"):
+            if kind == "money":
+                # to the fils, as shown - so the total at the foot is the sum of the figures above it
+                # (summing the unrounded amounts left it a fils or two off the column it totals)
+                row[label] = round(float(v or 0) + (1e-9 if (v or 0) >= 0 else -1e-9), 2)
+            elif kind == "num":
                 row[label] = float(v or 0)
             else:
                 row[label] = str(v) if v not in (None, "") else "-"

@@ -129,6 +129,28 @@ def with_days_paid_in_advance(db, employee, month_year, rows):
     return rows
 
 
+def card_rows(db, employee, month_year, rows):
+    """The days exactly as the salary card counts them - used by the card's
+    own calculation below AND by every printed / previewed card, so the grid
+    on the card always adds up to the day totals beside it.
+
+    A day after his last working day is not a working day, whatever the
+    sheet says - a Sunday filled in for the whole grid, say. It counts as
+    Terminated, so a leaver is never paid past his leaving date. And a
+    cycle paid early carries its days still to come as worked (see
+    with_days_paid_in_advance). Nothing is written to the attendance."""
+    if employee is None:
+        return rows
+    if getattr(employee, "terminated_on", None):
+        from types import SimpleNamespace
+        t = employee.terminated_on
+        rows = [SimpleNamespace(full_date=r.full_date, am="Terminated", pm="Terminated", ot=0, bh=0,
+                                site="", engineer="", comments=getattr(r, "comments", ""), emp_no=r.emp_no)
+                if r.full_date > t and ((r.am or "") != "Terminated" or (r.pm or "") != "Terminated") else r
+                for r in rows]
+    return with_days_paid_in_advance(db, employee, month_year, rows)
+
+
 def recalculate_summary(db: Session, employee: models.Employee, month_year: str) -> models.EmployeeSummary:
     """
     Recomputes one employee's EmployeeSummary row for one cycle from
@@ -144,17 +166,7 @@ def recalculate_summary(db: Session, employee: models.Employee, month_year: str)
         .all()
     )
 
-    # A day after his last working day is not a working day, whatever the
-    # sheet says - a Sunday filled in for the whole grid, say. It counts as
-    # Terminated, so a leaver is never paid past his leaving date.
-    if getattr(employee, "terminated_on", None):
-        from types import SimpleNamespace
-        t = employee.terminated_on
-        rows = [SimpleNamespace(full_date=r.full_date, am="Terminated", pm="Terminated", ot=0, bh=0,
-                                site="", engineer="", comments=getattr(r, "comments", ""), emp_no=r.emp_no)
-                if r.full_date > t and ((r.am or "") != "Terminated" or (r.pm or "") != "Terminated") else r
-                for r in rows]
-    rows = with_days_paid_in_advance(db, employee, month_year, rows)
+    rows = card_rows(db, employee, month_year, rows)
 
     summary = (
         db.query(models.EmployeeSummary)

@@ -765,7 +765,9 @@ def labour_rows(month_year: str, db: Session = Depends(get_db), user: models.Use
         adj = _r2(sum((-a.amount if a.is_deduction else a.amount) for a in c.adjustments))
         groups.setdefault(e.company or "Infinia", []).append({
             "source_id": c.id, "emp_no": e.emp_no, "name": e.name, "trade": e.trade or "", "active": bool(e.active),
-            "days": _r2((c.present_days or 0) + (c.friday_days or 0) + (c.sunday_days or 0) + (c.holiday_days or 0)),
+            # the paid days the card's salary is for - sick and medical days are paid too (data_engine)
+            "days": _r2((c.present_days or 0) + (c.friday_days or 0) + (c.sunday_days or 0) + (c.holiday_days or 0)
+                        + (c.sick_days or 0) + (c.medical_days or 0)),
             "ot": _r2(c.ot_hours), "salary": _r2(c.final_salary), "adjust": adj, "net": net, "pay_route": e.pay_route or "wps",
             "pay": st})
     db.commit()
