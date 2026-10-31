@@ -111,7 +111,7 @@ def read_contract(doc, kind="project"):
     # a letter: "... award you the works for the <project> for the Employer <client>, under the supervision of <consultant>"
     if not f.get("name"):
         m = re.search(r"(?:award(?:ed)?\s+(?:to\s+)?you\s+(?:the\s+)?(?:contract|works?|project)\s+(?:for|of)\s+(?:the\s+)?|"
-                      r"(?:subject|re)\s*[:\-]\s*(?:award\s+of\s+(?:contract|works?)\s+(?:for|of)\s+(?:the\s+)?)?)"
+                      r"\b(?:subject|sub|re)\s*:\s*(?:award\s+of\s+(?:contract|works?)\s+(?:for|of)\s+(?:the\s+)?)?)"
                       r"([A-Z][^.;:]{8,140}?)(?=\s+for\s+the\s+(?:employer|client|owner)|,\s+(?:for|under|on behalf)|\.\s|;|$)", flat, re.I)
         if m:
             f["name"] = m.group(1).strip(" ,")
@@ -129,14 +129,31 @@ def read_contract(doc, kind="project"):
             f["client"] = _strip_ms(m.group(1))
     # the subcontractor (agreements)
     if kind == "agreement":
-        v, c = kv.text_field(rows, r"(sub-?\s*contractor|vendor|supplier)(\s+name)?\s*:", 100)
-        name = _strip_ms(v) if v and "infinia" not in v.lower() else ""
+        # the project's name is not the agreement's "name" (that is the subcontractor's, as est_agreement gives it)
+        if f.get("name"):
+            f["project"] = f.pop("name")
+            detail["project"] = detail.pop("name", None)
+        name = ""
+        m = re.search(r"\band\s+((?:M/?S)\.?\s*[A-Z][^,;\n(]{2,80})\s*,?[^()]{0,140}?\(\s*(?:hereinafter|herein)[^)]{0,60}?sub-?\s*contractor", flat, re.I)
+        if m and "infinia" not in m.group(1).lower():
+            name = _strip_ms(m.group(1))
+        if not name:
+            v, c = kv.text_field(rows, r"(sub-?\s*contractor|vendor|supplier|to|messrs\.?)(\s+name)?\s*:", 100, below=False)
+            if v and "infinia" not in v.lower():
+                name = re.split(r"\s+(?:P\.?\s*O\.?\s*Box|Tel|Mob|TRN|,)", _strip_ms(v), maxsplit=1, flags=re.I)[0].strip(" .,")
         if not name:
             m = re.search(r"\band\s+((?:M/?S)\.?\s+[A-Z][^,;\n(]{2,80}?)(?:,|\s+\(|\s+hereinafter|\s+having|\s+located|$)", flat)
             if m and "infinia" not in m.group(1).lower():
                 name = _strip_ms(m.group(1))
+        if not name:
+            m = re.search(r"\bM\s*/\s*S\.?\s+(?!infinia)([A-Z][^,;\n(]{2,80}?)(?:,|\s+\(|\s+P\.?\s*O|\s+hereinafter|$)", flat, re.I)
+            if m:
+                name = m.group(1).strip(" .,")
         if name:
-            f["sub_name"] = name
+            f["name"] = f["sub_name"] = name
+        v, c = kv.text_field(rows, r"(lpo|l\.p\.o\.?|purchase\s+order|po|work\s+order)\s*(no|ref|number|#)\.?\s*:?", 40)
+        if v and re.search(r"\d", v):
+            f["lpo"] = v.strip(" .,")
         m = re.search(r"\b([A-Z]{2,5}/[\w&\- ]{1,20}/(?:SCA|SC|SUB|SCO|AGR|AGM|LPO|PO)[\w]*/[\w/\-]{1,20})", flat)
         if m:
             f["agreement"] = m.group(1).strip().rstrip(".,;")

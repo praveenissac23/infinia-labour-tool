@@ -79,6 +79,9 @@ ROW = {
         (r" sub ?total", 0.45, r" deduction", None),
         (r" total (amount|value) (to date|certified to date)", 0.5, None, None),
     ],
+    "cert": [(r"^ (total )?(gross )?(amount |value )?certified( to date| cumulative| value| amount)?( of works?)?( to date)? $", 0.85,
+              r" net| previous| this| current| less| retention", None),
+             (r" (consultant|engineer)('?s)? (certified|certification)( value| amount)?", 0.8, r" net| previous", None)],
     "mos": [(r" materials? (delivered )?(on|at) site| mos ", 0.9, None, None)],
     "ret": [
         (r" retention( money| amount| held| deducted| @| at)?", 0.9, r" release| released| refund| return", None),

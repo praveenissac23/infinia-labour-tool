@@ -165,6 +165,41 @@ def real_cases():
     return out
 
 
+def fixture_cases():
+    """The documents the existing reader tests are built on (tests/est_agreement_fixtures.py, est_docread_fixtures.py),
+    with their expected figures."""
+    import subprocess
+    out = []
+    d = tempfile.mkdtemp(prefix="docread_fx_")
+    try:
+        agr = json.loads(subprocess.run([sys.executable, os.path.join(HERE, "..", "est_agreement_fixtures.py"), d], capture_output=True, text=True).stdout)
+        files = {"docx": "912 MEP subcontract.docx", "xlsx": "913 shoring LPO.xlsx", "pdf2": "915 painting work order.pdf"}
+        for k, e in agr.items():
+            t = {"name": e["name"], "value": e["value"], "agreement_date": e["date"]}
+            if e.get("agreement"):
+                t["agreement"] = e["agreement"]
+            if e.get("lpo"):
+                t["lpo"] = e["lpo"]
+            for a, b in (("adv", "adv_pct"), ("ret", "ret_pct")):
+                if e.get(a) is not None:
+                    t[b] = float(e[a])
+            if e.get("type"):
+                t["contract_type"] = e["type"]
+            fn = files.get(k)
+            if fn and os.path.exists(os.path.join(d, fn)):
+                out.append({"file": fn, "path": os.path.join(d, fn), "kind": "agreement", "format": fn.rsplit(".", 1)[1], "truth": t, "fixture": True})
+        dr = json.loads(subprocess.run([sys.executable, os.path.join(HERE, "..", "est_docread_fixtures.py"), d], capture_output=True, text=True).stdout)
+        for k in ("project", "clientpc"):
+            if k in dr:
+                fn = dr[k]["file"]
+                t = {a: (float(b) if isinstance(b, int) and not a.startswith("seq") else b) for a, b in dr[k]["expect"].items()}
+                out.append({"file": os.path.basename(fn), "path": fn if os.path.isabs(fn) else os.path.join(d, os.path.basename(fn)), "kind": k,
+                            "format": fn.rsplit(".", 1)[1], "truth": t, "fixture": True})
+    except Exception:
+        traceback.print_exc()
+    return out
+
+
 # ---- the run -----------------------------------------------------------------------------------------------
 
 def run(corpus_dir, only=None, old=True, limit=None, real=True):
@@ -177,6 +212,8 @@ def run(corpus_dir, only=None, old=True, limit=None, real=True):
             cases.append({"file": xls, "kind": "ipa", "format": "xls", "real": True, "path": xls,
                           "truth": {"seq": 2, "submitted": "2026-10-06", "claimed_cum": 35471.07, "adv_rec_cum": 7094.21, "previous": 16713.33,
                                     "ret_cum": 3547.11, "vat": 405.82, "authority": 0.0, "total": 8522.0}})
+    if real:
+        cases += fixture_cases()
     if corpus_dir:
         for c in json.load(open(os.path.join(corpus_dir, "truth.json"))):
             c["path"] = os.path.join(corpus_dir, c["file"])
@@ -189,7 +226,7 @@ def run(corpus_dir, only=None, old=True, limit=None, real=True):
         cases = cases[:limit]
     fx = os.path.join(HERE, "..", "fixtures", "prev")
     for k, c in enumerate(cases):
-        rec = {k2: c.get(k2) for k2 in ("file", "kind", "format", "layout", "real", "dpi")}
+        rec = {k2: c.get(k2) for k2 in ("file", "kind", "format", "layout", "real", "dpi", "fixture", "real_data")}
         try:
             if c.get("real") and "path" not in c:
                 lines = json.load(open(os.path.join(fx, c["file"])))["lines"]
@@ -239,7 +276,7 @@ def run(corpus_dir, only=None, old=True, limit=None, real=True):
 def summary(results):
     groups = {}
     for r in results:
-        key = (("real " if r.get("real") else "") + r["kind"], r["format"])
+        key = (("real " if r.get("real") else ("fixture " if r.get("fixture") else "")) + r["kind"], r["format"])
         g = groups.setdefault(key, {"docs": 0, "n": 0, "new": 0, "old": 0, "new_wrong": 0, "new_wrong_flagged": 0, "new_missing": 0,
                                     "old_wrong": 0, "new_s": 0.0, "pages": 0, "docs_all_new": 0, "docs_all_old": 0, "old_s": 0.0, "old_n": 0})
         if "error" in r:

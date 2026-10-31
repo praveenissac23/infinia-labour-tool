@@ -22,7 +22,7 @@ from .solve import Cand, Rel, evaluate, solve, statuses
 from .tables import analyse, assign_roles
 from .vocab import row_concepts
 
-FLOW = ("work", "var", "gross", "mos", "ret", "rel", "adv", "advpay", "ded")
+FLOW = ("work", "var", "gross", "mos", "ret", "rel", "adv", "advpay", "ded", "cert")
 SIGNED = ("net", "extra", "vat", "total")
 
 
@@ -70,7 +70,7 @@ def _label_for(infos, i):
     return best[1] if best else ""
 
 
-KEY = {"work", "gross", "ret", "adv", "prev", "net", "vat", "total", "var", "rel", "contra", "auth", "advpay", "mos"}
+KEY = {"work", "gross", "cert", "ret", "adv", "prev", "net", "vat", "total", "var", "rel", "contra", "auth", "advpay", "mos"}
 
 
 def _summary_zone(infos, span=40):
@@ -236,6 +236,9 @@ def relations(dom, multi, vat_rate=5.0):
     rels = []
 
     def G(get, k):
+        x = get(f"cert_{k}")             # the consultant certified less than claimed: the bill runs on the certified value
+        if x is not None:
+            return x
         g = get(f"gross_{k}")
         if g is not None:
             return g
@@ -254,7 +257,7 @@ def relations(dom, multi, vat_rate=5.0):
         return d
 
     def gvars(k):
-        return [f"gross_{k}", f"work_{k}", f"var_{k}", f"mos_{k}"]
+        return [f"cert_{k}", f"gross_{k}", f"work_{k}", f"var_{k}", f"mos_{k}"]
 
     def dvars(k):
         return [f"ded_{k}", f"ret_{k}", f"adv_{k}", f"rel_{k}"] + [f"{c}_{k}" for c in contra] + (["advpay_c"] if k == "c" else [])
@@ -486,6 +489,7 @@ def _repair(asg, rels, dom):
 DERIVABLE = ("net_p", "net_t", "net_c", "vat", "total", "gross_c", "work_c")
 
 
+
 def _derive(asg, rels):
     """A figure not printed (or not read) that the other figures fix exactly - worked out, and marked so."""
     out = {}
@@ -628,9 +632,13 @@ def read_ipa(doc):
     v = asg.get("var_c")
     mos = asg.get("mos_c")
     if g is not None:
-        put("claimed_cum", "gross_c")
+        put("claimed_cum", "gross_c", g.value - (mos.value if mos else 0))
     elif w is not None:
-        put("claimed_cum", "work_c", w.value + (v.value if v else 0) + (mos.value if mos else 0))
+        put("claimed_cum", "work_c", w.value + (v.value if v else 0))
+    if mos is not None:
+        put("mos_cum", "mos_c")
+    if asg.get("cert_c") is not None:
+        put("certified_cum", "cert_c")
     if w is not None and v is not None:
         put("work", "work_c")
         put("variation", "var_c")
@@ -645,7 +653,6 @@ def read_ipa(doc):
     put("authority", "auth")
     put("total", "total")
     put("net", "net_t")
-    put("certified_cum", "net_c")
     cs = _sum_contra(asg)
     if cs:
         f["other_cum"] = round(sum(c.value for c in cs), 2)
@@ -667,6 +674,31 @@ def read_ipa(doc):
     found = [("seq", "Bill no."), ("submitted", "Issue date"), ("claimed_cum", "Work done to date"), ("adv_rec_cum", "Advance recovered"),
              ("ret_cum", "Retention"), ("previous", "Previous payments"), ("vat", "VAT"), ("total", "Amount due")]
     return _out(f, detail, found, notes, checks, doc, round((time.perf_counter() - t0) * 1000, 1))
+
+
+def read_clientpc(doc):
+    """The Estimation client-PC form (est_docread.read_clientpc's fields): work claimed to date (without material on
+    site), certified to date, material on site, retention released, period up to - plus everything read_ipa gives."""
+    r = read_ipa(doc)
+    f, det = r["fields"], r["detail"]
+    R = run(doc, kind="ipa")
+    asg = R["asg"]
+    w, mos = asg.get("work_c"), asg.get("mos_c")
+    if w is not None:
+        f["claimed_cum"] = round(w.value + (asg["var_c"].value if asg.get("var_c") else 0), 2)
+    if mos is not None:
+        f["mos_cum"] = round(mos.value, 2)
+        det["mos_cum"] = _detail("mos_c", mos, R["status"], R["derived"])
+    if asg.get("rel_c") is not None:
+        f["ret_rel_cum"] = round(asg["rel_c"].value, 2)
+    if asg.get("cert_c") is not None:
+        f["certified_cum"] = round(asg["cert_c"].value, 2)
+    d, cell = kv.date_field(doc.rows(), r"(period\s+(ending|up\s*to|to|end)|valuation\s+date|up\s*to)\s*:?")
+    if d:
+        f["period_to"] = d
+    r["found"] = [n for k, n in (("claimed_cum", "Work done to date - claimed"), ("certified_cum", "Certified to date"), ("period_to", "Period up to"),
+                                 ("submitted", "Submitted on"), ("mos_cum", "Material on site"), ("ret_rel_cum", "Retention released")) if f.get(k) is not None]
+    return r
 
 
 INFINIA_TRN = "100602393900003"

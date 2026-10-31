@@ -15,9 +15,12 @@ from .other import from_lines
 
 
 def read_doc(doc, kind, subs=None):
-    if kind in ("ipa", "clientpc"):
+    if kind == "ipa":
         from .bills import read_ipa
         return read_ipa(doc)
+    if kind == "clientpc":
+        from .bills import read_clientpc
+        return read_clientpc(doc)
     if kind == "subpc":
         from .bills import read_subpc
         return read_subpc(doc, subs or [])
