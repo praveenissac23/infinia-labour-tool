@@ -3260,11 +3260,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="pdc-form">
               <label class="hr-field"><span>Payee *</span><input type="text" id="pdc-payee" list="pdc-payee-list" placeholder="e.g. Desarch Scaffolding" onchange="pdcAuto('payee')"></label>
               <datalist id="pdc-payee-list"></datalist>
-              <label class="hr-field"><span>Cheque no</span><input type="text" id="pdc-no" placeholder="e.g. 000451" oninput="this.dataset.auto = ''"></label>
+              <label class="hr-field"><span>Cheque no</span><input type="text" id="pdc-no" placeholder="e.g. 000451" oninput="this.dataset.auto = ''" onfocus="if (this.dataset.auto) setTimeout(() => this.select(), 0)"></label>
               <label class="hr-field"><span>Bank</span><input type="text" id="pdc-bank" list="pdc-bank-list" placeholder="e.g. ADCB" onchange="pdcAuto('bank')"></label>
               <datalist id="pdc-bank-list"></datalist>
               <label class="hr-field"><span>Cheque date *</span><input type="date" id="pdc-date"></label>
-              <label class="hr-field"><span>Amount (AED) *</span><input type="text" inputmode="decimal" id="pdc-amt" placeholder="0.00" oninput="this.dataset.auto = ''"></label>
+              <label class="hr-field"><span>Amount (AED) *</span><input type="text" inputmode="decimal" id="pdc-amt" placeholder="0.00" oninput="this.dataset.auto = ''" onfocus="if (this.dataset.auto) setTimeout(() => this.select(), 0)"></label>
               <label class="hr-field"><span>For / notes</span><input type="text" id="pdc-notes" placeholder="e.g. Final 30% - 906"></label>
               <label class="hr-field" id="pdc-repeat-f"><span>Months</span><select id="pdc-repeat" class="hr-dd">
                 <option value="1">Just this one</option><option value="2">2 months</option><option value="3">3 months</option>
@@ -7839,14 +7839,13 @@ async function refreshCurrentCycleSummaries() {
 function startDashboardClock() {
   function tick() {
     const now = new Date();
-    let hours = now.getHours();
-    const ampm = hours >= 12 ? "PM" : "AM";
-    hours = hours % 12 || 12;
+    // 24-hour time, like every time in the app (30/10/2026 14:05)
+    const hours = String(now.getHours()).padStart(2, "0");
     const mins = String(now.getMinutes()).padStart(2, "0");
     const clockEl = document.getElementById("dash-clock");
     const ampmEl = document.getElementById("dash-clock-ampm");
     if (clockEl) clockEl.textContent = `${hours}:${mins}`;
-    if (ampmEl) ampmEl.textContent = ampm + " - " + dayDmy(now);
+    if (ampmEl) ampmEl.textContent = dayDmy(now);
   }
   tick();
   setInterval(tick, 1000 * 30);
@@ -14035,9 +14034,9 @@ function renderLpoTotals() {
   const disc = parseFloat(document.getElementById("lpo-discount").value) || 0;
   const discount = sub * disc / 100;
   const net = sub - discount;
-  const vat = disc
-    ? net * 5 / 100
-    : lpoLines.reduce((s, l) => s + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0) * (parseFloat(l.tax_pct) || 0) / 100, 0);
+  // Each line's own VAT rate on its discounted amount - the rule the saved LPO, its PDF and Zoho use
+  // (a flat 5% of the net here put VAT on a 0% line, e.g. an authority fee, whenever there was a discount).
+  const vat = lpoLines.reduce((s, l) => s + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0) * (1 - disc / 100) * (parseFloat(l.tax_pct) || 0) / 100, 0);
   document.getElementById("lpo-totals").innerHTML = `
     <div>Sub Total <strong style="margin-left:10px;">${money(sub)}</strong></div>
     ${disc ? `<div>Discount (${disc}%) <strong style="margin-left:10px;">- ${money(discount)}</strong></div>` : ""}
@@ -15321,13 +15320,13 @@ function hrRunHead(run, sheet) {
   const pension = run.lines.some(l => l.pension);
   const running = run.progress && run.progress.running;
   return `<tr><th style="width:3.5%;" title="Tick who goes on the Preview, Export PDF / Excel and Pay full month now">Pay</th><th style="width:4.5%;">Code</th><th class="txt" style="width:12%;">Employee</th>
-    <th class="num" style="width:6.5%;">Basic</th><th class="num" style="width:6.5%;">Fix Allown.</th><th class="num" style="width:7.5%;">Add / Ded.</th>
+    <th class="num" style="width:6.5%;">Basic</th><th class="num" style="width:6.5%;">Fix Allown.</th><th class="num" style="width:8.5%;">Add / Ded.</th>
     <th class="num" style="width:7%;">Absent Ded.</th><th class="num" style="width:8%;">Loan</th>
     <th class="num" style="width:9%;"${sheet ? ' id="hr-th-net"' : ""}>${running ? "Salary To Date" : "Net Pay"}</th>
     <th class="txt" style="width:13%;" title="Tick people here, then Mark selected as paid"><input type="checkbox" class="pay-pick-all" style="width:auto; margin:0 4px 0 0; vertical-align:-2px;"
         onclick="payPickAll(this)" title="Tick everyone not yet paid">Paid</th>
     ${pension ? `<th class="num" style="width:5%;"${sheet ? ' id="hr-run-pension-h"' : ""}>Pension</th>` : ""}
-    <th class="txt" style="width:${pension ? 9 : 14}%;">Remark</th><th class="txt" style="width:9%;">Payslip</th></tr>`;
+    <th class="txt" style="width:${pension ? 8 : 13}%;">Remark</th><th class="txt" style="width:9%;">Payslip</th></tr>`;
 }
 function hrRunRows(r) {
   const approved = r.status === "approved";
@@ -15373,13 +15372,16 @@ function renderRunFoot() {
   if (HR_ALL_MODE) { hrAllRenderFoot(HR_RUN); return; }
   document.getElementById("hr-run-foot").innerHTML = hrRunFootHtml(HR_RUN);
 }
+const hrNetField = run => (run && run.progress && run.progress.running ? "to_date" : "net_pay");
 function hrRunFootHtml(R) {
   const paid = hrSelLines(R);            // the TOTAL is the people ticked under PAY - the same as the Preview
   const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
   const pension = R.lines.some(l => l.pension);
   const tot = fn => paid.reduce((a, l) => a + fn(l), 0);
+  // The last money column shows the salary to date while the month runs (Net Pay otherwise), so its TOTAL
+  // adds up the same figures the rows show - the same total the Preview / PDF / Excel print.
   const cells = [sum("basic"), sum("allowance"), tot(hrAdjust), sum("deduction"),
-                 sum("loan_deduction"), sum("net_pay")];
+                 sum("loan_deduction"), sum(hrNetField(R))];
   const paidOut = R.lines.reduce((a, l) => a + Number((l.pay && l.pay.paid) || 0), 0);
   return `<tr class="hr-foot">
        <td colspan="3" class="txt">TOTAL - ${paid.length} of ${R.lines.filter(l => !l.held).length} staff ticked${R.lines.some(l => l.held) ? `, ${R.lines.filter(l => l.held).length} held over` : ""}</td>
@@ -15488,7 +15490,7 @@ let PAY_DLG = null;           // the row the dialog is open for
 let PAY_PREV_T = null;
 function payRemember(kind, id, row) { PAY_ROWS[`${kind}:${id}`] = row; }
 function payRow(kind, id) { return PAY_ROWS[`${kind}:${id}`] || { pay: { state: "none", payments: [], slips: {} } }; }
-function payShortDate(t) { return String(t || "").replace(/ \d{4}$/, ""); }
+function payShortDate(t) { return dmy(String(t || "")); }   // "31 Oct 2026" (older text) -> 31/10/2026
 
 // The PAID cell: a tick box and Mark paid while nothing is paid; once paid,
 // the badge with date, kind and mode; part paid shows paid / balance and
@@ -16467,14 +16469,16 @@ function hrAllRenderGrand() {
   if (!staff) { el.innerHTML = ""; return; }
   const sum = f => paid.reduce((a, l) => a + Number(l[f] || 0), 0);
   const adj = paid.reduce((a, l) => a + hrAdjust(l), 0);
+  // Each company's rows show salary to date while its month runs: the grand total adds what the rows show.
+  const net = all.reduce((a, r) => a + hrSelLines(r).reduce((b, l) => b + Number(l[hrNetField(r)] || 0), 0), 0);
   const out = all.flatMap(r => r.lines).reduce((a, l) => a + Number((l.pay && l.pay.paid) || 0), 0);
   el.innerHTML = `<table class="hr-grid"><tfoot><tr class="hr-foot">
       <td class="txt" style="width:20%;">GRAND TOTAL - ${paid.length} of ${staff} staff ticked${held ? `, ${held} held over` : ""}</td>
       <td class="num" style="width:6.5%;">${hrMoney(sum("basic"))}</td><td class="num" style="width:6.5%;">${hrMoney(sum("allowance"))}</td>
-      <td class="num" style="width:7.5%;">${adj ? hrMoney(adj) : "-"}</td><td class="num" style="width:7%;">${hrMoney(sum("deduction"))}</td>
-      <td class="num" style="width:8%;">${hrMoney(sum("loan_deduction"))}</td><td class="num" style="width:9%;">${hrMoney(sum("net_pay"))}</td>
+      <td class="num" style="width:8.5%;">${adj ? hrMoney(adj) : "-"}</td><td class="num" style="width:7%;">${hrMoney(sum("deduction"))}</td>
+      <td class="num" style="width:8%;">${hrMoney(sum("loan_deduction"))}</td><td class="num" style="width:9%;">${hrMoney(net)}</td>
       <td class="txt" style="width:12%;">${out ? hrMoney(out) + " paid" : ""}</td>
-      <td style="width:24%;"></td></tr></tfoot></table>`;
+      <td style="width:23%;"></td></tr></tfoot></table>`;
 }
 // Opening an earlier month for one company from the all-companies view.
 async function hrAllOpen(companyId) {
@@ -20771,11 +20775,21 @@ function invDrawLines() {
     <td>${INV_LINES.length > 1 ? `<button type="button" class="x" title="Remove this line" onclick="INV_LINES.splice(${i}, 1); invDrawLines()">&times;</button>` : ""}</td></tr>`).join("");
   invTotals();
 }
+// A line's VAT exactly as the saved invoice, its PDF and Zoho work it out (invoice_pdf.totals: Python's
+// round(amount x rate / 100, 2)). Math.round(a x 5) / 100 rounded a half fils up - 85,538.10 x 5% showed 4,276.91
+// on this form while the invoice saved and printed 4,276.90 (total 89,815.00, as in Zoho).
+function invVat(a, pc) {
+  const x = a * pc / 100;
+  if (Number.isInteger(x * 8) && Number.isInteger(x * 1000) && Math.abs(x * 1000) % 10 === 5) {
+    const c = Math.floor(x * 100); return (c % 2 === 0 ? c : c + 1) / 100;     // an exact tie: to even, as Python does
+  }
+  return Number(x.toFixed(2));
+}
 function invAddLine() { INV_LINES.push({ description: "", amount: "", vat: 5 }); invDrawLines(); }
 function invTotals() {
   let sub = 0, vat = 0;
   INV_LINES.forEach((l, i) => {
-    const a = Math.round(accNum(l.amount) * 100) / 100, v = Math.round(a * (l.vat || 0)) / 100;
+    const a = Math.round(accNum(l.amount) * 100) / 100, v = invVat(a, l.vat || 0);
     sub += a; vat += v;
     const lv = document.getElementById("inv-lv-" + i), lt = document.getElementById("inv-lt-" + i);
     if (lv) lv.textContent = a ? accMoney(v) : ""; if (lt) lt.textContent = a ? accMoney(a + v) : "";

@@ -358,6 +358,22 @@ def _pdf(t):
     meta.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 6)]))
     heads = _head(t)
     m = lambda v: _money(v) if v else ""
+    n = len(heads) - 1
+    first = W * (.34 if n <= 6 else .22)
+    widths = [first] + [(W - first) / n] * n
+    # A long run of months makes the figure columns narrow: the figures get a smaller type so each one
+    # stays on one line ("146,780.00", never "146,78" over "0.00").
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    figs = [_money(v) for r in t["rows"] for v in _vals(t, r) if v] + [_money(v) for v in (t["totals"] + [t["grand"], t["overdue"]])]
+    widest = max([stringWidth(f, "Helvetica-Bold", 8.5) for f in figs] + [1])
+    size = max(5.5, min(8.5, 8.5 * (widths[1] - 13) / widest))
+    if size < 8.5:
+        for stl in (rt, rtb, smr):
+            stl.fontSize, stl.leading = (size, size + 2) if stl is not smr else (min(7, size - .5), min(7, size - .5) + 1.5)
+    hw = max([stringWidth(h.upper(), "Helvetica-Bold", 8) for h in heads[1:]] + [1])
+    if hw > widths[1] - 13:
+        hd.fontSize = hd.leading = max(5.5, 8 * (widths[1] - 13) / hw)
+        hd.leading += 2
     data = [[P(heads[0].upper(), hdl)] + [P(h.upper(), hd) for h in heads[1:]]]
     for r in t["rows"]:
         name = [P(r["payee"], bold)] + ([P(r["notes"], small)] if r["notes"] else [])
@@ -369,9 +385,6 @@ def _pdf(t):
     if not t["rows"]:
         data.append([P("No cheques in this period.")] + [""] * (len(heads) - 1))
     data.append([P("TOTAL (Monthly)", bold)] + [P(_money(v), rtb) for v in (([t["overdue"]] if t["overdue"] else []) + t["totals"] + [t["grand"]])])
-    n = len(heads) - 1
-    first = W * .34
-    widths = [first] + [(W - first) / n] * n
     tb = Table(data, colWidths=widths, repeatRows=1)
     st = [("BACKGROUND", (0, 0), (-1, 0), R), ("VALIGN", (0, 0), (-1, -1), "TOP"),
           ("LINEBELOW", (0, 1), (-1, -2), .3, colors.HexColor("#DDDDDD")),

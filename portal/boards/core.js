@@ -29,7 +29,7 @@ function ago(iso) {
   if (!iso) return ""; const d = new Date(iso), s = (Date.now() - d) / 1000;
   if (s < 60) return "just now"; if (s < 3600) return `${Math.floor(s / 60)} minute${s < 120 ? "" : "s"} ago`;
   if (s < 86400) return `${Math.floor(s / 3600)} hour${s < 7200 ? "" : "s"} ago`;
-  if (s < 86400 * 2) return `yesterday at ${((d.getHours() + 11) % 12) + 1}:${pad2(d.getMinutes())} ${d.getHours() < 12 ? "AM" : "PM"}`;
+  if (s < 86400 * 2) return `yesterday at ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   return `${dmy(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 function dueState(c) {

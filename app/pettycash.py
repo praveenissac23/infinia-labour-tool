@@ -157,9 +157,14 @@ def register(db, month, book="site", date_from="", date_to=""):
         # (a payment made in October is not taken off August's cash in hand).
         files = {v.id: v for v in db.query(models.VisaFile).all()}
         end = M._dubai_today() if whole else b
+        # A visa's total line already in the book by then (its date can be changed to before the visa was
+        # completed) has taken that money off once - it is not held a second time.
+        posted = {v.id for v in files.values() if v.posted_id}
+        posted_by_end = {v.id for v in files.values() if v.posted_id and (lambda x: x is not None and x.on_date <= end)(db.get(models.PettyCash, v.posted_id))} if posted else set()
         held = round(sum(p.amount or 0 for p in db.query(models.VisaPayment).filter(models.VisaPayment.on_date <= end).all()
-                         if p.visa_file_id in files and (files[p.visa_file_id].status == "ongoing"
-                                                         or (files[p.visa_file_id].completed_on and files[p.visa_file_id].completed_on > end))), 2)
+                         if p.visa_file_id in files and p.visa_file_id not in posted_by_end
+                         and (files[p.visa_file_id].status == "ongoing"
+                              or (files[p.visa_file_id].completed_on and files[p.visa_file_id].completed_on > end))), 2)
     return {"book": book, "book_label": BOOKS[book][0], "terms": t, "visa_held": held,
             "month": "all" if whole else f"{a:%Y-%m}" if one_month else f"{a:%Y-%m-%d}_to_{b:%Y-%m-%d}", "label": label,
             "from": a.isoformat(), "to": b.isoformat(), "all": whole,
@@ -641,7 +646,10 @@ def _excel(r):
         row += 1
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=ntext)
     ws.cell(row, 1, "TOTAL").font = Font(bold=True)
-    ws.cell(row, cE, f"=SUM({E}{first + 1}:{E}{row - 1})"); ws.cell(row, cF, f"=SUM({F}{first + 1}:{F}{row - 1})")
+    # No lines in the period: 0, not SUM(E6:E5) - Excel reads that range as E5:E6, the TOTAL cell itself (circular).
+    has = row - 1 >= first + 1
+    ws.cell(row, cE, f"=SUM({E}{first + 1}:{E}{row - 1})" if has else 0)
+    ws.cell(row, cF, f"=SUM({F}{first + 1}:{F}{row - 1})" if has else 0)
     ws.cell(row, cG, f"={G}{first}+{E}{row}-{F}{row}")
     for c in range(1, N + 1):
         cell = ws.cell(row, c); cell.fill = PatternFill("solid", fgColor="F3F1EF")

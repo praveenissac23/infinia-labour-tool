@@ -15,6 +15,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const today = await p.evaluate(() => today());
   // ---- submittals ----
   await p.evaluate(pid => { localStorage.setItem('est_pid', pid); localStorage.setItem('est_sec', 'site.submittal'); }, P); await p.reload(); await sleep(1800);
+  // Submittals are now the material submittal log (its own form, tests/submittals_ui_test.js): the one-line add is checked there
+  if (await p.$('#qa-title')) {
   await p.fill('#qa-title', 'Waterproofing system - Sika membrane'); await p.press('#qa-title', 'Enter'); await sleep(1500);
   await p.fill('#qa-title', 'Aluminium windows shop drawings'); await p.press('#qa-title', 'Enter'); await sleep(1500);
   let L = await logs('submittal');
@@ -33,6 +35,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const s2 = L.find(l => /Aluminium/.test(l.title));
   await p.click(`[data-step="${s2.id}"][data-v="Approved as noted"]`); await sleep(1500);
   await p.screenshot({ path: SH + '1_submittals.png' });
+  } else console.log('NOTE submittals: the material submittal log (no one-line add) - see submittals_ui_test.js');
   // ---- NOCs & approvals ----
   await p.evaluate(() => { localStorage.setItem('est_sec', 'site.approval'); }); await p.reload(); await sleep(1800);
   L = await logs('approval');

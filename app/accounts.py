@@ -743,7 +743,10 @@ def _register_excel(r):
         for col in range(1, 7):
             ws.cell(row, col).border = Border(bottom=thin)
     last = ws.max_row
-    ws.append(["TOTAL", None, None, f"=SUM(D{first + 1}:D{last})", f"=SUM(E{first + 1}:E{last})", f"=F{first}+D{last + 1}-E{last + 1}"])
+    # No lines in the period: 0, not SUM(D4:D3) - Excel reads that as D3:D4, the TOTAL cell itself (circular).
+    has = last >= first + 1
+    ws.append(["TOTAL", None, None, f"=SUM(D{first + 1}:D{last})" if has else 0, f"=SUM(E{first + 1}:E{last})" if has else 0,
+               f"=F{first}+D{last + 1}-E{last + 1}"])
     tot = ws.max_row
     ws.merge_cells(start_row=tot, start_column=1, end_row=tot, end_column=3)
     for col in range(1, 7):

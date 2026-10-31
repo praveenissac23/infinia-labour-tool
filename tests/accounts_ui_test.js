@@ -24,12 +24,18 @@ const B = process.env.BASE || 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots
   // ---- the chief accountant -------------------------------------------
   const c = await login('chiefacc', 'chief12345');
   ck('chief: Accounts in the menu', (await menu(c)).some(x => x.startsWith('Accounts')), await menu(c));
-  ck('chief: four tabs (Petty cash = Naveen / Praveen, Project payments), no Register on view', JSON.stringify(await tabs(c)) === JSON.stringify(['Tax Invoice', 'Proforma Invoice', 'Petty cash', 'Project payments']), await tabs(c));
+  // Tax Invoice and Proforma Invoice are the two sub-tabs of one Invoices tab
+  ck('chief: three tabs (Invoices, Petty cash = Naveen / Praveen, Project payments), no Register on view', JSON.stringify(await tabs(c)) === JSON.stringify(['Invoices', 'Petty cash', 'Project payments']), await tabs(c));
   ck('tax invoice screen first', await vis(c, '#screen-invoices'));
   ck('title says Tax Invoices', (await c.textContent('#screen-title')).includes('Tax Invoices'));
   const yy = String(new Date().getFullYear()).slice(2);
+  // This copy of the database may already hold invoices: the numbers expected are the app's next ones, the figures
+  // checked are the ones this test enters (and the register's balance moves by exactly what is added here).
+  const nextNo = (kind, pno) => c.evaluate(async ([k, n]) => (await apiCall(`/employees/accounts/invoices/next?kind=${k}&project_no=${n}`)).number, [kind, pno]);
+  const tax906 = await nextNo('tax', '906'), pro920 = await nextNo('proforma', '920'), tax920 = await nextNo('tax', '920');
+  const bump = n => n.replace(/(\d+)$/, d => String(+d + 1).padStart(d.length, '0'));
   await c.fill('#inv-pno', '906'); await c.dispatchEvent('#inv-pno', 'change'); await c.waitForTimeout(700);
-  ck('number fills in', (await c.inputValue('#inv-no')) === `IC/${yy}/906/01`, await c.inputValue('#inv-no'));
+  ck('number fills in', (await c.inputValue('#inv-no')) === tax906, [await c.inputValue('#inv-no'), tax906]);
   await c.fill('#inv-client', 'Mr. Mohammed Ahmed Al Hammadi'); await c.fill('#inv-trn', '100234567800003');
   await c.fill('#inv-addr', 'Dubai, UAE'); await c.fill('#inv-project', '(B+G+1+R) Villa'); await c.fill('#inv-plot', '6457380');
   await c.fill('#inv-loc', 'Al Barsha South Third'); await c.fill('#inv-work', 'Phase 2 Works');
@@ -47,31 +53,31 @@ const B = process.env.BASE || 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots
   await pdf.waitForURL(/export/, { timeout: 8000 }).catch(() => {});
   ck('PDF opened in new tab', /export\/accounts\/invoice\/\d+/.test(pdf.url()) || c.reqs.some(u => /export\/accounts\/invoice\/\d+\?token=/.test(u)), pdf.url()); await pdf.close();
   await c.waitForTimeout(800);
-  ck('saved in list', (await c.textContent('#inv-body')).includes(`IC/${yy}/906/01`));
+  ck('saved in list', (await c.textContent('#inv-body')).includes(tax906));
   ck('form ready for next number', (await c.inputValue('#inv-no')).endsWith('/01') === false || (await c.inputValue('#inv-no')) === `IC/${yy}/01`, await c.inputValue('#inv-no'));
   await c.fill('#inv-pno', '906'); await c.dispatchEvent('#inv-pno', 'change'); await c.waitForTimeout(700);
   ck('project no brings client back', (await c.inputValue('#inv-client')) === 'Mr. Mohammed Ahmed Al Hammadi', await c.inputValue('#inv-client'));
-  ck('next number /02', (await c.inputValue('#inv-no')) === `IC/${yy}/906/02`, await c.inputValue('#inv-no'));
+  ck('next number after it', (await c.inputValue('#inv-no')) === bump(tax906), [await c.inputValue('#inv-no'), bump(tax906)]);
   await c.click('#inv-clear');
   await c.screenshot({ path: SH + 'acc_2_taxlist.png', fullPage: true });
 
   // ---- proforma tab, same screen ---------------------------------------
   await c.click('#pg-sub .pg-subtab[data-sub="proforma"]'); await c.waitForTimeout(900);
   ck('proforma: title', (await c.textContent('#screen-title')).includes('Proforma'), await c.textContent('#screen-title'));
-  ck('proforma: list empty', (await c.textContent('#inv-body')).includes('No proforma'), await c.textContent('#inv-body'));
+  ck('proforma: list holds proformas only', !/\bIC\//.test(await c.textContent('#inv-body')), await c.textContent('#inv-body'));
   await c.fill('#inv-pno', '920'); await c.dispatchEvent('#inv-pno', 'change'); await c.waitForTimeout(700);
-  ck('proforma number PI/', (await c.inputValue('#inv-no')) === `PI/${yy}/920/01`, await c.inputValue('#inv-no'));
+  ck('proforma number PI/', (await c.inputValue('#inv-no')) === pro920, [await c.inputValue('#inv-no'), pro920]);
   await c.fill('#inv-client', 'Mrs. Fatima Khalid'); await rows.nth(0).locator('input').nth(0).fill('Advance payment - 20% of contract value'); await rows.nth(0).locator('input').nth(1).fill('100000');
   await c.click('#inv-save'); await c.waitForTimeout(900);
-  ck('proforma saved', (await c.textContent('#inv-body')).includes(`PI/${yy}/920/01`));
+  ck('proforma saved', (await c.textContent('#inv-body')).includes(pro920));
   // convert
-  await c.click('#inv-body tr >> nth=0 >> .hr-menu-btn'); await c.click('text=Make tax invoice from this');
+  await c.locator('#inv-body tr', { hasText: pro920 }).first().locator('.hr-menu-btn').click(); await c.click('text=Make tax invoice from this');
   await c.click('.hr-ask [data-a="yes"]'); await c.waitForTimeout(900);
-  ck('converted note', (await c.textContent('#inv-status')).includes(`IC/${yy}/920/01`), await c.textContent('#inv-status'));
+  ck('converted note', (await c.textContent('#inv-status')).includes(tax920), [await c.textContent('#inv-status'), tax920]);
   ck('proforma tagged Invoiced', (await c.textContent('#inv-body')).includes('Invoiced'));
   await c.screenshot({ path: SH + 'acc_3_proforma.png', fullPage: true });
   await c.click('.pg-tab[data-tab="invoices"]'); await c.waitForTimeout(500); await c.click('#pg-sub .pg-subtab[data-sub="tax"]'); await c.waitForTimeout(900);
-  ck('back on tax: both invoices', (await c.textContent('#inv-body')).includes(`IC/${yy}/920/01`) && (await c.textContent('#inv-body')).includes(`IC/${yy}/906/01`));
+  ck('back on tax: both invoices', (await c.textContent('#inv-body')).includes(tax920) && (await c.textContent('#inv-body')).includes(tax906));
 
   // ---- help: invoice guides yes, nothing at all about the register -------
   const h = await c.evaluate(() => ({
@@ -95,11 +101,18 @@ const B = process.env.BASE || 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots
   ck('three clicks on Tax Invoices heading: Register appears', (await tabs(c)).includes('Register'), await tabs(c));
   ck('register: locked on open', await vis(c, '#reg-lock') && !(await vis(c, '#reg-body')));
   await c.screenshot({ path: SH + 'acc_4_locked.png' });
-  await c.fill('#reg-pass', 'infinia2022'); await c.click('#reg-open-btn'); await c.waitForTimeout(600);
+  // the password is checked on the server (bcrypt): wait for its answer rather than a fixed 0.6 s
+  await c.fill('#reg-pass', 'infinia2022'); await c.click('#reg-open-btn');
+  await c.waitForFunction(() => document.getElementById('reg-lock-msg').textContent.trim(), null, { timeout: 15000 }).catch(() => {});
   ck('wrong password message', (await c.textContent('#reg-lock-msg')).includes('Wrong password'), await c.textContent('#reg-lock-msg'));
-  await c.fill('#reg-pass', 'Infinia2022!'); await c.press('#reg-pass', 'Enter'); await c.waitForTimeout(1000);
+  await c.fill('#reg-pass', 'Infinia2022!'); await c.press('#reg-pass', 'Enter');
+  await c.waitForFunction(() => !!REG_KEY && document.getElementById('reg-body').style.display !== 'none', null, { timeout: 15000 }).catch(() => {});
+  await c.waitForTimeout(800);
   ck('right password opens', await vis(c, '#reg-body') && !(await vis(c, '#reg-lock')));
   ck('chief: no change-password option', !(await vis(c, '#reg-pw-btn')));
+  const rk = await c.evaluate(() => REG_KEY);
+  const before = await c.evaluate(async k => (await apiCall('/employees/accounts/register', { headers: { 'X-Register-Key': k } })), rk);
+  const sides0 = [await c.locator('#reg-rec tr').count(), await c.locator('#reg-paid tr').count()];
   const add = async (kind, date, desc, amt, rem = '') => {
     await c.click(`#reg-kind button[data-k="${kind}"]`); await c.fill('#reg-date', date); await c.fill('#reg-desc', desc);
     await c.fill('#reg-amt', amt); if (rem) await c.fill('#reg-rem', rem); await c.click('#reg-save'); await c.waitForTimeout(600);
@@ -108,11 +121,14 @@ const B = process.env.BASE || 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots
   await add('received', '2026-09-14', 'Received from Mr. Ahmed - Plot 906', '20000');
   await add('paid', '2026-09-03', 'Paid to Al Hassai Building - cement', '3250.50', 'Site 906');
   await add('paid', '2026-09-18', 'Labour advance - Ramesh', '1500', 'F-712');
-  ck('balance shown', (await c.textContent('#reg-stats')).includes('60,249.50'), await c.textContent('#reg-stats'));
-  ck('two sides', (await c.locator('#reg-rec tr').count()) === 2 && (await c.locator('#reg-paid tr').count()) === 2);
+  // 45,000 + 20,000 - 3,250.50 - 1,500 = 60,249.50 on top of what the register held before
+  const want = (Math.round((before.balance + 60249.50) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  ck(`balance shown: ${before.balance.toFixed(2)} + 60,249.50 = ${want}`, (await c.textContent('#reg-stats')).includes(want), await c.textContent('#reg-stats'));
+  ck('two sides: 2 more received, 2 more paid', (await c.locator('#reg-rec tr').count()) === sides0[0] + 2 && (await c.locator('#reg-paid tr').count()) === sides0[1] + 2,
+     [sides0, await c.locator('#reg-rec tr').count(), await c.locator('#reg-paid tr').count()]);
   await c.screenshot({ path: SH + 'acc_5_register.png', fullPage: true });
   // edit by clicking
-  await c.click('#reg-paid tr >> nth=1'); await c.waitForTimeout(400);
+  await c.locator('#reg-paid tr', { hasText: 'Labour advance - Ramesh' }).first().click(); await c.waitForTimeout(400);
   ck('click row to edit', (await c.inputValue('#reg-desc')) === 'Labour advance - Ramesh' && (await c.textContent('#reg-save')) === 'Save changes');
   await c.click('#reg-cancel');
   // PDF export opens a blob
@@ -129,7 +145,7 @@ const B = process.env.BASE || 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots
   ck('changing the hash does not open it', !(await vis(c, '#screen-cashreg')));
   await c.click('#inv-list-title', { clickCount: 3 }); await c.waitForTimeout(900);
   ck('asks again on return', await vis(c, '#reg-lock') && !(await vis(c, '#reg-body')));
-  ck('no figures left in the page', !(await c.textContent('#screen-cashreg')).includes('60,249'));
+  ck('no figures left in the page', !(await c.textContent('#screen-cashreg')).includes(want));
   // leave to another page
   await c.fill('#reg-pass', 'Infinia2022!'); await c.press('#reg-pass', 'Enter'); await c.waitForTimeout(900);
   await c.evaluate(() => pgGo('expiry')); await c.waitForTimeout(900);
@@ -151,14 +167,17 @@ const B = process.env.BASE || 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots
   ck('admin: Accounts in the menu', (await menu(a)).some(x => x.startsWith('Accounts')));
   await a.click('#screen-title', { clickCount: 3 }); await a.waitForTimeout(900);
   ck('admin: register locked on open', await vis(a, '#reg-lock'), await a.evaluate(() => document.querySelector('.screen.active').id));
-  await a.fill('#reg-pass', 'Infinia2022!'); await a.press('#reg-pass', 'Enter'); await a.waitForTimeout(900);
+  await a.fill('#reg-pass', 'Infinia2022!'); await a.press('#reg-pass', 'Enter');
+  await a.waitForFunction(() => !!REG_KEY && document.getElementById('reg-body').style.display !== 'none', null, { timeout: 15000 }).catch(() => {});
+  await a.waitForTimeout(800);
   ck('admin: sees entries the chief made', (await a.textContent('#reg-rec')).includes('Mr. Ahmed'));
   ck('admin: change-password option', await a.evaluate(() => document.getElementById('reg-pw-btn').style.display !== 'none'));
   ck('no page errors (admin)', !a.errs.length, a.errs);
 
   // ---- invoices only: three clicks bring nothing up --------------------
   const io = await login('invonly', 'inv12345');
-  ck('invoices-only: Accounts with two tabs', JSON.stringify(await tabs(io)) === JSON.stringify(['Tax Invoice', 'Proforma Invoice']), await tabs(io));
+  await io.waitForFunction(() => [...document.querySelectorAll('#pg-tabs .pg-tab')].some(x => x.offsetParent), null, { timeout: 15000 }).catch(() => {});
+  ck('invoices-only: Accounts with the Invoices tab only', JSON.stringify(await tabs(io)) === JSON.stringify(['Invoices']), await tabs(io));
   await io.click('#screen-title', { clickCount: 3 }); await io.waitForTimeout(900);
   ck('invoices-only: three clicks do nothing', !(await tabs(io)).includes('Register') && !(await vis(io, '#screen-cashreg')));
   ck('no page errors (invoices-only)', !io.errs.length, io.errs);

@@ -7,9 +7,12 @@ const { execSync } = require('child_process');
 const B = process.env.BASE || 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/docui_';
 let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  ' + JSON.stringify(i === undefined ? '' : i).slice(0, 300))); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+let p;
+// close a form without saving: the form asks "Leave without saving?" when something was read into it
+const cancelForm = async () => { await p.click('#m-cancel'); await sleep(300); if (await p.isVisible('#lv-drop').catch(() => false)) { await p.click('#lv-drop'); await sleep(300); } };
 (async () => {
   const C = JSON.parse(execSync(`python3 ${__dirname}/est_docread_fixtures.py /tmp/claude-0/docfix`).toString());
-  const br = await chromium.launch(); const p = await (await br.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
+  const br = await chromium.launch(); p = await (await br.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   const uploads = []; p.on('request', r => { if (/multipart/.test(r.headers()['content-type'] || '') || (r.postDataBuffer() || Buffer.alloc(0)).includes(Buffer.from('%PDF'))) uploads.push(r.url()); });
   await p.goto(B + '/portal/est-app.html?view=projects'); await p.fill('#lg-u', 'admin'); await p.fill('#lg-p', 'changeme123'); await p.click('#lg-go'); await sleep(1500);
@@ -33,7 +36,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // 1. new project from a letter of award
   await go('909', 'home.dash');
   await read('project', () => p.evaluate(() => newProject()));
-  await p.screenshot({ path: SH + 'project.png' }); await p.click('#m-cancel');
+  await p.screenshot({ path: SH + 'project.png' }); await cancelForm();
   // 2. tender
   await p.goto(B + '/portal/est-app.html?view=tenders'); await sleep(1500);
   await read('tender', () => p.evaluate(() => tenderForm()));
@@ -61,26 +64,26 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const got = [await p.inputValue('#f-inv_ref'), await p.inputValue('#f-inv_date'), Number(String(await p.inputValue('#f-inv_amount')).replace(/,/g, '')), Number(await p.inputValue('#f-sub_id'))];
     ck(`${f}: read by text recognition - ANT/12, 18-Oct-2026, 33,600.00, Al Noor`, got[0] === 'ANT/12' && got[1] === '2026-10-18' && Math.abs(got[2] - 33600) < .01 && got[3] === alnoor.id, got);
     if (/photo/.test(f)) await p.screenshot({ path: SH + 'invoice_photo.png' });
-    await p.click('#m-cancel');
+    await cancelForm();
   }
   // 4. variation to the subcontract
   await read('subvo', () => p.evaluate(id => voSubForm(ST.b.subs.find(s => s.id === id)), alnoor.id));
-  await p.click('#m-cancel');
+  await cancelForm();
   // 5. client variation, 6. client PC
   await go('909', 'site.vo');
   await read('variation', () => p.evaluate(() => voForm()));
-  await p.screenshot({ path: SH + 'variation.png' }); await p.click('#m-cancel');
+  await p.screenshot({ path: SH + 'variation.png' }); await cancelForm();
   await go('909', 'client.cpc');
   await read('clientpc', () => p.evaluate(() => cpcForm()));
-  await p.click('#m-cancel');
+  await cancelForm();
   // 7. RFI, 8. NOC
   await go('909', 'site.rfi');
   await read('log', () => p.evaluate(() => logForm('rfi')));
-  await p.screenshot({ path: SH + 'rfi.png' }); await p.click('#m-cancel');
+  await p.screenshot({ path: SH + 'rfi.png' }); await cancelForm();
   await go('909', 'site.approval');
   await read('approval', () => p.evaluate(() => apForm()));
   ck('NOC: authority picked from the list', /DEWA/.test(await p.inputValue('#f-party')), await p.inputValue('#f-party'));
-  await p.click('#m-cancel');
+  await cancelForm();
   // 9. a PDF priced schedule into a subcontract's item schedule
   if (process.env.AGREEMENT_FILE) {
     const P909 = await go('909', 'subs.reg');

@@ -87,6 +87,8 @@ def office_to_date(db, r, l):
     if full or done >= days:
         return _r2(l.net_pay)
     earned = (l.fixed_salary or 0) * done / days
+    if M._om.exact_month(r.month_year):      # November 2026 on: down to the fils, as the sheet (office_money)
+        earned = M._om.pay_down(M._om.D(l.fixed_salary) * done / days)
     return _r2(earned - (l.deduction or 0) - (l.statutory or 0) + (l.other_allowance or 0) + (l.leave_salary or 0) + (l.air_ticket or 0))
 
 
@@ -308,11 +310,11 @@ def office_figures(db, r, l, e):
         earn.append(("Leave Salary", l.leave_salary))
     if l.air_ticket:
         earn.append(("Air Ticket", l.air_ticket))
-    ded = [("Loss of Pay" + (f" ({l.deduction_note})" if l.deduction_note else ""), l.deduction),
+    ded = [("Loss of Pay" + (f" ({M.dmy_text(l.deduction_note, r.month_year)})" if l.deduction_note else ""), l.deduction),
            ("Salary Advance / Loan", l.loan_deduction), ("Other Deductions", l.statutory)]
     return {"period": r.month_year, "earnings": [(k, _r2(v)) for k, v in earn if v or k in ("Basic Salary", "Allowance")],
             "deductions": [(k, _r2(v)) for k, v in ded], "net": _r2(l.net_pay), "attendance": [],
-            "remarks": l.remarks or ""}
+            "remarks": M.dmy_text(l.remarks or "", r.month_year)}
 
 
 def labour_figures(db, card):
@@ -332,8 +334,16 @@ def labour_figures(db, card):
            ("Fridays / Sundays", f"{(card.friday_days or 0) + (card.sunday_days or 0):g}"), ("Holidays", f"{card.holiday_days or 0:g}"),
            ("Sick / medical", f"{(card.sick_days or 0) + (card.medical_days or 0):g}"), ("Leave", f"{card.leave_days or 0:g}"),
            ("Absent", f"{card.absent_days or 0:g}"), ("Overtime hours", f"{card.ot_hours or 0:g}")]
-    return {"period": f"{card.month_year} cycle", "earnings": [(k, _r2(v)) for k, v in earn],
-            "deductions": [(k, _r2(v)) for k, v in ded], "net": services.adjusted_final_salary(card), "attendance": att, "remarks": ""}
+    earn, ded, net = [(k, _r2(v)) for k, v in earn], [(k, _r2(v)) for k, v in ded], services.adjusted_final_salary(card)
+    # November 2026 on the salary is the exact sum cut down to the fils once (payroll_cycle.fils_down), while each
+    # line here is shown to the nearest fil - so the lines can come to a fil or two more than is paid. That
+    # difference is shown as its own line, so the slip adds up to exactly what is paid.
+    if M.pcyc.exact_fils(card.month_year):
+        diff = _r2(sum(v for _, v in earn) - sum(v for _, v in ded) - net)
+        if abs(diff) >= 0.005:
+            (ded if diff > 0 else earn).append(("Rounding to the fils", abs(diff)))
+    return {"period": f"{card.month_year} cycle", "earnings": earn,
+            "deductions": ded, "net": net, "attendance": att, "remarks": ""}
 
 
 # ---- marking paid ------------------------------------------------------------------------------------------------------
@@ -398,6 +408,16 @@ def work_out(db, kind, source_id, body, commit_side_effects=False):
         q.setdefault("last_day", (e.terminated_on or M._dubai_today()).isoformat())
         if kind == "labour":
             last = M._as_date(q["last_day"])
+            # The settlement pays the wages of the card for the cycle his last day falls in, and the payment is
+            # booked against the card it was taken from - they must be the same card. Taken from another cycle's
+            # card, that card was marked settled with its own wages never paid (October's 1,472 dropped, say), and
+            # the last cycle's card still showed its wages due although the settlement had paid them.
+            last_cycle = M.pcyc.cycle_bounds_for(last)[2] if last else month
+            if last_cycle != month:
+                raise HTTPException(status_code=400, detail=(
+                    f"The last working day {last:%d/%m/%Y} is in the {last_cycle} cycle - the final settlement pays "
+                    f"that cycle's wages, so mark it on his {last_cycle} card. Pay this {month} card as a regular "
+                    f"payment (or change the last working day)."))
             if commit_side_effects:
                 e.terminated_on = last
                 db.flush()
@@ -462,7 +482,8 @@ def _full_cycle_preview(db, e, month, card):
         d += timedelta(days=1)
     comp = de.recalculate_from_daily_rows(rows, card.total_salary or e.total_salary, e.basic_salary,
                                           card.allowances or 0.0, card.other_deduction or 0.0,
-                                          pay_type=(e.pay_type or "daily"), cycle_days=(ce - cs).days + 1)
+                                          pay_type=(e.pay_type or "daily"), cycle_days=(ce - cs).days + 1,
+                                          exact_fils=M.pcyc.exact_fils(month))
     return _r2(comp["final_salary"] + sum((-a.amount if a.is_deduction else a.amount) for a in card.adjustments))
 
 
@@ -614,7 +635,7 @@ def _payslip_pdf(d, slip_no):
     section("EMPLOYEE INFORMATION")
     kv([("Employee Name", emp.get("name", "").upper(), "Employee Code", emp.get("emp_no", "")),
         ("Designation", emp.get("designation", ""), "Date of Joining", emp.get("joined_on", "")),
-        ("Salary Month", d.get("period") or d.get("month_year", ""), "Issue Date", d.get("issued", "")),
+        ("Salary Month", d.get("period") or d.get("month_year", ""), "Issue Date", M.dmy_text(d.get("issued", ""))),
         ("Currency", "AED", "Payment Mode", pay.get("mode_label", ""))])
     section("BANK DETAILS")
     kv([("Bank Name", emp.get("bank") or "-", "Payment Mode", pay.get("mode_label", "")),
@@ -632,7 +653,8 @@ def _payslip_pdf(d, slip_no):
     for i in range(n):
         a = E[i] if i < len(E) else ("", None)
         b = D[i] if i < len(D) else ("", None)
-        rows.append([P(a[0]), P(m(a[1]) if a[1] is not None else "", align=TA_RIGHT), P(b[0]), P(m(b[1]) if b[1] is not None else "", align=TA_RIGHT)])
+        rows.append([P(M.dmy_text(a[0], d.get("month_year"))), P(m(a[1]) if a[1] is not None else "", align=TA_RIGHT),   # a slip saved before dd/mm/yyyy reads it too
+                     P(M.dmy_text(b[0], d.get("month_year"))), P(m(b[1]) if b[1] is not None else "", align=TA_RIGHT)])
     ge, td = sum(v for _, v in E), sum(v for _, v in D)
     rows.append([P("GROSS EARNINGS", 8.4, True), P(m(ge), 8.4, True, align=TA_RIGHT), P("TOTAL DEDUCTIONS", 8.4, True), P(m(td), 8.4, True, align=TA_RIGHT)])
     t = Table(rows, colWidths=[W * 0.32, W * 0.18, W * 0.32, W * 0.18])
@@ -646,7 +668,7 @@ def _payslip_pdf(d, slip_no):
                             ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
     el += [nt, Spacer(1, 3), P(amount_in_words(net), 8, color=GREY, align=TA_RIGHT, italic=True), Spacer(1, 9)]
     section("PAYMENT DETAILS")
-    prow = [("Payment Type", pay.get("type_label", ""), "Paid On", pay.get("paid_on_text", "")),
+    prow = [("Payment Type", pay.get("type_label", ""), "Paid On", M.dmy_text(pay.get("paid_on_text", ""))),
             ("Amount Paid", f"AED {m(pay.get('amount'))}", "Mode", pay.get("mode_label", "")),
             ("Reference No.", pay.get("reference") or "-", "Total Paid for the Month", f"AED {m(d.get('paid_total'))}")]
     if d.get("balance"):
@@ -765,7 +787,9 @@ def labour_rows(month_year: str, db: Session = Depends(get_db), user: models.Use
         adj = _r2(sum((-a.amount if a.is_deduction else a.amount) for a in c.adjustments))
         groups.setdefault(e.company or "Infinia", []).append({
             "source_id": c.id, "emp_no": e.emp_no, "name": e.name, "trade": e.trade or "", "active": bool(e.active),
-            "days": _r2((c.present_days or 0) + (c.friday_days or 0) + (c.sunday_days or 0) + (c.holiday_days or 0)),
+            # the paid days the card's salary is for - sick and medical days are paid too (data_engine)
+            "days": _r2((c.present_days or 0) + (c.friday_days or 0) + (c.sunday_days or 0) + (c.holiday_days or 0)
+                        + (c.sick_days or 0) + (c.medical_days or 0)),
             "ot": _r2(c.ot_hours), "salary": _r2(c.final_salary), "adjust": adj, "net": net, "pay_route": e.pay_route or "wps",
             "pay": st})
     db.commit()

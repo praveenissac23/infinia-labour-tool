@@ -20,7 +20,16 @@ const B = 'http://127.0.0.1:8032';
   await p.goto(B + '/?p=attendance'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(3500);
   const today = await p.evaluate(() => currentDate);
-  const cyc = await p.evaluate(async d => { const r = await apiCall('/attendance/completion/October%202026?mode=cycle'); return r; }, today);
+  // The cycles are worked out from today, the way tests/seed_scenarios.py does (26th - 25th, named by the end month),
+  // so the test holds whatever day it is run on - it used to name September / October 2026 and broke once they passed.
+  const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const td = new Date(today + 'T00:00:00');
+  const cycOf = d => { const m = d.getDate() >= 26 ? new Date(d.getFullYear(), d.getMonth() + 1, 1) : new Date(d.getFullYear(), d.getMonth(), 1); return { label: `${MON[m.getMonth()]} ${m.getFullYear()}`, start: new Date(m.getFullYear(), m.getMonth() - 1, 26) }; };
+  const CUR = cycOf(td), PREV = cycOf(new Date(CUR.start.getTime() - 86400000));
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const plus = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  const PL = PREV.label, PLu = encodeURIComponent(PL);
+  const leftOn = plus(PREV.start, 12), before = plus(PREV.start, 8);     // seed: T-901 leaves on prev start + 12
 
   // ---- Attendance -------------------------------------------------------
   const opening = await p.evaluate(() => document.getElementById('att-status').textContent);
@@ -39,18 +48,18 @@ const B = 'http://127.0.0.1:8032';
   ck('Save sends and is answered (today, with leavers around)', sent === 1 && ans && ans.status() === 200 && /Saved/.test(st), { sent, status: ans && ans.status(), st: st.slice(0, 120) });
   const after = await api('/attendance/' + today);
   ck(`Save never removes rows (before ${rowsBefore}, after ${after.filter(r => r.site || r.am || r.pm).length})`, after.filter(r => r.site || r.am || r.pm).length >= rowsBefore);
-  ck('and marks every Sunday row', after.filter(r => r.am === 'Sunday').length >= 60, after.filter(r => r.am === 'Sunday').length);
+  if (td.getDay() === 0) ck('and marks every Sunday row', after.filter(r => r.am === 'Sunday').length >= 60, after.filter(r => r.am === 'Sunday').length);
   ck('the message reports the rows saved, not "no changes"', !/no changes/.test(st), st.slice(0, 100));
   const y = new Date(new Date(today + 'T00:00:00').getTime() - 86400000); const yIso = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
-  const comp = await api('/attendance/completion/September%202026?mode=calendar');
+  const comp = await api(`/attendance/completion/${encodeURIComponent(MON[y.getMonth()] + ' ' + y.getFullYear())}?mode=calendar`);
   const yday = comp.days.find(d => d.date === yIso);
   ck(`yesterday (${yIso}) - fully saved - is green, counting only its grid`, yday && yday.complete, yday);
   // a day in the previous cycle, when T-901 was still employed
-  await p.fill('#date-picker', '2026-09-03'); await p.dispatchEvent('#date-picker', 'change'); await p.waitForTimeout(2500);
+  await p.fill('#date-picker', iso(before)); await p.dispatchEvent('#date-picker', 'change'); await p.waitForTimeout(2500);
   const grid2 = await p.evaluate(() => [...document.querySelectorAll('#grid-body td.empno')].map(td => td.textContent.trim()));
-  ck('3 Sep: T-901 is on the grid (he left on the 7th)', grid2.includes('T-901'));
+  ck(`${iso(before)}: T-901 is on the grid (he left on ${iso(leftOn)})`, grid2.includes('T-901'));
   sent = 0; await p.click('#att-save-btn:visible, #floating-save-btn:visible'); await p.waitForTimeout(3000);
-  ck('3 Sep: Save sends', sent === 1, sent);
+  ck(`${iso(before)}: Save sends`, sent === 1, sent);
   const notes = await api('/notifications');
   const attNote = (notes.rows || notes || []).filter ? (notes.rows || notes).filter(n => n.kind === 'attendance') : [];
   ck('no false "yesterday incomplete" warning in the bell', !attNote.some(n => /incomplete|No attendance/.test(n.title)), attNote);
@@ -58,35 +67,35 @@ const B = 'http://127.0.0.1:8032';
 
   // ---- Payroll: salary cards --------------------------------------------
   await p.click('.pg-side .pg-item[data-page="payroll"]'); await p.waitForTimeout(2000);
-  await p.selectOption('#combine-cycle', { label: 'September 2026' }).catch(() => p.selectOption('#combine-cycle', 'September 2026'));
+  await p.selectOption('#combine-cycle', { label: PL }).catch(() => p.selectOption('#combine-cycle', PL));
   await p.dispatchEvent('#combine-cycle', 'change'); await p.waitForTimeout(2500);
-  const sums = await api('/summaries/September%202026');
+  const sums = await api(`/summaries/${PLu}`);
   const byNo = Object.fromEntries(sums.map(s => [s.emp_no, s]));
-  ck('September cards exist for everyone who worked (incl. T-901, T-902, Enginova T-905)', ['T-901', 'T-902', 'T-905', 'T-906'].every(n => byNo[n]), Object.keys(byNo).filter(x => x.startsWith('T-')));
-  ck('the removed worker still has his September card (he worked it)', !!byNo['T-903']);
-  ck('the new joiner has no September card', !byNo['T-904']);
+  ck(`${PL} cards exist for everyone who worked (incl. T-901, T-902, Enginova T-905)`, ['T-901', 'T-902', 'T-905', 'T-906'].every(n => byNo[n]), Object.keys(byNo).filter(x => x.startsWith('T-')));
+  ck(`the removed worker still has his ${PL} card (he worked it)`, !!byNo['T-903']);
+  ck(`the new joiner has no ${PL} card`, !byNo['T-904']);
   const t901 = byNo['T-901'] || {};
   const paid901 = (t901.present_days || 0) + (t901.sunday_days || 0) + (t901.holiday_days || 0) + (t901.sick_days || 0) + (t901.medical_days || 0);
-  ck(`T-901 is paid only up to his leaving day on the 7th (${paid901} paid days, the rest Terminated)`, paid901 <= 13 && (t901.terminated_days || 0) >= 18, t901);
+  ck(`T-901 is paid only up to his leaving day ${iso(leftOn)} (${paid901} paid days, the rest Terminated)`, paid901 <= 13 && (t901.terminated_days || 0) >= Math.round((CUR.start - PREV.start) / 86400000) - 13, t901);
   const neg = sums.filter(s => (s.final_salary ?? s.net_salary ?? 0) < 0);
   ck('no card has a negative final salary', neg.length === 0, neg.map(s => s.emp_no));
   for (const [kind, fmt] of [['combine', 'view'], ['combine', 'excel'], ['combine', 'pdf']]) {
-    const u = await p.evaluate(async f => { const t = (await apiCall('/auth/download-token', { method: 'POST' })).token; return `/export/September%202026/${f === 'view' ? 'cards/view' : f}?token=${t}`; }, fmt);
+    const u = await p.evaluate(async ([f, cy]) => { const t = (await apiCall('/auth/download-token', { method: 'POST' })).token; return `/export/${cy}/${f === 'view' ? 'cards/view' : f}?token=${t}`; }, [fmt, PLu]);
     const r = await p.evaluate(async url => { const x = await fetch(url); return [x.status, x.headers.get('content-type')]; }, u);
-    ck(`salary cards ${fmt} for September downloads`, r[0] === 200, r);
+    ck(`salary cards ${fmt} for ${PL} downloads`, r[0] === 200, r);
   }
   clean('Salary cards');
 
   // ---- Additions & deductions --------------------------------------------
   await p.locator('.pg-subtab', { hasText: 'Additions' }).click(); await p.waitForTimeout(1200);
-  await p.selectOption('#adj-cycle', 'September 2026').catch(() => {}); await p.evaluate('loadAdjustmentsList()'); await p.waitForTimeout(2000);
+  await p.selectOption('#adj-cycle', PL).catch(() => {}); await p.evaluate('loadAdjustmentsList()'); await p.waitForTimeout(2000);
   const adjRows = await p.locator('#adj-all-card tbody tr').count();
-  ck('additions & deductions list the September workers', adjRows > 50, adjRows);
+  ck(`additions & deductions list the ${PL} workers`, adjRows > 50, adjRows);
   clean('Additions & deductions');
 
   // ---- Check before you pay -----------------------------------------------
   await p.locator('.pg-subtab', { hasText: 'Check before' }).click(); await p.waitForTimeout(1500);
-  for (const cy of ['September 2026', 'October 2026']) {
+  for (const cy of [PL, CUR.label]) {
     await p.selectOption('#errcheck-cycle', cy).catch(() => {}); await p.evaluate('loadErrorCheck()'); await p.waitForTimeout(2500);
     clean(`Check before you pay (${cy})`);
   }
@@ -94,7 +103,7 @@ const B = 'http://127.0.0.1:8032';
   // ---- Live card for every special worker, both cycles ------------------
   await p.click('.pg-side .pg-item[data-page="attendance"]'); await p.waitForTimeout(1000);
   await p.click('#pg-tabs .pg-tab[data-tab="livecard"]'); await p.waitForTimeout(2000);
-  for (const cy of ['September 2026', 'October 2026']) {
+  for (const cy of [PL, CUR.label]) {
     await p.selectOption('#livecard-cycle', cy).catch(() => {}); await p.dispatchEvent('#livecard-cycle', 'change').catch(() => {}); await p.waitForTimeout(800);
     for (const no of ['T-901', 'T-902', 'T-904', 'T-905', 'T-906', 'F-002']) {
       const listed = await p.evaluate(n => employees.some(e => e.emp_no === n), no);
@@ -119,7 +128,7 @@ const B = 'http://127.0.0.1:8032';
     const cos = await p.locator('#report-company option').allTextContents();
     for (const co of cos) {
       await p.selectOption('#report-company', { label: co }).catch(() => {});
-      await p.selectOption('#report-cycle', 'September 2026').catch(() => {});
+      await p.selectOption('#report-cycle', PL).catch(() => {});
       await p.evaluate('loadReports()').catch(e => errs.push(String(e))); await p.waitForTimeout(2000);
     }
     ck('the report company list includes Enginova', cos.some(x => /Enginova/i.test(x)), cos);

@@ -2,7 +2,20 @@
 // matched entries, Enter fills the form from a bank line, Match... and
 // 'No entry needed', layout at 1440 / 390.
 const { chromium } = require('playwright');
-const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/', FILE = '/tmp/claude-0/stmt/ADCB_Statement_Oct_2026.xlsx';
+const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/', FILE = '/tmp/claude-0/stmt/ADCB_Statement_Jul_2026.xlsx';
+// The statement is made here (ADCB's download columns, a running balance that adds up): 4 lines in July 2026, a
+// month the full test database has nothing in - so every count below is exact on any copy.
+require('fs').mkdirSync('/tmp/claude-0/stmt', { recursive: true });
+require('child_process').execSync(`python3 -c "
+import openpyxl
+wb = openpyxl.Workbook(); ws = wb.active
+ws.append(['ADCB - Account statement']); ws.append([])
+ws.append(['Transaction Date', 'Value Date', 'Description', 'Reference Number', 'Debit Amount', 'Credit Amount', 'Running Balance'])
+ws.append(['02/07/2026', '02/07/2026', 'O/W TRF GHANTOOT BUILDING', 'PHUB726068648', 23505.72, None, 76494.28])
+ws.append(['05/07/2026', '05/07/2026', 'I/W TRF EMKAAN DESIGN', '', None, 105000, 181494.28])
+ws.append(['06/07/2026', '06/07/2026', 'SERVICE CHARGES', '', 52.50, None, 181441.78])
+ws.append(['10/07/2026', '10/07/2026', 'DEWA BILL PAYMENT', '', 1234.00, None, 180207.78])
+wb.save('${FILE}')"`);
 let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PASS' : 'FAIL'} ${n}${ok ? '' : '  ' + JSON.stringify(i)}`); };
 async function login(b, u, pw, W = 1440) {
   const ctx = await b.newContext({ viewport: { width: W, height: W < 500 ? 844 : 950 } }); const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message)); p.errs = errs;
@@ -10,18 +23,21 @@ async function login(b, u, pw, W = 1440) {
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(2500); return p;
 }
 const openBank = async p => { await p.evaluate(() => { const t = [...document.querySelectorAll('#pg-tabs .pg-tab')].find(x => x.textContent.trim() === 'Bank'); t.click(); }); await p.waitForTimeout(2500);
-  await p.evaluate(() => { document.getElementById('bk-month').value = '2026-10'; return bkLoad(); }); await p.waitForTimeout(1500); };
+  await p.evaluate(() => { document.getElementById('bk-month').value = '2026-07'; return bkLoad(); }); await p.waitForTimeout(1500); };
 const tiles = p => p.evaluate(() => [...document.querySelectorAll('.bs-tile b')].map(x => +x.textContent));
 (async () => {
   const b = await chromium.launch();
   const p = await login(b, 'shafiq', 'pass12345');
+  // statements already uploaded on this copy are taken off, so it starts as before any statement
+  const ups = await p.evaluate(async () => { const out = []; for (let i = 0; i < 20; i++) { const d = await apiCall('/store/bank/stmt?month=2026-07'); if (!d.last) break;
+    await apiCall(`/store/bank/stmt/upload/${d.last.id}`, { method: 'DELETE' }); out.push(d.last.id); } return out; });
   await openBank(p);
   ck('before any statement: How it works shown', /How it works/.test(await p.locator('#bk-stmt').textContent()));
   // three entries typed in the portal
   const add = body => p.evaluate(async b => { try { return (await apiCall('/store/bank', { method: 'POST', body: JSON.stringify(b) })).id || 'ok'; } catch (e) { return errText(e); } }, body);
-  const r1 = await add({ kind: 'vendor', date: '2026-10-02', party: 'Ghantoot Building Materials', mode: 'Bank Transfer', reference: 'PHUB726068648', amount: '23505.72' });
-  const r2 = await add({ kind: 'customer', date: '2026-10-05', party: 'Emkaan Design', mode: 'Bank Transfer', reference: '', amount: '105000' });
-  const r3 = await add({ kind: 'vendor', date: '2026-10-09', party: 'Casa Fiora FZE', mode: 'Bank Transfer', reference: 'PHUB555', amount: '3700' });
+  const r1 = await add({ kind: 'vendor', date: '2026-07-02', party: 'Ghantoot Building Materials', mode: 'Bank Transfer', reference: 'PHUB726068648', amount: '23505.72' });
+  const r2 = await add({ kind: 'customer', date: '2026-07-05', party: 'Emkaan Design', mode: 'Bank Transfer', reference: '', amount: '105000' });
+  const r3 = await add({ kind: 'vendor', date: '2026-07-09', party: 'Casa Fiora FZE', mode: 'Bank Transfer', reference: 'PHUB555', amount: '3700' });
   ck('three entries saved', [r1, r2, r3].every(x => typeof x === 'number' || x === 'ok'), [r1, r2, r3]);
   await openBank(p);
   await p.setInputFiles('#bk-stmt input[type=file]', FILE); await p.waitForTimeout(2500);

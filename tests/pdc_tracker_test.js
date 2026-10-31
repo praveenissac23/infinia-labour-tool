@@ -18,15 +18,22 @@ const plus = n => iso(new Date(today.getTime() + n * 864e5));
     await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(3500); return p;
   };
   const api = (p, u, m, body) => p.evaluate(async ([u, m, body]) => { try { return { ok: 1, d: await apiCall(u, m ? { method: m, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined) }; } catch (e) { return { ok: 0, status: e.status, msg: (e.body && e.body.detail) || String(e.message) }; } }, [u, m, body]);
-  const subs = p => p.evaluate(() => [...document.querySelectorAll('.pg-subtab')].filter(x => x.offsetParent).map(x => x.textContent.trim()));
-  const badge = p => p.evaluate(() => { const b = document.querySelector('.pg-item[data-page="expiry"] .pg-badge'); return b ? +b.textContent : 0; });
+  // a tab's label without the count badge on it ("PDCs7" -> "PDCs")
+  const subs = p => p.evaluate(() => [...document.querySelectorAll('.pg-subtab')].filter(x => x.offsetParent).map(x => [...x.childNodes].filter(n => !(n.classList && n.classList.contains('pg-subbadge'))).map(n => n.textContent).join('').trim()));
+  // The counts sit on the tabs inside Expiry Reminder, not on the side menu (12 Oct 2026): the PDCs tab's count.
+  const badge = p => p.evaluate(() => { const b = document.querySelector('#pg-sub .pg-subtab[data-sub="pdc"] .pg-subbadge'); return b ? +b.textContent : 0; });
 
   // ---- Admin enters cheques the way the accountant does --------------------
   const a = await login('admin', 'changeme123', '/?p=expiry#expiry:pdc');
+  // The figures below are exact, so the test starts from no cheques: the ones already in this copy of the
+  // database (a full live-like copy) are taken off first. Never run against the live server.
+  for (const r of ((await api(a, '/employees/pdc')).d.rows || [])) await api(a, `/employees/pdc/${r.id}`, 'DELETE');
+  await a.evaluate(() => pdcLoad && pdcLoad()); await a.waitForTimeout(800);
   ck('admin: Expiry Reminder has a PDCs tab', (await subs(a)).includes('PDCs'), await subs(a));
   ck('the address /?p=expiry#expiry:pdc opens it', await a.locator('#screen-pdc').isVisible());
   const add = async (payee, no, date, amt, notes = '', months = '1') => {
-    await a.fill('#pdc-payee', payee); await a.fill('#pdc-no', no); await a.fill('#pdc-bank', 'ADCB');
+    await a.waitForFunction(() => !document.getElementById('pdc-save').disabled); await a.waitForTimeout(600);
+    await a.fill('#pdc-payee', payee); await a.fill('#pdc-bank', 'ADCB'); await a.fill('#pdc-no', no);
     await a.fill('#pdc-date', date); await a.fill('#pdc-amt', String(amt)); await a.fill('#pdc-notes', notes);
     await a.selectOption('#pdc-repeat', months); await a.click('#pdc-save'); await a.waitForTimeout(1200);
   };
@@ -36,7 +43,10 @@ const plus = n => iso(new Date(today.getTime() + n * 864e5));
   ck('three cheques, numbers 000451/452/453, a month apart', rows.length === 3 && rows.map(r => r.cheque_no).join() === '000451,000452,000453'
      && new Date(rows[1].date).getUTCMonth() === (new Date(rows[0].date).getUTCMonth() + 1) % 12, rows.map(r => [r.cheque_no, r.date]));
   await add('Desarch Scaffolding', '000470', plus(7), 24810.63, 'Scaffold hire');
-  await add('SEOMAA Building', '000466', plus(-2), 48596.10, 'Cheque dated');
+  // overdue, and in the month before the grid's first month whatever day the test runs (was plus(-2): on the 1st or
+  // 2nd of a month that is last month, on the 31st it is this month - and the Overdue column check failed)
+  const SEO = plus(-today.getUTCDate());
+  await add('SEOMAA Building', '000466', SEO, 48596.10, 'Cheque dated');
   await add('Uni Mix Block', '000480', plus(40), 3880.80);
   await add('Salary approx.', '', plus(20), 380000, 'Salaries - no cheque');
   let s = (await api(a, '/employees/pdc')).d.summary;
@@ -51,10 +61,11 @@ const plus = n => iso(new Date(today.getTime() + n * 864e5));
   ck('grid: the overdue SEOMAA cheque sits in an Overdue column', g.overdue === 48596.1 && g.rows.find(r => /SEOMAA/.test(r.payee)).overdue === 48596.1, g.overdue);
   const sumCells = g.rows.reduce((x, r) => x + r.total, 0);
   ck('grid: monthly totals and the grand total add up', Math.abs(g.grand - sumCells) < 0.01 && Math.abs(g.grand - (g.overdue + g.totals.reduce((x, y) => x + y, 0))) < 0.01, [g.grand, sumCells]);
+  const scrD = isoD => isoD.split('-').reverse().join('/');
   const dmy = isoD => { const d = new Date(isoD + 'T00:00:00Z'); return `${String(d.getUTCDate()).padStart(2, '0')}-${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })}-${String(d.getUTCFullYear()).slice(2)}`; };
-  const rentLabel = dmy(plus(14)), seoLabel = dmy(plus(-2));
+  const rentLabel = scrD(plus(14)), seoLabel = scrD(SEO);      // the papers write dd/mm/yyyy too
   const scr = isoD => isoD.split('-').reverse().join('/');          // the screen writes dd/mm/yyyy
-  const rentScr = scr(plus(14)), seoScr = scr(plus(-2));
+  const rentScr = scr(plus(14)), seoScr = scr(SEO);
   const gtxt = await a.locator('#pdc-gbody').textContent();
   ck(`screen grid shows the exact cheque date and number under the figure (${rentScr} #000451)`, gtxt.includes(rentScr + ' #000451'), gtxt.slice(0, 400));
   ck('the overdue figure shows its date too', gtxt.includes(seoScr + ' #000466'));
@@ -73,11 +84,12 @@ const plus = n => iso(new Date(today.getTime() + n * 864e5));
   ck('and it can be put back to pending', (await api(a, '/employees/pdc')).d.summary.week === 1);
   // Bell
   const n = (await api(a, '/notifications')).d.notifications.find(x => x.kind === 'pdc');
-  ck('admin bell: one PDC line (overdue, 7 and 14 days)', n && /1 overdue/.test(n.title) && /7 days/.test(n.title) && /14 days/.test(n.title), n);
+  ck('admin bell: one PDC line (overdue, 7 and 14 days)', n && /1 overdue/.test(n.title) && /1 this week/.test(n.title) && /1 next week/.test(n.title), n);
   ck('it pops up today - a cheque is overdue / at 14 or 7 days', n && n.id === 'pdc-' + plus(0), n && n.id);
   await a.evaluate(() => loadNotifications()); await a.waitForTimeout(800);
   ck('the Expiry Reminder badge includes the cheques due', (await badge(a)) >= 2, await badge(a));
-  // Paper
+  // Paper - the month grid (the List view was left open by the card above)
+  await a.evaluate(() => pdcView('grid')); await a.waitForTimeout(300);
   const [pop] = await Promise.all([a.waitForEvent('popup'), a.evaluate(() => pdcExport('view'))]);
   await pop.waitForLoadState(); await pop.waitForTimeout(700);
   const txt = await pop.locator('.page').textContent();
@@ -101,6 +113,12 @@ const plus = n => iso(new Date(today.getTime() + n * 864e5));
   await pop.close();
 
   // ---- Chief accountant: PDCs only ------------------------------------------
+  // The chief accountant's login as the test is written for (see the top): pdc,settings - on the full test database
+  // copy he holds many more rights, so he would land elsewhere. Test databases under /tmp only.
+  require('child_process').execSync(`python3 -c "
+import sqlite3; cx = sqlite3.connect('/tmp/run_js.db')
+r = cx.execute('SELECT id, permissions FROM users WHERE username = ?', ('chiefacc',)).fetchone()
+if r: cx.execute('UPDATE users SET permissions = ? WHERE id = ?', ('pdc,settings', r[0])); cx.commit()"`);
   const c = await login('chiefacc', 'chief12345');
   ck('chief accountant: Expiry Reminder is in his menu', await c.locator('.pg-side .pg-item[data-page="expiry"]').isVisible());
   ck('he lands on PDCs, and sees no People / Company tabs', (await c.locator('#screen-pdc').isVisible()) && !(await subs(c)).some(x => /People|Company/.test(x)), await subs(c));
@@ -117,7 +135,8 @@ const plus = n => iso(new Date(today.getTime() + n * 864e5));
   ck('no PDC line in his bell', !(await api(d, '/notifications')).d.notifications.some(x => x.kind === 'pdc'));
   const dn = (await api(d, '/notifications')).d.notifications.find(x => x.kind === 'expiry');
   await d.evaluate(() => loadNotifications()); await d.waitForTimeout(600);
-  ck('his badge counts documents only, no cheques', (await badge(d)) === (dn ? dn.count : 0), [await badge(d), dn && dn.count]);
+  const docBadges = await d.evaluate(() => ['people', 'company'].reduce((a, k) => { const b = document.querySelector(`#pg-sub .pg-subtab[data-sub="${k}"] .pg-subbadge`); return a + (b ? +b.textContent : 0); }, 0));
+  ck('his badges count documents only, no cheques', (await badge(d)) === 0 && docBadges === (dn ? dn.count : 0), [await badge(d), docBadges, dn && dn.count]);
   await d.goto(B + '/?p=expiry#expiry:pdc'); await d.waitForTimeout(3000);
   ck('typing #expiry:pdc does not show the PDC screen', !(await d.locator('#screen-pdc').isVisible()));
 
@@ -130,7 +149,7 @@ const plus = n => iso(new Date(today.getTime() + n * 864e5));
   ck('no PDC line in his bell', !(await api(k, '/notifications')).d.notifications.some(x => x.kind === 'pdc'));
 
   const roles = (await api(a, '/permissions/roles')).d;
-  ck('Access page: "PDC tracker" sits under Expiry Reminder', JSON.stringify(roles.pages.find(x => x[0] === 'Expiry Reminder')[1]) === '["expiry","pdc"]' && /PDC/.test(roles.labels.pdc));
+  ck('Access page: "PDC tracker" sits under Expiry Reminder', JSON.stringify(roles.pages.find(x => x[0] === 'Expiry Reminder')[1]) === '["expiry","pdc","security_cheques"]' && /PDC/.test(roles.labels.pdc));
   for (const p of [a, c, d, k]) ck('no script errors', p.errs.length === 0, p.errs);
   console.log(bad ? `${bad} FAILED` : 'PDCS ARE TRACKED AND KEPT PRIVATE');
   await b.close(); process.exit(bad ? 1 : 0);

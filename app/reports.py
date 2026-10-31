@@ -976,11 +976,11 @@ def build_custom_report(data_source, dimensions, measures, filters, daily_rows, 
                 return s.adjusted_final_salary()
             # Every adjustment in one column, signed so the direction is
             # read at a glance and carrying the reason whoever entered it
-            # typed: "+300 Site bonus", "-170 Parking fine for D38023".
+            # typed: "+300.00 Site bonus", "-170.35 Parking fine for D38023".
             # Text rather than a number, because a bare 130 tells nobody
             # what happened.
             if measure_key == "adjustments":
-                return [f"{'-' if a.is_deduction else '+'}{a.amount:,.0f} {a.description}".strip()
+                return [f"{'-' if a.is_deduction else '+'}{a.amount:,.2f} {a.description}".strip()
                         for a in s.adjustments]
             return getattr(s, measure_key, 0) or 0
 

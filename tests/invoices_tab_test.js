@@ -13,7 +13,8 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   ck('one Invoices tab, no separate Tax / Proforma tabs', tabs[0] === 'Invoices' && !tabs.includes('Tax Invoice') && !tabs.includes('Proforma Invoice'), tabs);
   await p.click('.pg-tab[data-tab="invoices"]'); await p.waitForTimeout(1200);
   const subs = await p.evaluate(() => [...document.querySelectorAll('#pg-sub .pg-subtab')].filter(x => x.offsetParent).map(x => x.textContent.trim()));
-  ck('under it: Tax Invoice, Proforma Invoice', JSON.stringify(subs) === JSON.stringify(['Tax Invoice', 'Proforma Invoice']), subs);
+  // (Receipts joined them on 24 Oct 2026)
+  ck('under it: Tax Invoice, Proforma Invoice, Receipts', JSON.stringify(subs) === JSON.stringify(['Tax Invoice', 'Proforma Invoice', 'Receipts']), subs);
   ck('opens on Tax invoices', /Tax/.test(await p.textContent('#inv-list-title')), await p.textContent('#inv-list-title'));
   await p.screenshot({ path: SH + 'invoices_tab.png' });
   await p.click('#pg-sub .pg-subtab[data-sub="proforma"]'); await p.waitForTimeout(1200);
@@ -24,7 +25,8 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   ck('a link straight to proforma works', /Proforma/.test(await p.textContent('#inv-list-title')), await p.textContent('#inv-list-title'));
   ck('no page errors', errs.length === 0, errs);
   const q = await (await b.newContext({ viewport: { width: 1440, height: 950 } })).newPage();
-  await q.goto(B + '/?p=accounts'); await q.fill('#login-username', 'shafiq'); await q.fill('#login-password', 'pass12345'); await q.evaluate('doLogin()');
+  // the chief accountant's login (on the full test database: chiefacc; 'shafiq' there is the bank / Zoho login only)
+  await q.goto(B + '/?p=accounts'); await q.fill('#login-username', 'chiefacc'); await q.fill('#login-password', 'chief12345'); await q.evaluate('doLogin()').catch(() => {});
   await q.waitForSelector('#app-screen', { state: 'visible' }); await q.waitForTimeout(3000);
   const t2 = await q.evaluate(() => [...document.querySelectorAll('#pg-tabs .pg-tab')].filter(x => x.offsetParent).map(x => x.textContent.trim()));
   ck('chief accountant keeps invoices (moved under Invoices)', t2.includes('Invoices') && !t2.includes('Tax Invoice'), t2);

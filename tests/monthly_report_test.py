@@ -86,7 +86,7 @@ ck('report headers are the monthly set',
                                                'BH Hours', 'Adjustments', 'Adjusted Final Salary (AED)'],
    [x['label'] for x in sep_r['columns']])
 d03 = next(r for r in sep_r['rows'] if r['dim_0'] == 'D-03')
-ck('September row carries its adjustments', d03['adjustments'] == '-170 Parking fine for D38023, +50 Extra Allowance', d03)
+ck('September row carries its adjustments', d03['adjustments'] == '-170.00 Parking fine for D38023, +50.00 Extra Allowance', d03)
 ck('the two cycles give different figures',
    d03['adjusted_final_salary'] != next(r for r in aug_r['rows'] if r['dim_0'] == 'D-03')['adjusted_final_salary'])
 

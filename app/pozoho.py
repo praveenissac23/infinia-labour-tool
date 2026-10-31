@@ -130,7 +130,15 @@ def _body(db, o):
         dacc = Z.account_id(db, dname)
         if not dacc:
             raise Z.ZohoError(400, f"Zoho has no account named {dname} for the LPO discount - nothing sent")
-        body["discount"] = f"{round(o.discount_pct, 2)}%"
+        pct = float(o.discount_pct)
+        if abs(pct - round(pct, 2)) > 1e-9:
+            # A discount worked back from a round total (7.5811% so the LPO comes to 66,700.34): Zoho keeps a
+            # percentage to 2 places only - "7.58%" made its PO 66,701.12. The discount goes as the amount the
+            # portal takes off instead, so Zoho's PO totals the same as the LPO.
+            gross = sum(float(l.qty or 0) * float(l.rate or 0) for l in o.lines)
+            body["discount"] = f"{round(gross * pct / 100 + 1e-9, 2):.2f}"
+        else:
+            body["discount"] = f"{round(o.discount_pct, 2)}%"
         body["is_discount_before_tax"] = True
         body["discount_account_id"] = dacc
     return body

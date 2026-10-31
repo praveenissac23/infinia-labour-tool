@@ -20,6 +20,16 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   const today = new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10);
 
   const c = await login('chiefacc', 'chief12345');
+  // Every figure below is the 02-Oct-2026 sheet's: this copy of the database is put back to exactly that sheet
+  // first (scopes added since are taken off, the sheet's scopes and payments entered again from
+  // deploy/project_payments.json, in its order). Never run against the live server.
+  const sheet = JSON.parse(require('fs').readFileSync((() => { const r = require('path').resolve(__dirname, '..'); return require('fs').existsSync(r + '/deploy') ? r : process.cwd(); })() + '/deploy/project_payments.json', 'utf8'));
+  await c.evaluate(async sheet => {
+    for (const r of (await apiCall('/employees/accounts/projects')).rows) await apiCall(`/employees/accounts/projects/${r.id}`, { method: 'DELETE' });
+    for (const x of sheet) await apiCall('/employees/accounts/projects', { method: 'POST', body: JSON.stringify({ project: x.project, scope: x.scope,
+      contract: x.contract, remarks: x.remarks, payments: x.payments.map(q => ({ date: q.date, amount: q.amount })) }) });
+    await ppLoad();
+  }, sheet);
   ck('chief accountant: Accounts has a Project payments tab', (await tabs(c)).includes('Project payments'), await tabs(c));
   ck('it opens on the tracker', await c.locator('#screen-projpay.active').count() === 1);
   const d = await c.evaluate(() => PP);
@@ -62,7 +72,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await c.selectOption('#pp-period', 'year'); await c.waitForTimeout(1200);
   ck('Year 2026: 28 scopes, AED 11,978,375.70', await c.locator('#pp-body tr.row').count() === 28 && /AED 11,978,375.70/.test(await c.locator('#pp-stats').innerText()), await c.locator('#pp-stats').innerText());
   await c.selectOption('#pp-period', 'range'); await c.fill('#pp-from', '2026-08-15'); await c.dispatchEvent('#pp-from', 'change'); await c.fill('#pp-to', '2026-09-10'); await c.dispatchEvent('#pp-to', 'change'); await c.waitForTimeout(1200);
-  ck('Date range 15-Aug to 10-Sep: AED 2,835,175.24', /15-Aug-26 to 10-Sep-26\s*AED 2,835,175.24/i.test(await c.locator('#pp-stats').innerText()), await c.locator('#pp-stats').innerText());
+  ck('Date range 15-Aug to 10-Sep: AED 2,835,175.24', /15\/08\/2026 to 10\/09\/2026\s*AED 2,835,175.24/i.test(await c.locator('#pp-stats').innerText()), await c.locator('#pp-stats').innerText());
   await c.fill('#pp-from', '2027-01-01'); await c.dispatchEvent('#pp-from', 'change'); await c.fill('#pp-to', '2027-01-31'); await c.dispatchEvent('#pp-to', 'change'); await c.waitForTimeout(1200);
   ck('a period with nothing in it says so', /No payments in/.test(await c.locator('#pp-body').innerText()));
   await c.selectOption('#pp-period', 'full'); await c.waitForTimeout(1200);
@@ -109,7 +119,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
     return out;
   });
   ck('Summary preview: title, the four figures, Last payment column', /PROJECT PAYMENT TRACKER/.test(papers.summary.v) && /AED 39,553,906.82/.test(papers.summary.v) && /Last payment/.test(papers.summary.v) && !/Payments received/.test(papers.summary.v));
-  ck('With dates preview: every payment with its date', /Payments received/.test(papers.detail.v) && /<em>31-Dec-25<\/em>1,730,952.38/.test(papers.detail.v));
+  ck('With dates preview: every payment with its date', /Payments received/.test(papers.detail.v) && /<em>31\/12\/2025<\/em>1,730,952.38/.test(papers.detail.v));
   ck('both PDFs download', /^200 application\/pdf \d{4,}/.test(papers.summary.pdf) && /^200 application\/pdf \d{4,}/.test(papers.detail.pdf), [papers.summary.pdf, papers.detail.pdf]);
   ck('both Excels download with their names', /Project_Payment_Tracker_Summary_/.test(papers.summary.xl) && /Project_Payment_Tracker_With_Dates_/.test(papers.detail.xl), [papers.summary.xl, papers.detail.xl]);
   ck('no script errors (chief accountant)', !c.errs.length, c.errs);

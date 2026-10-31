@@ -2,6 +2,10 @@
 // labour Salary cards and the Staff profile Payslips tab. Saves screenshots
 // to $SHOTS (default /tmp/claude-0/payshots/).
 // Run: /tmp/claude-0/run_on.sh /tmp/claude-0/full.db 8082 tests/pay_status_ui_test.js
+// The sheet must still be running (salary to date short of the month) for a Regular payment to leave a
+// balance, so the server is started believing it is mid-October 2026:
+//   SRV_TODAY=2026-10-20 python3 tests/serve_like_nginx.py   (from 31 October 2026 the month is over and
+//   salary to date = the month's net pay, which is why this failed without it)
 const { chromium } = require('playwright');
 const fs = require('fs');
 const B = process.env.BASE || 'http://127.0.0.1:8082';
@@ -31,6 +35,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.evaluate(async () => { try { await apiCall('/employees/payroll/full-month', { method: 'POST', body: JSON.stringify({ month_year: 'October 2026', group: 'staff', on: false }) }); } catch (e) {} });
   await p.evaluate('openPayrollCycle()'); await sleep(2500);
 
+  ck('October 2026 is still running on the server (start it with SRV_TODAY=2026-10-20)',
+     await p.evaluate(() => !!(HR_RUN && HR_RUN.progress && HR_RUN.progress.running)));
   const heads = await p.$$eval('#hr-run-head th', x => x.map(t => t.textContent.trim()));
   ck('office sheet: Paid after the salary column, Payslip last', heads.indexOf('Paid') === heads.findIndex(h => /Salary To Date|Net Pay/.test(h)) + 1 && heads[heads.length - 1] === 'Payslip', heads);
   const n = await p.locator('#hr-run-body button.pay-btn').count();
