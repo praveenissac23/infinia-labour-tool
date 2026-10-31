@@ -23,6 +23,9 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   const api = (p, u) => p.evaluate(async u => { try { return { ok: 1, d: await apiCall(u) }; } catch (e) { return { ok: 0, status: e.status }; } }, u);
 
   // Chief accountant: Office, Naveen, Praveen - not the site's or PRO's box.
+  // The test's copy of the database holds exactly the two directors' sheets, and the chief accountant has the
+  // Office / Naveen / Praveen boxes (tests/fixtures_directors_petty.py - test databases under /tmp only).
+  require('child_process').execSync(`python3 ${(() => { const r = require('path').resolve(__dirname, '..'); return require('fs').existsSync(r + '/deploy') ? r : process.cwd(); })()}/tests/fixtures_directors_petty.py /tmp/run_js.db`);
   const c = await login('chiefacc', 'chief12345');
   const cs = await subs(c);
   ck('chief accountant: Petty cash shows Office, Naveen, Praveen', ['Office', 'Naveen', 'Praveen'].every(x => cs.includes(x)) && !cs.includes('Site') && !cs.includes('PRO'), cs);
@@ -39,7 +42,7 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   let st = await stats(c);
   ck('Sep 2026: due to Naveen 20,253.65 (the sheet)', st[3] === 'Due to Naveen: 20,253.65', st);
   ck('stats order: brought forward, paid by, repaid, due', /^Brought forward: 21,753.65/.test(st[0]) && /^Paid by Naveen this month/.test(st[1]) && /^Repaid to Naveen this month: 1,500.00/.test(st[2]), st);
-  const row = await c.evaluate(() => [...document.querySelectorAll('#pc-body tr')][1].innerText);
+  const row = await c.evaluate(() => ([...document.querySelectorAll('#pc-body tr')].find(r => /Paid to Naveen Sir/.test(r.innerText)) || {}).innerText || '');
   ck('a repayment sits in the CR column', /Paid to Naveen Sir/.test(row) && /\t1,500.00\t20,253.65/.test(row), row);
   await month(c, '2023-09');
   ck('Sep 2023 closes at 233,320.71 as on his sheet', (await c.evaluate(() => PC.closing)) === 233320.71, await c.evaluate(() => PC.closing));

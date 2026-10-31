@@ -23,14 +23,21 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
     await p.click('#pc-save'); await p.waitForTimeout(1000);
   };
   const today = new Date(Date.now() + 4 * 3600e3).toISOString().slice(0, 10);
+  // On a copy of the full database the boxes already hold this month's lines: balances are checked as what the
+  // test's own lines move them by. The accountant's login as the test is written for: the Office box only.
+  require('child_process').execSync(`python3 -c "
+import sqlite3; cx = sqlite3.connect('/tmp/run_js.db')
+cx.execute('UPDATE users SET permissions = ? WHERE username = ?', ('petty_office', 'acctest')); cx.commit()"`);
+  const closing = p => p.evaluate(() => PC.closing);
 
   // Store keeper: Site only, and the old register lines are in it.
   const s = await login('amaltest', 'amal12345');
   const sSubs = await subs(s);
   ck('store keeper: Petty cash shows only the Site box', !sSubs.some(x => /PRO|Office/.test(x)), sSubs);
   ck('the heading says Site petty cash', (await s.locator('#pc-heading').textContent()) === 'Site petty cash');
+  const s0 = await closing(s);
   await add(s, 'received', 'Cash for site', 1000); await add(s, 'paid', 'Nails', 100);
-  ck('site balance 900 after his two lines', (await s.evaluate(() => PC.closing)) - (await s.evaluate(() => PC.opening)) === 900, await s.evaluate(() => PC.closing));
+  ck('site balance up 900 after his two lines (+1,000 - 100)', Math.abs((await closing(s)) - s0 - 900) < 0.005, [s0, await closing(s)]);
   const sp = await api(s, '/store/petty-cash?book=pro');
   ck('asking for the PRO box by address is refused', !sp.ok && sp.status === 403, sp);
   const so = await api(s, '/store/petty-cash?book=office');
@@ -46,10 +53,11 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('PRO: Petty cash opens on the PRO box', (await r.locator('#pc-heading').textContent()) === 'PRO petty cash', await r.locator('#pc-heading').textContent());
   ck('PRO: no Site or Office tab', !(await subs(r)).some(x => /Site|Office/.test(x)), await subs(r));
   ck('PRO: no Stock or Purchasing tabs either', !(await r.evaluate(() => [...document.querySelectorAll('#pg-tabs .pg-tab')].filter(x => x.offsetParent).map(x => x.textContent))).some(x => /Stock|Purchasing/.test(x)));
-  ck('PRO box starts empty - none of the site lines', (await r.evaluate(() => PC.rows.length)) === 0 && (await r.evaluate(() => PC.opening)) === 0);
+  ck('PRO box has none of the site lines', !(await r.evaluate(() => PC.rows.some(x => /Cash for site|^Nails$/.test(x.description)))));
+  const r0 = await closing(r);
   await add(r, 'received', 'Cash from office for visas', 5000); await add(r, 'paid', 'Visa renewal fee', 1250);
-  ck('PRO balance 3,750', (await r.evaluate(() => PC.closing)) === 3750, await r.evaluate(() => PC.closing));
-  const proId = await r.evaluate(() => PC.rows[0].id);
+  ck('PRO balance up 3,750 (+5,000 - 1,250)', Math.abs((await closing(r)) - r0 - 3750) < 0.005, [r0, await closing(r)]);
+  const proId = await r.evaluate(() => PC.rows.find(x => x.description === 'Cash from office for visas').id);
   const siteRead = await api(r, '/store/petty-cash?book=site');
   ck('PRO cannot read the Site box', !siteRead.ok && siteRead.status === 403);
   await r.screenshot({ path: SH + 'petty-books-pro.png' });
@@ -62,8 +70,9 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   // Chief accountant: Office only.
   const a = await login('acctest', 'acc12345');
   ck('accountant: opens on Office petty cash', (await a.locator('#pc-heading').textContent()) === 'Office petty cash');
+  const a0 = await closing(a);
   await add(a, 'received', 'Opening float', 3000); await add(a, 'paid', 'Courier', 80);
-  ck('Office balance 2,920', (await a.evaluate(() => PC.closing)) === 2920);
+  ck('Office balance up 2,920 (+3,000 - 80)', Math.abs((await closing(a)) - a0 - 2920) < 0.005, [a0, await closing(a)]);
   ck('accountant cannot read PRO', (await api(a, '/store/petty-cash?book=pro')).status === 403);
 
   // Admin: all three, separate balances, papers titled per box.
@@ -72,13 +81,15 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('admin sees Site, PRO and Office', ['Site', 'PRO', 'Office'].every(x => aSubs.includes(x)), aSubs);
   const bal = {};
   for (const bk of ['site', 'pro', 'office']) bal[bk] = (await api(ad, `/store/petty-cash?book=${bk}`)).d.closing;
-  ck('each box keeps its own balance (PRO 3,750, Office 2,920)', bal.pro === 3750 && bal.office === 2920 && bal.site !== bal.pro, bal);
+  const proWant = Math.round((r0 + 3750) * 100) / 100, offWant = Math.round((a0 + 2920) * 100) / 100;
+  ck(`each box keeps its own balance (PRO ${proWant}, Office ${offWant})`, Math.abs(bal.pro - proWant) < 0.005 && Math.abs(bal.office - offWant) < 0.005 && bal.site !== bal.pro, bal);
   await ad.evaluate(() => pgSub('pro')); await ad.waitForTimeout(1500);
   ck('admin clicking PRO shows the PRO lines', (await ad.locator('#pc-heading').textContent()) === 'PRO petty cash' && await ad.evaluate(() => PC.rows.some(x => /Visa/.test(x.description))));
   await ad.screenshot({ path: SH + 'petty-books-admin.png' });
   const [pop] = await Promise.all([ad.waitForEvent('popup'), ad.evaluate(() => pcExport('view'))]);
   await pop.waitForLoadState(); await pop.waitForTimeout(700);
-  ck('the PRO paper is titled PRO PETTY CASH REGISTER and shows 3,750', /PRO PETTY CASH REGISTER/.test(await pop.locator('.page').textContent()) && /3,750\.00/.test(await pop.locator('.page').textContent()));
+  const proTxt = proWant.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  ck(`the PRO paper is titled PRO PETTY CASH REGISTER and shows ${proTxt}`, /PRO PETTY CASH REGISTER/.test(await pop.locator('.page').textContent()) && (await pop.locator('.page').textContent()).includes(proTxt));
   const pdfHref = await pop.locator('a:has-text("Download PDF")').getAttribute('href');
   ck('its PDF link is for the PRO box', /book=pro/.test(pdfHref), pdfHref);
   await pop.close();

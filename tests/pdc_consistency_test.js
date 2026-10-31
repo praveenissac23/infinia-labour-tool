@@ -54,8 +54,19 @@ const { chromium } = require('playwright');
   await p.evaluate(() => pdcCard('nodate')); await p.waitForTimeout(200);
   f = await form(); ck('a counter card closes the edit too', f.edit === null, f);
   // ---- grid totals = list totals ----------------------------------------------
-  const tot = await p.evaluate(() => ({ grid: PDC_GRID.grand, pending: PDC.summary.pending_amount }));
-  ck('grid total equals the cheques to be paid', Math.abs(tot.grid - tot.pending) < 0.01, tot);
+  // The grid covers its months (from the first month shown) plus everything still unpaid from before it: its grand
+  // total is the cheques to be paid dated before the end of its last month - worked out here from the cheque list.
+  // (Cheques dated after the last month shown are not on it: "to be paid" in all is more when there are any.)
+  const tot = await p.evaluate(() => {
+    const [y, m] = PDC_GRID.from.split('-').map(Number), n = PDC_GRID.months;
+    const end = new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 10);
+    const due = PDC.rows.filter(r => r.status === 'pending' && r.date < end);
+    const later = PDC.rows.filter(r => r.status === 'pending' && r.date >= end);
+    return { grid: PDC_GRID.grand, due: Math.round(due.reduce((a, r) => a + r.amount, 0) * 100) / 100,
+             later: Math.round(later.reduce((a, r) => a + r.amount, 0) * 100) / 100, pending: PDC.summary.pending_amount };
+  });
+  ck(`grid total equals the cheques to be paid up to its last month (${tot.due})`, Math.abs(tot.grid - tot.due) < 0.01, tot);
+  ck('and with the cheques after it, the "All to be paid" card', Math.abs(tot.due + tot.later - tot.pending) < 0.01, tot);
   ck('no script errors', !errs.length, errs);
   await b.close();
   console.log(bad ? `${bad} FAILED` : 'PDC FORM, LIST AND GRID AGREE');

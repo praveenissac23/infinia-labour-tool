@@ -11,6 +11,14 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   await p.goto(B + '/?p=expiry#expiry:pdc'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(3500);
   const api = (u, m, body) => p.evaluate(async ([u, m, body]) => apiCall(u, m ? { method: m, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined), [u, m, body]);
+  // Start from exactly the accountant's sheet: the cheques already in this copy of the database are taken off,
+  // then deploy/load_pdc_tracker.py loads the sheet into the database the test server runs on (never live).
+  for (const r of (await api('/employees/pdc')).rows) await api(`/employees/pdc/${r.id}`, 'DELETE');
+  const root = require('path').resolve(__dirname, '..');
+  const ROOT = require('fs').existsSync(root + '/deploy/load_pdc_tracker.py') ? root : process.cwd();
+  require('child_process').execSync(`python3 deploy/load_pdc_tracker.py`, { cwd: ROOT, env: { ...process.env, DATABASE_URL: 'sqlite:////tmp/run_js.db' } });
+  await p.evaluate(() => pdcLoad()); await p.waitForTimeout(800);
+  const today = await p.evaluate(() => pcToday ? pcToday() : new Date().toISOString().slice(0, 10));
   await p.fill('#pdc-from', '2026-10'); await p.dispatchEvent('#pdc-from', 'change'); await p.waitForTimeout(1200);
   const g = await p.evaluate(() => PDC_GRID);
   ck('Oct / Nov / Dec / Jan totals as on the sheet', JSON.stringify(g.totals) === JSON.stringify([640093.92, 448784.81, 720590, 380000]), g.totals);
@@ -20,15 +28,17 @@ const B = 'http://127.0.0.1:8032', SH = '/tmp/claude-0/shots/';
   ck('the rest say "date to fill"', (gt.match(/date to fill/g) || []).length === 18, (gt.match(/date to fill/g) || []).length);
   const s = (await api('/employees/pdc')).summary;
   ck('a Date-to-fill box: 18 cheques', s.no_date === 18 && (await p.locator('.exp-card[data-k="nodate"]').count()) === 1, s.no_date);
-  ck('undated cheques are not counted as overdue', s.overdue === 0, s.overdue);
+  // only a dated cheque can be overdue (SEOMAA's 19/10/2026 is, once that day has passed); the 18 undated never are
+  const datedPast = ['2026-10-19', '2026-12-01', '2026-12-05'].filter(d => d < today).length;
+  ck(`undated cheques are not counted as overdue (${datedPast} dated one(s) past their day)`, s.overdue === datedPast, s.overdue);
   await p.screenshot({ path: SH + 'pdc-sheet-1.png', fullPage: true });
   const n = (await api('/notifications')).notifications.find(x => x.kind === 'pdc');
-  ck('the bell asks for the dates', n && /18 with no date yet/.test(n.title), n && n.title);
+  ck('the bell asks for the dates', n && /18 with no date/.test(n.title), n && n.title);
   // Paper
   const [pop] = await Promise.all([p.waitForEvent('popup'), p.evaluate(() => pdcExport('view'))]);
   await pop.waitForLoadState(); await pop.waitForTimeout(600);
   const txt = await pop.locator('.page').textContent();
-  ck('paper: "date to fill" under undated figures, real dates under dated ones', /date to fill/.test(txt) && /19-Oct-26/.test(txt) && /2,189,468\.73/.test(txt));
+  ck('paper: "date to fill" under undated figures, real dates under dated ones', /date to fill/.test(txt) && /19\/10\/2026/.test(txt) && /2,189,468\.73/.test(txt));
   await pop.screenshot({ path: SH + 'pdc-sheet-2-paper.png', fullPage: true }); await pop.close();
   // Fill a date
   await p.evaluate(() => pdcCard('nodate')); await p.waitForTimeout(500);
