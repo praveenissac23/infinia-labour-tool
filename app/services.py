@@ -216,6 +216,7 @@ def recalculate_summary(db: Session, employee: models.Employee, month_year: str)
         rows, total_rate, basic_rate,
         summary.allowances or 0.0, summary.other_deduction or 0.0,
         pay_type=(employee.pay_type or "daily"), cycle_days=cycle_days,
+        exact_fils=pcyc.exact_fils(month_year),     # November 2026 on: to the fils, cut down (payroll_cycle)
     )
 
     # The worker's name and trade were written once, when the summary

@@ -126,7 +126,7 @@ button{{font:600 14px Arial;padding:9px 18px;border-radius:7px;border:1px solid 
     return await _default_http_handler(request, exc)
 
 
-def drop_leaver_cards(db, month_year=None):
+def drop_leaver_cards(db, month_year=None, closed_too=True):
     """A labourer who has left has no card in the cycles after he left.
 
     A card is taken away only when it pays nothing - no working, rest,
@@ -144,6 +144,8 @@ def drop_leaver_cards(db, month_year=None):
         e = emps.get(sm.emp_no)
         if e is not None and e.staff:
             continue
+        if not closed_too and not pcyc.exact_fils(sm.month_year):
+            continue                     # the start-up sweep leaves October 2026 and earlier exactly as they are
         try:
             cs, ce, _ = pcyc.cycle_bounds_for(datetime.strptime(f"25 {sm.month_year}", "%d %B %Y").date())
         except ValueError:
@@ -288,7 +290,7 @@ def seed_on_startup():
         _recalculate_all_summaries(db)
         _store_is_not_a_site(db)
         _household_into_office(db)
-        drop_leaver_cards(db)
+        drop_leaver_cards(db, closed_too=False)
         try:
             _suppliers_from_old_lpos(db)
         except Exception as e:  # never keep the app from starting over this
@@ -630,6 +632,11 @@ def _recalculate_all_summaries(db):
     for emp_no, month_year in pairs:
         emp = by_no.get(emp_no)
         if emp is None:
+            continue
+        # A cycle before the exact-fils rule (October 2026 and earlier) is closed and paid at the whole dirham:
+        # a restart never rewrites it (owner, 31 Oct 2026). Editing its attendance still works it out again, by
+        # the rule it was paid under.
+        if not pcyc.exact_fils(month_year):
             continue
         try:
             services.recalculate_summary(db, emp, month_year)

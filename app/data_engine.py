@@ -313,7 +313,7 @@ def _days_in_month(year, month):
 
 def recalculate_from_daily_rows(daily_rows, total_salary, basic_pay_input=0.0,
                                  allowances=0.0, other_deduction=0.0, pay_type="daily",
-                                 cycle_days=30):
+                                 cycle_days=30, exact_fils=False):
     """
     THE single source of truth for turning a set of daily attendance rows
     into payroll figures - present/absent/etc day-counts, OT/BH hours and
@@ -398,10 +398,32 @@ def recalculate_from_daily_rows(daily_rows, total_salary, basic_pay_input=0.0,
     # slightly corrupted by floating-point representation error.
     raw_total = (total_salary_component + ot_amount + bh_amount + allowances
                  - deduction - other_deduction)
+    if exact_fils:
+        # From the November 2026 cycle (payroll_cycle.exact_fils): the salary to the exact fils, never a fraction
+        # extra. The same sum again in exact fractions (no floating-point noise, no rounding on the way), cut DOWN
+        # to the fils once, at the end - 1,472.50 stays 1,472.50; 1,472.508 is 1,472.50; -175.501 is -175.51.
+        from fractions import Fraction as _F
+        import payroll_cycle as _pc
+        fx = lambda v: _F(str(float(v or 0)))
+        rate = fx(total_salary)
+        day = rate / 30
+        cnt = {k: fx(v) for k, v in status_counts.items()}
+        paid = cnt["Present"] + cnt["Sick"] + cnt["Medical"] + cnt["Friday"] + cnt["Sunday"] + cnt["Holiday"]
+        if pay_type == "fixed":
+            off = cnt["Absent"] + cnt["Leave"]
+            comp = min((paid + off) * day, rate)
+            ded = min(off * day, comp)
+        else:
+            comp = paid * day
+            ded = day * cnt["Absent"]
+        hours = fx(ot_total) + fx(bh_total)
+        exact = comp + day / 8 * hours + fx(allowances) - ded - fx(other_deduction)
+        final_salary = _pc.fils_down(exact)
     # Sign-aware: Excel's ROUND() rounds half AWAY FROM ZERO, not
     # toward +infinity - a naive floor(x+0.5) would round a negative
     # half-value (e.g. -175.5) up to -175 instead of the correct -176.
-    if raw_total >= 0:
+    # (October 2026 and earlier cycles: the whole dirham, as they were paid.)
+    elif raw_total >= 0:
         final_salary = math.floor(raw_total + 0.5 + 1e-9)
     else:
         final_salary = math.ceil(raw_total - 0.5 - 1e-9)

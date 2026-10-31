@@ -472,7 +472,8 @@ def _full_cycle_preview(db, e, month, card):
         d += timedelta(days=1)
     comp = de.recalculate_from_daily_rows(rows, card.total_salary or e.total_salary, e.basic_salary,
                                           card.allowances or 0.0, card.other_deduction or 0.0,
-                                          pay_type=(e.pay_type or "daily"), cycle_days=(ce - cs).days + 1)
+                                          pay_type=(e.pay_type or "daily"), cycle_days=(ce - cs).days + 1,
+                                          exact_fils=M.pcyc.exact_fils(month))
     return _r2(comp["final_salary"] + sum((-a.amount if a.is_deduction else a.amount) for a in card.adjustments))
 
 
