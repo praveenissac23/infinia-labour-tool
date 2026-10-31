@@ -308,11 +308,11 @@ def office_figures(db, r, l, e):
         earn.append(("Leave Salary", l.leave_salary))
     if l.air_ticket:
         earn.append(("Air Ticket", l.air_ticket))
-    ded = [("Loss of Pay" + (f" ({l.deduction_note})" if l.deduction_note else ""), l.deduction),
+    ded = [("Loss of Pay" + (f" ({M.dmy_text(l.deduction_note, r.month_year)})" if l.deduction_note else ""), l.deduction),
            ("Salary Advance / Loan", l.loan_deduction), ("Other Deductions", l.statutory)]
     return {"period": r.month_year, "earnings": [(k, _r2(v)) for k, v in earn if v or k in ("Basic Salary", "Allowance")],
             "deductions": [(k, _r2(v)) for k, v in ded], "net": _r2(l.net_pay), "attendance": [],
-            "remarks": l.remarks or ""}
+            "remarks": M.dmy_text(l.remarks or "", r.month_year)}
 
 
 def labour_figures(db, card):
@@ -614,7 +614,7 @@ def _payslip_pdf(d, slip_no):
     section("EMPLOYEE INFORMATION")
     kv([("Employee Name", emp.get("name", "").upper(), "Employee Code", emp.get("emp_no", "")),
         ("Designation", emp.get("designation", ""), "Date of Joining", emp.get("joined_on", "")),
-        ("Salary Month", d.get("period") or d.get("month_year", ""), "Issue Date", d.get("issued", "")),
+        ("Salary Month", d.get("period") or d.get("month_year", ""), "Issue Date", M.dmy_text(d.get("issued", ""))),
         ("Currency", "AED", "Payment Mode", pay.get("mode_label", ""))])
     section("BANK DETAILS")
     kv([("Bank Name", emp.get("bank") or "-", "Payment Mode", pay.get("mode_label", "")),
@@ -632,7 +632,8 @@ def _payslip_pdf(d, slip_no):
     for i in range(n):
         a = E[i] if i < len(E) else ("", None)
         b = D[i] if i < len(D) else ("", None)
-        rows.append([P(a[0]), P(m(a[1]) if a[1] is not None else "", align=TA_RIGHT), P(b[0]), P(m(b[1]) if b[1] is not None else "", align=TA_RIGHT)])
+        rows.append([P(M.dmy_text(a[0], d.get("month_year"))), P(m(a[1]) if a[1] is not None else "", align=TA_RIGHT),   # a slip saved before dd/mm/yyyy reads it too
+                     P(M.dmy_text(b[0], d.get("month_year"))), P(m(b[1]) if b[1] is not None else "", align=TA_RIGHT)])
     ge, td = sum(v for _, v in E), sum(v for _, v in D)
     rows.append([P("GROSS EARNINGS", 8.4, True), P(m(ge), 8.4, True, align=TA_RIGHT), P("TOTAL DEDUCTIONS", 8.4, True), P(m(td), 8.4, True, align=TA_RIGHT)])
     t = Table(rows, colWidths=[W * 0.32, W * 0.18, W * 0.32, W * 0.18])
@@ -646,7 +647,7 @@ def _payslip_pdf(d, slip_no):
                             ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
     el += [nt, Spacer(1, 3), P(amount_in_words(net), 8, color=GREY, align=TA_RIGHT, italic=True), Spacer(1, 9)]
     section("PAYMENT DETAILS")
-    prow = [("Payment Type", pay.get("type_label", ""), "Paid On", pay.get("paid_on_text", "")),
+    prow = [("Payment Type", pay.get("type_label", ""), "Paid On", M.dmy_text(pay.get("paid_on_text", ""))),
             ("Amount Paid", f"AED {m(pay.get('amount'))}", "Mode", pay.get("mode_label", "")),
             ("Reference No.", pay.get("reference") or "-", "Total Paid for the Month", f"AED {m(d.get('paid_total'))}")]
     if d.get("balance"):

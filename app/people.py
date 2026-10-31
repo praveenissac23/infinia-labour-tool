@@ -806,7 +806,7 @@ def person_file(emp_no: str, db: Session = Depends(get_db), user: models.User = 
                 "gross": round(l.fixed_salary or 0, 2),
                 "adjust": round((l.other_allowance or 0) + (l.leave_salary or 0) + (l.air_ticket or 0) - (l.statutory or 0), 2),
                 "absent": round(l.deduction or 0, 2), "loan": round(l.loan_deduction or 0, 2),
-                "net": round(l.net_pay or 0, 2), "held": bool(l.held), "remarks": l.remarks or ""})
+                "net": round(l.net_pay or 0, 2), "held": bool(l.held), "remarks": M.dmy_text(l.remarks or "", l.run.month_year)})
     else:
         out["salary_history"] = [
             {"effective_on": _d(h.effective_on), "kind": "rate" if h.kind == "rate" else "opening",
@@ -828,7 +828,7 @@ def person_file(emp_no: str, db: Session = Depends(get_db), user: models.User = 
               .order_by(models.AuditLog.id.desc()).limit(60).all())
     users = {u.id: u.full_name or u.username for u in db.query(models.User).all()}
     out["history"] = [{"when": l.created_at.isoformat() if getattr(l, "created_at", None) else "",
-                       "who": users.get(l.user_id, "system"), "action": l.action, "what": l.details}
+                       "who": users.get(l.user_id, "system"), "action": l.action, "what": M.dmy_text(l.details, l.created_at)}
                       for l in logs]
     return out
 

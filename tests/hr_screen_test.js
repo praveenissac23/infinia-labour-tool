@@ -138,7 +138,7 @@ const CYCLE_MONTH = '2026-08';
   ck('the unpaid day is already deducted at the daily rate',
      await line('BT002', 'deduction') === 333, await line('BT002', 'deduction'));
   ck('the note says which day',
-     (await line('BT002', 'deduction_note')).includes('11 Aug'),
+     (await line('BT002', 'deduction_note')).includes('11/08/2026'),
      await line('BT002', 'deduction_note'));
   ck("the loan instalment is on the other man's row",
      await line('BT001', 'loan_deduction') === 200, await line('BT001', 'loan_deduction'));

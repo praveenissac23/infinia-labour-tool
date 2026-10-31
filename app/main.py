@@ -42,6 +42,7 @@ import inksave  # noqa: F401  - every PDF black on white (light heading rows, no
 import push  # noqa: E402  (its tables are made with the rest)
 import watch  # noqa: E402  (its table too)
 import offline_once  # noqa: E402  (working offline: a save sent twice is done once - its table too)
+from dmytext import dmy_text  # noqa: E402  (dates inside stored text read dd/mm/yyyy on the way out)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Infinia Labour Tool API")
@@ -1677,7 +1678,7 @@ def list_audit_log(limit: int = 500, group: str = "", username: str = "", days: 
             "label": _label(log.action, log.details or ""),
             "group": _ACTION_GROUP.get(log.action, "other"),
             "group_label": ACTION_GROUPS.get(_ACTION_GROUP.get(log.action, ""), ("Other",))[0],
-            "details": read(log.action, log.details or ""),
+            "details": dmy_text(read(log.action, log.details or ""), log.created_at),   # stored text, shown dd/mm/yyyy
             "created_at": log.created_at.isoformat() if log.created_at else None,
             "username": uname or "unknown", "full_name": full_name or "Unknown",
         } for log, uname, full_name in rows],
@@ -12134,7 +12135,7 @@ def _item_dict(i, e):
             "category_label": PAY_CATEGORIES.get(i.direction, {}).get(i.category, i.category),
             "amount": round(i.amount or 0, 2),
             "on_date": i.on_date.isoformat() if i.on_date else "",
-            "notes": i.notes or "", "source": i.source or "",
+            "notes": dmy_text(i.notes or "", i.on_date or i.month_year), "source": i.source or "",
             "from_vacation": (i.source or "").startswith("leave:")}
 
 
@@ -12486,6 +12487,12 @@ def _line_net(l):
                  + (l.leave_salary or 0) + (l.air_ticket or 0), 2)
 
 
+def _line_month(l):
+    """The month a payroll line is for - the year for a stored note's '9 Sep'."""
+    run = getattr(l, "run", None)
+    return getattr(run, "month_year", None) if run is not None else None
+
+
 def _line_dict(l, e):
     return {"id": l.id, "employee_id": l.employee_id,
             "emp_no": e.emp_no if e else "", "name": e.name if e else "",
@@ -12496,7 +12503,7 @@ def _line_dict(l, e):
             "basic": round(l.basic or 0, 2), "allowance": round(l.allowance or 0, 2),
             "fixed_salary": round(l.fixed_salary or 0, 2),
             "deduction": round(l.deduction or 0, 2),
-            "deduction_note": l.deduction_note or "",
+            "deduction_note": dmy_text(l.deduction_note or "", _line_month(l)),
             "statutory": round(l.statutory or 0, 2),
             "other_allowance": round(l.other_allowance or 0, 2),
             "loan_deduction": round(l.loan_deduction or 0, 2),
@@ -12505,7 +12512,7 @@ def _line_dict(l, e):
             "pension": round(l.pension or 0, 2),
             "payable": round((l.fixed_salary or 0) + (l.other_allowance or 0)
                              - (l.deduction or 0) - (l.statutory or 0), 2),
-            "net_pay": round(l.net_pay or 0, 2), "remarks": l.remarks or "",
+            "net_pay": round(l.net_pay or 0, 2), "remarks": dmy_text(l.remarks or "", _line_month(l)),
             "loan_edited": bool(l.loan_edited), "remark_edited": bool(l.remark_edited),
             "held": bool(l.held)}
 
@@ -12616,7 +12623,7 @@ def _run_dict(r, db):
         "company_short": (r.company.short_name or r.company.name) if r.company else "",
         "status": r.status,
         "approved_on": r.approved_on.isoformat() if r.approved_on else "",
-        "notes": r.notes or "", "lines": lines, "progress": progress,
+        "notes": dmy_text(r.notes or "", r.month_year), "lines": lines, "progress": progress,
         "totals": {
             "held": len([l for l in lines if l["held"]]),
             "fixed_salary": round(sum(l["fixed_salary"] for l in paid), 2),
@@ -12757,11 +12764,12 @@ def save_payroll_run(run_id: int, payload: dict = Body(...), db: Session = Depen
             l.held = bool(row.get("held"))
         if "remarks" in row:
             text = (row.get("remarks") or "").strip()
-            if text != (l.remarks or ""):
+            if text not in ((l.remarks or ""), dmy_text(l.remarks or "", _line_month(l))):   # as shown is not a change
                 l.remarks, l.remark_edited = text, bool(text)
         l.net_pay = _line_net(l)
     if "notes" in payload:
-        r.notes = (payload.get("notes") or "").strip()
+        if (payload.get("notes") or "").strip() != dmy_text(r.notes or "", r.month_year):   # as shown is not a change
+            r.notes = (payload.get("notes") or "").strip()
     db.commit(); db.refresh(r)
     _refresh_run(db, r)
     return _run_dict(r, db)

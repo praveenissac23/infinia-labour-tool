@@ -347,7 +347,7 @@ def history(employee_id: int = 0, room: str = "", db: Session = Depends(get_db),
         q = q.filter((models.CampMove.room == room) | (models.CampMove.from_room == room))
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
     return {"moves": [{"date": m.on_date.isoformat() if m.on_date else "", "kind": m.kind, "name": m.name, "room": m.room,
-                       "bed": m.bed_no, "from": f"{m.from_room}/{m.from_bed}" if m.from_room else "", "reason": m.reason,
+                       "bed": m.bed_no, "from": f"{m.from_room}/{m.from_bed}" if m.from_room else "", "reason": M.dmy_text(m.reason, m.on_date),
                        "by": users.get(m.by, "automatic")}
                       for m in q.order_by(models.CampMove.id.desc()).limit(200)]}
 
