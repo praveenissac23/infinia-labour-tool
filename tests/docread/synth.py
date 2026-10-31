@@ -605,6 +605,7 @@ def words(v):
         if n < 1000000:
             return w(n // 1000) + " Thousand" + ("" if n % 1000 == 0 else " " + w(n % 1000))
         return w(n // 1000000) + " Million" + ("" if n % 1000000 == 0 else " " + w(n % 1000000))
+    v = abs(v)
     d = int(v)
     f = int(round((v - d) * 100))
     return w(d) + (f" and {w(f)} Fils" if f else "")
