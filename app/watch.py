@@ -51,6 +51,7 @@ FROM_LOG = {
     "cancel_lpo": "LPO cancelled",
     "delete_supplier": "Supplier deleted",
     "merge_supplier": "Supplier merged into another (duplicate)",
+    "settlement_paid_line": "Final settlement: salary already paid NOT deducted (line taken out) / put back",
     "invoice_edit": "Invoice edited",
     "invoice_cancel": "Invoice cancelled",
     "credential_shown": "Password shown / copied (Credentials)",

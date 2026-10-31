@@ -28,11 +28,11 @@ import calendar
 import re
 import math
 import io
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from html import escape
 from urllib.parse import quote, urlencode
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -106,6 +106,119 @@ def _leave_owed(db, e, last):
     return max(round(bal, 1), 0.0), note, p
 
 
+# ---- Salary already paid for the settlement's own days (owner, 31 Oct 2026) ------------------------------------------
+# The settlement pays the salary of the last month's days (office) or the last cycle's labour card (labour). Some of
+# those days may already have been paid - salary to date, an early full month / cycle, a balance, a custom payment
+# (live: PI003, November's 7 days, 1,575.00, paid on 28/10/2026). Each such payment is taken off as its own line,
+# "Less: salary already paid on dd/mm/yyyy (period dd/mm/yyyy – dd/mm/yyyy)": the amount actually paid for the days
+# that overlap; a payment that covered more days than the settlement's salary days is taken off pro rata to the
+# overlapping days, worked exactly and taken UP to the fils (the deduction rule). A line can be taken out only by a
+# login with the approve right and a typed reason, kept in settings (settle_paid_off:<employee id>:<payment id>),
+# printed on the paper as a note and written to the activity log.
+OFF_KEY = "settle_paid_off:{eid}:{pid}"
+_MON = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+
+
+def _made_on(p):
+    """The Dubai day a payment was entered (salary to date is to that day); its paid date when that is unknown."""
+    c = getattr(p, "created_at", None)
+    if c is None:
+        return p.paid_on
+    from datetime import timezone as _tz
+    if c.tzinfo is None:
+        c = c.replace(tzinfo=_tz.utc)
+    return (c.astimezone(_tz.utc) + timedelta(hours=4)).date()
+
+
+def _note_day(note, word, a):
+    """'left 07/11/2026' or the older 'left 07 nov' on an office row -> that date (in the row's month a)."""
+    m = re.search(word + r" (\d{2})/(\d{2})/(\d{4})", note)
+    if m:
+        try:
+            return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            return None
+    m = re.search(word + r" (\d{1,2}) ([a-z]{3})", note)
+    if m and m.group(2) in _MON:
+        try:
+            return date(a.year, _MON[m.group(2)], int(m.group(1)))
+        except ValueError:
+            return None
+    return None
+
+
+def _covered(db, e, p):
+    """The days a salary payment paid for: (from, to), or None."""
+    if p.kind == "office":
+        a, b = M._staff_month_bounds(p.month_year)
+        line = db.get(models.PayrollLine, p.source_id) if p.source_id else None
+        # a paid row is frozen on the figures it was paid on - its "joined / left" note says which days it paid
+        note = ((line.deduction_note or "") + " " + (line.remarks or "")).lower() if line else ""
+        j, l = _note_day(note, "joined", a), _note_day(note, "left", a)
+        s = j if j and a <= j <= b else a
+        t = l if l and a <= l <= b else b
+        if p.pay_type == "regular" and (p.amount or 0) < (p.due or 0) - 0.01:
+            t = min(t, _made_on(p))                       # salary to date: to the day it was paid
+    else:
+        try:
+            s, t, _ = M.pcyc.cycle_bounds_for(datetime.strptime(f"25 {p.month_year}", "%d %B %Y").date())
+        except ValueError:
+            return None
+        if p.pay_type != "early_full":
+            # salary to date / balance / custom on a card: to the day it was paid, and a card never pays past his
+            # leaving day. An early full cycle paid the whole cycle in advance.
+            t = min(t, _made_on(p))
+            if e.terminated_on:
+                t = min(t, e.terminated_on)
+    if e.joined_on and e.joined_on > s:
+        s = e.joined_on
+    return (s, t) if s <= t else None
+
+
+def paid_for_days(db, e, d_from, d_to):
+    """Payments already made (not cancelled, not a final settlement) that paid for any of the days d_from..d_to:
+    [{payment, from, to (the overlap), cover_from, cover_to, days, cover_days, deduct (exact Fraction), removed}]."""
+    from fractions import Fraction as Fr
+    out = []
+    if not d_from or not d_to or d_from > d_to:
+        return out
+    kind = "office" if e.staff else "labour"
+    for p in (db.query(models.PayPayment).filter(models.PayPayment.kind == kind, models.PayPayment.employee_id == e.id,
+                                                 models.PayPayment.void == False, models.PayPayment.pay_type != "final")  # noqa: E712
+                .order_by(models.PayPayment.paid_on, models.PayPayment.id).all()):
+        if (p.amount or 0) <= 0.005:
+            continue
+        cov = _covered(db, e, p)
+        if not cov:
+            continue
+        s, t = max(cov[0], d_from), min(cov[1], d_to)
+        if s > t:
+            continue
+        days, cdays = (t - s).days + 1, (cov[1] - cov[0]).days + 1
+        amt = Fr(str(float(p.amount or 0)))
+        off = M.get_setting(db, OFF_KEY.format(eid=e.id, pid=p.id))
+        removed = None
+        if off:
+            try:
+                import json
+                removed = json.loads(off)
+            except ValueError:
+                removed = {"reason": off}
+        out.append({"payment": p, "from": s, "to": t, "cover_from": cov[0], "cover_to": cov[1], "days": days,
+                    "cover_days": cdays, "deduct": amt if days >= cdays else amt * days / cdays, "removed": removed})
+    return out
+
+
+def paid_label(x):
+    return (f"Less: salary already paid on {_dmy(x['payment'].paid_on)} (period {_dmy(x['from'])} – {_dmy(x['to'])})"
+            + ("" if x["days"] >= x["cover_days"] else f" - {x['days']} of the {x['cover_days']} days it paid"))
+
+
+def can_remove_paid_line(user):
+    """The approve right: the Managing Director (admin) or a login holding Approvals."""
+    return bool(user) and (user.role == "admin" or "approvals" in M.effective_permissions(user))
+
+
 def settlement(db, emp_no, q):
     """The whole working. q holds what was typed on the screen."""
     e = M._staff_by_code(db, emp_no)
@@ -174,6 +287,17 @@ def settlement(db, emp_no, q):
         salary = wage_auto if q.get("salary_amount") in (None, "") else max(_f(q.get("salary_amount")), 0.0)
         sal_label = f"Wages for the {cycle_label} cycle (labour card)"
 
+    # The settlement's own salary days (office: the last sal_days days of the month up to the last day; labour: the
+    # last cycle up to the last day), and every payment already made for any of them - taken off below.
+    if e.staff:
+        n = int(math.ceil(sal_days)) if sal_days > 0 else 0
+        sd_from = max(last.replace(day=1), last - timedelta(days=n - 1)) if n else None
+    else:
+        sd_from = _cs if float(salary or 0) > 0 else None
+    if sd_from and e.joined_on and e.joined_on > sd_from:
+        sd_from = e.joined_on
+    already = paid_for_days(db, e, sd_from, last) if sd_from else []
+
     # Notice.
     notice_req = int(_f(q.get("notice_required"), e.notice_days or 30))
     notice_srv = max(min(_f(q.get("notice_served"), notice_req), notice_req), 0)
@@ -218,7 +342,8 @@ def settlement(db, emp_no, q):
         payables.append((f"Notice pay ({short:g} day(s) not given)", notice_add))
     payables += [("Air ticket", ticket),
                  (q.get("other_add_note") or "Other additions", other_add)]
-    deductions = [("Loan / advance balance", loan)]
+    deductions = [(paid_label(x), x["deduct"]) for x in already if not x["removed"]]
+    deductions.append(("Loan / advance balance", loan))
     if notice_ded:
         deductions.append((f"Notice not served ({short:g} of {notice_req} days)", notice_ded))
     deductions.append((q.get("other_ded_note") or "Other deductions / recoveries", other_ded))
@@ -262,6 +387,12 @@ def settlement(db, emp_no, q):
         notes.append("Gratuity capped at two years' basic wage (art. 51).")
     if reason == "art44":
         notes.append("Dismissal under article 44: no notice either way; gratuity is still due.")
+    for x in already:
+        if x["removed"]:
+            r_ = x["removed"]
+            notes.append(f"Salary already paid on {_dmy(x['payment'].paid_on)} (AED {_money(float(x['payment'].amount or 0))}, "
+                         f"period {_dmy(x['from'])} – {_dmy(x['to'])}) not deducted - taken out by "
+                         f"{r_.get('by_name') or 'an approver'}{' on ' + r_['on'] if r_.get('on') else ''}: {r_.get('reason') or ''}")
 
     return {
         "emp": {"emp_no": e.emp_no, "name": e.name, "designation": e.designation or e.trade or "",
@@ -294,6 +425,15 @@ def settlement(db, emp_no, q):
         "deductions": [{"label": k, "amount": round(v, 2)} for k, v in deductions],
         "total_pay": total_pay, "total_ded": total_ded, "net": net,
         "notes": notes,
+        # payments already made for the settlement's salary days (each one a "Less:" line unless taken out)
+        "paid_before": [{"payment_id": x["payment"].id, "type": x["payment"].pay_type, "month_year": x["payment"].month_year,
+                         "source_id": x["payment"].source_id, "paid_on": x["payment"].paid_on.isoformat(),
+                         "paid_on_text": _dmy(x["payment"].paid_on), "amount_paid": round(float(x["payment"].amount or 0), 2),
+                         "from": x["from"].isoformat(), "to": x["to"].isoformat(), "days": x["days"], "cover_days": x["cover_days"],
+                         "deducted": 0.0 if x["removed"] else M.pcyc.fils_up(x["deduct"]), "label": paid_label(x),
+                         "removed": bool(x["removed"]), "removed_reason": (x["removed"] or {}).get("reason", ""),
+                         "removed_by": (x["removed"] or {}).get("by_name", ""), "removed_on": (x["removed"] or {}).get("on", "")}
+                        for x in already],
     }
 
 
@@ -313,7 +453,9 @@ def get_settlement(emp_no: str, last_day: str = "", reason: str = "", leave_days
                    loan: str = "", ticket: str = "", other_add: str = "", other_ded: str = "",
                    other_add_note: str = "", other_ded_note: str = "", contract: str = "",
                    settled_on: str = "", db: Session = Depends(get_db), user: models.User = HR):
-    return settlement(db, emp_no, _q(**{k: v for k, v in locals().items() if k in FIELDS}))
+    s = settlement(db, emp_no, _q(**{k: v for k, v in locals().items() if k in FIELDS}))
+    s["can_remove_paid"] = can_remove_paid_line(user)
+    return s
 
 
 @router.get("/employees/labour/{emp_no}/settlement")
@@ -325,7 +467,45 @@ def get_labour_settlement(emp_no: str, last_day: str = "", reason: str = "", lea
                           user: models.User = Depends(M.require_screen("combine"))):
     """A labourer's final settlement - Labour payroll > Gratuity."""
     e = M._labour_by_code(db, emp_no)
-    return settlement(db, e.emp_no, _q(**{k: v for k, v in locals().items() if k in FIELDS}))
+    s = settlement(db, e.emp_no, _q(**{k: v for k, v in locals().items() if k in FIELDS}))
+    s["can_remove_paid"] = can_remove_paid_line(user)
+    return s
+
+
+@router.post("/employees/settlement/paid-line")
+def paid_line(body: dict = Body(...), db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    """Take a "Less: salary already paid" line out of a final settlement (action "remove", a reason required), or
+    put it back ("restore"). Only a login with the approve right; the payroll right for that person as well.
+    Kept in settings, shown on the paper as a note, written to the activity log."""
+    import json
+    e = db.query(models.Employee).filter(models.Employee.emp_no == str(body.get("emp_no") or "").strip()).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="Not on file.")
+    _reader(user, e.emp_no, db)
+    if not can_remove_paid_line(user):
+        raise HTTPException(status_code=403, detail="Only a login with the approve right can take this line out.")
+    try:
+        pid = int(body.get("payment_id") or 0)
+    except (TypeError, ValueError):
+        pid = 0
+    p = db.get(models.PayPayment, pid) if pid else None
+    if not p or p.employee_id != e.id or p.void or p.pay_type == "final":
+        raise HTTPException(status_code=404, detail="That payment is not one of his salary payments.")
+    key = OFF_KEY.format(eid=e.id, pid=p.id)
+    what = f"salary already paid on {_dmy(p.paid_on)} (AED {_money(float(p.amount or 0))}, {p.month_year})"
+    if (body.get("action") or "remove") == "restore":
+        M.put_setting(db, key, "")
+        M.log_action(db, user.id, "settlement_paid_line",
+                     f"{e.emp_no} {e.name}: final settlement - {what} deducted again (line put back)")
+        return {"ok": True, "removed": False}
+    reason = " ".join(str(body.get("reason") or "").split())
+    if len(reason) < 3:
+        raise HTTPException(status_code=400, detail="Type the reason the line is taken out.")
+    M.put_setting(db, key, json.dumps({"reason": reason[:300], "by": user.id, "by_name": user.full_name or user.username,
+                                       "on": M._dubai_today().strftime("%d/%m/%Y")}))
+    M.log_action(db, user.id, "settlement_paid_line",
+                 f"{e.emp_no} {e.name}: final settlement - {what} NOT deducted (line taken out): {reason[:300]}")
+    return {"ok": True, "removed": True}
 
 
 def _reader(user, emp_no, db):

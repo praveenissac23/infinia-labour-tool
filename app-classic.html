@@ -21799,8 +21799,66 @@ async function fsDraw() {
     </div>
     <table><thead><tr><th>Payable</th><th style="text-align:right;">AED</th></tr></thead><tbody>${rows(d.payables, d.total_pay, "Gross payable")}</tbody></table>
     <table><thead><tr><th>Deductions</th><th style="text-align:right;">AED</th></tr></thead><tbody>${rows(d.deductions, d.total_ded, "Total deductions")}</tbody></table>
+    ${fsPaidBox(d)}
     <div class="fs-net"><span>${d.net >= 0 ? "Final settlement payable" : "Balance due from employee"}</span><b>AED ${hrMoney(Math.abs(d.net))}</b></div>
     <ul class="fs-notes">${d.notes.map(n => `<li>${escapeHtml(n)}</li>`).join("")}</ul></div>`;
+}
+
+// Salary already paid for the settlement's own days comes off by itself, one "Less:" line per payment. Only a
+// login with the approve right can take a line out - with a reason, which prints on the paper and is logged.
+function fsPaidBox(d) {
+  const rows = d.paid_before || [];
+  if (!rows.length) return "";
+  return `<div class="fs-paid" style="margin:8px 0; font-size:12.5px; color:#5F5A54;">${rows.map(x => `
+    <div style="display:flex; gap:10px; align-items:center; justify-content:space-between; padding:4px 0; border-bottom:1px dotted #E8DFD9;">
+      <span>${x.removed
+        ? `Paid on ${escapeHtml(x.paid_on_text)}: AED ${hrMoney(x.amount_paid)} - <b>not deducted</b> (taken out by ${escapeHtml(x.removed_by || "an approver")}${x.removed_on ? " on " + escapeHtml(x.removed_on) : ""}: ${escapeHtml(x.removed_reason)})`
+        : `${escapeHtml(x.label)}: <b>AED ${hrMoney(x.deducted)}</b> deducted automatically`}</span>
+      ${d.can_remove_paid ? `<button class="btn btn-gray fs-paid-btn" style="padding:3px 10px; font-size:12px;" onclick="fsPaidLine(${x.payment_id}, ${x.removed ? "'restore'" : "'remove'"})">${x.removed ? "Put back" : "Remove"}</button>` : ""}
+    </div>`).join("")}</div>`;
+}
+
+// A reason box in the app's own question window (no browser prompt).
+function hrAskReason(message, okLabel) {
+  return new Promise(resolve => {
+    const wrap = document.createElement("div");
+    wrap.className = "hr-ask";
+    wrap.innerHTML = `<div class="hr-ask-box" role="dialog" aria-modal="true" style="max-width:520px; width:calc(100vw - 32px);">
+        <div class="hr-ask-msg" style="white-space:normal;"></div>
+        <textarea class="hr-ask-why" rows="3" placeholder="Reason (printed on the settlement and kept in the activity log)" style="width:100%; margin:10px 0 4px; box-sizing:border-box;"></textarea>
+        <div class="hr-ask-btns">
+          <button class="btn btn-gray" data-a="no">Cancel</button>
+          <button class="btn btn-danger" data-a="yes" disabled></button>
+        </div></div>`;
+    wrap.querySelector(".hr-ask-msg").textContent = message;
+    const go = wrap.querySelector('[data-a="yes"]'), why = wrap.querySelector(".hr-ask-why");
+    go.textContent = okLabel;
+    why.addEventListener("input", () => { go.disabled = why.value.trim().length < 3; });
+    const done = v => { wrap.remove(); document.removeEventListener("keydown", key); resolve(v); };
+    const key = ev => { if (ev.key === "Escape") done(null); };
+    wrap.addEventListener("click", ev => {
+      if (ev.target === wrap) return done(null);
+      const a = ev.target.dataset && ev.target.dataset.a;
+      if (a === "no") done(null);
+      if (a === "yes" && why.value.trim().length >= 3) done(why.value.trim());
+    });
+    document.addEventListener("keydown", key);
+    document.body.appendChild(wrap);
+    why.focus();
+  });
+}
+
+async function fsPaidLine(pid, action) {
+  const code = fsCode();
+  let reason = "";
+  if (action === "remove") {
+    reason = await hrAskReason("Take this line out? The salary already paid will NOT be deducted from the settlement - it is paid again. The reason prints on the settlement.", "Take the line out");
+    if (!reason) return;
+  } else if (!await hrAsk("Put the line back? The salary already paid is deducted again.", "Put back")) return;
+  try {
+    await apiCall("/employees/settlement/paid-line", { method: "POST", body: JSON.stringify({ emp_no: code, payment_id: pid, action, reason }) });
+  } catch (e) { expMsg("err", errText(e)); return; }
+  fsDraw();
 }
 
 async function fsOpen(kind) {

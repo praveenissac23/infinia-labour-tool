@@ -424,8 +424,16 @@ def work_out(db, kind, source_id, body, commit_side_effects=False):
                 services.recalculate_summary(db, e, M.pcyc.cycle_bounds_for(last)[2])
         s = SET.settlement(db, e.emp_no, q)
         net = _r2(s["net"])
-        out.update({"amount": _r2(max(net - paid, 0)), "due": net, "settlement": s,
-                    "lines": [(x["label"], x["amount"]) for x in s["payables"]] + [(f"less {x['label']}", -x["amount"]) for x in s["deductions"] if x["amount"]]})
+        # Payments already made for the settlement's own salary days are taken off on the settlement itself (a
+        # "Less: salary already paid" line) - they are not taken off the payment again. Any other payment on this
+        # row still is. The row's due is the settlement plus what this row had already paid towards it, so the
+        # row reads paid in full once the settlement is paid.
+        taken = {x["payment_id"] for x in s.get("paid_before", []) if not x["removed"]}
+        other = _r2(sum(p.amount or 0 for p in pays if p.id not in taken))
+        on_row = _r2(sum(p.amount or 0 for p in pays if p.id in taken))
+        out["paid_before"] = other
+        out.update({"amount": _r2(max(net - other, 0)), "due": _r2(net + on_row), "settlement": s,
+                    "lines": [(x["label"], x["amount"]) for x in s["payables"]] + [(x["label"] if x["label"].startswith("Less:") else f"less {x['label']}", -x["amount"]) for x in s["deductions"] if x["amount"]]})
         return out
     if kind == "office":
         due, td = _r2(l.net_pay), office_to_date(db, r, l)
@@ -505,7 +513,7 @@ def mark_paid(db, user, kind, source_id, body):
         figs = office_figures(db, r, l, e)
         src = l.id
     if t == "final":
-        figs = {"period": month, "settlement": w["settlement"], "net": w["due"]}
+        figs = {"period": month, "settlement": w["settlement"], "net": _r2(w["settlement"]["net"])}
     p = models.PayPayment(kind=kind, employee_id=e.id, month_year=month, source_id=src, run_id=r.id if r else None,
                           pay_type=t, amount=amt, due=w["due"], paid_on=paid_on, mode=mode,
                           reference=(body.get("reference") or "").strip()[:80], note=(body.get("note") or "").strip()[:500],
