@@ -168,10 +168,7 @@ def combine(new, old, prefer_old_text=False):
     for n in old.get("found") or []:
         if n not in found:
             found.append(n)
-    notes = new.setdefault("notes", [])
-    for n in old.get("notes") or []:
-        if n not in notes and not any(n[:40] == x[:40] for x in notes):
-            notes.append(n)
+    # the older reader's notes are about what IT could not find - not repeated beside the new reading
     return new
 
 

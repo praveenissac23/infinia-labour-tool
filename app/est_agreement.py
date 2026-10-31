@@ -778,7 +778,7 @@ async def read_agreement(request: Request, db: Session = Depends(get_db), user=E
     reader, checked against the contract value). Sent as the browser's text ({"lines": [...]}): as before, with the
     same header check; 501 + the reason when this server cannot read the file itself."""
     import est_fileread as F
-    if (request.headers.get("content-type") or "").startswith("multipart/"):
+    if (request.headers.get("content-type") or "").startswith(("multipart/", "application/x-www-form-urlencoded")):
         form = await request.form()
         data, fname = await E.upload_data(form.get("file") or None, form.get("upload_id") or "", int(form.get("parts") or 0), form.get("filename") or "", user)
         if len(data) > E.MAX_FILE:
@@ -792,7 +792,12 @@ async def read_agreement(request: Request, db: Session = Depends(get_db), user=E
         except F.Unavailable as e:
             raise HTTPException(501, str(e))
     else:
-        payload = await request.json()
+        try:
+            payload = await request.json()
+        except ValueError:
+            raise HTTPException(400, "No text came from that file.")
+        if not isinstance(payload, dict):
+            raise HTTPException(400, "No text came from that file.")
         lines = payload.get("lines") or []
         if not isinstance(lines, list) or not lines:
             raise HTTPException(400, "No text came from that file.")

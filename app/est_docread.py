@@ -438,7 +438,7 @@ async def read_document(kind: str, request: Request, db: Session = Depends(get_d
     if kind not in READERS:
         raise HTTPException(404, "Nothing reads that kind of document.")
     import est_fileread as F
-    if (request.headers.get("content-type") or "").startswith("multipart/"):
+    if (request.headers.get("content-type") or "").startswith(("multipart/", "application/x-www-form-urlencoded")):
         if kind not in F.DOC_KINDS:
             raise HTTPException(400, "This form reads the document's text - pick the file again.")
         form = await request.form()
@@ -453,7 +453,12 @@ async def read_document(kind: str, request: Request, db: Session = Depends(get_d
             return await run_in_threadpool(F.read_doc_kind, kind, data, fname, None, subs)
         except F.Unavailable as e:
             raise HTTPException(501, str(e))
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except ValueError:
+        raise HTTPException(400, "No text came from that file.")
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "No text came from that file.")
     lines = payload.get("lines") or []
     if not isinstance(lines, list) or not lines:
         raise HTTPException(400, "No text came from that file.")

@@ -196,7 +196,7 @@
     countLeft();
   }
   function countLeft() {
-    const n = document.querySelectorAll("#m-body .cfchip.check:not(.done)").length, el = document.querySelector("#m-body .cfv-left");
+    const n = document.querySelectorAll("#m-body .cfchip.check:not(.done):not(.static)").length, el = document.querySelector("#m-body .cfv-left");
     if (el) { el.textContent = n ? `${n} amber figure${n > 1 ? "s" : ""} to check before Save` : "Every figure checked"; el.className = "cfv-left " + (n ? "a" : "g"); }
   }
 

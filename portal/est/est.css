@@ -715,6 +715,7 @@ table.sb .resub { margin-top: 4px; }
 .cfv-nav { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .cfv-nav .btn { padding: 2px 9px; font-size: 15px; line-height: 1.2; }
 .cfv-view { overflow: auto; flex: 1; padding: 6px; scrollbar-width: thin; }
+.cfv-view:has(.cfv-grid) { padding: 0; }
 .cfv-page { position: relative; margin: 0 auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
 .cfv-page canvas, .cfv-page img { display: block; }
 .cfv-hl { position: absolute; border: 2.5px solid #1D5FA8; background: rgba(29,95,168,.14); border-radius: 3px; pointer-events: none; box-shadow: 0 0 0 3px rgba(29,95,168,.15); }
