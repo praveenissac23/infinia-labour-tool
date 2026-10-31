@@ -325,6 +325,26 @@ SUMMARY_FIELDS = [
 ]
 
 
+def card_rounding(summary):
+    """November 2026 on (payroll_cycle.exact_fils) the final salary is the exact sum cut DOWN to the fils once, while
+    each line on the card is shown to the nearest fil - so the lines as printed can differ from the final by a fil or
+    two. That difference is printed as its own "Rounding to the fils" line, so every card adds up exactly: Payable -
+    Absence + OT + BH + additions - deductions + rounding = Final. 0.0 for a closed cycle (whole-dirham rule, its
+    cards printed as they always were) or when the shown lines already add up."""
+    import payroll_cycle as _pc
+    if not _pc.exact_fils(getattr(summary, "month_year", "")):
+        return 0.0
+    shown = lambda v: float(f"{float(v or 0):.2f}")
+    lines = (shown(summary.total_salary_component) - shown(summary.deduction) + shown(summary.ot_amount)
+             + shown(summary.bh_amount) + shown(getattr(summary, "allowances", 0)) - shown(getattr(summary, "other_deduction", 0))
+             + sum(-shown(a.amount) if a.is_deduction else shown(a.amount) for a in summary.adjustments))
+    diff = round(_adjusted_final_salary(summary) - lines, 2)
+    return diff if abs(diff) >= 0.005 else 0.0
+
+
+ROUNDING_LABEL = "Rounding to the fils"
+
+
 def _adjusted_final_salary(summary):
     total = summary.final_salary
     for adj in summary.adjustments:
@@ -785,6 +805,19 @@ def _write_worker_card(ws, summary, rows, border, start_row):
         vcell.alignment = Alignment(horizontal="right", vertical="center", indent=1)
         vcell.font = Font(size=8.5, color="C0392B" if adj.is_deduction else "2E7D32")
         r += 1
+    rnd = card_rounding(summary)
+    if rnd:
+        lbl = ws.cell(row=r, column=4, value=ROUNDING_LABEL)
+        lbl.font = Font(bold=True, size=11)
+        lbl.fill = PatternFill("solid", fgColor=GREY_FILL)
+        lbl.border = box_border
+        lbl.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        vcell = ws.cell(row=r, column=5, value=f"{'-' if rnd < 0 else '+'} AED {abs(rnd):,.2f}")
+        vcell.fill = PatternFill("solid", fgColor=GREY_FILL)
+        vcell.border = box_border
+        vcell.alignment = Alignment(horizontal="right", vertical="center", indent=1)
+        vcell.font = Font(size=8.5)
+        r += 1
     summary_end = r
 
     # Final Salary to Process - its own box (columns G-H)
@@ -1037,6 +1070,10 @@ def _build_pdf_card_elements(summary, rows, doc_width, styles):
                                           textColor=colors.HexColor("#C0392B") if adj.is_deduction else colors.HexColor("#2E7D32"))
         summary_rows.append([Paragraph(adj.description, label_style),
                               Paragraph(f"{sign} AED {adj.amount:,.2f}", adj_value_style)])
+    rnd = card_rounding(summary)
+    if rnd:
+        summary_rows.append([Paragraph(ROUNDING_LABEL, label_style),
+                             Paragraph(f"{'-' if rnd < 0 else '+'} AED {abs(rnd):,.2f}", value_right_style)])
     summary_tbl = Table(summary_rows, colWidths=[doc_width * 0.20, doc_width * 0.16])
     summary_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), grey),
@@ -1142,6 +1179,9 @@ def salary_card_html(summary, rows):
         money += (f"<tr><th>{esc(adj.description)}</th>"
                   f'<td style="color:{colour}">{"-" if adj.is_deduction else "+"} '
                   f"AED {adj.amount:,.2f}</td></tr>")
+    rnd = card_rounding(summary)
+    if rnd:
+        money += f"<tr><th>{ROUNDING_LABEL}</th><td>{'-' if rnd < 0 else '+'} AED {abs(rnd):,.2f}</td></tr>"
 
     final = _adjusted_final_salary(summary)
     final_bg = STATUS_FILLS["Absent"] if final < 0 else GREEN_FILL

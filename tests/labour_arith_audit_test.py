@@ -28,7 +28,7 @@ from collections import defaultdict
 from fastapi.testclient import TestClient
 import database, models, auth
 models.Base.metadata.create_all(database.engine)
-import main, services
+import main, services, export_web
 import payroll_cycle as pcyc
 
 FAIL = []
@@ -360,7 +360,7 @@ for lab in cycles:
     xr = c.get(f'/export/{lab}/excel', params={'token': dl()})
     ck(f'salary cards Excel: {lab}', xr.status_code == 200, xr.text[:200])
     wb = openpyxl.load_workbook(io.BytesIO(xr.content), data_only=True)
-    seen = {}
+    seen, printed = {}, {}
     for ws in wb.worksheets:
         cells = {(c_.row, c_.column): c_.value for r_ in ws.iter_rows() for c_ in r_ if c_.value not in (None, '')}
         nos = sorted((r_, v) for (r_, col), v in cells.items() if col == 4 and cells.get((r_, 3)) == 'Employee No:')
@@ -369,13 +369,22 @@ for lab in cycles:
         for (r_, col), v in cells.items():
             if col == 4 and v in ('Payable Salary', 'Absence or Leave', 'OT Amount', 'BH Amount'):
                 lines[r_][v] = cells.get((r_, 5))
-        for (rn, no) in nos:
+        for k_, (rn, no) in enumerate(nos):
             fr = next((f for f in finals if f > rn), None)
+            nxt = nos[k_ + 1][0] if k_ + 1 < len(nos) else 10 ** 9
             seen[str(no)] = (money(cells.get((fr + 1, 7))) if fr else None,
                              {v: money(t) for r_, d_ in lines.items() if fr and fr <= r_ < fr + 6 for v, t in d_.items()})
+            # every money line printed beside the final, signed as printed (Basic Pay is for information only)
+            printed[str(no)] = [(cells.get((r_, 4)), str(v)) for (r_, col), v in cells.items()
+                                if col == 5 and fr and fr <= r_ < nxt and 'AED' in str(v) and cells.get((r_, 4)) != 'Basic Pay']
+    def adds_up(lines_, final_):
+        return near(round(sum(money(t) for _, t in lines_), 2), final_, 0.001)
     for no, x in want.items():
         got = seen.get(no)
         ck(f'card Excel final = card: {no} {lab}', got is not None and near(got[0], x['net']), (got and got[0], float(x['net'])))
+        if pcyc.exact_fils(lab) and got:
+            # November 2026 on: the printed lines (with the rounding line) add up to the final, to the fil
+            ck(f'card Excel lines + rounding = final: {no} {lab}', adds_up(printed.get(no, []), got[0]), (printed.get(no), got[0]))
         if got:
             ck(f'card Excel money lines = card: {no} {lab}',
                near(got[1].get('Payable Salary', 0), round(float(x['comp']), 2)) and near(got[1].get('OT Amount', 0), round(float(x['ota']), 2)),
@@ -394,6 +403,12 @@ for lab in cycles:
         if m_no and m_f:
             pdf_finals[m_no.group(1)] = money(m_f.group(1))
     for no, x in want.items():
+        sm_ = next((s_ for s_ in db.query(models.EmployeeSummary).filter_by(emp_no=no, month_year=lab).all()), None)
+        if sm_ is not None and pcyc.exact_fils(lab):
+            rnd_ = export_web.card_rounding(sm_)
+            pg_txt = next((pg.extract_text() or '' for pg in pages if re.search(rf'Employee No:\s*{re.escape(no)}\b', pg.extract_text() or '')), '')
+            ck(f'card PDF prints the rounding line when the lines do not add up: {no} {lab}',
+               bool(re.search(r'Rounding\s+to\s+the\s+fils', pg_txt)) == bool(rnd_), (rnd_, pg_txt[-300:]))
         ck(f'card PDF final = card: {no} {lab}', no in pdf_finals and near(pdf_finals[no], x['net']), (pdf_finals.get(no), float(x['net'])))
     vr = c.get(f'/export/{lab}/cards/view', params={'token': dl()})
     ck(f'salary cards preview: {lab}', vr.status_code == 200, vr.text[:200])
@@ -404,6 +419,10 @@ for lab in cycles:
         m_f = re.search(r'FINAL SALARY TO PROCESS</th></tr>\s*<tr><td[^>]*>AED (-?[\d,]+\.\d\d)', blk)
         if m_no and m_f:
             view[m_no.group(1)] = money(m_f.group(1))
+            if pcyc.exact_fils(lab):
+                mt = blk.split('class="money">', 1)[1].split('</table>', 1)[0] if 'class="money">' in blk else ''
+                pl = [(a_, b_) for a_, b_ in re.findall(r'<tr><th>([^<]*)</th><td[^>]*>([^<]*)</td></tr>', mt) if a_ != 'Basic Pay']
+                ck(f'card preview lines + rounding = final: {m_no.group(1)} {lab}', adds_up(pl, view[m_no.group(1)]), (pl, view[m_no.group(1)]))
             # the days shown in the grid add up to the day totals on the same card
             sts = re.findall(r'<td(?: style="[^"]*")?>(Present|Absent|Sick|Medical|Sunday|Holiday|Leave|Friday|Terminated)</td>', blk.split('class="days"')[0])
             x = want.get(m_no.group(1))
