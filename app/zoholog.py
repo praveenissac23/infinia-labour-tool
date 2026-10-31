@@ -113,6 +113,13 @@ def describe(db, path, body, resp):
         d["amount"] = float(body.get("amount") or 0)
         if body.get("bills"):
             det["bills"] = len(body["bills"])
+        # Whatever is not set against a bill stays with the supplier in Zoho as his
+        # unused amount - a supplier advance / payment on account, to adjust later.
+        applied = round(sum(float(b.get("amount_applied") or 0) for b in body.get("bills") or []), 2)
+        if round(d["amount"] - applied, 2) > 0.005:
+            det["advance"] = round(d["amount"] - applied, 2)
+            det["applied"] = applied
+            det["vendor_id"] = str(body.get("vendor_id") or "")
     elif kind == "customerpayment":
         d["from"] = (obj.get("customer_name") or "Client") + " (client)"
         d["to"] = nm(body.get("account_id")); d["amount"] = float(body.get("amount") or 0)
@@ -195,6 +202,7 @@ def _row(db, l, users):
             "number": l.number, "date": l.on_date, "amount": l.amount, "from": l.from_acc, "to": l.to_acc,
             "project": det.get("project", ""), "supplier": det.get("supplier", ""), "vat": det.get("vat", ""),
             "lines": det.get("lines", []), "description": det.get("description", ""), "ok": l.ok, "error": l.error,
+            "advance": det.get("advance", 0), "applied": det.get("applied", 0),
             "reversed": bool(l.reversed_at), "reversed_at": l.reversed_at.isoformat() if l.reversed_at else "",
             "reversed_by": users.get(l.reversed_by, ""), "reverse_reason": l.reverse_reason,
             "can_reverse": l.ok and l.action == "create" and not l.reversed_at and l.source in REVERSIBLE and bool(l.zoho_id),
@@ -361,7 +369,94 @@ def reverse(lid: int, payload: dict = Body(...), db: Session = Depends(get_db), 
     return {"ok": True, "gone": gone}
 
 
+# ---- supplier advances -------------------------------------------------------
+# Payments the portal sent to a supplier that were not (all) set against a bill:
+# Send Anyway (no open bill), Send Excess (more than the bill), a bank payment
+# with less typed against bills than paid. Zoho keeps the rest as the
+# supplier's unused amount, to apply to a later bill there.
+
+def advances_list(db, live=False):
+    import zohoapi
+    users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    q = (db.query(models.ZohoLog).filter(models.ZohoLog.kind == "vendorpayment", models.ZohoLog.action == "create",
+                                         models.ZohoLog.ok == True, models.ZohoLog.reversed_at.is_(None))   # noqa: E712
+           .order_by(models.ZohoLog.on_date, models.ZohoLog.id))
+    rows = []
+    for l in q.all():
+        try:
+            det = json.loads(l.detail or "{}")
+        except ValueError:
+            det = {}
+        if not det.get("advance"):
+            continue
+        r = _row(db, l, users)
+        r["supplier"] = (l.to_acc or "").replace(" (supplier)", "") or "Supplier"
+        r["unused"] = None
+        rows.append(r)
+    note = ""
+    if live:
+        if not zohoapi.connected(db):
+            note = "Zoho is not connected - the amounts are as the portal sent them."
+        else:
+            for r in rows[:80]:
+                try:
+                    o = (zohoapi.call(db, "GET", f"vendorpayments/{r['zoho_id']}") or {}).get("vendorpayment") or {}
+                    if "balance" in o:
+                        r["unused"] = round(float(o.get("balance") or 0), 2)
+                except Exception:
+                    r["unused"] = None
+            if len(rows) > 80:
+                note = "Zoho read for the first 80 only."
+    groups = {}
+    for r in rows:
+        groups.setdefault(r["supplier"], []).append(r)
+    sup = [{"supplier": k, "rows": v, "advance": round(sum(x["advance"] for x in v), 2),
+            "unused": (round(sum(x["unused"] for x in v), 2) if all(x["unused"] is not None for x in v) else None)}
+           for k, v in sorted(groups.items(), key=lambda kv: kv[0].lower())]
+    return {"suppliers": sup, "total": round(sum(r["advance"] for r in rows), 2), "count": len(rows), "live": bool(live), "note": note}
+
+
+@router.get("/store/zoho/advances")
+def advances(live: int = 0, db: Session = Depends(get_db), user: models.User = ZG):
+    """Supplier advances the portal sent to Zoho, per supplier - to adjust against his bills later.
+    live=1 reads each payment's unused amount from Zoho (read only)."""
+    return advances_list(db, bool(live))
+
+
 # ---- the paper ---------------------------------------------------------------
+
+@router.get("/export/zoho/advances")
+def export_advances(token: str, format: str = "excel", db: Session = Depends(get_db)):
+    from urllib.parse import quote
+    from fastapi.responses import StreamingResponse
+    import auth, export_web
+    u = auth.get_download_user_from_token(token, db)
+    if "accounts_zoho" not in M.effective_permissions(u):
+        raise HTTPException(status_code=403, detail="Send to Zoho is for the chief accountant.")
+    d = advances_list(db)
+    rows = []
+    for g in d["suppliers"]:
+        for i, r in enumerate(g["rows"]):
+            dt = M._as_date(r["date"])
+            rows.append({"Supplier": g["supplier"] if i == 0 else "", "Date": dt.strftime("%d/%m/%Y") if dt else "",
+                         "Portal": f"{r['source_label']} - {r['item'] or r['ref']}", "Zoho": f"Payment Made {r['number']}".strip(),
+                         "Paid (AED)": r["amount"], "On bills (AED)": r["applied"], "Advance (AED)": r["advance"]})
+        rows.append({"Supplier": "", "Date": "", "Portal": f"{g['supplier']} - total advance", "Zoho": "",
+                     "Paid (AED)": "", "On bills (AED)": "", "Advance (AED)": g["advance"]})
+    title = "Supplier advances - to be adjusted"
+    sub = f"{d['count']} payment{'' if d['count'] == 1 else 's'} | advance AED {d['total']:,.2f} | As at {M._dubai_today():%d/%m/%Y}"
+    money = ["Paid (AED)", "On bills (AED)", "Advance (AED)"]
+    if format == "view":
+        url = f"/export/zoho/advances?token={quote(auth.create_view_token(u.username), safe='')}"
+        return M._preview_page(title, sub, rows, url, url, money_cols=money)
+    name = f"Supplier_advances_{M._dubai_today():%Y-%m-%d}"
+    if format == "pdf":
+        return StreamingResponse(export_web.build_store_report_pdf(title, rows, sub, money_cols=money, orientation="landscape"),
+                                 media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
+    return StreamingResponse(export_web.build_store_report_excel(title, rows, sub, money_cols=money),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})
+
 
 @router.get("/export/zoho/sent")
 def export_sent(token: str, start: str = "", end: str = "", source: str = "", all: int = 0, format: str = "excel",
@@ -378,7 +473,8 @@ def export_sent(token: str, start: str = "", end: str = "", source: str = "", al
              + (" (deleted)" if r["action"] == "delete" else "") + (" (updated)" if r["action"] == "update" else ""),
              "From": r["from"] or "-", "To": r["to"] or "-", "Project": r["project"] or "-", "Supplier": r["supplier"] or "-",
              "Amount (AED)": r["amount"] if r["action"] == "create" else "",
-             "Status": ("Refused: " + r["error"]) if not r["ok"] else (f"Reversed {M._dmy(M._as_date(r['reversed_at'][:10]))} - {r['reverse_reason']}" if r["reversed"] else "In Zoho"),
+             "Status": ("Refused: " + r["error"]) if not r["ok"] else (f"Reversed {M._dmy(M._as_date(r['reversed_at'][:10]))} - {r['reverse_reason']}" if r["reversed"] else "In Zoho"
+                        + (f" - advance {r['advance']:,.2f} to be adjusted" if r.get("advance") and r["action"] == "create" else "")),
              "By": r["by"] or "-"} for r in d["rows"]]
     a, b = M._as_date(d["start"]), M._as_date(d["end"])
     title = "Sent to Zoho" if not all else "Changes made in Zoho"

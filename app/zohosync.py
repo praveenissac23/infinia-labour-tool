@@ -263,6 +263,11 @@ def _flags(x, account):
             out.append("Pick the supplier")
         if x.vat and (x.vat_claim or "") not in ("claim", "zero"):
             out.append("Pick VAT: claim or not")
+        adv = getattr(x, "zoho_advance", "") or ""
+        if adv == "advance" and (x.zoho_bill_id or "").strip():
+            out.append("Send Anyway is for a supplier with no open bill - a bill is picked")
+        if adv == "excess" and not (x.zoho_bill_id or "").strip():
+            out.append("Send Excess needs the bill it pays")
         return out
     if not account:
         out.append("Pick account")
@@ -569,6 +574,8 @@ def approve(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
             x.zoho_vendor = str(ln.get("vendor") or "").strip()[:160] if x.zoho_vendor_id else ""
             x.zoho_bill_id = str(ln.get("bill_id") or "").strip()[:40] if x.zoho_vendor_id else ""
             x.zoho_bill_no = str(ln.get("bill_no") or "").strip()[:80] if x.zoho_bill_id else ""
+            adv = str(ln.get("advance") or "")
+            x.zoho_advance = adv if x.zoho_kind == "payment" and adv in ("advance", "excess") else ""
         if "splits" in ln:
             parts = [{"account": str(p.get("account") or "").strip(), "amount": round(float(str(p.get("amount") or 0).replace(",", "") or 0), 2)}
                      for p in (ln.get("splits") or []) if str(p.get("account") or "").strip() or float(str(p.get("amount") or 0).replace(",", "") or 0)]
@@ -586,6 +593,13 @@ def approve(payload: dict = Body(...), db: Session = Depends(get_db), user: mode
         x.zoho_status = "approved"
         x.approved_by, x.approved_at = user.id, now
         done.append(x)
+        if getattr(x, "zoho_advance", ""):
+            amt = round(x.paid or 0, 2)
+            M.log_action(db, user.id, "zoho_advance_ok", (
+                f"petty cash #{x.id} {x.description}: Send Anyway - AED {amt:,.2f} to {x.zoho_vendor or 'supplier'} as a supplier advance "
+                f"(payment on account, no bill)" if x.zoho_advance == "advance" else
+                f"petty cash #{x.id} {x.description}: Send Excess - AED {amt:,.2f} to {x.zoho_vendor or 'supplier'}, bill {x.zoho_bill_no} "
+                f"paid in full, the rest as a supplier advance")[:480])
     db.commit()
     if done:
         M.log_action(db, user.id, "zoho_approve",

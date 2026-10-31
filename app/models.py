@@ -1107,6 +1107,9 @@ class PettyCash(Base):
     zoho_vendor = Column(String, default="")
     zoho_bill_id = Column(String, default="")
     zoho_bill_no = Column(String, default="")
+    # Supplier advance, confirmed by the chief accountant: "advance" (Send Anyway - no open bill, the whole
+    # payment stays on account) | "excess" (Send Excess - the bill's balance applied, the rest on account).
+    zoho_advance = Column(String, default="")
     zoho_status = Column(String, default="")
     zoho_ref = Column(String, default="")
     zoho_id = Column(String, default="")      # "expense:<id>", "journal:<id>", "banktransaction:<id>"

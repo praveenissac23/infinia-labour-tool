@@ -58,7 +58,7 @@ def _row(x, users, rcpts=None):
             "out": x.kind != "customer", "vat": bool(x.vat), "trn": x.trn or "", "vat_claim": x.vat_claim or "", "notes": x.notes or "",
             "zoho": x.zoho_status or "", "zoho_ref": x.zoho_ref or "", "zoho_err": x.zoho_err or "",
             "scope_id": x.scope_id, "net_amount": round(x.net_amount or 0, 2), "pp_id": x.pp_id,
-            "receipt": (rcpts or {}).get(x.id),
+            "receipt": (rcpts or {}).get(x.id), "advance": advance_left(x),
             "by": users.get(x.updated_by or x.created_by, "")}
 
 
@@ -208,12 +208,26 @@ def _send(db, rows, user):
             x.zoho_status, x.zoho_id, x.zoho_ref, x.zoho_err = "sent", zid, label, ""
             x.approved_by, x.approved_at = user.id, now
             sent += 1
+            left = advance_left(x)
+            if left and label != "Found in Zoho":
+                db.commit()
+                M.log_action(db, user.id, "zoho_advance",
+                             f"bank #{x.id} {x.party}: AED {left:,.2f} of {x.amount:,.2f} left in Zoho as a supplier advance "
+                             f"(payment on account, to be adjusted) - {label}")
         except Exception as e:
             x.zoho_status = was
             x.zoho_err = zohoapi.fail_text(e)
             failed.append({"id": x.id, "why": x.zoho_err})
         db.commit()
     return sent, failed
+
+
+def advance_left(x):
+    """A payment to a supplier: what is not set against his bills - Zoho keeps it as an advance."""
+    if x.kind != "vendor":
+        return 0.0
+    left = round((x.amount or 0) - sum(float(b.get("amount") or 0) for b in _docs(x) if b.get("id")), 2)
+    return left if left > 0.005 else 0.0
 
 
 def link_receipt(db, x):

@@ -541,15 +541,27 @@ def push(db, x):
         body = {"vendor_id": vid, "payment_mode": "Cash", "amount": amt, "date": date, "reference_number": ref,
                 "paid_through_account_id": box, "description": desc}
         bid = (getattr(x, "zoho_bill_id", "") or "").strip()
+        adv = (getattr(x, "zoho_advance", "") or "")
+        left = 0.0
         if bid:
             b = call(db, "GET", f"bills/{bid}").get("bill") or {}
             bal = round(float(b.get("balance") or 0), 2)
             if b.get("status") in ("paid", "void") or bal <= 0:
                 raise ZohoError(400, f"Bill {b.get('bill_number') or bid} is already paid in Zoho - pick another bill")
             body["bills"] = [{"bill_id": bid, "amount_applied": min(amt, bal)}]
+            if adv == "excess" and amt > bal + 0.005:
+                # Send Excess: the bill's balance is paid, the rest stays with the supplier as an advance.
+                left = round(amt - bal, 2)
+                body["description"] = (f"Bill {x.zoho_bill_no or bid} {bal:,.2f} + advance {left:,.2f} on account – {ref} · " + desc)[:240]
+        elif adv == "advance":
+            # Send Anyway: no open bill - no bill applied, Zoho keeps it all as his unused amount (advance).
+            left = amt
+            body["description"] = (f"Advance / payment on account – {ref} · " + desc)[:240]
         d = call(db, "POST", "vendorpayments", body=body)
         v = d.get("vendorpayment") or d.get("vendor_payment") or {}
-        return f"vendorpayment:{v.get('payment_id')}", f"Payment Made {v.get('payment_number') or ''}".strip() + (f" · bill {x.zoho_bill_no}" if x.zoho_bill_no else "")
+        x._advance_left = left
+        return f"vendorpayment:{v.get('payment_id')}", f"Payment Made {v.get('payment_number') or ''}".strip() + (f" · bill {x.zoho_bill_no}" if x.zoho_bill_no else "") + (
+            (" · advance" if not bid else f" · advance {left:,.2f}") if left else "")
     if acc in VENDOR_PAY:
         vname = VENDOR_PAY[acc]
         c = call(db, "GET", "contacts", {"contact_name_contains": vname.split()[0], "contact_type": "vendor", "per_page": 50})
@@ -699,6 +711,12 @@ def push_many(db, rows, user=None):
                     zid, label = push(db, x)
             x.zoho_status, x.zoho_id, x.zoho_ref, x.zoho_err = "sent", zid, f"{label} · PC-{x.id}", ""
             sent += 1
+            left = getattr(x, "_advance_left", 0) or 0
+            if left:
+                db.commit()
+                M.log_action(db, getattr(user, "id", None), "zoho_advance",
+                             f"petty cash #{x.id} {x.description}: {x.zoho_vendor or 'supplier'} - AED {left:,.2f} left in Zoho as a supplier advance "
+                             f"(payment on account, to be adjusted) - {label}")
         except Exception as e:
             # A plain refusal after Zoho was checked is clear; anything unclear stays in doubt.
             x.zoho_status = "approved"
