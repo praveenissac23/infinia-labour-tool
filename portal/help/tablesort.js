@@ -106,6 +106,10 @@
   function saveOrder(t) { try { localStorage.setItem(storeKey(t), JSON.stringify([...headRow(t).cells].map(label))); } catch (e) {} }
   function applySort(t) {
     const st = t.__sort; if (!st) return;
+    // A long list drawn a part at a time: sorting only the part on screen would leave rows out (the 8 rentals of 57
+    // under All), so the whole list is drawn first and the sort covers every row.
+    const all = t.querySelector("tr.list-more button[data-all]");
+    if (all) { t.__busy = true; all.click(); t.__busy = false; }
     const h = headRow(t); const ci = [...h.cells].findIndex(c => label(c) === st.lab); if (ci < 0) return;
     t.__busy = true;
     // A row's own detail line under it (a request's progress, a visa's payments - one wide cell, no group or

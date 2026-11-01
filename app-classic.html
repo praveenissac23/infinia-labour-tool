@@ -9325,7 +9325,7 @@ function drawStoreHome(stock, stk) {
     const homeKeys = orderColumns("home-stock", Object.keys(COLS));
     head.innerHTML = homeKeys.map(k =>
       `<th style="width:${COLS[k].w}" ${dragAttrs("home-stock", k)}>${COLS[k].t}</th>`).join("");
-    HOME_STOCK = { rows, keys: homeKeys, cols: COLS, limit: LIST_STEP, type: (HOME_STOCK && HOME_STOCK.type) || "", totals: stock.type_totals || null };
+    HOME_STOCK = { rows, keys: homeKeys, cols: COLS, limit: Math.max(LIST_STEP, (HOME_STOCK && HOME_STOCK.limit) || 0), type: (HOME_STOCK && HOME_STOCK.type) || "", totals: stock.type_totals || null };
     renderHomeStock();
   } catch (e) {
     document.getElementById("home-stock-body").innerHTML =
@@ -9339,9 +9339,37 @@ const LIST_STEP = 150;
 function moreRow(cols, shown, total, fn) {
   return shown < total ? `<tr class="list-more"><td colspan="${cols}" style="text-align:center; padding:10px;">
     <span class="sub" style="display:inline; margin-right:10px;">Showing ${num(shown)} of ${num(total)} - search to find any one</span>
-    <button class="btn btn-gray" onclick="${fn}(1)">Show ${num(Math.min(LIST_STEP, total - shown))} more</button>
-    ${total - shown > LIST_STEP ? `<button class="btn btn-gray" onclick="${fn}(true)">Show all</button>` : ""}</td></tr>` : "";
+    <button class="btn btn-gray" data-more onclick="${fn}(1)">Show ${num(Math.min(LIST_STEP, total - shown))} more</button>
+    ${total - shown > LIST_STEP ? `<button class="btn btn-gray" data-all onclick="${fn}(true)">Show all</button>` : `<button type="button" data-all onclick="${fn}(true)" hidden></button>`}</td></tr>` : "";
 }
+// Long lists fill in by themselves as you scroll: when the "Showing x of y" line comes near the bottom of what can
+// be seen (the page or the table's own scroll box), the next lot is drawn - no button to press.
+(function () {
+  let queued = false;
+  function box(el) {
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const o = getComputedStyle(p).overflowY;
+      if ((o === "auto" || o === "scroll") && p.scrollHeight > p.clientHeight + 2) return p.getBoundingClientRect();
+    }
+    return { top: 0, bottom: innerHeight };
+  }
+  function check() {
+    queued = false;
+    document.querySelectorAll("tr.list-more").forEach(tr => {
+      if (!tr.offsetParent || tr.__auto) return;
+      const r = tr.getBoundingClientRect(), v = box(tr);
+      if (r.top < Math.min(v.bottom, innerHeight) + 250 && r.bottom > v.top - 250) {
+        const b = tr.querySelector("button[data-more]");
+        if (b) { tr.__auto = true; b.click(); }
+      }
+    });
+  }
+  const kick = () => { if (queued) return; queued = true; requestAnimationFrame(check); };
+  document.addEventListener("scroll", kick, true);
+  document.addEventListener("wheel", kick, { passive: true, capture: true });
+  document.addEventListener("touchmove", kick, { passive: true, capture: true });
+  window.addEventListener("resize", kick);
+})();
 let HOME_STOCK = null;
 function stockRowKey(r) { return String(r._key || r.code).replace(/[^A-Za-z0-9_-]/g, "_"); }
 function renderHomeStock(more) {
