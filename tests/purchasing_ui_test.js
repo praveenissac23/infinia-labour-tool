@@ -103,9 +103,12 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
 
   // ---- Rentals links ------------------------------------------------------------------------------------------
   await api('/store/items', { method: 'POST', body: JSON.stringify({ name: 'Rental Ledger 1.2M', unit: 'nos', item_type: 'asset' }) });
-  await api('/store/hire/in', { method: 'POST', body: JSON.stringify({ supplier_name: 'Desarch', received_on: '2026-10-27', location: '919', reference: '402417', lines: [{ item_id: (await api('/store/items'))[1].find(i => i.name === 'Rental Ledger 1.2M').id, qty: 85 }] }) });
+  // the LPO raised before anything was ever rented from Desarch (as the live ones were): its 'Ledger 1.2m' is a material
+  // of its own, linked here to the Rentals name. (An LPO raised now, Desarch being a supplier we rent from, is ticked
+  // Rental and its 'Ledger 1.2m' is 'Rental Ledger 1.2M' straight away - see rental_stock_ui_test.js.)
   await api('/store/purchase/orders', { method: 'POST', body: JSON.stringify({ supplier_name: 'Desarch', order_date: '2026-10-23', project_location: '919',
     lines: [{ description: 'Ledger 1.2m', qty: 85, unit: 'nos', rate: 0.35, tax_pct: 5 }] }) });
+  await api('/store/hire/in', { method: 'POST', body: JSON.stringify({ supplier_name: 'Desarch', received_on: '2026-10-27', location: '919', reference: '402417', lines: [{ item_id: (await api('/store/items'))[1].find(i => i.name === 'Rental Ledger 1.2M').id, qty: 85 }] }) });
   await p.goto(B + '/?p=store#rentals:hire'); await sleep(2500); await kill();
   if (!await p.evaluate(() => document.getElementById('rmap-card') && document.getElementById('rmap-card').offsetParent)) { await p.evaluate(() => typeof pgGo === 'function' && pgGo('store', 'rentals', 'hire')); await sleep(2500); }
   ck('Rentals: the links card is there', await p.evaluate(() => !!document.getElementById('rmap-card') && document.getElementById('rmap-card').offsetParent !== null));

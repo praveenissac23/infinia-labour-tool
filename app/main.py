@@ -10658,7 +10658,12 @@ def export_rental_report(token: str, format: str = "pdf", location: str = None,
     where = ("Central store" if location == CENTRAL
              else location if location else "everywhere")
     total = sum(r["Quantity on rent"] for r in rows)
-    oldest = max((r["Days on rent"] for r in rows), default=0)
+    # a line with several deliveries carries its days as text ('120: 34 days\n30: 2 days') - read the numbers
+    def _days(v):
+        if isinstance(v, (int, float)):
+            return v
+        return max([int(x) for x in re.findall(r":\s*(\d+) days", str(v or ""))] or [0])
+    oldest = max((_days(r["Days on rent"]) for r in rows), default=0)
     sub = (f"{where.capitalize() if where == 'everywhere' else where}"
            f"  |  {len(rows)} line(s), {total:g} item(s) on rent"
            + (f"  |  longest out {oldest} day(s)" if oldest else "")
