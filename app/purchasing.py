@@ -26,6 +26,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 import models
@@ -103,7 +104,7 @@ def is_service(line, item=None):
     v = getattr(line, "service", None)
     if v is not None:
         return bool(v)
-    if item is not None and (item.item_type or "") == "service":
+    if item is not None and ((item.item_type or "") == "service" or (item.category or "").strip().lower() == "service"):
         return True
     return words_say_service(f"{line.description or ''} {(item.name if item is not None else '')}")
 
@@ -153,6 +154,33 @@ def rental_item_ids(db):
     return ids
 
 
+def rental_suppliers(db, rental=None):
+    """Who we rent from: a trader any stock was ever booked in from as rental, the supplier named on a Rental
+    material, the supplier of an LPO ticked Rental, or one an LPO ordered a Rentals material from."""
+    rental = rental_item_ids(db) if rental is None else rental
+    sups = {s for (s,) in db.query(models.StoreMovement.owner_id).filter(models.StoreMovement.owner_id.isnot(None)).distinct()}
+    if rental:
+        sups |= {s for (s,) in db.query(models.PurchaseOrder.supplier_id).join(
+            models.PurchaseOrderLine, models.PurchaseOrderLine.order_id == models.PurchaseOrder.id)
+            .filter(models.PurchaseOrderLine.item_id.in_(list(rental)),
+                    func.coalesce(models.PurchaseOrder.rental, True) == True).distinct() if s}   # noqa: E712
+    sups |= {s for (s,) in db.query(models.PurchaseOrder.supplier_id).filter(models.PurchaseOrder.rental == True).distinct() if s}  # noqa: E712
+    names = {(n or "").strip() for (n,) in db.query(models.StoreItem.rental_supplier)
+             .filter(models.StoreItem.item_type == "rental").distinct() if (n or "").strip()}
+    if names:
+        keys = {M._supplier_key(n) for n in names}
+        sups |= {s.id for s in db.query(models.Supplier).all() if M._supplier_key(s.name) in keys}
+    return sups
+
+
+def is_rental_lpo(o, sups):
+    """A rental LPO: ticked by hand, else ticked by itself when its supplier is one we rent from."""
+    v = getattr(o, "rental", None)
+    if v is not None:
+        return bool(v)
+    return bool(o.supplier_id and o.supplier_id in sups)
+
+
 class _Maps:
     def __init__(self, db):
         self.rows = db.query(models.RentalMap).all()
@@ -163,18 +191,16 @@ class _Maps:
             if r.lpo_key:
                 self.by_key[r.lpo_key].add(r.rental_item_id)
         self.rental = rental_item_ids(db)
-        # who we hire from: a trader something was ever booked in on hire from, or one an LPO ordered a Rentals
-        # material from. Only their LPO lines are read as hired - the same 'Ledger 1.2m' bought from a trader
-        # is our own stock.
-        self.hire_sups = {s for (s,) in db.query(models.StoreMovement.owner_id).filter(models.StoreMovement.owner_id.isnot(None)).distinct()}
-        if self.rental:
-            self.hire_sups |= {s for (s,) in db.query(models.PurchaseOrder.supplier_id).join(
-                models.PurchaseOrderLine, models.PurchaseOrderLine.order_id == models.PurchaseOrder.id)
-                .filter(models.PurchaseOrderLine.item_id.in_(list(self.rental))).distinct() if s}
+        # who we rent from. Only a rental LPO's lines are read as rental (01/11/2026: the LPO's 'Rental' tick, set
+        # by itself for these suppliers) - the same 'Ledger 1.2m' bought on an ordinary LPO is our own stock.
+        self.hire_sups = rental_suppliers(db, self.rental)
+
+    def is_rental(self, o):
+        return is_rental_lpo(o, self.hire_sups)
 
     def for_order(self, o, line, item_name=""):
-        """The Rentals materials of an LPO line - only on an LPO from a trader we hire from."""
-        if not o.supplier_id or (o.supplier_id not in self.hire_sups and (line.item_id or 0) not in self.rental):
+        """The Rentals materials of an LPO line - only on a rental LPO."""
+        if not o.supplier_id or not self.is_rental(o):
             return []
         return self.of(line, item_name)
 
@@ -204,6 +230,108 @@ def add_map(db, lpo_name, rental_item_id, lpo_item_id=None, source="manual", use
     db.add(row)
     db.flush()
     return row
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# One rule (01 Nov 2026, owner): a material is RENTAL when a supplier owns it. Rental stock lives on a Rental
+# material (type 'rental', with its rental supplier), never on one of our own Asset / Consumable materials; our
+# own stock never lives on a Rental material. These two find (or make) the right material.
+# ---------------------------------------------------------------------------------------------------------------
+def _next_code(db):
+    used = {c for (c,) in db.query(models.StoreItem.code).all()}
+    used |= {o.code for o in db.new if isinstance(o, models.StoreItem) and o.code}
+    n = 1
+    while f"ITM{n}" in used:
+        n += 1
+    return f"ITM{n}"
+
+
+def _rental_name(name):
+    n = " ".join((name or "").split())
+    return n if n.lower().startswith("rental ") else f"Rental {n}"
+
+
+def _owned_name(name):
+    n = " ".join((name or "").split())
+    return n[7:].strip() if n.lower().startswith("rental ") else n
+
+
+def rental_item_for(db, item=None, supplier=None, name="", unit="", retype_ok=True, create=True, flush=True):
+    """The Rental material rental stock of `item` (or of a material called `name`) is booked on, from `supplier`.
+    Returns (material, how): how = 'same' (it is a Rental material already) | 'existing' (its Rental twin, same
+    name made plain: 'Ledger 1.2M' -> 'Rental Ledger 1.2M') | 'retyped' (a material that never held our own
+    stock and is not bought from anyone else - made a Rental material itself) | 'created' ('Rental <name>' made).
+    (None, '') when nothing fits and create is False."""
+    sup_name = (supplier.name if supplier is not None else "") or ""
+    if item is not None and (item.item_type or "") == "rental":
+        if not (item.rental_supplier or "").strip() and sup_name:
+            item.rental_supplier = sup_name
+        return item, "same"
+    base = (item.name if item is not None else name) or name
+    key = plain(base)
+    with db.no_autoflush:
+        cands = [it for it in db.query(models.StoreItem).filter(models.StoreItem.id != (item.id if item is not None else -1)).all()
+                 if it.active is not False and plain(it.name) == key
+                 and ((it.item_type or "") == "rental" or (it.name or "").strip().lower().startswith("rental "))]
+        cands += [o for o in db.new if isinstance(o, models.StoreItem) and o is not item and (o.item_type or "") == "rental"
+                  and plain(o.name) == key and o not in cands]
+        if cands:
+            sk = M._supplier_key(sup_name) if sup_name else ""
+            cands.sort(key=lambda it: (not (it.name or "").lower().startswith("rental "),
+                                       (it.item_type or "") != "rental",
+                                       bool(sk) and M._supplier_key(it.rental_supplier or "") not in ("", sk),
+                                       it.id or 10 ** 9))
+            it = cands[0]
+            if (it.item_type or "") != "rental":
+                it.item_type = "rental"
+            if not (it.rental_supplier or "").strip() and sup_name:
+                it.rental_supplier = sup_name
+            return it, "existing"
+        if item is not None and retype_ok and item.id:
+            owned = db.query(models.StoreMovement.id).filter(models.StoreMovement.item_id == item.id,
+                                                             models.StoreMovement.owner_id.is_(None)).first()
+            others = db.query(models.PurchaseOrder.id).join(
+                models.PurchaseOrderLine, models.PurchaseOrderLine.order_id == models.PurchaseOrder.id).filter(
+                models.PurchaseOrderLine.item_id == item.id,
+                models.PurchaseOrder.supplier_id != (supplier.id if supplier is not None else -1)).first()
+            if owned is None and others is None:
+                item.item_type = "rental"
+                if sup_name:
+                    item.rental_supplier = sup_name
+                return item, "retyped"
+        if not create:
+            return None, ""
+        it = models.StoreItem(code=_next_code(db), name=_rental_name(base)[:200],
+                              unit=(item.unit if item is not None else unit) or "pcs",
+                              category=(item.category if item is not None else "") or "", item_type="rental",
+                              rental_supplier=sup_name, reorder_level=0.0, active=True,
+                              notes="Made for rental stock (supplier's, not ours)")
+        db.add(it)
+        if flush:
+            db.flush()
+        return it, "created"
+
+
+def owned_item_for(db, item, flush=True):
+    """Our own material for stock bought outright of a Rental material ('Rental Ledger 1.2M' bought -> 'Ledger
+    1.2M'): its owned twin by name, else made (an Asset). Returns (material, how)."""
+    if (item.item_type or "") != "rental":
+        return item, "same"
+    key = plain(item.name)
+    want = _owned_name(item.name).lower()
+    with db.no_autoflush:
+        cands = [it for it in db.query(models.StoreItem).filter(models.StoreItem.item_type != "rental").all()
+                 if it.active is not False and plain(it.name) == key and not (it.name or "").lower().startswith("rental ")]
+        if cands:
+            cands.sort(key=lambda it: ((it.name or "").strip().lower() != want, it.id))
+            return cands[0], "existing"
+        it = models.StoreItem(code=_next_code(db), name=_owned_name(item.name)[:200], unit=item.unit or "pcs",
+                              category=item.category or "", item_type="asset", reorder_level=0.0, active=True,
+                              notes=f"Our own, bought - its rental twin is {item.name}")
+        db.add(it)
+        if flush:
+            db.flush()
+        return it, "created"
 
 
 # The purchaser's answers (Q26, Q28) and the portal's own match he confirmed line by line (Part D)
@@ -374,6 +502,7 @@ class Book:
         for r in recs:
             by_line[self._rec_line(o, r)].append(r)
         lines = []
+        rental_lpo = self.maps.is_rental(o)
         for l in o.lines:
             it = self.items.get(l.item_id)
             service = is_service(l, it)
@@ -433,7 +562,8 @@ class Book:
             lines.append({"line_id": l.id, "item_id": l.item_id, "description": l.description or (it.name if it else ""),
                           "unit": l.unit or (it.unit if it else ""), "ordered": round(ordered, 3),
                           "delivered": round(delivered, 3), "closed": round(closed, 3), "remaining": round(remaining, 3),
-                          "service": service, "location": loc, "site": self.sites.key(o, l),
+                          "service": service, "rental": bool(rental_lpo and not service), "location": loc,
+                          "site": self.sites.key(o, l),
                           "rentals": [self.items[i].name for i in rmap if i in self.items],
                           "rental_ids": rmap, "how": sorted(set(how))})
         if not live:
@@ -451,7 +581,8 @@ class Book:
                            (self.req_by_id[mrl.request_id].lpo_id == o.id or
                             (self.req_by_id[mrl.request_id].notes or "").startswith("Stock for the store, ordered on")))
         direct = not _ids(o.request_line_ids) and all(own(x) for x in related)
-        return {"id": o.id, "ref": o.ref, "status": st, "lines": lines, "related": [x.id for x in related], "direct": direct}
+        return {"id": o.id, "ref": o.ref, "status": st, "lines": lines, "related": [x.id for x in related], "direct": direct,
+                "rental": bool(rental_lpo)}
 
     def of(self, o):
         return self.out.get(o.id if hasattr(o, "id") else o)
@@ -561,10 +692,24 @@ def book_delivery(db, o, entries, dn_no, dn_date, user_id=None, location=None, t
             if p["service"]:
                 db.add(models.LpoReceipt(kind="service", qty=qty, request_line_id=mrl.id if mrl else None, **base))
                 done.append(f"{name}: {qty:g} {p['unit']} done (service - no stock, cost to {p['site']}){on_req}")
-            elif p["rental_ids"] and o.supplier_id:
+            elif p["rental"]:
+                # A rental LPO: the supplier's stock, booked into Rentals on the Rental material(s) the line is
+                # linked to - or its Rental twin found or made now (and linked, so the next delivery finds it).
+                if not o.supplier_id:
+                    raise HTTPException(status_code=400, detail=f"{o.ref} has no supplier on file - a rental must say whose it is.")
+                sup = db.get(models.Supplier, o.supplier_id)
+                rids = list(p["rental_ids"])
+                if not rids:
+                    ri, how = rental_item_for(db, it, sup, name=name, unit=p["unit"])
+                    add_map(db, l.description or (it.name if it else name), ri.id, source="delivery", user_id=user_id)
+                    book.items[ri.id] = ri
+                    rids = [ri.id]
+                    if how in ("created", "retyped"):
+                        done.append(f"{name}: {'made a Rental material' if how == 'retyped' else 'new Rental material'} "
+                                    f"{ri.name} ({sup.name if sup else ''})")
                 first = True
-                for rid in p["rental_ids"]:
-                    ri = book.items.get(rid)
+                for rid in rids:
+                    ri = book.items.get(rid) or db.get(models.StoreItem, rid)
                     m = models.StoreMovement(item_id=rid, kind="in", qty=qty, location=loc, owner_id=o.supplier_id,
                                              supplier=o.supplier_name or "", reference=dn_no,
                                              notes=f"{o.ref} line: {name}", moved_on=dn_date, created_by=user_id,
@@ -573,7 +718,8 @@ def book_delivery(db, o, entries, dn_no, dn_date, user_id=None, location=None, t
                     db.add(models.LpoReceipt(kind="rentals", qty=qty, movement_id=m.id,
                                              request_line_id=(mrl.id if (mrl and first) else None), **base))
                     first = False
-                    done.append(f"{name}: {qty:g} booked in on hire as {ri.name if ri else rid} at {loc or M.CENTRAL_LABEL}{on_req}")
+                    done.append(f"{name}: {qty:g} booked in on rental as {ri.name if ri else rid} "
+                                f"(Rental - {o.supplier_name or ''}) at {loc or M.CENTRAL_LABEL}{on_req}")
             elif not stock:
                 # delivered, but not to a place stock is kept (an office, a number that is not a site): recorded
                 # against the LPO only
@@ -582,7 +728,13 @@ def book_delivery(db, o, entries, dn_no, dn_date, user_id=None, location=None, t
             else:
                 if not l.item_id:
                     raise HTTPException(status_code=400, detail=f"{name} is not on the material list, so it cannot go into stock.")
-                m = models.StoreMovement(item_id=l.item_id, kind="in", qty=qty, location=loc,
+                # bought outright: our own stock - never on a Rental material ('Rental Ledger 1.2M' bought is 'Ledger 1.2M')
+                own_id = l.item_id
+                if it is not None and (it.item_type or "") == "rental":
+                    oi, how = owned_item_for(db, it)
+                    own_id = oi.id
+                    done.append(f"{name}: bought, not rental - booked as our own {oi.name}" + (" (new material)" if how == "created" else ""))
+                m = models.StoreMovement(item_id=own_id, kind="in", qty=qty, location=loc,
                                          supplier=o.supplier_name or "", unit_cost=round(float(l.rate or 0) * (1 - disc / 100.0), 4),
                                          reference=dn_no, notes=f"Against {o.ref}" + (f" ({mrl.request.ref})" if mrl else ""),
                                          moved_on=dn_date, created_by=user_id, request_id=mrl.request_id if mrl else None)
@@ -741,7 +893,7 @@ def deliveries(show: str = "open", db: Session = Depends(get_db),
         out.append({"id": o.id, "ref": o.ref, "date": o.order_date.isoformat() if o.order_date else "",
                     "supplier": o.supplier_name or "", "site": o.project_location or "",
                     "deliver_to": b.sites.key(o), "status": p["status"], "status_word": STATUS_WORDS[p["status"]],
-                    "from_request": bool(p["related"]), "direct": p["direct"], "by": names.get(o.created_by, ""),
+                    "from_request": bool(p["related"]), "direct": p["direct"], "rental": p["rental"], "by": names.get(o.created_by, ""),
                     "lines": p["lines"]})
     return {"orders": out, "covered_request_lines": sorted(covered), "request_line_lpo": line_lpo,
             "service_words": SERVICE_WORDS}
@@ -762,7 +914,7 @@ def order_deliveries(order_id: int, db: Session = Depends(get_db),
              "by": names.get(r.created_by, ""), "notes": r.notes or "", "tag": r.tag or ""}
             for r in db.query(models.LpoReceipt).filter(models.LpoReceipt.order_id == o.id).order_by(models.LpoReceipt.id).all()]
     return {"id": o.id, "ref": o.ref, "supplier": o.supplier_name or "", "site": o.project_location or "",
-            "deliver_to": b.sites.key(o), "status": p["status"], "status_word": STATUS_WORDS[p["status"]],
+            "deliver_to": b.sites.key(o), "status": p["status"], "status_word": STATUS_WORDS[p["status"]], "rental": p["rental"],
             "lines": p["lines"], "history": hist, "superseded_by": o.superseded_by or "", **bill_of(o)}
 
 

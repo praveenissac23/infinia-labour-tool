@@ -4847,6 +4847,56 @@ def _on_rent(db: Session, supplier_id: int = None, upto: date = None, location: 
 _on_hire = _on_rent
 
 
+# ---- ONE RULE for rental stock (01 Nov 2026, owner: "if any items are rental - even if I add it as rental, even
+# if I get it from the purchase as rental - it must be under rental") -------------------------------------------
+# Whatever screen books it, stock that comes in is put right before it is written:
+#   - into a Rental material with no supplier said: it is the rental supplier's (the supplier on the delivery when
+#     that is a supplier on file, else the material's rental supplier);
+#   - in as a supplier's (rental) onto one of our own materials: it goes onto that material's Rental twin
+#     ('Ledger 1.2M' -> 'Rental Ledger 1.2M', made if there is none), so our own Asset / Consumable stock and
+#     the supplier's rental stock are never one row.
+# A movement can opt out with m._rental_rule_off = True (the data correction moving old rows, a reassignment
+# that says exactly where each part goes).
+def _rental_rule_before_flush(session, flush_context, instances):
+    news = [o for o in session.new if isinstance(o, models.StoreMovement)
+            and (o.kind or "") in ("in", "adjust") and not getattr(o, "_rental_rule_off", False)]
+    if not news:
+        return
+    import purchasing as _pu
+    with session.no_autoflush:
+        for m in news:
+            item = m.item if m.item is not None else (session.get(models.StoreItem, m.item_id) if m.item_id else None)
+            if item is None:
+                continue
+            if m.owner_id is None and (item.item_type or "") == "rental":
+                if (m.kind or "") == "adjust" and float(m.qty or 0) < 0:
+                    continue                      # a count taking stock off: drawn from whoever holds it
+                keys = [k for k in (_supplier_key(m.supplier or ""), _supplier_key(item.rental_supplier or "")) if k]
+                sup = None
+                for k in keys:
+                    sup = session.query(models.Supplier).filter(models.Supplier.name_key == k).first()
+                    if sup is not None:
+                        break
+                if sup is not None:
+                    m.owner_id = sup.id
+                    if not (m.supplier or "").strip():
+                        m.supplier = sup.name
+                    m.notes = ((m.notes or "") + (" - " if (m.notes or "").strip() else "") + "rental (supplier's)")[:500]
+            elif m.owner_id is not None and (item.item_type or "") != "rental":
+                sup = session.get(models.Supplier, m.owner_id)
+                ri, _how = _pu.rental_item_for(session, item, sup, flush=False)
+                m.item = ri
+                if ri.id:
+                    m.item_id = ri.id
+
+
+from sqlalchemy import event as _sa_event                  # noqa: E402
+from sqlalchemy.orm import Session as _SaSession           # noqa: E402
+if not getattr(_SaSession, "_infinia_rental_rule", False):
+    _sa_event.listen(_SaSession, "before_flush", _rental_rule_before_flush)
+    _SaSession._infinia_rental_rule = True
+
+
 def _supplier_key(name: str) -> str:
     """Fold a supplier name to a comparison key: lower case, punctuation
     dropped, spacing collapsed, and the usual trading suffixes removed.
@@ -5318,11 +5368,22 @@ def _item_for_lpo_line(db, item_id, description, unit, created):
 
 
 def _lpo_lines_to_materials(db, order, created):
-    """Every line on the order points at a material on the list."""
+    """Every line on the order points at a material on the list. On a rental LPO a material made new for it is a
+    Rental material, rented from the LPO's supplier (01/11/2026) - so what comes on it books straight into Rentals."""
+    fresh = set()
     for l in order.lines:
+        n0 = len(created)
         it = _item_for_lpo_line(db, l.item_id, l.description, l.unit, created)
+        if it and len(created) > n0:
+            fresh.add(it.id)
         if it and not l.item_id:
             l.item_id = it.id
+    if fresh and _lpo_is_rental(order):
+        sup = (order.supplier_name or "").strip()
+        for it in db.query(models.StoreItem).filter(models.StoreItem.id.in_(list(fresh))).all():
+            if (it.item_type or "") != "rental":
+                it.item_type = "rental"
+                it.rental_supplier = it.rental_supplier or sup
 
 
 def _next_item_code(db):
@@ -5705,13 +5766,22 @@ def store_hire_in(payload: schemas.HireInIn, db: Session = Depends(get_db),
         if not o:
             raise HTTPException(status_code=400, detail="That purchase order was not found.")
         reference = reference or o.ref
-    booked, moves = [], []
+    booked, moves, moved_to = [], [], []
     for l in payload.lines:
         if (l.qty or 0) <= 0:
             continue
         item = db.query(models.StoreItem).filter(models.StoreItem.id == l.item_id).first()
         if not item:
             raise HTTPException(status_code=400, detail="One of those materials is not on file.")
+        # Rental stock is booked on a Rental material: one of our own materials picked here goes onto its
+        # Rental twin (found, or made 'Rental <name>'), so it never shows in Stock as ours.
+        import purchasing as _pu
+        picked = item
+        item, how = _pu.rental_item_for(db, item, sup)
+        if how in ("existing", "created", "retyped") and item is not picked:
+            moved_to.append(f"{picked.name} -> {item.name}" + (" (new)" if how == "created" else ""))
+        elif how == "retyped":
+            moved_to.append(f"{item.name} is now a Rental material")
         m = models.StoreMovement(
             item_id=item.id, kind="in", qty=l.qty,
             location=payload.location or CENTRAL,
@@ -5731,12 +5801,14 @@ def store_hire_in(payload: schemas.HireInIn, db: Session = Depends(get_db),
                             o if payload.order_id else None)
     db.commit()
     log_action(db, user.id, "hire_in",
-               f"from {sup.name}: " + ", ".join(booked[:6])
+               f"rental in from {sup.name}: " + ", ".join(booked[:6])
                + (f" and {len(booked) - 6} more" if len(booked) > 6 else "")
+               + (f"; booked as Rental: {'; '.join(moved_to)}" if moved_to else "")
                + (f"; received on {', '.join(sorted({r for r, _, _ in met}))}" if met else ""))
     return {"ok": True, "supplier": sup.name, "supplier_id": sup.id,
-            "lines": len(booked), "requests": sorted({r for r, _, _ in met}),
-            "detail": f"{len(booked)} material(s) booked in on hire from {sup.name}."
+            "lines": len(booked), "requests": sorted({r for r, _, _ in met}), "rental_as": moved_to,
+            "detail": f"{len(booked)} material(s) booked in on rental from {sup.name}."
+                      + (f" Booked as Rental: {'; '.join(moved_to)}." if moved_to else "")
                       + (f" Received on {', '.join(sorted({r for r, _, _ in met}))}." if met else "")}
 
 
@@ -6189,21 +6261,35 @@ def reassign_stock_owner(payload: dict = Body(...), db: Session = Depends(get_db
     was = frm.name if frm else "ours"
     now = to.name if to else "ours"
     note = f"Owner corrected: {was} -> {now}"
-    for signed, owner in ((-qty, frm), (qty, to)):
-        db.add(models.StoreMovement(
-            item_id=item.id, kind="adjust", qty=signed,
+    # One rule: our own stock is never on a Rental material, a supplier's never on one of ours - the part that
+    # becomes ours goes onto the owned twin ('Rental Ledger 1.2M' -> 'Ledger 1.2M'), the part that becomes the
+    # supplier's onto the Rental twin.
+    import purchasing as _pu
+    if to is None and (item.item_type or "") == "rental":
+        dest, _h = _pu.owned_item_for(db, item)
+    elif to is not None and (item.item_type or "") != "rental":
+        dest, _h = _pu.rental_item_for(db, item, to)
+    else:
+        dest = item
+    for signed, owner, it in ((-qty, frm, item), (qty, to, dest)):
+        mv = models.StoreMovement(
+            item_id=it.id, kind="adjust", qty=signed,
             location=where, from_location=where,
             owner_id=owner.id if owner else None,
             supplier=owner.name if owner else "",
             incharge=user.full_name or user.username,
             reference="Owner correction", notes=note,
-            moved_on=_dubai_today(), created_by=user.id))
+            moved_on=_dubai_today(), created_by=user.id)
+        mv._rental_rule_off = True
+        db.add(mv)
     db.commit()
     log_action(db, user.id, "stock_owner_corrected",
-               f"{qty:g} {item.unit} {item.code} at {where or 'central store'}: {was} -> {now}")
+               f"{qty:g} {item.unit} {item.code} at {where or 'central store'}: {was} -> {now}"
+               + (f" (now {dest.code} {dest.name})" if dest is not item else ""))
     return {"ok": True,
             "detail": f"{qty:g} {item.unit or ''} {item.name} is now "
-                      + (f"on hire from {now}." if to else "recorded as ours.")}
+                      + (f"on rental from {now}" if to else "recorded as ours")
+                      + (f", as {dest.name}." if dest is not item else ".")}
 
 
 @app.get("/store/movements", response_model=list[schemas.StoreMovementOut])
@@ -6600,27 +6686,28 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         return q.all()
 
     if kind == "low":
+        # our own stock only - a supplier's rental stock is never 'running low' in our store
         rows = []
-        stocked = _ever_stocked(db)
-        for i in items.values():
-            if not i.active or not i.reorder_level or i.id not in stocked: continue
-            have = stock.get((i.id, CENTRAL), 0)
-            if have <= i.reorder_level:
-                rows.append({"code": i.code, "name": i.name, "unit": i.unit,
-                              "in_store": round(have, 2), "reorder_level": i.reorder_level,
-                              "shortfall": round(i.reorder_level - have, 2)})
+        for r in _stock_rows(db, items)["rows"]:
+            i = items.get(r["_item_id"])
+            if r["item_type"] == "rental" or not r["low"] or i is None:
+                continue
+            rows.append({"code": i.code, "name": i.name, "unit": i.unit,
+                          "in_store": round(r["in_store"], 2), "reorder_level": i.reorder_level,
+                          "shortfall": round(i.reorder_level - r["in_store"], 2)})
         return {"title": "Items to reorder", "rows": sorted(rows, key=lambda r: -r["shortfall"])}
 
     if kind == "by_site":
+        # What each site holds: our own under its type, a supplier's as Rental ('Rental - Desarch') - the same
+        # rows as Current stock, so the two never disagree.
         rows = []
-        for (iid, loc), qty in stock.items():
-            if loc == CENTRAL or not qty or iid not in items: continue
-            i = items[iid]
-            # Consumables are used where they are sent, so they are not
-            # held at a site - see HELD_AT_SITE.
-            if not _held_at_site(i): continue
-            rows.append({"site": loc, "code": i.code, "name": i.name,
-                          "unit": i.unit, "qty": round(qty, 2), "item_type": i.item_type})
+        for r in _stock_rows(db, items)["rows"]:
+            for loc, qty in (r["by_site"] or {}).items():
+                if loc == CENTRAL or not qty:
+                    continue
+                rows.append({"site": loc, "code": r["code"], "name": r["name"],
+                              "unit": r["unit"], "qty": round(qty, 2), "item_type": r["item_type"],
+                              "_type_label": r["_type_label"]})
         # One site picked: only its holdings - on screen, preview, PDF and
         # Excel alike (the paper used to carry every site).
         if site:
@@ -7054,27 +7141,85 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
     # reorder level on (so a watched item shows even when it hits zero).
     # The catalogue can run to thousands of materials; listing every one
     # at zero makes the few real ones impossible to find.
-    rows = []
+    return _stock_rows(db, items)
+
+
+TYPE_WORDS = {"consumable": "Consumable", "asset": "Asset", "returnable": "Asset", "rental": "Rental"}
+
+
+def _stock_rows(db, items=None):
+    """Current stock, one rule (01/11/2026): our own stock under its own type (Consumable / Asset), and every
+    supplier's rental stock as Rental - 'Rental - Desarch' - with its quantity at each place. The Rental rows
+    are read from the same ledger, by the same reading, as the Rentals screen (_on_rent), so the two always
+    show the same figures; a material that is partly ours and partly rented is two rows, never one.
+    Totals per type are kept apart: rental stock is never counted as ours."""
+    items = items if items is not None else {i.id: i for i in db.query(models.StoreItem).all()}
+    rentals = _rental_supplier_map(db)
     stocked = _ever_stocked(db)
-    places = {}                                     # item -> its places, gathered once
-    for (iid, loc), v in stock.items():
-        if loc != CENTRAL and v:
+    owned, places = {}, {}
+    for (iid, loc, owner), v in _stock_map(db, by_owner=True).items():
+        if owner is not None or iid in rentals:
+            continue                                # the supplier's - on the Rental rows below
+        owned[(iid, loc)] = owned.get((iid, loc), 0) + v
+    for (iid, loc), v in owned.items():
+        if loc != CENTRAL and abs(v) > 1e-9:
             places.setdefault(iid, {})[loc] = round(v, 2)
+    rows = []
     for i in items.values():
-        if not i.active: continue
-        c = stock.get((i.id, CENTRAL), 0)
+        if not i.active or i.id in rentals:
+            continue
+        c = owned.get((i.id, CENTRAL), 0)
         per_site = dict(places.get(i.id, {})) if _held_at_site(i) else {}
         o = sum(per_site.values())
-        if c == 0 and o == 0 and not i.reorder_level and i.item_type != "rental":
-            continue                                # a rental is always listed - on hire or not
+        if abs(c) < 1e-9 and abs(o) < 1e-9 and not i.reorder_level:
+            continue
+        t = "asset" if i.item_type == "returnable" else (i.item_type or "consumable")
         rows.append({"code": i.code, "name": i.name, "unit": i.unit,
-                      "item_type": i.item_type, "in_store": round(c, 2),
-                      "at_sites": round(o, 2), "total": round(c + o, 2),
-                      # Which site holds what, so a row can open into a
-                      # proper breakdown instead of one crowded cell.
-                      "by_site": per_site,
-                      "low": bool(i.reorder_level and i.id in stocked and c <= i.reorder_level)})
-    return {"title": "Current stock", "rows": sorted(rows, key=lambda r: r["code"])}
+                     "item_type": t, "_type_label": TYPE_WORDS.get(t, t.title()), "in_store": round(c, 2),
+                     "at_sites": round(o, 2), "total": round(c + o, 2),
+                     # Which site holds what, so a row can open into a
+                     # proper breakdown instead of one crowded cell.
+                     "by_site": per_site,
+                     "low": bool(i.reorder_level and i.id in stocked and c <= i.reorder_level),
+                     "_item_id": i.id, "_supplier_id": None, "_key": i.code})
+    # Rental: exactly what Rentals shows - one row per material and supplier, its places
+    seen = set()
+    for r in _on_rent(db):
+        i = items.get(r["item_id"])
+        if i is not None and not i.active and not r["qty"]:
+            continue
+        seen.add(r["item_id"])
+        at = r["by_location"]
+        c = at.get(CENTRAL, 0)
+        per_site = {loc: q for loc, q in at.items() if loc != CENTRAL}
+        rows.append({"code": r["code"], "name": r["name"], "unit": r["unit"],
+                     "item_type": "rental", "_type_label": f"Rental – {r['supplier']}",
+                     "in_store": round(c, 2), "at_sites": round(sum(per_site.values()), 2), "total": round(r["qty"], 2),
+                     "by_site": per_site, "low": False,
+                     "_item_id": r["item_id"], "_supplier_id": r["supplier_id"], "_supplier": r["supplier"],
+                     "_key": f"{r['code']}~{r['supplier_id'] or 0}"})
+    # A Rental material with nothing on rental right now is still listed (it is on the list as a rental)
+    for i in items.values():
+        if i.active and (i.item_type or "") == "rental" and i.id not in seen:
+            sup = (i.rental_supplier or "").strip() or "no supplier set"
+            rows.append({"code": i.code, "name": i.name, "unit": i.unit, "item_type": "rental",
+                         "_type_label": f"Rental – {sup}", "in_store": 0, "at_sites": 0, "total": 0,
+                         "by_site": {}, "low": False, "_item_id": i.id, "_supplier_id": rentals.get(i.id),
+                         "_supplier": sup, "_key": f"{i.code}~0"})
+    rows.sort(key=lambda r: (r["code"], r["item_type"] == "rental", r.get("_supplier") or ""))
+    totals = {}
+    for r in rows:
+        t = totals.setdefault(r["item_type"], {"label": TYPE_WORDS.get(r["item_type"], r["item_type"].title()),
+                                               "materials": 0, "in_store": 0.0, "at_sites": 0.0, "total": 0.0})
+        t["materials"] += 1
+        for k in ("in_store", "at_sites", "total"):
+            t[k] = round(t[k] + (r[k] or 0), 2)
+    order = ["consumable", "asset", "rental"]
+    totals = {k: totals[k] for k in sorted(totals, key=lambda k: order.index(k) if k in order else 9)}
+    text = " · ".join(f"{v['label']}{' (suppliers, not ours)' if k == 'rental' else ''}: {v['materials']:,} "
+                      f"material{'s' if v['materials'] != 1 else ''}, {_clean_export_qty(v['total'])} held"
+                      for k, v in totals.items())
+    return {"title": "Current stock", "rows": rows, "type_totals": totals, "type_totals_text": text}
 
 
 # ---------------------------------------------------------------------
@@ -8925,12 +9070,27 @@ def _lpo_dict(o):
         "cancelled_on": o.cancelled_at.strftime("%d/%m/%Y") if getattr(o, "cancelled_at", None) else "",
         "combined": bool(getattr(o, "combined", False)),
         "superseded_by": getattr(o, "superseded_by", "") or "",
+        # Rental LPO: rental_set = what was ticked by hand (None = by itself); rental = what it is now
+        "rental_set": getattr(o, "rental", None), "rental": _lpo_is_rental(o),
         "lines": [{"id": l.id, "item_id": l.item_id, "description": l.description,
                    "description2": l.description2, "qty": l.qty, "unit": l.unit,
                    "rate": l.rate, "tax_pct": l.tax_pct, "cost_to": getattr(l, "cost_to", "") or "",
                    "service": getattr(l, "service", None),
                    "service_now": _is_service_line(l)} for l in o.lines],
     }
+
+
+def _lpo_is_rental(o, sups=None):
+    import purchasing as _pu
+    if getattr(o, "rental", None) is not None:
+        return bool(o.rental)
+    if sups is None:
+        from sqlalchemy.orm import object_session
+        db = object_session(o)
+        if db is None:
+            return False
+        sups = _pu.rental_suppliers(db)
+    return _pu.is_rental_lpo(o, sups)
 
 
 def _is_service_line(l):
@@ -9000,6 +9160,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
         notes=payload.notes or "",
         terms_text=(payload.terms_text or DEFAULT_LPO_TERMS),
         combined=bool(payload.combined),
+        rental=getattr(payload, "rental", None),
         created_by=user.id,
     )
     db.add(o)
@@ -9187,7 +9348,7 @@ def _lpo_snap(o):
             "discount": round(o.discount_pct or 0, 2), "supplier_ref": o.supplier_ref or "", "site": o.project_location or "",
             "terms": o.terms or "", "lines": lines,
             "round_off": lpo_round_off(o), "total": round(tot(lines, o.discount_pct) + lpo_round_off(o), 2),
-            "combined": bool(getattr(o, "combined", False))}
+            "combined": bool(getattr(o, "combined", False)), "rental": getattr(o, "rental", None)}
 
 
 def _to_word(v):
@@ -9326,6 +9487,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     o.notes = payload.notes or ""
     o.terms_text = payload.terms_text or DEFAULT_LPO_TERMS
     o.combined = bool(payload.combined)
+    o.rental = getattr(payload, "rental", None)
 
     # Lines are replaced wholesale rather than matched and patched - the
     # same as any other document correction, and simpler than reconciling
@@ -9376,6 +9538,8 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     log_action(db, user.id, "edit_lpo", f"{o.ref} to {o.supplier_name} ({len(o.lines)} line(s)), "
                f"amount before tax {amount_was:,.2f} -> {_lpo_amt(o.lines):,.2f}"
                + (f"; changed: {'; '.join(changes)}" if changes else "; nothing changed")
+               + ((f"; Rental: {'ticked' if o.rental else 'unticked' if o.rental is False else 'by the supplier'}")
+                  if before.get("rental") != o.rental else "")
                + (f"; {zoho}" if zoho else "")
                + (f"; supplier list updated: {', '.join(sup_changed)}" if sup_changed else "")
                + (f"; added to the material list: {', '.join(new_items)}" if new_items else ""))
@@ -10360,6 +10524,8 @@ def view_store_report(kind: str = "stock", date_from: str = None, date_to: str =
     rows = []
     for r in data["rows"]:
         r = {k: v for k, v in r.items() if k not in ("low", "overdue")}
+        if r.get("_type_label"):
+            r["item_type"] = r["_type_label"]          # 'Rental - Desarch', 'Asset', 'Consumable'
         if isinstance(r.get("by_site"), dict):
             per = r.pop("by_site")
             r["at_which_sites"] = "\n".join(f"{loc}: {_clean_export_qty(q)}"
@@ -10378,6 +10544,8 @@ def view_store_report(kind: str = "stock", date_from: str = None, date_to: str =
         if (date_from or date_to) else f"As at {_dubai_today():%d/%m/%Y}"
     if move in MOVE_TYPES and kind == "usage":
         sub = f"{sub} · {MOVE_TYPES[move]}"
+    if data.get("type_totals_text"):
+        sub = f"{sub} · {data['type_totals_text']}"
     if data.get("unpriced"):
         sub = f"{sub} · {data['unpriced']} line(s) with no price yet"
     if data.get("unpriced_sites"):
@@ -10678,6 +10846,8 @@ def export_store_report(kind: str = "stock", format: str = "excel",
     rows = []
     for r in data["rows"]:
         r = {k: v for k, v in r.items() if k not in ("low", "overdue")}
+        if r.get("_type_label"):
+            r["item_type"] = r["_type_label"]          # 'Rental - Desarch', 'Asset', 'Consumable'
         if isinstance(r.get("by_site"), dict):
             per = r.pop("by_site")
             # One site per line. Twenty sites on one line read as a
@@ -10695,6 +10865,8 @@ def export_store_report(kind: str = "stock", format: str = "excel",
         sub = f'{sub} · matching "{q}"'
     if move in MOVE_TYPES and kind == "usage":
         sub = f"{sub} · {MOVE_TYPES[move]}"
+    if data.get("type_totals_text"):
+        sub = f"{sub} · {data['type_totals_text']}"
     if data.get("unpriced"):
         sub = f"{sub} · {data['unpriced']} line(s) with no price yet"
     if data.get("unpriced_sites"):

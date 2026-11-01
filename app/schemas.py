@@ -507,4 +507,6 @@ class PurchaseOrderIn(BaseModel):
     terms_text: str = ""
     request_line_ids: list[int] = []
     combined: bool = False       # items for different sites - the split is not printed
+    # Rental LPO: None = decided by the supplier (shown ticked when it is one we rent from); True / False = by hand
+    rental: bool | None = None
     lines: list[PurchaseOrderLineIn] = []

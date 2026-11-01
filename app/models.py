@@ -489,6 +489,11 @@ class PurchaseOrder(Base):
     # A revision (IC/LPO/20260150R1) replaces the order before it: the older one is cancelled everywhere and
     # names the revision that took its place.
     superseded_by = Column(String, nullable=True)
+    # A rental LPO (01 Nov 2026, owner: "if any items are rental ... it must be under rental"): what comes on it is
+    # the supplier's, booked into Rentals under a Rental material - never our own stock. None = decided by the
+    # supplier (one we rent from, or whose LPO materials are Rentals materials) and shown ticked on the LPO;
+    # True / False = ticked or unticked by hand. (No default: nothing is written to the existing rows.)
+    rental = Column(Boolean, nullable=True)
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
