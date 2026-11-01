@@ -1,5 +1,5 @@
 // Store > Stock on hand and the site lists show every type: consumables (also at a site until returned), assets and
-// rentals (a rental always, even when nothing is on hire); the Type chips filter them.
+// rentals (a rental always, even when nothing is on rental), shown as Rental - supplier; the Type chips filter them.
 const { chromium } = require('playwright');
 const B = process.env.BASE || 'http://127.0.0.1:8032';
 let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  ' + JSON.stringify(i === undefined ? '' : i).slice(0, 300))); };
@@ -24,13 +24,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const cem = await find('Cement bag ' + run);
   ck(`a consumable sent to site ${site}: 30 in store, 20 out at sites, 50 held`, cem.length === 1 && /30/.test(cem[0]) && /20/.test(cem[0]) && /50/.test(cem[0]), cem);
   const bob = await find('Bob Cat monthly ' + run);
-  ck('a rental with nothing on hire is still listed', bob.length === 1 && /rental/.test(bob[0]), bob);
+  ck('a rental with nothing on rental is still listed, as Rental - its supplier', bob.length === 1 && /Rental – Al Hassai Hire/.test(bob[0]), bob);
   await p.fill('#home-stock-search', ''); await p.dispatchEvent('#home-stock-search', 'input'); await sleep(300);
   const chips = await p.$$eval('#home-stock-type .seg-chip', x => x.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
   ck('Type chips: All, Consumables, Assets, Rentals with counts', chips.length === 4 && /^All \d/.test(chips[0]) && /^Rentals \d/.test(chips[3]), chips);
   await p.click('#home-stock-type .seg-chip:nth-child(4)'); await sleep(300);
   const types = await p.$$eval('#home-stock-body tr[data-code] .pill', x => [...new Set(x.map(e => e.textContent))]);
-  ck('Rentals chip: only rentals', types.length === 1 && types[0] === 'rental', types);
+  ck('Rentals chip: only rentals (Rental - supplier)', types.length >= 1 && types.every(t => /^Rental – /.test(t)), types);
   await p.screenshot({ path: '/tmp/claude-0/types_1.png' });
   await p.click('#home-stock-type .seg-chip:nth-child(1)'); await sleep(300);
   // the At Sites report and the site holding view

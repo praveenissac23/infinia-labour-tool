@@ -1531,9 +1531,9 @@ ACTION_LABELS = {
     "document_deleted": "Document removed", "store_movement": "Stock moved", "store_delete_movement": "Stock movement deleted",
     "store_save_item": "Material saved", "store_remove_item": "Material removed", "stock_added": "Stock received",
     "opening_stock": "Opening stock", "stock_owner_corrected": "Stock corrected", "store_reset": "Store cleared",
-    "hire_in": "Hired item in", "hire_return_raised": "Hire return raised", "hire_return_issued": "Hire return issued",
-    "hire_return_edited": "Hire return edited", "hire_return_confirmed": "Hire return confirmed",
-    "hire_return_cancelled": "Hire return cancelled", "stock_alert_email_failed": "Stock alert email failed",
+    "hire_in": "Rental item in", "hire_return_raised": "Rental return raised", "hire_return_issued": "Rental return issued",
+    "hire_return_edited": "Rental return edited", "hire_return_confirmed": "Rental return confirmed",
+    "hire_return_cancelled": "Rental return cancelled", "stock_alert_email_failed": "Stock alert email failed",
     "material_request": "Material request raised", "material_request_status": "Request status changed",
     "material_request_receive": "Delivery received", "material_request_delete": "Request deleted",
     "request_line_decision": "Request line decided", "create_lpo": "Purchase order raised", "edit_lpo": "Purchase order edited",
@@ -1566,12 +1566,12 @@ _ACTION_GROUP = {a: g for g, (_, acts) in ACTION_GROUPS.items() for a in acts}
 # name, a loan its person. Old entries benefit as much as new ones.
 MOVE_WORDS = {"in": "Received", "out": "Issued", "return": "Returned", "transfer": "Moved",
               "adjust": "Count corrected:", "lost": "Written off (lost / damaged):", "opening": "Opening stock:",
-              "hire_return": "Sent back to the hire company:", "hire_in": "Hired in:"}
+              "hire_return": "Sent back to the rental supplier:", "hire_in": "Rental in:"}
 _CODE_RX = re.compile(r"\b[A-Za-z]{1,5}[-/]?\d{2,6}\b")
 
 
 MOVE_LABELS = {"in": "Stock received", "out": "Stock issued to site", "return": "Stock returned", "transfer": "Stock moved site to site",
-               "adjust": "Stock count corrected", "lost": "Stock written off", "opening": "Opening stock", "hire_return": "Hired stock sent back"}
+               "adjust": "Stock count corrected", "lost": "Stock written off", "opening": "Opening stock", "hire_return": "Rental stock sent back"}
 
 
 def _label(action, details):
@@ -5018,11 +5018,13 @@ def list_suppliers(db: Session = Depends(get_db),
                     user: models.User = Depends(require_any_screen("store", "requests", "approvals"))):
     # Everything a purchase order prints, so choosing a supplier on the
     # LPO screen fills the TRN, address and terms rather than asking for
-    # them again.
+    # them again. rental: a supplier we rent from - the LPO's Rental tick is set by itself for them.
+    import purchasing as _pu
+    rent = _pu.rental_suppliers(db)
     return [{"id": s.id, "name": s.name, "contact_person": s.contact_person or "",
              "phone": s.phone or "", "notes": s.notes or "",
              "trn": s.trn or "", "email": s.email or "",
-             "payment_terms": s.payment_terms or ""}
+             "payment_terms": s.payment_terms or "", "rental": s.id in rent}
             for s in supplier_on_list(db.query(models.Supplier)).order_by(models.Supplier.name).all()]
 
 
@@ -5130,7 +5132,7 @@ def _supplier_refs():
             ("material requests", models.MaterialRequest, "supplier_id"),
             ("material request lines", models.MaterialRequestLine, "supplier_id"),
             ("return notes", models.HireReturn, "supplier_id"),
-            ("store movements (hired from it)", models.StoreMovement, "owner_id"),
+            ("store movements (rental from it)", models.StoreMovement, "owner_id"),
             ("subcontracts / LPOs on Estimation projects", E.EstSub, "supplier_id")]
 
 
@@ -5371,14 +5373,24 @@ def _lpo_lines_to_materials(db, order, created):
     """Every line on the order points at a material on the list. On a rental LPO a material made new for it is a
     Rental material, rented from the LPO's supplier (01/11/2026) - so what comes on it books straight into Rentals."""
     fresh = set()
+    rental = _lpo_is_rental(order)
     for l in order.lines:
+        if rental and not l.item_id and (l.description or "").strip():
+            # a rental LPO's 'Ledger 1.8m' is the Rental material already on the list ('Rental Ledger 1.8M') - not a new one
+            import purchasing as _pu
+            same = db.query(models.StoreItem).filter(func.lower(models.StoreItem.name) == " ".join(l.description.split()).lower()).first()
+            if same is None:
+                twin, _h = _pu.rental_item_for(db, None, None, name=l.description, create=False, retype_ok=False)
+                if twin is not None:
+                    l.item_id = twin.id
+                    continue
         n0 = len(created)
         it = _item_for_lpo_line(db, l.item_id, l.description, l.unit, created)
         if it and len(created) > n0:
             fresh.add(it.id)
         if it and not l.item_id:
             l.item_id = it.id
-    if fresh and _lpo_is_rental(order):
+    if fresh and rental:
         sup = (order.supplier_name or "").strip()
         for it in db.query(models.StoreItem).filter(models.StoreItem.id.in_(list(fresh))).all():
             if (it.item_type or "") != "rental":
@@ -5551,13 +5563,13 @@ def upsert_store_item(payload: schemas.StoreItemIn, db: Session = Depends(get_db
             moved_on=_dubai_today(),
             supplier=hire_owner.name if hire_owner else "", incharge="",
             reference="Opening stock",
-            notes=(f"Opening stock - on hire from {hire_owner.name}" if hire_owner
+            notes=(f"Opening stock - on rental from {hire_owner.name}" if hire_owner
                    else "Opening stock - already held when the material was added"),
             created_by=user.id))
         db.commit()
         log_action(db, user.id, "store_movement",
                    f"opening {opening:g} {existing.unit} {existing.code}"
-                   + (f" on hire from {hire_owner.name}" if hire_owner else ""))
+                   + (f" on rental from {hire_owner.name}" if hire_owner else ""))
 
     log_action(db, user.id, "store_save_item", f"{payload.code} - {payload.name}")
     return existing
@@ -5754,7 +5766,7 @@ def store_hire_in(payload: schemas.HireInIn, db: Session = Depends(get_db),
             detail="Only the store keeper records stock in and out.")
     sup = _find_or_create_supplier(db, payload.supplier_name)
     if not sup:
-        raise HTTPException(status_code=400, detail="Name the trader it is hired from.")
+        raise HTTPException(status_code=400, detail="Name the supplier it is rented from.")
     if not payload.lines:
         raise HTTPException(status_code=400, detail="Add at least one material.")
     if payload.received_on > _dubai_today():
@@ -6015,7 +6027,7 @@ def _fill_return_lines(db, r, lines, supplier_id):
         if l.item_id and going > on_hire + 1e-9:
             name = item.name if item else "that material"
             raise HTTPException(status_code=400,
-                detail=f"{name}: only {round(on_hire, 2)} on hire" + (f" at {where}" if where else "")
+                detail=f"{name}: only {round(on_hire, 2)} on rental" + (f" at {where}" if where else "")
                        + f", but the note accounts for {round(going, 2)}.")
         if (l.qty_short or 0) > 0 and (l.short_reason or "").strip().lower() not in SHORT_REASONS:
             name = item.name if item else "a material"
@@ -6142,7 +6154,7 @@ def confirm_hire_return(return_id: int, payload: schemas.HireReturnConfirmIn,
         going = (l.qty_returned or 0) + (l.qty_short or 0)
         if going > held.get(l.item_id, 0) + 1e-9:
             raise HTTPException(status_code=400,
-                detail=f"{l.description}: only {round(held.get(l.item_id, 0), 2)} still on hire, "
+                detail=f"{l.description}: only {round(held.get(l.item_id, 0), 2)} still on rental, "
                        f"but this note settles {round(going, 2)}. Edit the note first.")
     # Taken off where it actually stands - the place the lorry loaded
     # from first, then anywhere else holding it. One movement per
@@ -6253,7 +6265,7 @@ def reassign_stock_owner(payload: dict = Body(...), db: Session = Depends(get_db
 
     have = _stock_map(db, by_owner=True).get((item.id, where, frm.id if frm else None), 0)
     if qty > have + 1e-9:
-        whose = f"hired from {frm.name}" if frm else "ours"
+        whose = f"on rental from {frm.name}" if frm else "ours"
         place = where or "the central store"
         raise HTTPException(status_code=400,
             detail=f"Only {round(have, 2)} {item.unit} of {item.name} ({whose}) at {place}.")
@@ -6371,7 +6383,7 @@ def _add_store_movement(payload, db, user):
     if payload.owner_id is not None:
         owner = db.query(models.Supplier).filter(models.Supplier.id == payload.owner_id).first()
         if not owner:
-            raise HTTPException(status_code=400, detail="That hire supplier is not on file.")
+            raise HTTPException(status_code=400, detail="That rental supplier is not on file.")
     if payload.qty <= 0 and payload.kind != "adjust":
         raise HTTPException(status_code=400, detail="Quantity must be more than zero.")
     if payload.moved_on > _dubai_today():
@@ -6686,28 +6698,34 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
         return q.all()
 
     if kind == "low":
-        # our own stock only - a supplier's rental stock is never 'running low' in our store
         rows = []
-        for r in _stock_rows(db, items)["rows"]:
-            i = items.get(r["_item_id"])
-            if r["item_type"] == "rental" or not r["low"] or i is None:
-                continue
-            rows.append({"code": i.code, "name": i.name, "unit": i.unit,
-                          "in_store": round(r["in_store"], 2), "reorder_level": i.reorder_level,
-                          "shortfall": round(i.reorder_level - r["in_store"], 2)})
+        stocked = _ever_stocked(db)
+        for i in items.values():
+            if not i.active or not i.reorder_level or i.id not in stocked: continue
+            have = stock.get((i.id, CENTRAL), 0)
+            if have <= i.reorder_level:
+                rows.append({"code": i.code, "name": i.name, "unit": i.unit,
+                              "in_store": round(have, 2), "reorder_level": i.reorder_level,
+                              "shortfall": round(i.reorder_level - have, 2)})
         return {"title": "Items to reorder", "rows": sorted(rows, key=lambda r: -r["shortfall"])}
 
     if kind == "by_site":
-        # What each site holds: our own under its type, a supplier's as Rental ('Rental - Desarch') - the same
-        # rows as Current stock, so the two never disagree.
         rows = []
-        for r in _stock_rows(db, items)["rows"]:
-            for loc, qty in (r["by_site"] or {}).items():
-                if loc == CENTRAL or not qty:
-                    continue
-                rows.append({"site": loc, "code": r["code"], "name": r["name"],
-                              "unit": r["unit"], "qty": round(qty, 2), "item_type": r["item_type"],
-                              "_type_label": r["_type_label"]})
+        rent_sup = None
+        for (iid, loc), qty in stock.items():
+            if loc == CENTRAL or not qty or iid not in items: continue
+            i = items[iid]
+            # Consumables are used where they are sent, so they are not
+            # held at a site - see HELD_AT_SITE.
+            if not _held_at_site(i): continue
+            row = {"site": loc, "code": i.code, "name": i.name,
+                   "unit": i.unit, "qty": round(qty, 2), "item_type": i.item_type}
+            if i.item_type == "rental":
+                # a Rental material says whose it is: 'Rental - Desarch' (on screen and paper)
+                if rent_sup is None:
+                    rent_sup = {(r["item_id"], loc2): r["supplier"] for r in _on_rent(db) for loc2 in r["by_location"]}
+                row["_type_label"] = f"Rental – {rent_sup.get((iid, loc)) or i.rental_supplier or 'no supplier set'}"
+            rows.append(row)
         # One site picked: only its holdings - on screen, preview, PDF and
         # Excel alike (the paper used to carry every site).
         if site:
@@ -7102,7 +7120,7 @@ def store_report(kind: str = "stock", date_from: str = None, date_to: str = None
                               "since": since.isoformat() if since else "-",
                               "due_back": i.rental_due.isoformat() if (i and i.rental_due) else "no date set",
                               "days_out": (_dubai_today() - since).days if since else ""})
-        return {"title": "Equipment on hire", "rows": sorted(rows, key=lambda r: (r["hired_from"], r["code"]))}
+        return {"title": "Equipment on rental", "rows": sorted(rows, key=lambda r: (r["hired_from"], r["code"]))}
 
     if kind == "lost":
         rows = []
@@ -7173,9 +7191,8 @@ def _stock_rows(db, items=None):
         o = sum(per_site.values())
         if abs(c) < 1e-9 and abs(o) < 1e-9 and not i.reorder_level:
             continue
-        t = "asset" if i.item_type == "returnable" else (i.item_type or "consumable")
         rows.append({"code": i.code, "name": i.name, "unit": i.unit,
-                     "item_type": t, "_type_label": TYPE_WORDS.get(t, t.title()), "in_store": round(c, 2),
+                     "item_type": i.item_type, "in_store": round(c, 2),
                      "at_sites": round(o, 2), "total": round(c + o, 2),
                      # Which site holds what, so a row can open into a
                      # proper breakdown instead of one crowded cell.
@@ -7209,7 +7226,8 @@ def _stock_rows(db, items=None):
     rows.sort(key=lambda r: (r["code"], r["item_type"] == "rental", r.get("_supplier") or ""))
     totals = {}
     for r in rows:
-        t = totals.setdefault(r["item_type"], {"label": TYPE_WORDS.get(r["item_type"], r["item_type"].title()),
+        k = "asset" if r["item_type"] == "returnable" else (r["item_type"] or "consumable")
+        t = totals.setdefault(k, {"label": TYPE_WORDS.get(k, k.title()),
                                                "materials": 0, "in_store": 0.0, "at_sites": 0.0, "total": 0.0})
         t["materials"] += 1
         for k in ("in_store", "at_sites", "total"):
@@ -7997,7 +8015,7 @@ def record_opening_stock(payload: dict = Body(...), db: Session = Depends(get_db
     if owner_id:
         owner = db.query(models.Supplier).filter(models.Supplier.id == int(owner_id)).first()
         if not owner:
-            raise HTTPException(status_code=400, detail="That hire supplier is not on file.")
+            raise HTTPException(status_code=400, detail="That rental supplier is not on file.")
     elif owner_name:
         owner = _find_or_create_supplier(db, owner_name)
 
@@ -10127,7 +10145,7 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
         warn += (f'<p class="warn">{n(tot_short)} item(s) recorded as not returned. '
                  "Signing below confirms this quantity as agreed by both parties.</p>")
     if tot_bal > 1e-9:
-        warn += (f'<p class="rest">{n(tot_bal)} item(s) remain on hire and are not '
+        warn += (f'<p class="rest">{n(tot_bal)} item(s) remain on rental and are not '
                  "part of this return.</p>")
     notes_html = ""
     if (note.get("notes") or "").strip():
@@ -10230,8 +10248,8 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
       <div><div class="cap">RETURN DETAILS</div><table class="kv">{right}</table></div>
     </div>
     <table class="items">
-      <thead><tr><th>#</th><th>Material</th><th>Unit</th><th class="r">On hire</th>
-        <th class="r">Returned</th><th class="r">Short</th><th class="r">Still on hire</th>
+      <thead><tr><th>#</th><th>Material</th><th>Unit</th><th class="r">On rental</th>
+        <th class="r">Returned</th><th class="r">Short</th><th class="r">Still on rental</th>
         <th>Reason / remarks</th></tr></thead>
       <tbody>{''.join(body)}
         <tr class="tot"><td></td><td>TOTAL</td><td></td>

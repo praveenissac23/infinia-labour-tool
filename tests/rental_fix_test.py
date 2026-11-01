@@ -181,8 +181,8 @@ ck("rental LPOs ticked (20260103, 148, 150R1, 170); 20260109 (lost items bought)
 ck("20260148 and 20260170 read Delivered from what Rentals booked; 20260150R1 part (1 prop short); 20260103 still Ordered",
    r.get("lpo_status") == {"IC/LPO/20260148": "delivered", "IC/LPO/20260150R1": "part", "IC/LPO/20260170": "delivered", "IC/LPO/20260103": "ordered"},
    r.get("lpo_status"))
-ck("the six non-materials are services (category Service), not Rental", len(r.get("services") or []) == 6
-   and all(t == "consumable" and c == "Service" for _, t, c in r["services"]), r.get("services"))
+ck("the six non-materials are left exactly as they were (typed rental, no category) - only listed",
+   len(r.get("services") or []) == 6 and all(t == "rental" and not c for _, t, c in r["services"]), r.get("services"))
 alone = r
 
 # ---- both orders with the purchasing correction ---------------------------------------------------------------------

@@ -3067,6 +3067,15 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <span class="note">Not printed on the LPO</span></label>
               <div id="lpo-cmb-body" style="display:none;"></div>
             </div>
+            <!-- Rental LPO: what comes on it is the supplier's - booked into Rentals under its Rental material, never
+                 our own stock. Ticked by itself for a supplier we rent from; untick when it is bought outright. -->
+            <div class="cmb" id="lpo-rent">
+              <label class="cmb-h" title="Rental: the material stays the supplier's. Delivered on this LPO, it is booked into Rentals (Rental - supplier) and shows in Stock as Rental, never as our Asset or Consumable. Ticked by itself when the supplier is one we rent from - untick it when the LPO buys the material outright (it then becomes our own stock).">
+                <input type="checkbox" id="lpo-rental" onchange="onLpoRental()">
+                <span class="tg"></span><b>Rental</b>
+                <span class="cmb-sub" id="lpo-rent-hint">Tick when the material is rented from the supplier - it stays theirs and goes into Rentals.</span>
+                <span class="note">Not printed on the LPO</span></label>
+            </div>
 
             <div class="form-row" style="margin-top:10px; gap:10px; flex-wrap:wrap;">
               <div class="field" style="flex:1; min-width:260px;"><label>Notes</label>
@@ -4172,7 +4181,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="card" id="rmap-card">
               <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
                 <div>
-                  <h2 style="margin-bottom:4px;" title="A hire LPO names the material its own way ('Ledger 1.2m'); Rentals books it under its 'Rental ...' name. Linked here once, the LPO line reads delivered as soon as Rentals books it in at that site from that supplier - nothing is booked twice. One LPO name can be two Rentals materials (Spigot / Nut &amp; Bolt), and two LPO names one Rentals material.">LPO names and Rentals names</h2>
+                  <h2 style="margin-bottom:4px;" title="A rental LPO names the material its own way ('Ledger 1.2m'); Rentals books it under its 'Rental ...' name. Linked here once, the LPO line reads delivered as soon as Rentals books it in at that site from that supplier - nothing is booked twice. One LPO name can be two Rentals materials (Spigot / Nut &amp; Bolt), and two LPO names one Rentals material.">LPO names and Rentals names</h2>
                   <p style="font-size:12px; color:#888; margin:0;">Which Rentals material each LPO material is booked in as.</p>
                 </div>
                 <button class="btn btn-dark" onclick="rmapPrefill()" title="Link every LPO material whose name is a Rentals material's (case, spaces and units ignored)">Link the same names</button>
@@ -9303,7 +9312,7 @@ function drawStoreHome(stock, stk) {
       code:     { t: "Code", w: "8%", cell: r => `<td style="color:#999; font-size:12px;">${r.code}</td>` },
       name:     { t: "Material", w: "", cell: r => `<td style="font-weight:500;">${r.name}</td>` },
       unit:     { t: "Unit", w: "8%", cell: r => `<td>${r.unit}</td>` },
-      item_type:{ t: "Type", w: "11%", cell: r => `<td><span class="pill pill-${r.item_type}">${r.item_type}</span></td>` },
+      item_type:{ t: "Type", w: "15%", cell: r => `<td><span class="pill pill-${r.item_type}"${r.item_type === "rental" ? ` title="Rental: the supplier's, not ours - the same figures as Rentals"` : ""}>${escapeHtml(r._type_label || r.item_type)}</span></td>` },
       in_store: { t: '<span style="color:#2E86C1;">&#9679;</span>&nbsp;In central store', w: "13%",
                   cell: r => `<td class="num-col">${r.in_store ? num(r.in_store) : '<span class="zero">0</span>'}</td>` },
       at_sites: { t: '<span style="color:#D9930D;">&#9679;</span>&nbsp;Out at sites', w: "12%",
@@ -9316,7 +9325,7 @@ function drawStoreHome(stock, stk) {
     const homeKeys = orderColumns("home-stock", Object.keys(COLS));
     head.innerHTML = homeKeys.map(k =>
       `<th style="width:${COLS[k].w}" ${dragAttrs("home-stock", k)}>${COLS[k].t}</th>`).join("");
-    HOME_STOCK = { rows, keys: homeKeys, cols: COLS, limit: LIST_STEP, type: (HOME_STOCK && HOME_STOCK.type) || "" };
+    HOME_STOCK = { rows, keys: homeKeys, cols: COLS, limit: LIST_STEP, type: (HOME_STOCK && HOME_STOCK.type) || "", totals: stock.type_totals || null };
     renderHomeStock();
   } catch (e) {
     document.getElementById("home-stock-body").innerHTML =
@@ -9334,6 +9343,7 @@ function moreRow(cols, shown, total, fn) {
     ${total - shown > LIST_STEP ? `<button class="btn btn-gray" onclick="${fn}(true)">Show all</button>` : ""}</td></tr>` : "";
 }
 let HOME_STOCK = null;
+function stockRowKey(r) { return String(r._key || r.code).replace(/[^A-Za-z0-9_-]/g, "_"); }
 function renderHomeStock(more) {
   const H = HOME_STOCK, body = document.getElementById("home-stock-body");
   if (!H || !body) return;
@@ -9342,18 +9352,25 @@ function renderHomeStock(more) {
   const ty = H.type || "";
   const T = [["", "All"], ["consumable", "Consumables"], ["asset", "Assets"], ["rental", "Rentals"]];
   const n = k => k ? H.rows.filter(r => (r.item_type === "returnable" ? "asset" : r.item_type) === k).length : H.rows.length;
+  // Totals per type, kept apart: rental stock is the suppliers', never added to ours.
+  const tot = k => {
+    const t = (H.totals || {})[k];
+    return t ? ` title="${escapeAttr(t.label + (k === "rental" ? " (the suppliers', not ours)" : "") + ": " + num(t.materials) + " material(s) - " + num(t.in_store) + " in the central store, " + num(t.at_sites) + " at sites, " + num(t.total) + " held")}"` : "";
+  };
+  const held = k => { const t = (H.totals || {})[k]; return t ? " &middot; " + num(t.total) + " held" : ""; };
   const chips = document.getElementById("home-stock-type");
-  if (chips) chips.innerHTML = T.map(([k, l]) => `<button type="button" class="seg-chip${ty === k ? " on" : ""}" onclick="HOME_STOCK.type='${k}'; HOME_STOCK.limit=LIST_STEP; renderHomeStock()">${l} <span>${num(n(k))}</span></button>`).join("");
+  if (chips) chips.innerHTML = T.map(([k, l]) => `<button type="button" class="seg-chip${ty === k ? " on" : ""}"${k ? tot(k) : ""} onclick="HOME_STOCK.type='${k}'; HOME_STOCK.limit=LIST_STEP; renderHomeStock()">${l} <span>${num(n(k))}${k ? held(k) : ""}</span></button>`).join("");
   const rows = H.rows.filter(r => (!ty || (r.item_type === "returnable" ? "asset" : r.item_type) === ty)
-    && (!q || `${r.code} ${r.name} ${r.unit} ${r.item_type}`.toLowerCase().includes(q)));
+    && (!q || `${r.code} ${r.name} ${r.unit} ${r.item_type} ${r._type_label || ""}`.toLowerCase().includes(q)));
   const part = rows.slice(0, H.limit);
-  body.innerHTML = part.map(r => `<tr data-code="${r.code}" onclick="toggleStockDetail('${String(r.code)}')"
+  // One material can be two rows - ours and a supplier's rental - so a row is known by its own key.
+  body.innerHTML = part.map(r => `<tr data-code="${r.code}" data-key="${stockRowKey(r)}" onclick="toggleStockDetail('${stockRowKey(r)}')"
         style="cursor:pointer;${r.low ? ' background:#FFE9E6;' : ''}">
       ${H.keys.map(k => H.cols[k].cell(r)).join("")}
       </tr>
-      <tr id="sd-${r.code}" data-detail="${r.code}" style="display:none; background:#FAFAFA;">
+      <tr id="sd-${stockRowKey(r)}" data-detail="${r.code}" style="display:none; background:#FAFAFA;">
         <td colspan="${H.keys.length}" style="text-align:left; padding:0;">
-          <div id="sdc-${r.code}" style="padding:16px 34px 16px 20px;"></div>
+          <div id="sdc-${stockRowKey(r)}" style="padding:16px 34px 16px 20px;"></div>
         </td></tr>`).join("") + (rows.length ? moreRow(H.keys.length, part.length, rows.length, "renderHomeStock")
         : `<tr><td class="empty-note" colspan="${H.keys.length}">Nothing matches that search.</td></tr>`);
 }
@@ -9376,8 +9393,13 @@ async function toggleStockDetail(code) {
   if (box.dataset.loaded) return;
   box.innerHTML = '<span style="color:#999; font-size:12px;">Loading the breakup...</span>';
   try {
-    const s = (storeStockCache || []).find(x => x.code === code);
-    if (!s) { box.innerHTML = '<span style="color:#999;">No detail available.</span>'; return; }
+    // The row says where its own stock stands - ours, or one supplier's rental - so a material that is both never
+    // mixes the two in its breakup.
+    const hr = ((HOME_STOCK && HOME_STOCK.rows) || []).find(x => stockRowKey(x) === code);
+    const base = (storeStockCache || []).find(x => hr ? x.item_id === hr._item_id : x.code === code);
+    if (!hr && !base) { box.innerHTML = '<span style="color:#999;">No detail available.</span>'; return; }
+    const s = hr ? Object.assign({}, base || {}, { item_id: hr._item_id, unit: hr.unit, central: hr.in_store, by_site: hr.by_site || {},
+                     total: hr.total, low: hr.low, reorder_level: hr.item_type === "rental" ? 0 : (base || {}).reorder_level }) : base;
     if (!mrCache.length && canSeeRequests()) { try { mrCache = await apiCall("/store/requests"); } catch (e) {} }
 
     // Where it sits: central first, then each site, then the total.
@@ -9398,6 +9420,7 @@ async function toggleStockDetail(code) {
         .map(l => ({ ref: r.ref, out: (l.qty_requested || 0) - (l.qty_received || 0) })))
       .filter(x => x.out > 0);
     const chips = [];
+    if (hr && hr.item_type === "rental") chips.push(`<span class="stat-chip" style="border-color:#8A6100; color:#8A6100; background:#8A610012;" title="The same figures as Store > Rental Materials">${escapeHtml(hr._type_label || "Rental")} - the supplier's, not ours</span>`);
     if (s.low) chips.push(`<span class="stat-chip" style="border-color:#C0392B; color:#C0392B; background:#C0392B12;">Low on stock</span>`);
     if (s.reorder_level) chips.push(`<span class="stat-chip" style="border-color:#999; color:#777; background:#f7f7f7;">Warn under ${num(s.reorder_level)} ${s.unit}</span>`);
     if (onOrder.length) {
@@ -10861,7 +10884,8 @@ async function lpoDlvOpen(id, after) {
     const rows = d.lines.map((l, i) => `<tr data-l="${l.line_id}" data-rem="${l.remaining}">
         <td style="text-align:center;">${i + 1}</td>
         <td>${escapeHtml(l.description)}${l.service ? ' <span class="pu-tag pu-svc" title="A service: no stock - its cost is the site\'s">Service - no stock</span>' : ""}${
-          l.rentals.length ? ` <span class="pu-tag pu-rent" title="Booked in on Rentals as ${escapeAttr(l.rentals.join(" + "))}">Rentals: ${escapeHtml(l.rentals.join(" + "))}</span>` : ""}${
+          l.rentals.length ? ` <span class="pu-tag pu-rent" title="Booked in on Rentals as ${escapeAttr(l.rentals.join(" + "))} - the supplier's, not ours">Rental: ${escapeHtml(l.rentals.join(" + "))}</span>`
+            : l.rental ? ` <span class="pu-tag pu-rent" title="A rental line: it goes into Rentals as the supplier's - under its Rental material, found or made ('Rental ...') when it comes">Rental</span>` : ""}${
           l.how.length ? `<div style="font-size:11px; color:#999;">${escapeHtml(l.how.join("; "))}</div>` : ""}</td>
         <td class="n">${num(l.ordered)} ${escapeHtml(l.unit || "")}</td>
         <td class="n">${num(l.delivered)}${l.closed ? `<div style="font-size:11px; color:#999;">${num(l.closed)} closed</div>` : ""}</td>
@@ -10876,7 +10900,8 @@ async function lpoDlvOpen(id, after) {
           <td style="text-align:center;">${h.to ? escapeHtml(h.to) : "Central store"}</td><td style="text-align:center;">${escapeHtml(h.by || (h.tag ? "data correction" : ""))}</td></tr>`).join("")}</tbody></table>` : "";
     m.innerHTML = `<div class="box">
       <h3>${escapeHtml(d.ref)} ${puTag(d.status)}</h3>
-      <div class="sub">${escapeHtml(d.supplier || "")}${d.site ? " &middot; for " + escapeHtml(d.site) : ""}${d.superseded_by ? " &middot; replaced by " + escapeHtml(d.superseded_by) : ""}</div>
+      <div class="sub">${escapeHtml(d.supplier || "")}${d.site ? " &middot; for " + escapeHtml(d.site) : ""}${d.superseded_by ? " &middot; replaced by " + escapeHtml(d.superseded_by) : ""}${
+        d.rental ? ` &middot; <b>Rental LPO</b> - what comes goes into Rentals as ${escapeHtml(d.supplier || "the supplier")}'s, not our stock` : ""}</div>
       ${open ? `<div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
         <div class="field"><label title="The supplier's delivery note number - every delivery has one">DN number *</label><input type="text" id="pu-dn" style="width:170px;" placeholder="From the delivery note"></div>
         <div class="field"><label>DN date *</label><input type="date" id="pu-date" style="width:150px;" value="${isoLocal(new Date())}"></div>
@@ -11761,7 +11786,7 @@ function addMrLine() {
     <td><select class="mr-type" style="width:100%; min-width:110px;">
           <option value="consumable">Consumable</option>
           <option value="asset">Asset (to own)</option>
-          <option value="rental">Rental (to hire)</option>
+          <option value="rental">Rental (rented from a supplier)</option>
         </select></td>
     <td><input type="number" class="mr-qty" step="any" placeholder="Qty" style="width:100%; min-width:80px;"></td>
     <td><select class="mr-unit" style="width:100%; min-width:90px;"
@@ -12517,6 +12542,9 @@ async function loadStore() {
       d.total_value !== undefined ? [`AED ${money(d.total_value)} total`, "#2E7D32"] : null,
       d.unpriced ? [`${num(d.unpriced)} line(s) with no price yet`, "#999"] : null,
       d.over_30 ? [`${num(d.over_30)} out over 30 days`, "#C0392B"] : null,
+      // Current stock: totals per type kept apart - rental is the suppliers', never counted as ours
+      ...Object.entries(d.type_totals || {}).map(([k, t]) => [`${t.label}${k === "rental" ? " (suppliers')" : ""}: ${num(t.materials)} · ${num(t.total)} held`,
+                                                             k === "rental" ? "#8A6100" : "#555"]),
     ]);
     // The stock report knows where every unit sits, but squeezing that
     // into one cell made it unreadable. Hide it from the columns and
@@ -12552,7 +12580,7 @@ async function loadStore() {
                    received_from_sites: "Moved in (AED)", sent_to_sites: "Moved out (AED)",
                    net_cost: "Site cost (AED)", lines_without_price: "Lines not priced",
                    days_out: "Days", issued_on: "Since", returned_on: "Returned",
-                   item_type: "Type", hired_from: "Hired from", on_hire: "On hire",
+                   item_type: "Type", hired_from: "Rental from", on_hire: "On rental",
                    lost_damaged: "Lost / damaged", due_back: "Due back", reorder_level: "Warn under",
                    written_off: "Written off", qty: "Qty", name: view === "issues" ? "Tool / equipment" : "Material", code: "Code",
                    given_to: view === "issues" ? "With" : "Given to", incharge: "Given to", date: "Date", from: "From",
@@ -12599,7 +12627,7 @@ async function loadStore() {
         } else if (isDate(v)) {
           v = accDmy(v);
         } else if (k === "item_type" || (k === "type" && /^(consumable|returnable|asset|rental)$/.test(r[k]))) {
-          v = `<span class="pill pill-${r[k]}">${r[k]}</span>`;
+          v = `<span class="pill pill-${r[k]}">${escapeHtml(k === "item_type" && r._type_label ? r._type_label : r[k])}</span>`;
         } else if (typeof v === "string") {
           v = escapeHtml(v);
         }
@@ -13196,7 +13224,7 @@ async function deleteSupplier(id) {
   try { u = await apiCall(`/store/suppliers/${id}/usage`); }
   catch (e) { showStatus("sup-status", "err", errText(e)); return; }
   const one = { "LPOs": "LPO", "material requests": "material request", "material request lines": "material request line",
-    "return notes": "return note", "store movements (hired from it)": "store movement (hired from it)",
+    "return notes": "return note", "store movements (rental from it)": "store movement (rental from it)",
     "subcontracts / LPOs on Estimation projects": "subcontract / LPO on an Estimation project", "Zoho log entries": "Zoho log entry" };
   const parts = (u.used || []).map(x => `${x.count} ${x.count === 1 ? (one[x.what] || x.what) : x.what}`);
   const usedTxt = parts.length > 1 ? parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1] : (parts[0] || "");
@@ -13759,6 +13787,7 @@ async function newLpo() {
   lpoLines = [];
   lpoRequestLineIds = [];
   lpoCmbReset(false);
+  lpoRentalSet = null; lpoRentalDraw();
   addLpoLine();
   window.scrollTo(0, 0);
 }
@@ -13822,6 +13851,7 @@ async function editLpo(id) {
     }));
     if (!lpoLines.length) addLpoLine();
     lpoCmbReset(!!o.combined); if (o.combined) renderLpoCombined();
+    lpoRentalSet = (o.rental_set === true || o.rental_set === false) ? o.rental_set : null; lpoRentalDraw();
     window.scrollTo(0, 0);
   } catch (e) {
     showStatus("lpo-status", "err", errText(e));
@@ -14014,6 +14044,7 @@ function onLpoContact() {
 }
 
 function onLpoSupplier() {
+  lpoRentalDraw();
   const name = (document.getElementById("lpo-supplier").value || "").trim().toLowerCase();
   const s = (suppliers || []).find(x => (x.name || "").toLowerCase() === name);
   const note = document.getElementById("lpo-supplier-note");
@@ -14438,6 +14469,32 @@ function renderLpoCombined() {
       .map(([k, v]) => `<span class="chip"${k ? "" : ' style="border-color:#C0392B;color:#C0392B;"'}>${word(k)}<b>AED ${money(v)}</b></span>`).join("")}</div>`
     : `<div style="padding:12px 16px;color:#888;font-size:13px;">Add the materials above first.</div>`;
 }
+// ---- Rental LPO ------------------------------------------------------------------------------------------
+// null = decided by the supplier (ticked by itself for one we rent from); true / false = ticked by hand.
+let lpoRentalSet = null;
+function lpoRentalSup() {
+  const name = ((document.getElementById("lpo-supplier") || {}).value || "").trim().toLowerCase();
+  return (suppliers || []).find(x => (x.name || "").toLowerCase() === name) || null;
+}
+function lpoRentalOn() { const s = lpoRentalSup(); return lpoRentalSet === null ? !!(s && s.rental) : !!lpoRentalSet; }
+function lpoRentalDraw() {
+  const on = lpoRentalOn(), s = lpoRentalSup();
+  const c = document.getElementById("lpo-rental"); if (c) c.checked = on;
+  const box = document.getElementById("lpo-rent"); if (box) box.classList.toggle("on", on);
+  const h = document.getElementById("lpo-rent-hint"); if (!h) return;
+  h.textContent = on
+    ? (lpoRentalSet === null ? `Ticked by itself - ${s ? s.name : "this supplier"} is a supplier we rent from. Deliveries go into Rentals (Rental - ${s ? s.name : "supplier"}). Untick if this LPO buys outright.`
+                             : "Rental - deliveries on this LPO go into Rentals, as the supplier's.")
+    : (lpoRentalSet === false && s && s.rental ? `Unticked - bought outright from ${s.name}: deliveries become our own stock.`
+                                               : "Tick when the material is rented from the supplier - it stays theirs and goes into Rentals.");
+}
+function onLpoRental() {
+  const c = document.getElementById("lpo-rental");
+  const s = lpoRentalSup();
+  const auto = !!(s && s.rental);
+  lpoRentalSet = (c && c.checked) === auto ? null : !!(c && c.checked);
+  lpoRentalDraw();
+}
 function lpoCmbReset(on) {
   const c = document.getElementById("lpo-combined"); if (c) c.checked = !!on;
   const box = document.getElementById("lpo-cmb"); if (box) box.classList.toggle("on", !!on);
@@ -14547,6 +14604,7 @@ async function saveLpo() {
     terms_text: document.getElementById("lpo-termstext").value,
     request_line_ids: lpoRequestLineIds,
     combined: lpoCmbOn(),
+    rental: lpoRentalOn(),          // saved as ticked / not ticked, so the LPO never changes by itself later
     lines,
   };
   try {
@@ -14565,7 +14623,7 @@ async function saveLpo() {
       return;
     }
     showStatus("lpo-status", "ok",
-      `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}. Opening it in a new tab.` + lpoSupNote(r));
+      `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}${r.rental ? " - a Rental LPO: deliveries go into Rentals" : ""}. Opening it in a new tab.` + lpoSupNote(r));
     await openLpo(r.id, tab);
   } catch (e) {
     showStatus("lpo-status", "err", errText(e));
@@ -14774,7 +14832,7 @@ const DASH_ACTIONS = {
   arrive:   ["Material arrived", "A delivery has come in", "store", "store:arrive", "inbox", "storekeeper"],
   returns:  ["Returns & corrections", "Came back, lost or wrong", "store", "store:other", "undo", "store"],
   items:    ["Material list", "Add or change materials", "store", "store:items", "list", "store"],
-  rent:     ["On rent", "Hired equipment and returns", "store", "rentals:hire", "rent", "store"],
+  rent:     ["On rent", "Rental equipment and returns", "store", "rentals:hire", "rent", "store"],
   mreq:     ["Material requests", "Ask the office for material", "store", "requests:requests", "clip", "requests"],
   appr:     ["Approvals", "Approve and order requests", "store", "requests:approvals", "ok", "approvals"],
   follow:   ["Order follow-up", "What is coming, who to call", "store", "requests:followup", "phone", "requests"],

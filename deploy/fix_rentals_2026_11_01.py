@@ -12,8 +12,11 @@ those changes in one transaction (all or nothing) with an activity-log entry for
 01/11/2026'. Running it again changes nothing. It works whether or not deploy/fix_purchasing_2026_10_31.py has been
 run; the order to run them in is printed at the top.
 
-Nothing in payroll is touched, no money amount on any LPO changes, and no stock movement is deleted (a delivery
-booked twice is taken off with a correction line that says why).
+Only rental is touched (owner, 01/11/2026: "touch only rentals"): materials holding a supplier's stock, 'Rental ...'
+materials, the rental LPOs' lines and their LPO-named twins. No owned consumable / asset changes - where one material
+holds ours and a supplier's, only the supplier's movements move. Nothing in payroll or accounts is touched, no money
+amount on any LPO changes, and no stock movement is deleted (a delivery booked twice as ours on a Rental material is
+taken off with a correction line that says why). Anything unclear is reported, not changed.
 
 The rule: a material is RENTAL when a supplier owns it.
   1  Booked twice: the same delivery note booked on 'Material arrived' as ours AND on Rentals as the supplier's
@@ -23,8 +26,8 @@ The rule: a material is RENTAL when a supplier owns it.
      movements move to the material's Rental twin ('Rental Ledger 1.8M'; made 'Rental <name>' if there is none),
      our part stays. Reported, not moved, when it is not clear which Rental material it is.
   3  A material whose stock is all a supplier's becomes type Rental, with its rental supplier.
-  4  The six 'rental' entries that are not materials (crane / bobcat / shovel hire charges, subcontract works) -
-     a service (category Service), no stock.
+  4  The six 'rental' entries that are not materials (crane / bobcat / shovel charges, power float, GRP lining, the
+     scaffold line) - listed only: not stock, left as they are (change by hand if wanted).
   5  Rental LPOs: IC/LPO/20260103 (Najm Al Ofuq), 20260148, 20260150R1, 20260170 (Desarch) - and any LPO of a supplier
      we only ever rent from - ticked Rental; IC/LPO/20260109 (replacement of lost items, bought) ticked not Rental.
      Each line linked to its Rental material (LPO names <-> Rentals names); what Rentals already booked in at the
@@ -278,19 +281,10 @@ class Fix:
             if it is None or not (it.name or "").lower().startswith(start.lower()):
                 self.note("4 Not materials", f"{code} {start}: not found as expected - nothing changed")
                 continue
-            if (it.item_type or "") != "rental" and (it.category or "").lower() == "service":
-                continue                                 # done already
+            # Owner, 01/11/2026: "touch only rentals" - these are listed, never changed by this script
             n_mv = self.db.query(mods.StoreMovement.id).filter(mods.StoreMovement.item_id == it.id).count()
-            if n_mv:
-                self.note("4 Not materials", f"{it.name}: has {n_mv} stock movement(s) - not changed; check it")
-                continue
-            was = f"{it.item_type}{', category ' + it.category if it.category else ''}"
-            it.item_type = "consumable"
-            it.category = "Service"
-            it.rental_supplier = ""
-            it.notes = ((it.notes or "") + ("\n" if it.notes else "") + f"A service (equipment charge / subcontract work), not stock [{TAG}]")[:2000]
-            self.change("4 Not materials", f"{it.name} ({it.code}): {was} -> a service (category Service), no stock - "
-                        f"an equipment charge / subcontract work, not a rental material", "non-materials made services")
+            self.note("4 Not materials", f"{it.name} ({it.code}): typed {it.item_type}, {n_mv} stock movement(s) - an equipment "
+                      f"charge / subcontract work, not stock - left as it is; change it by hand on the material list if wanted")
 
     # ---- 5 rental LPOs ---------------------------------------------------------------------------------------------
     def rental_lpos(self):
@@ -378,15 +372,11 @@ class Fix:
                                 + (f" - check: the LPO line says '{l.description}', the material is '{it.name}'" if via != "same name" and it else ""),
                                 "Rentals links made")
                     continue
-                was = (it.item_type if it else "") or "consumable"
-                ri, how = P.rental_item_for(self.db, it, sup, name=l.description, unit=l.unit)
-                if how == "retyped":
-                    self.change("5 Rental LPOs", f"{ri.name} ({ri.code}): {was} -> Rental, rental supplier "
-                                f"{ri.rental_supplier} (only ever on {o.supplier_name}'s rental LPOs, never held stock)", "materials made type Rental")
-                else:
-                    P.add_map(self.db, l.description, ri.id, source=TAG)
-                    self.change("5 Rental LPOs", f"{o.ref} '{l.description}': no Rental material -> {ri.name} ({ri.code})"
-                                + (" made" if how == "created" else "") + " and linked", "Rentals links made")
+                # nothing has come on it yet and no Rental material fits: left alone - the app books it into Rentals
+                # (on a Rental material found or made then) when it arrives on this rental LPO
+                self.note("5 Rental LPOs", f"{o.ref} '{l.description}' ({it.name if it else 'not on the list'}, {(it.item_type if it else '') or '-'}): "
+                          f"no Rental material yet and nothing has come - left as it is; when it arrives on {o.ref} it is booked into "
+                          f"Rentals as {o.supplier_name}'s")
             self.db.flush()
         # what Rentals already booked in against each line - recorded on the LPO, nothing booked twice
         for o in [x for x in want if x.rental]:

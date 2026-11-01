@@ -104,7 +104,7 @@ def is_service(line, item=None):
     v = getattr(line, "service", None)
     if v is not None:
         return bool(v)
-    if item is not None and ((item.item_type or "") == "service" or (item.category or "").strip().lower() == "service"):
+    if item is not None and (item.item_type or "") == "service":
         return True
     return words_say_service(f"{line.description or ''} {(item.name if item is not None else '')}")
 
@@ -290,6 +290,9 @@ def rental_item_for(db, item=None, supplier=None, name="", unit="", retype_ok=Tr
         if item is not None and retype_ok and item.id:
             owned = db.query(models.StoreMovement.id).filter(models.StoreMovement.item_id == item.id,
                                                              models.StoreMovement.owner_id.is_(None)).first()
+            if owned is None:                       # ours about to be written in the same go counts too
+                owned = next((m for m in db.new if isinstance(m, models.StoreMovement) and m.owner_id is None
+                              and (m.item_id == item.id or m.item is item)), None)
             others = db.query(models.PurchaseOrder.id).join(
                 models.PurchaseOrderLine, models.PurchaseOrderLine.order_id == models.PurchaseOrder.id).filter(
                 models.PurchaseOrderLine.item_id == item.id,

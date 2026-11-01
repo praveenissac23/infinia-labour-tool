@@ -376,7 +376,7 @@ def _num(v):
 STORE_LABELS = {
     "in_store": "In central store", "at_sites": "Out at sites", "total": "Total held",
     "by_site": "Where at sites", "item_type": "Type", "reorder_level": "Warn under",
-    "hired_from": "Hired from", "on_hire": "On hire", "due_back": "Due back",
+    "hired_from": "Rental from", "on_hire": "On rental", "due_back": "Due back",
     "lost_damaged": "Lost / damaged", "written_off": "Written off",
     "qty": "Qty", "name": "Material", "code": "Code", "item": "Material",
     "ref": "Request", "requested_on": "Raised", "needed_by": "Needed by", "materials": "Materials",
@@ -3014,8 +3014,8 @@ def build_hire_return_pdf(note: dict):
     # Balance is spelled out rather than left to subtraction: without it
     # a partial return reads as though the rest went missing, which is
     # the argument this document exists to prevent.
-    nums = ("On hire", "Returned", "Short", "Still on hire")
-    head = ["#", "Material", "Unit", "On hire", "Returned", "Short", "Still on hire",
+    nums = ("On rental", "Returned", "Short", "Still on rental")
+    head = ["#", "Material", "Unit", "On rental", "Returned", "Short", "Still on rental",
             "Reason / remarks"]
     data = [[P(h, 7.5, bold=True, colour="#FFFFFF",
                align=TA_RIGHT if h in nums else TA_LEFT)
@@ -3065,7 +3065,7 @@ def build_hire_return_pdf(note: dict):
                     8.5, bold=True, colour="#C0392B"))
         el.append(Spacer(1, 4))
     if tot_bal > 1e-9:
-        el.append(P(f"{_n(tot_bal)} item(s) remain on hire and are not part of this return.",
+        el.append(P(f"{_n(tot_bal)} item(s) remain on rental and are not part of this return.",
                     8.5, colour="#3B3F44"))
         el.append(Spacer(1, 4))
     if tot_short or tot_bal > 1e-9:
@@ -3134,8 +3134,8 @@ def build_hire_return_excel(note: dict):
         ws.cell(row=r + i // 2, column=c + 1, value=v).font = Font(size=9)
     r += (len(pairs) + 1) // 2 + 1
 
-    nums = ("On hire", "Returned", "Short", "Still on hire")
-    head = ["#", "Material", "Unit", "On hire", "Returned", "Short", "Still on hire",
+    nums = ("On rental", "Returned", "Short", "Still on rental")
+    head = ["#", "Material", "Unit", "On rental", "Returned", "Short", "Still on rental",
             "Reason / remarks"]
     for i, h in enumerate(head, 1):
         c = ws.cell(row=r, column=i, value=h)
@@ -3178,7 +3178,7 @@ def build_hire_return_excel(note: dict):
     if bal_total:
         ws.merge_cells(start_row=sr, start_column=1, end_row=sr, end_column=8)
         ws.cell(row=sr, column=1,
-                value=f"{_n(bal_total)} item(s) remain on hire and are not part of this return.")
+                value=f"{_n(bal_total)} item(s) remain on rental and are not part of this return.")
         ws.cell(row=sr, column=1).font = Font(size=9)
         sr += 2
     ws.cell(row=sr, column=1, value="For Infinia Contracting L.L.C").font = Font(bold=True, size=9)

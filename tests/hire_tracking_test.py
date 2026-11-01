@@ -79,12 +79,25 @@ r = c.post('/store/hire/in', json={
     'lines': [{'item_id': std['id'], 'qty': 60}, {'item_id': ldg['id'], 'qty': 240}]}, headers=H)
 ck('the hire is booked in', r.status_code == 200, r.text[:200])
 
+# One rule (01/11/2026): rental stock lives on a Rental material. Our own 'Standard 3.0m' holds our 180; the 60
+# rented go onto its Rental twin 'Rental Standard 3.0m' (made now); the ledger, never ours, becomes Rental itself.
+ck('the reply says the rented standards went onto their Rental twin',
+   any('Rental Standard 3.0m' in x for x in r.json().get('rental_as', [])), r.json())
+items = {i['name']: i for i in c.get('/store/items', headers=H).json()}
+rs = items.get('Rental Standard 3.0m') or {}
+ck('the Rental twin is a Rental material, rented from the trader',
+   rs.get('item_type') == 'rental' and rs.get('rental_supplier') == 'Al Raha Scaffolding', rs)
+ck('the ledger (never ours) is made a Rental material itself', items['Ledger 1.8m']['item_type'] == 'rental', items['Ledger 1.8m'])
 row = stock_row(std['id'])
-ck('the total counts both piles', row['total'] == 240, row)
-ck('and says 180 are ours', row['owned'] == 180, row)
-ck('and 60 are hired', row['rented'] == 60, row)
+ck('our own row holds only our 180', row['total'] == 180 and row.get('rented', 0) == 0, row)
+rrow = stock_row(rs['id'])
+ck('and the 60 rented are on the Rental row', rrow['total'] == 60 and rrow['rented'] == 60, rrow)
 ck('naming the trader they belong to',
-   row['rented_from'].get('Al Raha Scaffolding') == 60, row['rented_from'])
+   rrow['rented_from'].get('Al Raha Scaffolding') == 60, rrow['rented_from'])
+rep_rows = c.get('/store/report?kind=stock', headers=H).json()['rows']
+ck('Current stock: ours as Asset, the rented as Rental - Al Raha Scaffolding, two rows',
+   [(x['item_type'], x.get('_type_label'), x['total']) for x in rep_rows if x['name'] in ('Standard 3.0m', 'Rental Standard 3.0m')]
+   == [('asset', None, 180), ('rental', 'Rental \u2013 Al Raha Scaffolding', 60)], rep_rows)
 
 hire = c.get('/store/hire', headers=H).json()
 ck('the hire list shows one trader', len(hire['suppliers']) == 1, hire)
@@ -94,7 +107,7 @@ ck('and the days it has been out', hire['suppliers'][0]['items'][0]['days'] > 0,
    hire['suppliers'][0]['items'][0])
 
 # ---- The guard that stops the mix-up ---------------------------------
-over = c.post('/store/movements', json={'item_id': std['id'], 'kind': 'out', 'qty': 100,
+over = c.post('/store/movements', json={'item_id': rs['id'], 'kind': 'out', 'qty': 100,
                                         'from_location': '', 'location': '901',
                                         'owner_id': sid, 'moved_on': '2026-08-10'}, headers=H)
 ck('hired stock cannot be issued beyond what is hired', over.status_code == 400, over.status_code)
@@ -106,12 +119,12 @@ over2 = c.post('/store/movements', json={'item_id': std['id'], 'kind': 'out', 'q
 ck('and our own pile cannot borrow from the hired one', over2.status_code == 400, over2.status_code)
 
 # ---- Issue hired scaffolding to a site, where it is still the trader's
-out = c.post('/store/movements', json={'item_id': std['id'], 'kind': 'out', 'qty': 50,
+out = c.post('/store/movements', json={'item_id': rs['id'], 'kind': 'out', 'qty': 50,
                                        'from_location': '', 'location': '901',
                                        'owner_id': sid, 'incharge': 'Akhil',
                                        'moved_on': '2026-08-10'}, headers=H)
 ck('hired scaffolding issues to a site', out.status_code == 200, out.text[:200])
-row = stock_row(std['id'])
+row = stock_row(rs['id'])
 ck('it is still on hire once it is standing on site', row['rented'] == 60, row)
 ck('and still counted at the site', row['out_at_sites'] == 50, row)
 
@@ -119,7 +132,7 @@ ck('and still counted at the site', row['out_at_sites'] == 50, row)
 note = c.post('/store/returns', json={
     'supplier_id': sid, 'return_date': '2026-09-01', 'driver': 'Rajan', 'vehicle': 'DXB 1234',
     'lines': [
-        {'item_id': std['id'], 'qty_returned': 56, 'qty_short': 4, 'short_reason': 'lost'},
+        {'item_id': rs['id'], 'qty_returned': 56, 'qty_short': 4, 'short_reason': 'lost'},
         {'item_id': ldg['id'], 'qty_returned': 200, 'qty_short': 6, 'short_reason': 'damaged'},
     ]}, headers=H)
 ck('the return note is raised', note.status_code == 200, note.text[:250])
@@ -131,14 +144,14 @@ ck('the ledger line still shows what stays on hire',
    [l for l in note['lines'] if l['item_id'] == ldg['id']][0]['still_on_hire'] == 34, note['lines'])
 
 bad = c.post('/store/returns', json={'supplier_id': sid, 'return_date': '2026-09-01',
-    'lines': [{'item_id': std['id'], 'qty_returned': 500}]}, headers=H)
+    'lines': [{'item_id': rs['id'], 'qty_returned': 500}]}, headers=H)
 ck('a note cannot return more than is on hire', bad.status_code == 400, bad.status_code)
 noreason = c.post('/store/returns', json={'supplier_id': sid, 'return_date': '2026-09-01',
-    'lines': [{'item_id': std['id'], 'qty_returned': 1, 'qty_short': 2}]}, headers=H)
+    'lines': [{'item_id': rs['id'], 'qty_returned': 1, 'qty_short': 2}]}, headers=H)
 ck('a shortfall without a reason is refused', noreason.status_code == 400, noreason.status_code)
 
 # ---- Nothing moves until the trader has signed -----------------------
-row = stock_row(std['id'])
+row = stock_row(rs['id'])
 ck('raising the note moves no stock', row['rented'] == 60, row)
 
 t = c.post('/auth/download-token', headers=H).json()['token']
@@ -160,7 +173,7 @@ ck('the preview is the printed sheet, letterhead and all',
    and 'RETURN DETAILS' in body, body[:200])
 ck('with every line on the note, not just the first',
    body.count('<tr><td>1</td>') == 1 and '<tr><td>2</td>' in body
-   and std['name'] in body and ldg['name'] in body, len(body))
+   and rs['name'] in body and ldg['name'] in body, len(body))
 ck('the totals agree with the note', '256' in body and '<td class="r short">10' in body, None)
 ck('the date reads as it does on the paper', '01/09/2026' in body, None)
 ck('and both signature boxes are there, empty for hand signing',
@@ -173,8 +186,9 @@ cf = c.post(f"/store/returns/{note['id']}/confirm",
 ck('the note settles when it comes back signed', cf.status_code == 200, cf.text[:200])
 ck('and reports the shortfall', cf.json()['total_short'] == 10, cf.json())
 
+row = stock_row(rs['id'])
+ck('the hired standards are off our books', row.get('rented', 0) == 0 and row['total'] == 0, row)
 row = stock_row(std['id'])
-ck('the hired standards are off our books', row.get('rented', 0) == 0, row)
 ck('our own 180 are untouched', row['owned' if 'owned' in row else 'total'] == 180, row)
 ck('and the total is our own again', row['total'] == 180, row)
 
@@ -197,7 +211,7 @@ d.close()
 ck('no location is left holding a negative of the trader\'s stock',
    not any(v < -1e-9 for v in positions.values()), positions)
 ck('the settled standards are gone from every location, not just netted',
-   not any(k[0] == std['id'] for k in positions), positions)
+   not any(k[0] == rs['id'] for k in positions), positions)
 
 again = c.post(f"/store/returns/{note['id']}/confirm", json={'received_by': 'Biju'}, headers=H)
 ck('a settled note cannot be settled twice', again.status_code == 400, again.status_code)
@@ -243,11 +257,13 @@ fix = c.post('/store/hire/reassign', json={
     'item_id': prop['id'], 'qty': 150, 'location': '',
     'from_owner_name': '', 'to_owner_name': 'Al Raha Scaffolding'}, headers=H)
 ck('the owner can be corrected', fix.status_code == 200, fix.text[:200])
-row = stock_row(prop['id'])
-ck('the total did not move - nothing was received', row['total'] == before_total, row)
-ck('but it is now hired, not ours', row['rented'] == 150 and row['owned'] == 0, row)
+# the supplier's part goes onto the Rental twin - ours and rental are never one material
+rprop = {i['name']: i for i in c.get('/store/items', headers=H).json()}.get('Rental L.D Props 5.0m') or {}
+row, rrow = stock_row(prop['id']), stock_row(rprop.get('id'))
+ck('the total did not move - nothing was received', row['total'] + rrow['total'] == before_total, (row, rrow))
+ck('but it is now rental (on Rental L.D Props 5.0m), not ours', rrow['rented'] == 150 and row['total'] == 0, (row, rrow))
 onh = [i for g in c.get('/store/hire', headers=H).json()['suppliers']
-       for i in g['items'] if i['item_id'] == prop['id']]
+       for i in g['items'] if i['item_id'] == rprop.get('id')]
 ck('it appears on the hire list', len(onh) == 1 and onh[0]['qty'] == 150, onh)
 ck('carrying the date it went under that name', bool(onh[0]['since']), onh[0])
 
@@ -260,12 +276,13 @@ ck('and reassigning to the same name is refused',
           'to_owner_name': 'Al Raha Scaffolding'}, headers=H).status_code == 400)
 
 back = c.post('/store/hire/reassign', json={
-    'item_id': prop['id'], 'qty': 50, 'from_owner_name': 'Al Raha Scaffolding',
+    'item_id': rprop['id'], 'qty': 50, 'from_owner_name': 'Al Raha Scaffolding',
     'to_owner_name': ''}, headers=H)
 ck('it can be put back to ours as well', back.status_code == 200, back.text[:200])
-row = stock_row(prop['id'])
-ck('leaving the split right', row['owned'] == 50 and row['rented'] == 100, row)
-ck('and the total still untouched', row['total'] == before_total, row)
+row, rrow = stock_row(prop['id']), stock_row(rprop['id'])
+ck('leaving the split right: 50 ours on L.D Props 5.0m, 100 rental on its Rental twin',
+   row['total'] == 50 and row.get('rented', 0) == 0 and rrow['rented'] == 100, (row, rrow))
+ck('and the total still untouched', row['total'] + rrow['total'] == before_total, (row, rrow))
 
 # ---- Added straight from the material list, the way it reads --------
 # A material marked Rental is hired from somebody, and the form asks who
