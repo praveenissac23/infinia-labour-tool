@@ -7215,14 +7215,8 @@ def _stock_rows(db, items=None):
                      "by_site": per_site, "low": False,
                      "_item_id": r["item_id"], "_supplier_id": r["supplier_id"], "_supplier": r["supplier"],
                      "_key": f"{r['code']}~{r['supplier_id'] or 0}"})
-    # A Rental material with nothing on rental right now is still listed (it is on the list as a rental)
-    for i in items.values():
-        if i.active and (i.item_type or "") == "rental" and i.id not in seen:
-            sup = (i.rental_supplier or "").strip() or "no supplier set"
-            rows.append({"code": i.code, "name": i.name, "unit": i.unit, "item_type": "rental",
-                         "_type_label": f"Rental – {sup}", "in_store": 0, "at_sites": 0, "total": 0,
-                         "by_site": {}, "low": False, "_item_id": i.id, "_supplier_id": rentals.get(i.id),
-                         "_supplier": sup, "_key": f"{i.code}~0"})
+    # A Rental material with nothing on rental right now is not stock: it stays on the Material list, not here.
+    # Stock on hand lists only what is held - no rows of 0 0 0 (owner, 01/11/2026).
     rows.sort(key=lambda r: (r["code"], r["item_type"] == "rental", r.get("_supplier") or ""))
     totals = {}
     for r in rows:

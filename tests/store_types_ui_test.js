@@ -24,7 +24,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const cem = await find('Cement bag ' + run);
   ck(`a consumable sent to site ${site}: 30 in store, 20 out at sites, 50 held`, cem.length === 1 && /30/.test(cem[0]) && /20/.test(cem[0]) && /50/.test(cem[0]), cem);
   const bob = await find('Bob Cat monthly ' + run);
-  ck('a rental with nothing on rental is still listed, as Rental - its supplier', bob.length === 1 && /Rental – Al Hassai Hire/.test(bob[0]), bob);
+  ck('a rental with nothing on rental is not listed in Stock on hand (nothing held)', bob.length === 0, bob);
   await p.fill('#home-stock-search', ''); await p.dispatchEvent('#home-stock-search', 'input'); await sleep(300);
   const chips = await p.$$eval('#home-stock-type .seg-chip', x => x.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
   ck('Type chips: All, Consumables, Assets, Rentals with counts', chips.length === 4 && /^All \d/.test(chips[0]) && /^Rentals \d/.test(chips[3]), chips);
