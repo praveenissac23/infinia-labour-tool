@@ -80,10 +80,13 @@
         const cells = [...tr.cells]; perm.forEach(k => tr.appendChild(cells[k]));
       }
   }
+  // The sorter's own moves must not wake its watcher: what it changed is dropped from the watcher's queue before it
+  // stands down - otherwise every sort set off another, and a sorted list redrew itself without end (flicker).
+  function quiet(t) { if (t.__obs) t.__obs.takeRecords(); t.__busy = false; }
   function applyOrder(t) {
     if (t.hasAttribute("data-nomove") || t.closest(".lc-compact")) return;
     t.__busy = true; normalize(t);
-    if (!canMove(t)) { t.__busy = false; return; }
+    if (!canMove(t)) { quiet(t); return; }
     const h = headRow(t);
     [...h.cells].forEach((c, i) => { if (c.dataset.txi === undefined) c.dataset.txi = i; });
     let want; try { want = JSON.parse(localStorage.getItem(storeKey(t)) || "null"); } catch (e) { want = null; }
@@ -101,7 +104,7 @@
       }
     }
     arrange(t);
-    t.__busy = false;
+    quiet(t);
   }
   function saveOrder(t) { try { localStorage.setItem(storeKey(t), JSON.stringify([...headRow(t).cells].map(label))); } catch (e) {} }
   function applySort(t) {
@@ -109,7 +112,7 @@
     // A long list drawn a part at a time: sorting only the part on screen would leave rows out (the 8 rentals of 57
     // under All), so the whole list is drawn first and the sort covers every row.
     const all = t.querySelector("tr.list-more button[data-all]");
-    if (all) { t.__busy = true; all.click(); t.__busy = false; }
+    if (all) { t.__busy = true; all.click(); quiet(t); }
     const h = headRow(t); const ci = [...h.cells].findIndex(c => label(c) === st.lab); if (ci < 0) return;
     t.__busy = true;
     // A row's own detail line under it (a request's progress, a visa's payments - one wide cell, no group or
@@ -128,7 +131,7 @@
       }); flush();
       out.forEach(r => b.appendChild(r)); });
     [...h.cells].forEach(c => { const a = c.querySelector(".tx-a"); if (a) a.textContent = label(c) === st.lab ? (st.dir === "asc" ? "▲" : "▼") : ""; });
-    t.__busy = false;
+    quiet(t);
   }
   function wire(t) {
     const h = headRow(t); if (!h || h.cells.length < 2) return;
@@ -154,14 +157,14 @@
         th.addEventListener("dragover", e => { if (t.__from === undefined) return; e.preventDefault(); th.classList.add("tx-over"); });
         th.addEventListener("dragleave", () => th.classList.remove("tx-over"));
         th.addEventListener("drop", e => { e.preventDefault(); th.classList.remove("tx-over"); const to = [...headRow(t).cells].indexOf(th);
-          if (t.__from !== undefined && to !== t.__from) { t.__busy = true; arrange(t); moveCol(t, t.__from, to); t.__busy = false; saveOrder(t); t.__sig = sigOf(t); }
+          if (t.__from !== undefined && to !== t.__from) { t.__busy = true; arrange(t); moveCol(t, t.__from, to); quiet(t); saveOrder(t); t.__sig = sigOf(t); }
           t.__from = undefined; });
       }
     });
     if (!t.__obs) {
       // Redrawn by its screen: put the remembered order and the sort back.
       t.__obs = new MutationObserver(() => { if (t.__busy) return; cancelAnimationFrame(t.__raf); t.__raf = requestAnimationFrame(() => {
-        if (!headRow(t)) return; t.__sig = null; wire(t); t.__busy = true; arrange(t); t.__busy = false; applySort(t); }); });
+        if (!headRow(t)) return; t.__sig = null; wire(t); t.__busy = true; arrange(t); quiet(t); applySort(t); }); });
       t.__obs.observe(t, { childList: true, subtree: true });
     }
   }
