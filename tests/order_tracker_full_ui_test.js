@@ -32,7 +32,8 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   await toTracker(p);
   let T = await api(p, '/store/purchase/tracker');
   const tabs = await p.$$eval('#pg-tabs .pg-tab', x => x.map(e => e.textContent.trim()));
-  ck('admin: Order tracker is the first tab of Store & Purchasing', tabs[0] === 'Order tracker', tabs);
+  ck(`admin: Order tracker is the last tab of Store & Purchasing, after Purchasing (${tabs.join(', ')})`, tabs[tabs.length - 1] === 'Order tracker' && tabs[tabs.length - 2] === 'Purchasing', tabs);
+  ck('admin: Store & Purchasing still opens on the Order tracker', await p.evaluate(() => { pgGo('store'); return new Promise(r => setTimeout(() => r(xlOn('purchtrack')), 2500)); }));
   // ---- layout
   const lay = await p.evaluate(() => {
     const hs = [...document.querySelectorAll('#ot-table .ot-sh span')].map(s => { const r = s.getBoundingClientRect(); return (r.left + r.right) / 2; });
@@ -277,7 +278,7 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
     await q.evaluate(() => pgGo('store')); await sleep(3500);
     const tb = await q.$$eval('#pg-tabs .pg-tab', x => x.map(e => e.textContent.trim()));
     const land = u === 'amal' ? 'store' : 'purchtrack';
-    ck(`${u}: sees the Order tracker tab; Store & Purchasing opens on ${land === 'store' ? 'Stock (store keeper)' : 'the Order tracker'}`, tb[0] === 'Order tracker' && await q.evaluate(l => xlOn(l), land), tb);
+    ck(`${u}: sees the Order tracker tab; Store & Purchasing opens on ${land === 'store' ? 'Stock (store keeper)' : 'the Order tracker'}`, tb[tb.length - 1] === 'Order tracker' && await q.evaluate(l => xlOn(l), land), tb);
     await q.evaluate(() => pgGo('store', 'tracker')); await sleep(3500);
     const D = await api(q, '/store/purchase/tracker');
     ck(`${u}: My turn is the ${role}'s`, JSON.stringify(D.my_roles) === JSON.stringify([role]), D.my_roles);

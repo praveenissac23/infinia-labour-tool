@@ -343,17 +343,6 @@
   "label": "Store & Purchasing",
   "children": [
    {
-    "id": "store.tracker",
-    "label": "Order tracker",
-    "right": [
-     "requests",
-     "approvals",
-     "storekeeper",
-     "accounts_zoho"
-    ],
-    "grant": []
-   },
-   {
     "id": "store.store",
     "label": "Stock",
     "children": [
@@ -508,6 +497,17 @@
       ]
      }
     ]
+   },
+   {
+    "id": "store.tracker",
+    "label": "Order tracker",
+    "right": [
+     "requests",
+     "approvals",
+     "storekeeper",
+     "accounts_zoho"
+    ],
+    "grant": []
    }
   ]
  },

@@ -124,9 +124,6 @@ PAGES = {
                                   tab("estproj", "pgestproj", "Projects", "estimation_projects"),
                                   tab("boards", "pgboards", "Trello", "estimation_boards")]),
     "store": ("Store & Purchasing", [
-        # Every open request and LPO on one line: its step, who is next, late, part delivery, supplier contact -
-        # the same screen for the purchaser, the store keeper and accounts (2 Nov 2026).
-        tab("tracker", "purchtrack", "Order tracker", ["requests", "approvals", "storekeeper", "accounts_zoho"]),
         tab("store", "store", "Stock", "store", subs=[
             sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),
             sub("give", "Move material", screen="store", right="storekeeper", go="pgStorePanel('give')"),
@@ -146,7 +143,11 @@ PAGES = {
         tab("purchasing", "purchase", "Purchasing", "approvals", subs=[
             sub("purchase", "Purchase orders", screen="purchase", right="approvals"),
             sub("lporegister", "LPO register", screen="lporegister", right="approvals"),
-            sub("suppliers", "Suppliers", screen="suppliers", right="approvals")])]),
+            sub("suppliers", "Suppliers", screen="suppliers", right="approvals")]),
+        # Every open request and LPO on one line: its step, who is next, late, part delivery, supplier contact -
+        # the same screen for the purchaser, the store keeper and accounts (2 Nov 2026). Last tab, after Purchasing;
+        # still the page that opens for everyone but the store keeper (pgFirstTab).
+        tab("tracker", "purchtrack", "Order tracker", ["requests", "approvals", "storekeeper", "accounts_zoho"])]),
     "reports": ("Reports", [
         tab("labour", "pgreports", "Labour", "reports", subs=[
             sub("builder", "Cycle report builder", screen="reports"),
@@ -838,6 +839,7 @@ window.addEventListener("popstate", () => {
 function pgFirstTab(key) {
   const job = String((typeof MY_JOB !== "undefined" && MY_JOB) || "").toLowerCase();
   if (key === "store" && job === "store keeper") return "store";
+  if (key === "store") return "tracker";            // the Order tracker opens first, though it is the last tab
   return "";
 }
 function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : (r !== "__admin__" && MY_SCREENS.includes(r))); }
