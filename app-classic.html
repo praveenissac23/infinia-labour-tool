@@ -399,8 +399,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .ot-res { color: #666; font-size: 11.5px; line-height: 1.3; word-break: break-word; }
   #ot-table td.nx { text-align: right; } .ot-nx { font-weight: 600; color: var(--red); font-size: 12px; } #ot-table .ot-who { margin: 0 0 3px; }
   .ot-btns { display: flex; gap: 4px; justify-content: flex-end; align-items: center; flex-wrap: wrap; } .ot-btns .btn { padding: 5px 9px; font-size: 12px; white-space: nowrap; }
-  .ot-acts { display: flex; flex-direction: column; gap: 6px; } .ot-acts .btn { width: 100%; text-align: left; } .ot-acts .btn { height: auto; padding-top: 9px; padding-bottom: 9px; line-height: 1.3; white-space: normal; }
-  .ot-acts .ot-hint { display: block; font-size: 12px; font-weight: 400; color: #8A7F7A; margin-top: 3px; } .ot-acts .btn-primary .ot-hint { color: rgba(255,255,255,.85); } .ot-who { font-size: 11.5px; color: #999; }
+  .ot-acts { display: flex; flex-direction: column; gap: 6px; } .ot-acts .btn { width: 100%; text-align: left; } .ot-who { font-size: 11.5px; color: #999; }
     .ot-menu { position: fixed; z-index: 4000; background: #fff; border: 1px solid #E7CEC9; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.14); min-width: 240px; padding: 6px 0; font-size: 13px; }
   .ot-menu div { padding: 8px 14px; cursor: pointer; color: #333; } .ot-menu div:hover { background: #FDF6F5; color: #5F2E27; }
   .ot-menu .mh { color: #999; font-size: 11.5px; cursor: default; } .ot-menu .mh:hover { background: none; color: #999; } .ot-menu .sep { border-top: 1px solid #F0E6E3; padding: 0; margin: 4px 0; }
@@ -22503,7 +22502,7 @@ function otSheet(k) {
     ${r.supplier ? `<div style="font-size:13px; margin-bottom:6px;"><b>${escapeHtml(r.supplier)}</b>${r.contact ? " · " + escapeHtml(r.contact) : ""}${r.phone ? ` · <a href="tel:${escapeAttr(r.phone.replace(/[^\d+]/g, ""))}">${escapeHtml(r.phone)}</a>` : ""}</div>` : ""}
     ${r.late > 0 || r.to_come ? `<div style="font-size:12.5px; margin-bottom:6px;">${r.late > 0 ? `<span class="ot-late">${r.late} day${r.late === 1 ? "" : "s"} late</span> ` : ""}${r.to_come ? `<span class="ot-come">${escapeHtml(r.to_come)} to come</span>` : ""}${r.part_why ? ` <span class="ot-res">(${r.part_why === "site" ? "site asked to hold the rest" : "supplier sent less"}${r.part_note ? " - " + escapeHtml(r.part_note) : ""})</span>` : ""}</div>` : ""}
     ${r.who && r.stage < 5 ? `<div style="font-size:12.5px; color:#666; margin-bottom:10px;">Next: <b>${escapeHtml(r.action)}</b> - ${escapeHtml(r.who)}</div>` : ""}
-    <div class="ot-acts">${it.map((x, i) => `<button type="button" class="btn ${x[2] ? "btn-primary" : "btn-gray"}" data-i="${i}">${escapeHtml(x[0])}${otHint(x[0]) ? `<span class="ot-hint">${escapeHtml(otHint(x[0]))}</span>` : ""}</button>`).join("")}</div>
+    <div class="ot-acts">${it.map((x, i) => `<button type="button" class="btn ${x[2] ? "btn-primary" : "btn-gray"}" data-i="${i}">${escapeHtml(x[0])}${otHint(x[0]) ? `<span class="help-i in-label" tabindex="0" data-tip="${escapeAttr(otHint(x[0]))}" onclick="event.stopPropagation()">i</span>` : ""}</button>`).join("")}</div>
     <div class="acts"><button type="button" class="btn btn-gray" data-x>Close</button></div></div>`;
   m.classList.add("on");
   m.querySelector("[data-x]").onclick = () => m.classList.remove("on");

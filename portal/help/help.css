@@ -83,7 +83,7 @@
 
 /* The (i) note: one floating box placed by tips.js, always inside the
    window - never cut off at an edge or behind the menu. */
-.help-tipbox { position: fixed; z-index: 3000; max-width: 280px; background: #2E3238; color: #fff; font: normal 12.5px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+.help-tipbox { position: fixed; z-index: 6000; max-width: 280px; background: #2E3238; color: #fff; font: normal 12.5px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   padding: 8px 10px; border-radius: 7px; box-shadow: 0 6px 18px rgba(0,0,0,.2); pointer-events: none; display: none; }
 .help-tipbox.on { display: block; }
 
