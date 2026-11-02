@@ -470,3 +470,58 @@ def export_tracker(token: str, format: str = "view", view: str = "open", site: s
     return StreamingResponse(export_web.build_store_report_excel(title, out, sub, money_cols=[]),
                              media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})
+
+
+# ---- one material of a request: not needed (the rest of the request goes on) --------------------------------------
+@router.post("/store/request-lines/{line_id}/not-needed")
+def line_not_needed(line_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                    user: models.User = Depends(M.require_screen("approvals"))):
+    """Only this material is not needed - e.g. MR-0061 wants the solid blocks, not the hollow ones. Nothing arrived:
+    it is rejected with the reason. Part arrived: it asks for what came, the rest is closed. Still on a live LPO: the
+    LPO is changed instead (it would still be ordered). Paperwork only - no stock, no amount."""
+    line = db.get(models.MaterialRequestLine, line_id)
+    if not line:
+        raise HTTPException(status_code=404, detail="Request line not found.")
+    why = " ".join(str(payload.get("reason") or "").split())[:200]
+    if not why:
+        raise HTTPException(status_code=400, detail="Give the reason.")
+    mr = line.request
+    name = (line.item.name if line.item else "") or line.description or "this material"
+    if (line.status or "pending") == "rejected":
+        return M._mr_out(mr)
+    book = P.Book(db)
+    on = [o.ref for o in book.orders if book.of(o) and book.of(o)["status"] not in ("cancelled", "superseded", "delivered", "closed")
+          and line_id in book.of(o)["related"] and any(_fits_line(book, o, line) for _ in [0])]
+    if on:
+        raise HTTPException(status_code=400, detail=f"{name} is on {', '.join(on)} - change the LPO (take it off or reduce it) instead.")
+    got = float(line.qty_received or 0)
+    if got > EPS:
+        asked = float(line.qty_requested or 0)
+        line.qty_requested = line.qty_approved = got
+        line.notes = ((line.notes or "") + (" | " if line.notes else "") + f"Asked for {_qty(asked)}, {_qty(got)} came - rest not needed: {why}")[:1000]
+    else:
+        line.status, line.reject_reason = "rejected", f"Not needed: {why}"[:300]
+    live = [l for l in mr.lines if (l.status or "pending") != "rejected"]
+    if not live:
+        mr.status, mr.closed_on = ("delivered" if any((l.qty_received or 0) > 0 for l in mr.lines) else "rejected"), M._dubai_today()
+    elif mr.status in ("ordered", "partial", "delivered"):
+        P._settle(mr)
+    elif mr.status in ("pending", "approved"):
+        mr.status = "approved" if any((l.status or "pending") == "approved" for l in live) else "pending"
+    db.commit()
+    M.log_action(db, user.id, "request_line_not_needed", f"{mr.ref}: {name} not needed ({why})")
+    return M._mr_out(mr)
+
+
+def _fits_line(book, o, mrl):
+    """Is this request line still ordered on the LPO (a line of it is the same material)?"""
+    mi = book.items.get(mrl.item_id)
+    ticked = mrl.id in set(P._ids(o.request_line_ids))
+    for l in o.lines:
+        it = book.items.get(l.item_id)
+        if P._fits(l, it, mrl, mi):
+            return True
+        if ticked and any(P._words_in(x, y) for x in (mrl.description or "", mi.name if mi else "") if x
+                          for y in (l.description or "", it.name if it else "") if y):
+            return True
+    return False

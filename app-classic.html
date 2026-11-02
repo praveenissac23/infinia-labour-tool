@@ -22433,7 +22433,7 @@ function otActions(r) {
     if (r.stage === 1 && P) add("Raise LPO", () => otRaise(k));
     if (r.stage <= 2 && S) add(r.stage === 2 ? "Record what arrived" : "Record what arrived (petty cash / no LPO)", () => otReceive(r.id));
     if (r.stage < 5 && P) add("Close as it stands (came earlier / not needed)", () => otCloseOld([k]));
-    add("The request in full (materials, history)", () => otRequest(r.id));
+    add("Materials one by one (approve, reduce, not needed)", () => otRequest(r.id));
     add("Request PDF", () => downloadRequestPdf(r.id));
     if (r.untouched && P) add("Delete the request", () => otDelete(k));
   } else if (r.stage < 5) {
@@ -22598,6 +22598,11 @@ async function otRequest(id) {
     const st = l.status === "rejected" ? `Rejected${l.reject_reason ? ": " + l.reject_reason : ""}` : l.status === "pending" ? "Waiting for approval"
       : left <= 0 ? "Arrived" : (l.lpos || []).length ? "On " + l.lpos.map(x => x.ref).join(", ") : l.supplier ? `Ordered from ${l.supplier.name} (no LPO)` : l.lpo_cancelled ? `To order again (${l.lpo_cancelled} cancelled)` : "Approved - to order";
     const acts = [];
+    const onLpo = (l.lpos || []).filter(x => !/Delivered|Closed/.test(x.status));
+    if (P && l.status === "pending") acts.push(`<button type="button" class="btn btn-gray" onclick="otLineDecide(${d.id}, ${l.id}, 'a')">Approve</button>`, `<button type="button" class="btn btn-gray" onclick="otLineDecide(${d.id}, ${l.id}, 'p', ${l.qty_requested})">Approve less</button>`);
+    if (P && l.status === "approved" && left > 0 && !onLpo.length && !(l.qty_received > 0)) acts.push(`<button type="button" class="btn btn-gray" onclick="otLineDecide(${d.id}, ${l.id}, 'p', ${l.qty_requested})" title="Fewer than asked - the request then asks for that many">Reduce</button>`);
+    if (P && l.status !== "rejected" && left > 0 && !onLpo.length) acts.push(`<button type="button" class="btn btn-gray" onclick="otLineNotNeeded(${d.id}, ${l.id})" title="Only this material is not needed - the rest of the request goes on">${l.qty_received > 0 ? "Rest not needed" : l.status === "pending" ? "Reject" : "Not needed"}</button>`);
+    if (P && onLpo.length) acts.push(`<button type="button" class="btn btn-gray" onclick="document.getElementById('ot-req').classList.remove('on'); otEdit('lpo${onLpo[0].id}')" title="It is on ${escapeAttr(onLpo[0].ref)} - take it off or reduce it there">Change ${escapeHtml(onLpo[0].ref.replace("IC/LPO/", "LPO "))}</button>`);
     if (!l.item_id && l.status !== "rejected" && P) acts.push(`<button type="button" class="btn btn-gray" onclick="otLinkItem(${d.id}, ${l.id})" title="It is not on the material list yet - add it so it can be ordered and go into stock">Add to item list</button>`);
     if (l.status === "approved" && left > 0 && S) acts.push(`<button type="button" class="btn btn-gray" onclick="otLineArrived(${d.id}, ${l.id})" title="It arrived and is already booked in (on Rentals or at the site) - off the list, no stock added again">Already booked in</button>`);
     return `<tr><td>${escapeHtml(l.item_name || l.description || "(no name)")}${l.item_code ? `<div style="font-size:11px; color:#999;">${escapeHtml(l.item_code)}</div>` : ""}${l.notes ? `<div style="font-size:11px; color:#999;">${escapeHtml(l.notes)}</div>` : ""}</td>
@@ -22616,6 +22621,39 @@ async function otRequest(id) {
       ${S && !["delivered", "closed", "rejected"].includes(d.status) ? `<button type="button" class="btn btn-gray" onclick="document.getElementById('ot-req').classList.remove('on'); otReceive(${d.id})">Record what arrived</button>` : ""}
       ${P && !["delivered", "closed", "rejected"].includes(d.status) ? `<button type="button" class="btn btn-gray" onclick="document.getElementById('ot-req').classList.remove('on'); otCloseOld(['mr${d.id}'])">Close as it stands</button>` : ""}
       <button type="button" class="btn btn-primary" onclick="document.getElementById('ot-req').classList.remove('on')">Close</button></div></div>`;
+}
+// One material of a request: approve / approve fewer / not needed (reject), the rest of the request goes on
+async function otLineDecide(rid, lid, d, asked) {
+  try {
+    if (d === "a") await apiCall(`/store/request-lines/${lid}/decision`, { method: "POST", body: JSON.stringify({ decision: "approved", reason: "" }) });
+    else {
+      const m = puModal("ot-ask", true);
+      m.innerHTML = `<div class="box"><h3>How many are approved?</h3><div class="sub">Asked ${num(asked)}. The request then asks for this many.</div>
+        <div class="form-row"><div class="field"><label>Approved *</label><input type="number" id="ot-q" step="any" min="0" style="width:140px;"></div>
+        <div class="field" style="flex:1;"><label>Why fewer</label><input type="text" id="ot-qw" placeholder="optional" style="width:100%;"></div></div>
+        <div class="status-msg" id="ot-ask-status"></div>
+        <div class="acts"><button type="button" class="btn btn-gray" data-x>Back</button><button type="button" class="btn btn-primary" data-go>Save</button></div></div>`;
+      m.classList.add("on"); setTimeout(() => m.querySelector("#ot-q").focus(), 30);
+      m.querySelector("[data-x]").onclick = () => m.classList.remove("on");
+      m.querySelector("[data-go]").onclick = async () => {
+        const q = parseFloat(m.querySelector("#ot-q").value);
+        if (!(q > 0 && q < asked)) { showStatus("ot-ask-status", "warn", "Type a number above 0 and below what was asked."); return; }
+        try { await apiCall(`/store/request-lines/${lid}/approve-less`, { method: "POST", body: JSON.stringify({ qty: q, reason: m.querySelector("#ot-qw").value.trim() }) });
+          m.classList.remove("on"); await otRequest(rid); showStatus("ot-req-status", "ok", "Saved."); otLoad(); }
+        catch (e) { showStatus("ot-ask-status", "err", errText(e)); }
+      };
+      return;
+    }
+    await otRequest(rid); showStatus("ot-req-status", "ok", "Saved."); otLoad();
+  } catch (e) { showStatus("ot-req-status", "err", errText(e)); }
+}
+async function otLineNotNeeded(rid, lid) {
+  const d = await apiCall(`/store/purchase/tracker/request/${rid}`); const l = (d.lines || []).find(x => x.id === lid); if (!l) return;
+  otAsk(`${d.ref}: ${l.item_name || l.description} - not needed?`, `Only this material is taken off; the rest of ${d.ref} goes on. Nothing moves in stock.`,
+    ["Site no longer needs it", "Taken from the store", "Bought with petty cash", "Wrong material asked"], "Not needed", async why => {
+      await apiCall(`/store/request-lines/${lid}/not-needed`, { method: "POST", body: JSON.stringify({ reason: why }) });
+      await otRequest(rid); showStatus("ot-req-status", "ok", `${l.item_name || l.description}: not needed - ${why}.`); otLoad();
+    });
 }
 async function otLinkItem(rid, lid) {
   const d = await apiCall(`/store/purchase/tracker/request/${rid}`); const l = (d.lines || []).find(x => x.id === lid); if (!l) return;

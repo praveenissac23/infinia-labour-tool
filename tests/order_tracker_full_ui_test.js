@@ -100,10 +100,16 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   ck('Approve all: the request moves to Approved', T.rows.find(r => r.ref === mrA.ref).stage === 1);
   // MR menus
   const mm = await menu(p, rB.key);
-  ck(`menu on a request waiting: ${mm.join(' | ')}`, ['Approve', 'The request in full (materials, history)', 'Request PDF', 'Delete the request', 'Close as it stands (came earlier / not needed)'].every(x => mm.includes(x)), mm);
-  await pick(p, 'The request in full (materials, history)'); await sleep(1500);
-  const rq = await p.evaluate(() => { const m = document.getElementById('ot-req'); return { on: m.classList.contains('on'), h: m.querySelector('h3').textContent, lines: m.querySelectorAll('tbody tr').length, btns: [...m.querySelectorAll('.acts button')].map(b => b.textContent) }; });
-  ck(`the request in full: ${rq.h} - ${rq.lines} materials, ${rq.btns.join(' / ')}`, rq.on && rq.h.includes(mrB.ref) && rq.lines === 3 && ['Request PDF', 'Edit request', 'Delete', 'Record what arrived', 'Close as it stands', 'Close'].every(b => rq.btns.includes(b)), rq);
+  ck(`menu on a request waiting: ${mm.join(' | ')}`, ['Approve', 'Materials one by one (approve, reduce, not needed)', 'Request PDF', 'Delete the request', 'Close as it stands (came earlier / not needed)'].every(x => mm.includes(x)), mm);
+  await pick(p, 'Materials one by one (approve, reduce, not needed)'); await sleep(1500);
+  const rq = await p.evaluate(() => { const m = document.getElementById('ot-req'); return { on: m.classList.contains('on'), h: m.querySelector('h3').textContent, lines: m.querySelectorAll('tbody tr').length, btns: [...m.querySelectorAll('.acts button')].map(b => b.textContent), lineBtns: [...new Set([...m.querySelectorAll('tbody button')].map(b => b.textContent))] }; });
+  ck(`the request in full: ${rq.h} - ${rq.lines} materials, ${rq.btns.join(' / ')}`, rq.on && rq.h.includes(mrB.ref) && rq.lines === 3 && ['Approve', 'Approve less', 'Reject'].every(b => rq.lineBtns.includes(b)) && ['Request PDF', 'Edit request', 'Delete', 'Record what arrived', 'Close as it stands', 'Close'].every(b => rq.btns.includes(b)), rq);
+  // one material only: MR-0061's case - keep the first, the second not needed
+  const lines0 = (await api(p, `/store/purchase/tracker/request/${mrB.id}`)).lines;
+  await p.evaluate(lid => { const b = [...document.querySelectorAll('#ot-req button')].filter(b => /Reject|Not needed/.test(b.textContent))[1]; b.click(); }, 0); await sleep(500);
+  await p.click('#ot-ask .seg-chip'); await p.click('#ot-ask [data-go]'); await sleep(2500);
+  const lines1 = (await api(p, `/store/purchase/tracker/request/${mrB.id}`)).lines;
+  ck('one material not needed: only that line rejected with the reason, the rest of the request goes on', lines1[1].status === 'rejected' && /Not needed: /.test(lines1[1].reject_reason) && lines1[0].status === lines0[0].status && lines1[2].status === lines0[2].status, lines1.map(l => [l.status, l.reject_reason]));
   const [pdf] = await Promise.all([p.context().waitForEvent('page', { timeout: 8000 }).catch(() => null), p.evaluate(() => [...document.querySelectorAll('#ot-req .acts button')].find(b => b.textContent === 'Request PDF').click())]);
   ck('Request PDF opens the request sheet', !!pdf && /\/export\/store\/request\/\d+\/view/.test(pdf.url()), pdf && pdf.url()); if (pdf) await pdf.close();
   await p.evaluate(() => [...document.querySelectorAll('#ot-req .acts button')].find(b => b.textContent === 'Record what arrived').click()); await sleep(2500);
@@ -246,9 +252,9 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   // ---- Approvals and Order follow-up are off the tab bar; an old link still opens them; a request link opens it in the tracker
   await p.evaluate(() => pgGo('store', 'requests')); await sleep(2500);
   const subs = await p.$$eval('#pg-sub .pg-subtab', x => x.map(e => e.textContent.trim()));
-  ck(`Requests shows only Material requests (${subs.join(', ')})`, subs.length === 1 && subs[0] === 'Material requests', subs);
+  ck(`Requests keeps Material requests, Approvals and Order follow-up (${subs.join(', ')})`, subs.join('|') === 'Material requests|Approvals|Order follow-up', subs);
   await p.evaluate(() => pgGo('store', 'requests:followup')); await sleep(2500);
-  ck('an old link to Order follow-up still opens it', await p.evaluate(() => xlOn('followup')));
+  ck('Order follow-up opens as before', await p.evaluate(() => xlOn('followup')));
   await p.evaluate(r => openRequestRef(r), mrA.ref); await sleep(4500);
   ck('a request link (e.g. from a notification or the LPO screen) opens it in full on the tracker', await p.evaluate(r => xlOn('purchtrack') && document.getElementById('ot-req').classList.contains('on') && document.querySelector('#ot-req h3').textContent.includes(r), mrA.ref));
   await closeModals(p);
