@@ -77,8 +77,8 @@ const REMOVED = ['Material arrived', 'Approvals', 'Order follow-up'];
       const rb = await p.evaluate(() => [...document.querySelectorAll('#screen-requests button')].filter(b => b.offsetParent).map(b => b.textContent.trim()));
       ck(`${u}: Material requests has no Approve / Raise LPO / Record delivery / Direct purchase`, !rb.some(x => /^(Approve|Raise LPO|Record delivery|Direct purchase)/.test(x)), rb);
       await p.evaluate(() => pgGo('store', 'purchasing', 'purchase')); await sleep(3000);
-      const pend = await p.evaluate(() => (document.getElementById('lpo-pending-card') || {}).offsetParent === null);
-      ck(`${u}: Purchase orders - no "Waiting to be ordered" list (Raise LPO is on the tracker); New Purchase Order stays`, pend && await p.evaluate(() => !!document.querySelector('button[onclick="newLpo()"]')));
+      const pend = await p.evaluate(() => { const c = document.getElementById('lpo-pending-card'); return !!(c && c.offsetParent) && !!document.querySelector('button[onclick="lpoFromTicked()"]'); });
+      ck(`${u}: Purchase orders shows the approved request materials waiting to be ordered, and New Purchase Order`, pend && await p.evaluate(() => !!document.querySelector('button[onclick="newLpo()"]')));
       // Raise LPO from the tracker still fills the LPO from the request
       await p.evaluate(() => pgGo('store', 'tracker')); await sleep(3000);
       await p.evaluate(() => { OT_VIEW = 'open'; OT_STEP = null; otRender(); }); await sleep(800);

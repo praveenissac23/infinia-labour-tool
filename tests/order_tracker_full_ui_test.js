@@ -227,19 +227,16 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   ck('closing as came earlier added no stock', JSON.stringify(await api(p, '/store/stock')) === st0);
   const hist = await api(p, `/store/purchase/orders/${olds[0].id}/deliveries`);
   ck('its history says it came earlier, no stock added', hist.history.some(h => /Came earlier, not booked then - no stock added/.test(h.notes)), hist.history.slice(-2));
-  // ticked together
-  await p.click('#ot-tidy-btn'); await sleep(400);
-  ck('Close old orders: tick boxes and the close bar appear', await p.evaluate(() => document.querySelectorAll('#ot-body .ot-pick').length > 0 && document.getElementById('ot-tidybar').classList.contains('on')));
-  for (const r of olds.slice(1)) await p.check(`tr[data-k="${r.key}"] .ot-pick`);
-  ck('the button counts the ticked ones', /\(2\)/.test(await p.$eval('#ot-tidy-go', b => b.textContent)));
-  await p.check('[name="ot-how"][value="not_coming"]'); await p.fill('#ot-tidy-why', 'Before Arun joined - not coming');
-  await p.click('#ot-tidy-go'); await sleep(600);
-  await p.evaluate(() => { const b = [...document.querySelectorAll('button')].filter(b => b.offsetParent && b.textContent.trim() === 'Close them').pop(); b.click(); }); await sleep(4000);
+  // no "Close old orders" button any more: each old order is closed from its own More menu
+  ck('no Close old orders button', await p.evaluate(() => !document.getElementById('ot-tidy-btn')));
+  for (const r of olds.slice(1)) {
+    await menu(p, r.key); await pick(p, 'Close as it stands (came earlier / not coming)'); await sleep(300);
+    await p.check('#ot-ask [value=not_coming]'); await p.fill('#ot-why1', 'Before the current purchaser - not coming'); await p.click('#ot-ask [data-go]'); await sleep(2500);
+  }
   T = await api(p, '/store/purchase/tracker');
   const cl = olds.slice(1).map(o => T.rows.find(r => r.ref === o.ref));
-  ck('the 2 ticked LPOs closed as not coming: Done, "Nothing came - closed"', cl.every(r => r.stage === 5 && /Nothing came/.test(r.result)), cl.map(r => [r.ref, r.stage, r.result]));
+  ck('the 2 old LPOs closed as not coming: Done, "Nothing came - closed"', cl.every(r => r.stage === 5 && /Nothing came/.test(r.result)), cl.map(r => [r.ref, r.stage, r.result]));
   ck('closing them moved no stock', JSON.stringify(await api(p, '/store/stock')) === st0);
-  await p.click('#ot-tidy-btn'); await sleep(300);
   // ---- Done & closed shows cancelled LPOs and closed requests, with why
   await p.evaluate(() => { OT_VIEW = 'done'; otRender(); }); await sleep(300);
   const done = await p.$$eval('#ot-body tr.ot-r', x => x.map(e => e.textContent.replace(/\s+/g, ' ')));
