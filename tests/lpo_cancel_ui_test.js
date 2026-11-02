@@ -22,7 +22,7 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   await p.evaluate(() => { window.checkBuild = () => {}; const z = document.getElementById('build-bar'); if (z) z.remove(); });
   if (!await p.evaluate(() => !!document.querySelector('#lpr-body tr'))) { await p.evaluate(() => typeof pgGo === 'function' && pgGo('store', 'purchasing', 'lporegister')); await sleep(2500); }
   const tot0 = await p.evaluate(() => document.getElementById('lpr-total').textContent);
-  await p.evaluate(ref => { const tr = [...document.querySelectorAll('#lpr-body tr')].find(t => t.textContent.includes(ref)); tr.querySelector('.lpr-cancel').click(); }, x.label);
+  await p.evaluate(([id, ref]) => cancelLpo(id, ref), [x.id, x.label]);   // cancelling is on the Order tracker now; the register still shows it struck through
   await sleep(400);
   ck('Cancel asks why', await p.evaluate(() => document.getElementById('lpo-cx-modal').classList.contains('on')));
   await p.click('#lpo-cx-modal [data-go]'); await sleep(300);

@@ -130,7 +130,8 @@ PAGES = {
         tab("store", "store", "Stock", "store", subs=[
             sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),
             sub("give", "Move material", screen="store", right="storekeeper", go="pgStorePanel('give')"),
-            sub("arrive", "Material arrived", screen="store", right="storekeeper", go="pgStorePanel('arrive')"),
+            # Deliveries are booked on the Order tracker only (2 Nov 2026) - one place, no doubles.
+            sub("arrive", "Material arrived", screen="store", right="storekeeper", go="pgStorePanel('arrive')", hidden=True),
             sub("other", "Returns, lost & corrections", screen="store", right="store", go="pgStorePanel('other')"),
             sub("items", "Material list", screen="store", right="store", go="pgStorePanel('items')")]),
         tab("rentals", "store", "Rentals", "store", subs=[

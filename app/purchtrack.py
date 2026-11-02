@@ -29,9 +29,11 @@ import purchasing as P
 router = APIRouter()
 EPS = 1e-9
 STEPS = ["Requested", "Approved", "Ordered", "Arrived", "Bill checked", "Done"]
-PEOPLE_DEFAULT = {"purchaser": "Arun", "store": "Amal", "accounts": "Shafeeq"}
-# their logins (the chief accountant signs in as 'shafiq'): whose turn is 'My turn'
-LOGINS_DEFAULT = {"purchaser": ["arun"], "store": ["amal"], "accounts": ["shafiq", "shafeeq"]}
+# Who acts is a department, never a person's name: people change and a department can have several (2 Nov 2026)
+PEOPLE_DEFAULT = {"purchaser": "Purchase", "store": "Store", "accounts": "Accounts"}
+# 'My turn' comes from the login's Access role (Settings > Access: Purchase Manager, Store Keeper, Chief Accountant...),
+# never from its name - anyone given that role gets that department's turn
+DEPT_WORDS = {"purchaser": ("purchas", "procure", "buyer"), "store": ("store",), "accounts": ("account", "finance")}
 # who acts at each step
 NEXT = {0: ("purchaser", "Approve"), 1: ("purchaser", "Raise LPO"), 2: ("store", "Book delivery"),
         3: ("purchaser", "Check bill"), 4: ("accounts", "Send to Zoho")}
@@ -39,12 +41,7 @@ SEE = M.require_any_screen("requests", "approvals", "store", "storekeeper", "acc
 
 
 def people(db):
-    raw = M.get_setting(db, "purchase_people")
-    try:
-        v = json.loads(raw) if raw else {}
-    except ValueError:
-        v = {}
-    return {k: (str(v.get(k) or "").strip() or d) for k, d in PEOPLE_DEFAULT.items()}
+    return dict(PEOPLE_DEFAULT)
 
 
 def _qty(x):
@@ -222,23 +219,14 @@ def build(db):
 @router.get("/store/purchase/tracker")
 def tracker(db: Session = Depends(get_db), user: models.User = Depends(SEE)):
     data = build(db)
-    words = set(((user.full_name or "") + " " + (user.username or "")).lower().split())
-    login = (user.username or "").strip().lower()
-    data["my_roles"] = [k for k, v in data["people"].items()
-                        if (v and v.lower() in words) or login in LOGINS_DEFAULT.get(k, [])]
+    job = ""
+    if (user.role or "") != "admin" and getattr(user, "access_role_id", None):
+        r = db.get(models.AccessRole, user.access_role_id)
+        job = (r.name or "").lower() if r else ""
+    perms = set(M.effective_permissions(user)) if job else set()
+    can = {"purchaser": "approvals" in perms, "store": bool({"storekeeper", "store"} & perms), "accounts": "accounts_zoho" in perms}
+    data["my_roles"] = [k for k, words in DEPT_WORDS.items() if can[k] and any(w in job for w in words)]
     return data
-
-
-@router.post("/store/purchase/people")
-def set_people(payload: dict = Body(...), db: Session = Depends(get_db),
-               user: models.User = Depends(M.require_screen("approvals"))):
-    cur = people(db)
-    for k in PEOPLE_DEFAULT:
-        if k in payload and str(payload[k] or "").strip():
-            cur[k] = str(payload[k]).strip()[:40]
-    M.put_setting(db, "purchase_people", json.dumps(cur))
-    M.log_action(db, user.id, "purchase_people", json.dumps(cur))
-    return cur
 
 
 @router.post("/store/request-lines/{line_id}/approve-less")
@@ -336,7 +324,7 @@ def request_detail(req_id: int, db: Session = Depends(get_db), user: models.User
     return d
 
 
-# ---- Arun joined in Oct 2026 and the two months before are not known: an old order is closed as it stands --------
+# ---- Orders from before the current purchaser joined (Oct 2026) are not known: an old order is closed as it stands --------
 def _close_lpo_old(db, o, how, why, bill, user):
     book = P.Book(db)
     p = book.of(o)

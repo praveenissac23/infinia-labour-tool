@@ -232,7 +232,7 @@ window.HELP_GUIDES = [
     words: "zoho account pick choose category head parent sub account machinery tools job assets tip labour camp transfer to cash petty box search most used",
     go: { page: "accounts", tab: "zoho" },
     steps: [
-      { say: "On Send to Zoho, press the account box on a line. The list is Shafeeq's own Zoho accounts, named and grouped as in Zoho: type, then each parent with its sub-accounts.", el: "#zh-body" },
+      { say: "On Send to Zoho, press the account box on a line. The list is the company's own Zoho accounts, named and grouped as in Zoho: type, then each parent with its sub-accounts.", el: "#zh-body" },
       { say: "Type a word - machinery, tip, visa, transfer - and press Enter, or pick from Most used at the top. Money moved to another box (Cash, a petty cash box, ADCB) is under Transfers.", el: "#zh-body" },
       { say: "The same list is used for a split and for Paid an expense on the Bank tab.", el: "#zh-body" }],
     tip: "An account made in Zoho today: open the list and press Read again from Zoho. To offer more of Zoho's accounts, ask Praveen." },
