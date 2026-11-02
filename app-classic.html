@@ -388,8 +388,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .ot-bar select { width: 130px; } .ot-bar input { width: 250px; height: 32px; padding: 0 10px; border: 1px solid #E0D9D5; border-radius: 6px; font-size: 12.5px; }
   .ot-wrap { overflow-x: auto; }
   table.ot-t { width: 100%; min-width: 1150px; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
-  .ot-t col.c-site { width: 62px; } .ot-t col.c-what { width: 24%; } .ot-t col.c-sup { width: 25%; } .ot-t col.c-steps { width: 340px; }
-  .ot-t col.c-note { width: 150px; } .ot-t col.c-next { width: 200px; }
+  .ot-t col.c-site { width: 62px; } .ot-t col.c-what { width: 26%; } .ot-t col.c-sup { width: 22%; } .ot-t col.c-steps { width: 310px; }
+  .ot-t col.c-note { width: 160px; } .ot-t col.c-next { width: 200px; }
   .ot-t th { background: #fff !important; color: #9A918C !important; font-size: 10px; font-weight: 600; text-align: left; padding: 7px 10px; border-bottom: 1px solid #EFEAE7; letter-spacing: .3px; text-transform: uppercase; position: static; }
   .ot-sh { display: flex; gap: 2px; } .ot-sh span { flex: 1; text-align: center; white-space: nowrap; font-size: 9.5px; text-transform: none; }
   .ot-t td { padding: 8px 10px; border-bottom: 1px solid #F1EDEA; vertical-align: middle; text-align: left; }
@@ -397,7 +397,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .ot-t td.site { font-weight: 600; color: #5C5450; font-size: 14px; }
   .ot-t .t1 { font-weight: 500; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ot-t .t2 { color: #9A918C; font-size: 11.5px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ot-t .t1.wrap { white-space: normal; overflow: visible; line-height: 1.3; }
+  .ot-t .t1.wrap, .ot-t .t2.wrap { white-space: normal; overflow: visible; line-height: 1.3; word-break: break-word; }
   .ot-t .ot-ph { overflow: visible; } .ot-ph a { color: #26211F !important; font-weight: 500; white-space: nowrap; }
   .ot-t .t2 a { color: #5C5450; text-decoration: none; } .ot-t .t2 a:hover { text-decoration: underline; }
   .ot-steps { display: flex; gap: 2px; }
@@ -405,7 +405,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .ot-steps span:first-child { border-radius: 12px 0 0 12px; } .ot-steps span:last-child { border-radius: 0 12px 12px 0; }
   .ot-steps .d { background: #E3F1E8; color: #2E7D52; font-weight: 700; } .ot-steps .c { background: #2E8B57; color: #fff; font-weight: 600; }
   .ot-steps .l { background: #C33A2C; color: #fff; font-weight: 600; } .ot-steps .h { background: #E09A1A; color: #fff; font-weight: 600; }
-  .ot-late { color: #C33A2C; font-size: 11.5px; font-weight: 600; } .ot-come { color: #B9770E; font-size: 11.5px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+  .ot-late { color: #C33A2C; font-size: 11.5px; font-weight: 600; } .ot-come { color: #B9770E; font-size: 11.5px; font-weight: 600; line-height: 1.3; word-break: break-word; }
   .ot-t td.nx { text-align: right; white-space: nowrap; } .ot-who { font-size: 11.5px; color: #9A918C; margin-right: 8px; }
   .ot-t td.nx button { background: #C33A2C; color: #fff; border: 0; border-radius: 6px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
   .ot-t td.nx button.ot-dots { background: #fff; color: #26211F; border: 1px solid #E0D9D5; padding: 4px 9px; font-size: 14px; line-height: 1; margin-left: 4px; }
@@ -22365,13 +22365,13 @@ function otRender() {
     }).join("");
     const refs = r.kind === "lpo" ? [r.ref, ...(r.requests || [])] : [r.ref + (r.requested_by ? " · " + r.requested_by : "")];
     const sup = r.supplier
-      ? `<div class="t1 wrap">${escapeHtml(r.supplier)}</div>${r.contact ? `<div class="t2" title="${escapeAttr(r.contact)}">${escapeHtml(r.contact)}</div>` : ""}${r.phone ? `<div class="t2 ot-ph"><a href="tel:${escapeAttr(r.phone.replace(/[^\d+]/g, ""))}" onclick="event.stopPropagation()" title="Call">&#128222; ${escapeHtml(r.phone)}</a></div>` : ""}${!r.contact && !r.phone ? `<div class="t2">no contact on file</div>` : ""}`
+      ? `<div class="t1 wrap">${escapeHtml(r.supplier)}</div>${r.contact ? `<div class="t2" title="${escapeAttr(r.contact)}">${escapeHtml(r.contact)}</div>` : ""}${r.phone ? `<div class="t2 ot-ph"><a href="tel:${escapeAttr(r.phone.replace(/[^\d+]/g, ""))}" onclick="event.stopPropagation()" title="Call">${escapeHtml(r.phone)}</a></div>` : ""}${!r.contact && !r.phone ? `<div class="t2">no contact on file</div>` : ""}`
       : `<div class="t2">${r.stage === 0 ? "Waiting for approval" : "Approved - no LPO yet"}</div>`;
     const note = (r.late > 0 ? `<div class="ot-late">${r.late} day${r.late === 1 ? "" : "s"} late</div>` : "") + (r.to_come ? `<div class="ot-come" title="${escapeAttr(r.to_come)}">${escapeHtml(r.to_come)} to come</div>` : "");
     const can = r.stage < 5 && r.action && otCanDo(r.role);
     return `<tr class="ot-r" data-k="${r.key}" onclick="otHistory('${r.key}')">
       <td class="site">${escapeHtml(r.site || "-")}</td>
-      <td><div class="t1" title="${escapeAttr(r.what)}">${escapeHtml(r.what || "-")}</div><div class="t2">${escapeHtml(refs.join(" · "))}</div></td>
+      <td><div class="t1 wrap">${escapeHtml(r.what || "-")}</div><div class="t2 wrap">${escapeHtml(refs.join(" · "))}</div></td>
       <td>${sup}</td>
       <td><div class="ot-steps">${steps}</div></td>
       <td>${note}</td>
