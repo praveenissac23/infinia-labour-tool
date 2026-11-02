@@ -603,7 +603,7 @@ def edit_deduction(rid: int, did: int, data: dict = Body(...), db: Session = Dep
         raise HTTPException(400, "Open the certificate this is edited from.")
     if _is_locked(_pcs(db, x.sub_id), on) and user.role != "admin":
         raise HTTPException(400, "This certificate is paid (or a later one is) - its figures are locked. Ask an admin if it must change.")
-    was = f"{x.cat} | {E._iso(x.on_date) or '-'} | {x.description} | {x.qty or 0:g} {x.unit or ''} x {x.rate or 0:g} = {r2(x.amount):,.2f}{'' if x.counted else ' (not taken)'}"
+    was = f"PC {(db.query(E.EstSubPC).get(x.pc_id).seq or 0):02d} | {x.cat} | {E._iso(x.on_date) or '-'} | {x.description} | {x.qty or 0:g} {x.unit or ''} x {x.rate or 0:g} = {r2(x.amount):,.2f}{'' if x.counted else ' (not taken)'}"
     desc = str(data.get("description") or "").strip()
     qty, rate, amt = _f(data.get("qty")), _f(data.get("rate")), _f(data.get("amount"))
     if qty and rate:
@@ -615,12 +615,17 @@ def edit_deduction(rid: int, did: int, data: dict = Body(...), db: Session = Dep
     x.description, x.qty, x.unit, x.rate, x.amount = desc[:300], qty, str(data.get("unit") or "")[:12], rate, r2(amt)
     if "counted" in data:
         x.counted = data.get("counted") is not False
-    now = f"{x.cat} | {E._iso(x.on_date) or '-'} | {x.description} | {x.qty or 0:g} {x.unit or ''} x {x.rate or 0:g} = {r2(x.amount):,.2f}{'' if x.counted else ' (not taken)'}"
+    if data.get("pc_id"):                 # moved to another certificate of the same subcontract (not a later one)
+        to = db.query(E.EstSubPC).get(int(data.get("pc_id")))
+        if not to or to.sub_id != x.sub_id or (to.seq or 0) > (on.seq or 0):
+            raise HTTPException(400, f"Pick one of this subcontract's certificates up to PC {(on.seq or 0):02d}.")
+        x.pc_id = to.id
+    now = f"PC {(db.query(E.EstSubPC).get(x.pc_id).seq or 0):02d} | {x.cat} | {E._iso(x.on_date) or '-'} | {x.description} | {x.qty or 0:g} {x.unit or ''} x {x.rate or 0:g} = {r2(x.amount):,.2f}{'' if x.counted else ' (not taken)'}"
     pc_of = db.query(E.EstSubPC).get(x.pc_id)
     db.flush()
     refresh_sub(db, x.sub_id)
     db.commit()
-    E.M.log_action(db, user.id, "pc_deduction_edit", f"PC {(pc_of.seq if pc_of else 0):02d} deduction edited from PC {(on.seq or 0):02d}: {was} -> {now}")
+    E.M.log_action(db, user.id, "pc_deduction_edit", f"Deduction edited from PC {(on.seq or 0):02d}: {was} -> {now}")
     return sheet(db, on, user)
 
 
@@ -829,8 +834,8 @@ def line_changes(ln, pv):
     out = set()
     if any(abs(g(a, k) - g(b, k)) > 1e-9 for k in ("qty", "claimed_qty", "w", "h")):
         out.add("measure")
-    if abs(g(a, "pct") - g(b, "pct")) > 1e-9:
-        out.add("pct")
+    if abs(g(a, "pct") - g(b, "pct")) > 1e-9 and abs(g(a, "amount") - g(b, "amount")) > 0.004:
+        out.add("pct")                    # a % that moves nothing (a new line at 100%, nothing done yet) is no change
     if abs(g(a, "deduct") - g(b, "deduct")) > 1e-9:
         out.add("deduct")
     if (a.get("remark") or "").strip() != (b.get("remark") or "").strip():

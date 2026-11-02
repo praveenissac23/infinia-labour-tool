@@ -167,7 +167,9 @@ async function pcSheet(pcid) {
         </div>`; };
   // A line that moved since the last certificate (what the subcontractor claimed this time) - a pale shade.
   const moved = it => { const a = S.lines[it.id] || {}, b = d.prev[it.id] || {}, g = (o, k) => num(o[k]) || 0;
-    return ["qty", "claimed_qty", "w", "h", "pct", "deduct"].some(k => Math.abs(g(a, k) - g(b, k)) > 1e-9) || String(a.remark || "").trim() !== String(b.remark || "").trim()
+    // the % alone is not a change: a new line starts at 100% with nothing done (912's lines 8, 9 lit up yellow) -
+    // a % that matters moves the amount, and that is compared below
+    return ["qty", "claimed_qty", "w", "h", "deduct"].some(k => Math.abs(g(a, k) - g(b, k)) > 1e-9) || String(a.remark || "").trim() !== String(b.remark || "").trim()
       || Math.abs(lineAmt(it, S.lines[it.id]) - (b.amount || 0)) > 0.004; };
   const draw = () => {
     const F = figures(), p = d.pc;
@@ -265,7 +267,9 @@ async function pcSheet(pcid) {
     $$("[data-dedit]", B).forEach(b => b.onclick = async () => {
       const x = d.deds.find(y => String(y.id) === b.dataset.dedit); if (!x) return;
       if (!locked && !(await save(false))) return;          // what is typed on this certificate is kept first
+      const pcsUpTo = (d.pcs || []).filter(q => (q.seq || 0) <= (d.pc.seq || 0)).sort((p1, p2) => (p1.seq || 0) - (p2.seq || 0));
       modal(`Edit deduction - PC ${pad(x.pc_seq, 2)}`, [
+        { k: "pc_id", label: "PC", type: "select", noseg: true, options: pcsUpTo.map(q => [q.id, "PC " + pad(q.seq, 2)]), value: x.pc_id },
         { k: "cat", label: "Type", type: "select", options: DCATS, value: x.cat },
         { k: "on_date", label: "Date", type: "date", value: x.on_date || "" },
         { k: "description", label: "Description", value: x.description || "", focus: true },
@@ -274,7 +278,7 @@ async function pcSheet(pcid) {
         { k: "rate", label: "Rate", type: "money", value: x.rate || "" },
         { k: "amount", label: "Amount (when no qty x rate)", type: "money", value: x.amount || "" },
         { k: "counted", label: "Taken", type: "check", text: "Deducted on the certificate", value: x.counted }],
-        async v => { d = await PATCH(`/store/est/subpcs/${pcid}/deducts/${x.id}`, v); S.d = d; init(); draw(); guardBase("big"); toast(`PC ${pad(x.pc_seq, 2)} deduction saved`); },
+        async v => { d = await PATCH(`/store/est/subpcs/${pcid}/deducts/${x.id}`, v); S.d = d; init(); draw(); guardBase("big"); toast("Deduction saved"); },
         { top: `<div class="muted small" style="margin-bottom:8px">Entered on PC ${pad(x.pc_seq, 2)}. Changing it changes the deductions to date on this and later certificates.</div>` });
     });
     const da = $("#de-add"); if (da) da.onclick = () => { const last = S.deds[S.deds.length - 1]; S.deds.push({ cat: last ? last.cat : "Manpower", on_date: today(), description: "", qty: "", unit: last ? last.unit : "", rate: last ? last.rate : "", amount: "", counted: true }); refreshFigures(); };

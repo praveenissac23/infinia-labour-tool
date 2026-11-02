@@ -44,5 +44,13 @@ other = c.post("/store/est/subs", headers=H, json={"project_id": pid, "name": "O
 opc = c.post("/store/est/subpcs", headers=H, json={"sub_id": other, "inv_ref": "X/1", "inv_amount": 1, "received": "2026-10-01"}).json()["id"]
 r = c.patch(f"/store/est/subpcs/{opc}/deducts/{did}", headers=H, json={"description": "x", "amount": 1})
 ck("must be edited from an open certificate of the same subcontract", r.status_code == 400, r.text)
+pc3 = c.post("/store/est/subpcs", headers=H, json={"sub_id": sid, "inv_ref": "OT/3", "inv_amount": 1000, "received": "2026-10-30"}).json()["id"]
+r = c.patch(f"/store/est/subpcs/{pc2}/deducts/{did}", headers=H, json={"pc_id": pc3, "description": "Manpower supplied (corrected)", "qty": 40, "rate": 90})
+ck("cannot move it to a later certificate than the one open", r.status_code == 400, r.text)
+r = c.patch(f"/store/est/subpcs/{pc2}/deducts/{did}", headers=H, json={"pc_id": pc2, "cat": "Manpower", "description": "Manpower supplied (corrected)", "qty": 40, "unit": "No", "rate": 90})
+mv = next((x for x in r.json()["deds"] if x["id"] == did), {}) if r.status_code == 200 else {}
+ck("PC number changed: PC 01 -> PC 02 (now on the open certificate)", mv.get("pc_seq") == 2 and mv.get("mine") is True, r.text)
+sh1 = c.get(f"/store/est/subpcs/{pc1}/sheet", headers=H).json()
+ck("PC 01 no longer carries it", not any(x["id"] == did for x in sh1["deds"]), sh1["deds"])
 print("ALL PASS" if not fails else f"{len(fails)} FAILED")
 sys.exit(1 if fails else 0)
