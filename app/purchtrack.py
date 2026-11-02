@@ -70,6 +70,29 @@ def _late(due, today, stage, part):
     return d if d > 0 else 0
 
 
+def _closed_lpo(o, p, sup, book, mr_of_line, why):
+    refs = sorted({mr_of_line[i].ref for i in (p.get("related") or []) if mr_of_line.get(i)})
+    return {"key": f"lpo{o.id}", "kind": "lpo", "id": o.id, "ref": o.ref, "requests": refs,
+            "site": book.sites.key(o) if book.sites.key(o) != "STORE" else "Store",
+            "what": _what([l.description for l in o.lines]), "supplier": o.supplier_name or (sup.name if sup else ""),
+            "contact": _clean(o.supplier_contact), "phone": _clean(o.supplier_phone), "stage": 5, "part": False,
+            "to_come": "", "due": "", "late": 0, "role": "", "who": "", "action": "",
+            "date": o.order_date.isoformat() if o.order_date else "", "bill_checked": bool(o.bill_checked),
+            "zoho": o.zoho_status or "", "rental": False, "result": why, "cancelled": True}
+
+
+def _closed_mr(mr, lines, name, word):
+    why = word + (f": {mr.office_remark}" if (mr.office_remark or "").strip() and mr.status in ("closed", "rejected") else "")
+    return {"key": f"mr{mr.id}", "kind": "mr", "id": mr.id, "ref": mr.ref, "requests": [mr.ref],
+            "site": "Store" if (mr.site or "").upper() == "STORE" else (mr.site or ""),
+            "what": _what([name(l) for l in lines]), "supplier": "", "contact": "", "phone": "", "stage": 5, "part": False,
+            "to_come": "", "due": "", "late": 0, "role": "", "who": "", "action": "",
+            "date": mr.requested_on.isoformat() if mr.requested_on else "", "requested_by": mr.requested_by or "",
+            "result": why, "untouched": False,
+            "lines": [{"id": l.id, "name": name(l), "qty": float(l.qty_requested or 0), "unit": l.unit or "",
+                       "purpose": l.purpose or "", "status": l.status or "pending"} for l in lines]}
+
+
 def build(db):
     today = M._dubai_today()
     book = P.Book(db)
@@ -87,7 +110,13 @@ def build(db):
     # ---- LPOs
     for o in book.orders:
         p = book.of(o)
-        if not p or p["status"] in ("cancelled", "superseded"):
+        if not p:
+            continue
+        if p["status"] in ("cancelled", "superseded"):
+            sup = sups.get(o.supplier_id)
+            rows.append(_closed_lpo(o, p, sup, book, mr_of_line,
+                                    f"Replaced by {o.superseded_by}" if p["status"] == "superseded"
+                                    else "Cancelled" + (f": {o.cancel_reason}" if o.cancel_reason else "")))
             continue
         covered |= set(p["related"])
         lines = p["lines"]
@@ -114,6 +143,11 @@ def build(db):
         to_come = "; ".join(f"{_qty(x['remaining'])} {x['unit'] or ''} {x['description']}".replace("  ", " ")
                             for x in missing[:2]) + (f" +{len(missing) - 2} more" if len(missing) > 2 else "")
         role, act = ("store", "Book delivery") if part else NEXT.get(stage, ("", ""))
+        result = ""
+        if stage == 5:
+            came = any(x["delivered"] > EPS for x in lines)
+            closed = any(x["closed"] > EPS for x in lines)
+            result = ("Nothing came - closed" if not came else "Came" + (", rest closed" if closed else "") + ", bill checked")
         rows.append({
             "key": f"lpo{o.id}", "kind": "lpo", "id": o.id, "ref": o.ref, "requests": refs,
             "site": book.sites.key(o) if book.sites.key(o) != "STORE" else "Store",
@@ -126,15 +160,21 @@ def build(db):
             "role": role if stage < 5 else "", "who": who.get(role, "") if stage < 5 else "", "action": act if stage < 5 else "",
             "date": o.order_date.isoformat() if o.order_date else "",
             "bill_checked": bool(o.bill_checked), "zoho": o.zoho_status or "", "rental": bool(p.get("rental")),
+            "result": result,
         })
 
     # ---- material requests not (yet) on a live LPO
+    with_lpo = {o.request_id for o in book.orders if o.request_id}
+    name = lambda l: (book.items[l.item_id].name if l.item_id in book.items else "") or l.description or "(no name)"
     for mr in book.reqs:
-        if (mr.status or "pending") in ("rejected", "closed", "delivered"):
-            continue
         if (mr.notes or "").startswith("Stock for the store, ordered on"):
             continue                              # an LPO's own tracking request: the LPO's row says it all
-        lines = [l for l in book.by_req.get(mr.id, []) if (l.status or "pending") != "rejected"]
+        every = book.by_req.get(mr.id, [])
+        if (mr.status or "pending") in ("rejected", "closed", "delivered"):
+            if not any(l.id in covered for l in every):   # one an LPO stands for is on the LPO's row
+                rows.append(_closed_mr(mr, every, name, M.MR_WORDS.get(mr.status, mr.status)))
+            continue
+        lines = [l for l in every if (l.status or "pending") != "rejected"]
         pending = [l for l in lines if (l.status or "pending") == "pending"]
         def out(l):
             return float(l.qty_approved or l.qty_requested or 0) - float(l.qty_received or 0)
@@ -149,7 +189,6 @@ def build(db):
             stage, show = 2, no_lpo
         else:
             continue
-        name = lambda l: (book.items[l.item_id].name if l.item_id in book.items else "") or l.description or "(no name)"
         sup = sups.get(show[0].supplier_id) if stage == 2 else None
         role, act = NEXT[stage]
         if stage == 2:
@@ -164,7 +203,9 @@ def build(db):
             "due": mr.needed_by.isoformat() if mr.needed_by else "", "late": _late(mr.needed_by, today, stage, False),
             "role": role, "who": who.get(role, ""), "action": act,
             "date": mr.requested_on.isoformat() if mr.requested_on else "",
-            "requested_by": mr.requested_by or "", "no_lpo": stage == 2,
+            "requested_by": mr.requested_by or "", "no_lpo": stage == 2, "result": "",
+            "untouched": mr.id not in with_lpo and all((l.status or "pending") == "pending" and not (l.qty_received or 0)
+                                                        and not l.supplier_id for l in every),
             "lines": [{"id": l.id, "name": name(l), "qty": float(l.qty_requested or 0), "unit": l.unit or "",
                        "purpose": l.purpose or "", "status": l.status or "pending"} for l in lines],
         })
@@ -257,3 +298,175 @@ def close_rest(order_id: int, payload: dict = Body(default={}), db: Session = De
     M.log_action(db, user.id, "lpo_close_rest", f"{o.ref}: rest not needed ({why}) - " + "; ".join(done))
     b = P.Book(db)
     return {"ok": True, "done": done, "status": b.of(o)["status"]}
+
+
+# ---- one request in full: its materials, where each stands, and the LPOs that stand for them ------------------
+@router.get("/store/purchase/tracker/request/{req_id}")
+def request_detail(req_id: int, db: Session = Depends(get_db), user: models.User = Depends(SEE)):
+    mr = db.get(models.MaterialRequest, req_id)
+    if not mr:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    d = M._mr_out(mr)
+    book = P.Book(db)
+    lpos = defaultdict(list)
+    for o in book.orders:
+        p = book.of(o)
+        if p and p["status"] not in ("cancelled", "superseded"):
+            for i in p["related"]:
+                lpos[i].append({"id": o.id, "ref": o.ref, "status": P.STATUS_WORDS.get(p["status"], p["status"])})
+    for l in d["lines"]:
+        l["lpos"] = lpos.get(l["id"], [])
+    office = user.role == "admin" or "approvals" in M.effective_permissions(user)
+    with_lpo = any(o.request_id == mr.id for o in book.orders)
+    untouched = ((mr.status or "pending") == "pending" and not with_lpo
+                 and all((l.status or "pending") == "pending" and not (l.qty_received or 0) and not l.supplier_id for l in mr.lines))
+    d["can_edit"] = untouched and (office or not mr.created_by or mr.created_by == user.id)
+    d["can_delete"] = d["can_edit"]
+    d["mine"] = mr.created_by == user.id
+    d["status_word"] = M.MR_WORDS.get(mr.status, mr.status)
+    try:
+        d["deliveries"] = M.request_deliveries(req_id, db=db, user=user)["rows"]
+    except Exception:
+        d["deliveries"] = []
+    return d
+
+
+# ---- Arun joined in Oct 2026 and the two months before are not known: an old order is closed as it stands --------
+def _close_lpo_old(db, o, how, why, bill, user):
+    book = P.Book(db)
+    p = book.of(o)
+    left = [x for x in p["lines"] if x["remaining"] > EPS]
+    done = []
+    if left and how == "not_coming":
+        done += P.book_delivery(db, o, [{"line_id": x["line_id"], "qty": 0, "close": True} for x in left], "",
+                                M._dubai_today(), user_id=user.id, notes=f"Closed - not coming: {why}", check=False)
+    elif left and how == "came":
+        # it came before and was used: recorded against the LPO only - no stock is added now (it would count twice)
+        lines = {l.id: l for l in o.lines}
+        used = set()
+        for x in left:
+            l = lines.get(x["line_id"])
+            it = book.items.get(l.item_id) if l else None
+            mrl = P._mr_line_for(book, o, l, it, exclude=used) if l else None
+            db.add(models.LpoReceipt(order_id=o.id, line_id=x["line_id"], item_id=l.item_id if l else None,
+                                     line_key=P.plain(l.description) if l else "", kind="delivered", qty=x["remaining"],
+                                     dn_no="", dn_date=M._dubai_today(), location=x["location"], tag="closed - came earlier",
+                                     created_by=user.id, notes=f"Came earlier, not booked then - no stock added: {why}"[:300],
+                                     request_line_id=mrl.id if mrl else None))
+            if mrl:
+                mrl.qty_received = min(float(mrl.qty_requested or 0), float(mrl.qty_received or 0) + x["remaining"])
+                used.add(mrl.id)
+                P._settle(mrl.request)
+            done.append(f"{x['description']}: {_qty(x['remaining'])} {x['unit']} came earlier (no stock added)")
+        db.flush()
+        P.settle_tracking(db, o)
+    if bill and not o.bill_checked:
+        o.bill_checked, o.bill_checked_by, o.bill_checked_at = True, user.id, datetime.now(timezone.utc)
+        o.bill_note = (f"Closed by {user.full_name or user.username} without a bill check: {why}")[:200]
+        done.append("bill check closed")
+    return done
+
+
+@router.post("/store/purchase/orders/{order_id}/close-old")
+def close_old_lpo(order_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                  user: models.User = Depends(M.require_screen("approvals"))):
+    """Close an LPO as it stands: what is still to come either came earlier (recorded, no stock added - it was used)
+    or is not coming (closed). Optionally the bill check too (the bill is with accounts already). Paperwork only."""
+    o = db.get(models.PurchaseOrder, order_id)
+    if not o or (o.status or "") == "cancelled":
+        raise HTTPException(status_code=404, detail="Open purchase order not found.")
+    how = str(payload.get("how") or "")
+    why = " ".join(str(payload.get("reason") or "").split())[:200]
+    if how not in ("came", "not_coming"):
+        raise HTTPException(status_code=400, detail="Say whether it came earlier or is not coming.")
+    if not why:
+        raise HTTPException(status_code=400, detail="Give the reason.")
+    done = _close_lpo_old(db, o, how, why, bool(payload.get("bill")), user)
+    db.commit()
+    M.log_action(db, user.id, "lpo_close_old", f"{o.ref}: closed as it stands ({why}) - " + ("; ".join(done) or "nothing left open"))
+    return {"ok": True, "done": done}
+
+
+@router.post("/store/requests/{req_id}/close-old")
+def close_old_request(req_id: int, payload: dict = Body(...), db: Session = Depends(get_db),
+                      user: models.User = Depends(M.require_screen("approvals"))):
+    """Close a request as it stands: came earlier (its materials marked received - no stock added) or not needed."""
+    mr = db.get(models.MaterialRequest, req_id)
+    if not mr:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    how = str(payload.get("how") or "")
+    why = " ".join(str(payload.get("reason") or "").split())[:200]
+    if how not in ("came", "not_coming"):
+        raise HTTPException(status_code=400, detail="Say whether it came earlier or is not needed.")
+    if not why:
+        raise HTTPException(status_code=400, detail="Give the reason.")
+    if how == "came":
+        for l in mr.lines:
+            if (l.status or "pending") == "rejected":
+                continue
+            if (l.status or "pending") == "pending":
+                l.status = "approved"
+            l.qty_received = max(float(l.qty_received or 0), float(l.qty_requested or 0))
+        P._settle(mr)
+        if mr.status != "delivered":
+            mr.status, mr.closed_on = "delivered", M._dubai_today()
+    else:
+        mr.status, mr.closed_on = "closed", M._dubai_today()
+    mr.office_remark = (("Came earlier - no stock added: " if how == "came" else "Not needed: ") + why)[:500]
+    db.commit()
+    M.log_action(db, user.id, "material_request_close_old", f"{mr.ref}: {mr.office_remark}")
+    return {"ok": True, "status": mr.status}
+
+
+# ---- Preview / PDF / Excel of what is on screen (the same filters) --------------------------------------------
+@router.get("/export/store/tracker")
+def export_tracker(token: str, format: str = "view", view: str = "open", site: str = "", q: str = "", step: str = "",
+                   db: Session = Depends(get_db)):
+    from urllib.parse import quote
+    from fastapi.responses import StreamingResponse
+    import auth
+    import export_web
+    u = auth.get_download_user_from_token(token, db)
+    perms = M.effective_permissions(u)
+    if (u.role or "") != "admin" and not ({"requests", "approvals", "store", "storekeeper", "accounts_zoho"} & set(perms)):
+        raise HTTPException(status_code=403, detail="Not available to this login.")
+    data = tracker(db=db, user=u)
+    rows = [r for r in data["rows"] if (not site or r["site"] == site)]
+    if q.strip():
+        n = q.strip().lower()
+        rows = [r for r in rows if n in " ".join([r["ref"], r["what"], r["supplier"], r["contact"], r["phone"], r["site"],
+                                                  " ".join(r.get("requests") or []), r.get("requested_by") or ""]).lower()]
+    if step.isdigit():
+        rows = [r for r in rows if r["stage"] == int(step)]
+        label = STEPS[int(step)]
+    elif view == "mine":
+        rows = [r for r in rows if r["stage"] < 5 and r["role"] in data["my_roles"]]
+        label = "My turn"
+    elif view == "late":
+        rows = [r for r in rows if r["stage"] < 5 and r["late"] > 0]
+        label = "Late"
+    elif view == "done":
+        rows = [r for r in rows if r["stage"] == 5]
+        label = "Done and closed"
+    else:
+        rows = [r for r in rows if r["stage"] < 5]
+        label = "All open"
+    out = [{"Site": r["site"], "Item": r["what"], "LPO / request": " / ".join([r["ref"]] + [x for x in (r.get("requests") or []) if x != r["ref"]]),
+            "Supplier": r["supplier"], "Contact": r["contact"], "Phone": r["phone"],
+            "Where it is": ("Part arrived" if r["part"] else STEPS[r["stage"]]) + (f" - {r['result']}" if r.get("result") else ""),
+            "Late (days)": r["late"] or "", "Still to come": r["to_come"],
+            "Next": (f"{r['who']} - {r['action']}" if r["who"] else "")} for r in rows]
+    title = "Order Tracker"
+    sub = f"{label}" + (f" | site {site}" if site else "") + (f" | search '{q.strip()}'" if q.strip() else "") + \
+          f" | {len(out)} order(s) | As at {M._dubai_today():%d/%m/%Y}"
+    if format == "view":
+        qs = f"view={view}&site={quote(site)}&q={quote(q)}&step={quote(step)}"
+        url = f"/export/store/tracker?{qs}&token={quote(auth.create_view_token(u.username), safe='')}"
+        return M._preview_page(title, sub, out, url, url, money_cols=[])
+    name = f"Order_Tracker_{M._dubai_today():%d.%m.%Y}"
+    if format == "pdf":
+        return StreamingResponse(export_web.build_store_report_pdf(title, out, sub, money_cols=[], orientation="landscape"),
+                                 media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
+    return StreamingResponse(export_web.build_store_report_excel(title, out, sub, money_cols=[]),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})

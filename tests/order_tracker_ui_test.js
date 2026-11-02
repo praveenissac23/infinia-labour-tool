@@ -25,7 +25,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ck('counts add up to the rows', t.counts.reduce((a, b) => a + b, 0) === t.rows.length, t.counts);
   // every live LPO (not cancelled) is on the tracker exactly once, at the step its deliveries say
   const dl = await api('/store/purchase/deliveries?show=all');
-  const lpoRows = t.rows.filter(r => r.kind === 'lpo');
+  const lpoRows = t.rows.filter(r => r.kind === 'lpo' && !r.cancelled);
   const want = dl.orders.map(o => o.ref).sort(), got = lpoRows.map(r => r.ref).sort();
   ck(`every live LPO once (${want.length})`, JSON.stringify(want) === JSON.stringify(got), { missing: want.filter(x => !got.includes(x)), extra: got.filter(x => !want.includes(x)) });
   const stOf = Object.fromEntries(dl.orders.map(o => [o.ref, o.status]));
@@ -40,9 +40,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // approve popup: approve / approve less / reject
   await p.evaluate(k => otApprove(k), row.key); await sleep(500);
   const trs = await p.$$('#ot-appr tr[data-l]');
-  await (await trs[0].$('button[data-d=a]')).click();
-  await (await trs[1].$('button[data-d=p]')).click(); await (await trs[1].$('.q')).fill('15'); await (await trs[1].$('.rs')).fill('Only 15 needed this week');
-  await (await trs[2].$('button[data-d=r]')).click(); await (await trs[2].$('.rs')).fill('Not needed now');
+  await (await trs[0].$('[data-d=a]')).click();
+  await (await trs[1].$('[data-d=p]')).click(); await (await trs[1].$('.q')).fill('15'); await (await trs[1].$('.rs')).fill('Only 15 needed this week');
+  await (await trs[2].$('[data-d=r]')).click(); await (await trs[2].$('.rs')).fill('Not needed now');
   await p.screenshot({ path: '/tmp/claude-0/ot_2.png' });
   await p.click('#ot-appr [data-go]'); await sleep(2500);
   const mr2 = (await api('/store/requests')).find(x => x.id === mr.id);
@@ -78,12 +78,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   } else ck('a part delivery to test', false);
   // menus open for every kind of row
   for (const k of [t2.rows.find(r => r.stage === 2 && r.kind === 'lpo'), t2.rows.find(r => r.stage === 3)].filter(Boolean).map(r => r.key)) {
-    await p.evaluate(k => { const b = document.querySelector(`tr[data-k="${k}"] .ot-dots`); b.scrollIntoView(); b.click(); }, k); await sleep(300);
-    const items = await p.$$eval('.ot-menu div[data-i]', x => x.map(e => e.textContent));
+    await p.evaluate(k => otSheet(k), k); await sleep(300);
+    const items = await p.$$eval('#ot-sheet .ot-acts button', x => x.map(e => e.textContent));
     ck(`menu for ${k}: ${items.join(' | ')}`, items.length >= 3, items);
-    await p.mouse.click(5, 5); await sleep(200);
+    await p.evaluate(() => document.getElementById('ot-sheet').classList.remove('on')); await sleep(200);
   }
-  await p.evaluate(() => { const b = document.querySelector('tr.ot-r .ot-dots'); b.click(); }); await sleep(300);
+  
   await p.screenshot({ path: '/tmp/claude-0/ot_4.png' });
   // nothing but the test request and the closed rest changed: stock same as at the start
   const stockAfter = await api('/store/stock');
