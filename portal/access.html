@@ -51,7 +51,7 @@
   table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   th { text-align: left; font-size: 11px; letter-spacing: .5px; color: #666; text-transform: uppercase; padding: 8px 6px; border-bottom: 1px solid #E4E0DB; background: #FAF8F5; }
   td { padding: 7px 6px; border-bottom: 1px solid #F0EDE8; vertical-align: middle; } tbody tr:nth-child(even) td { background: #FCFBF9; }
-  .grid-wrap { overflow: auto; max-height: 70vh; border: 1px solid #E9EBEE; border-radius: 8px; }
+  .grid-wrap { overflow: auto; max-height: calc(100vh - 150px); border: 1px solid #E9EBEE; border-radius: 8px; }
   .matrix { table-layout: fixed; }
   .matrix th.rt, .matrix td.rt { text-align: left; width: 260px; }
   .matrix th.role { text-align: center; vertical-align: top; text-transform: none; letter-spacing: 0; padding: 10px 8px; border-left: 1px solid #EEE9E3; }
@@ -211,7 +211,7 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
       </div>
       <div class="card" id="pane-users" style="display:none;">
         <div class="head"><div><h2>Logins</h2><p class="muted">Who can sign in and the role each follows. Rights are set on the role, under Access.</p></div><button class="btn btn-primary" onclick="openUser()">+ New login</button></div>
-        <div class="grid-wrap"><table class="users"><colgroup><col style="width:200px"><col style="width:88px"><col style="width:180px"><col><col style="width:84px"><col style="width:330px"></colgroup>
+        <div class="grid-wrap"><table class="users"><colgroup><col style="width:170px"><col style="width:84px"><col style="width:150px"><col><col style="width:92px"><col style="width:420px"></colgroup>
           <thead><tr><th>Login</th><th>Type</th><th>Role</th><th>Can open</th><th>Status</th><th class="act"></th></tr></thead><tbody id="users-body"></tbody></table></div>
       </div>
     </div>

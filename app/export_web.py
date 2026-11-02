@@ -81,7 +81,7 @@ PREVIEW_BAR_CSS = (
     ".pvbar .who{font-size:12.5px;color:#666}.pvbar .sp{margin-left:auto}"
     ".pvbar a.btn{display:inline-block;text-decoration:none;font:600 13px -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;padding:7px 14px;"
     "border-radius:6px;border:1px solid #D9B8B3;background:#FDF4F3;color:#8C2F26;cursor:pointer}"
-    ".pvbar a.btn.dark{background:#2E3238;border-color:#2E3238;color:#fff}"
+    ".pvbar a.btn.dark{background:#C0392B;border-color:#C0392B;color:#fff}"
     ".pvbar a.btn.wa,.bar a.btn.wa{background:#25D366;border-color:#25D366;color:#fff}"
     "@media print{.pvbar{display:none!important}}")
 

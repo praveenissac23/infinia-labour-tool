@@ -3575,7 +3575,7 @@ def _cards_page(title, subtitle, cards, pdf_url, excel_url):
   a.btn {{ display:inline-block; text-decoration:none; font-size:13px; font-weight:600;
            padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
            background:#FDF4F3; color:#8C2F26; }}
-  a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
+  a.btn.dark {{ background:#C0392B; border-color:#C0392B; color:white; }}
   a.btn.wa {{ background:#25D366; border-color:#25D366; color:#fff; }}
   .page {{ width:210mm; max-width:calc(100% - 24px); margin:16px auto;
            background:white; padding:8mm; box-sizing:border-box;
@@ -9831,7 +9831,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
   a.btn {{ display:inline-block; text-decoration:none; font-size:13px; font-weight:600;
            padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
            background:#FDF4F3; color:#8C2F26; }}
-  a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
+  a.btn.dark {{ background:#C0392B; border-color:#C0392B; color:white; }}
   a.btn.wa {{ background:#25D366; border-color:#1DA851; color:#06331A; }}
   .hint {{ font-size:11.5px; color:#888; padding:0 16px 8px; background:white;
            border-bottom:1px solid #E2E0DC; }}
@@ -10213,7 +10213,7 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
   a.btn {{ display:inline-block; text-decoration:none; font-size:13px; font-weight:600;
            padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
            background:#FDF4F3; color:#8C2F26; }}
-  a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
+  a.btn.dark {{ background:#C0392B; border-color:#C0392B; color:white; }}
   a.btn.wa {{ background:#25D366; border-color:#25D366; color:#fff; }}
   .sheet {{ width:210mm; max-width:calc(100% - 24px); margin:16px auto;
             background:white; padding:10mm 12mm; box-sizing:border-box;
@@ -10486,7 +10486,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
   a.btn {{ display:inline-block; text-decoration:none; font-size:13px; font-weight:600;
            padding:7px 14px; border-radius:6px; border:1px solid #D9B8B3;
            background:#FDF4F3; color:#8C2F26; }}
-  a.btn.dark {{ background:#2E3238; border-color:#2E3238; color:white; }}
+  a.btn.dark {{ background:#C0392B; border-color:#C0392B; color:white; }}
   a.btn.wa {{ background:#25D366; border-color:#25D366; color:#fff; }}
   /* A4 the way round this report prints. */
   .page {{ width:{page_w}; max-width:calc(100% - 24px); margin:16px auto;

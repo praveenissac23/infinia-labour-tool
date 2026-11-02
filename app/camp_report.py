@@ -72,7 +72,7 @@ def preview(d, pdf_url, excel_url):
   .bar{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;padding:10px 16px;background:#fff;border-bottom:1px solid #E2E0DC;z-index:5}}
   .bar h1{{font-size:16px;margin:0 6px 0 0}}
   a.btn{{display:inline-block;text-decoration:none;font-size:13px;font-weight:600;padding:7px 14px;border-radius:6px;border:1px solid #D9B8B3;background:#FDF4F3;color:#8C2F26}}
-  a.btn.dark{{background:#2E3238;border-color:#2E3238;color:#fff}} a.btn.wa{{background:#25D366;border-color:#25D366;color:#fff}}
+  a.btn.dark{{background:#C0392B;border-color:#C0392B;color:#fff}} a.btn.wa{{background:#25D366;border-color:#25D366;color:#fff}}
   .page{{width:210mm;max-width:calc(100% - 24px);margin:16px auto;background:#fff;padding:9mm 9mm 7mm;box-sizing:border-box;box-shadow:0 1px 6px rgba(0,0,0,.14)}}
   .lh{{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid {RED};padding-bottom:4mm;margin-bottom:4mm}}
   .lh img{{width:40mm}} .lh .r{{text-align:right}} .lh .co{{font-weight:700;font-size:12pt}} .lh .ti{{font-size:10pt;color:{INK};font-weight:700;margin-top:2px}} .lh .dt{{font-size:8.5pt;color:{MUTED};margin-top:2px}}

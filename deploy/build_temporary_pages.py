@@ -363,9 +363,9 @@ CSS = """
   /* The reports hub: tabs inside tabs, the preview underneath */
   .pg-sub { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 24px 2px; background: #FBFAF8; border-bottom: 1px solid #E7E1DA; }
   .pg-sub:empty { display: none; }
-  /* A page where some tabs have a second row keeps that row's space on
-     the others too, so moving between them never shifts the screen. */
-  .pg-sub.pg-sub-keep { display: block; height: 51px; box-sizing: border-box; }
+  /* A tab with no second row shows no empty band (it used to keep 51px so the page did not shift -
+     wasted space on the Order tracker, Bank, Send to Zoho... 2 Nov 2026). */
+  .pg-sub.pg-sub-keep { display: none; }
   .pg-subtab { padding: 6px 14px; margin-bottom: 8px; font-size: 12.5px; font-weight: 600; line-height: 1.3; color: #5B6167; background: white; border: 1px solid #E4DCD2; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: border-color .12s, color .12s, background .12s; }
   .pg-subtab:hover { border-color: #D9B8B3; color: var(--red); }
   .pg-subtab.active { background: #FDF4F3; color: var(--red); border-color: var(--red); font-weight: 700; }

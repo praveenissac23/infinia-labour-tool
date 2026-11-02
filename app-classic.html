@@ -383,7 +383,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .ot-sum .k:hover { border-color: #D9B6B0; } .ot-sum .k.on { border-color: var(--red); background: #FDF4F3; } .ot-sum .k.on span { color: var(--red); font-weight: 600; }
   #ot-table { table-layout: fixed; min-width: 940px; }
   #ot-table col.c-pick { width: 34px; } #ot-table col.c-site { width: 60px; } #ot-table col.c-what { width: 25%; } #ot-table col.c-sup { width: 20%; }
-  #ot-table col.c-steps { width: 348px; } #ot-table col.c-note { width: 140px; } #ot-table col.c-next { width: 176px; }
+  #ot-table col.c-steps { width: 348px; } #ot-table col.c-note { width: 196px; } #ot-table col.c-next { width: 124px; }
   #ot-table td { vertical-align: middle; text-align: left; }
   #ot-table tr.ot-r { cursor: pointer; } #ot-table tr.ot-r:hover td { background: #FBF8F6; }
   #ot-table td.site { font-weight: 600; }
@@ -691,7 +691,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .bs-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0 8px; }
   .bs-tile { text-align: left; border: 1px solid #ECE6DF; border-radius: 10px; padding: 8px 12px; background: #fff; cursor: pointer; font: inherit; color: inherit; }
   .bs-tile span { display: block; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: #8A8079; } .bs-tile b { font-size: 19px; }
-  .bs-tile.good b { color: #2E7D32; } .bs-tile.bad b { color: #B03A2E; } .bs-tile.warn b { color: #B26A00; } .bs-tile.on { box-shadow: 0 0 0 2px #2B2622 inset; }
+  .bs-tile.good b { color: #2E7D32; } .bs-tile.bad b { color: #B03A2E; } .bs-tile.warn b { color: #B26A00; } .bs-tile.on { box-shadow: 0 0 0 1.5px var(--red) inset; background: #FDF6F5; }
   .bs-warn { padding: 8px 12px; border-radius: 8px; background: #FFF4E0; color: #8A5300; font-size: 12.5px; margin-bottom: 8px; }
   .bs-list { max-height: 360px; overflow: auto; border-top: 1px solid #F1ECE6; } .bs-list table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   .bs-list td { padding: 7px 8px; border-bottom: 1px solid #F6F2EE; vertical-align: middle; } .bs-list td.l .sub { display: block; font-size: 11px; color: #8A8079; }
@@ -1793,6 +1793,16 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .zh-table .za-btn { min-width:140px; }
   /* a material code is one word: CEM-OPC50 never split over two lines */
   #home-stock-body td:first-child, #store-body td:first-child, #items-body td:first-child { white-space: nowrap; }
+  .lpr-filters .lpr-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .lpr-filters .lpr-price { display: flex; align-items: center; gap: 8px; } .lpr-filters .lpr-price label { font-size: 12.5px; font-weight: 600; color: #5B6167; white-space: nowrap; }
+  .lpr-filters .lpr-price input { width: 320px; }
+  .lpr-filters #price-results:not(:empty) { margin-top: 10px; }
+  .lpr-filters .lpr-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 12px; }
+  .lpr-filters .lpr-row .field label, .lpr-filters .lpr-cols > label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #8A8079; }
+  .lpr-filters .lpr-cols { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+  .lpr-filters .lpr-cols .report-col-picker { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 0; min-height: 0; }
+  /* a rental's supplier on one line (the full name on the pointer) - three-line pills made every row tall */
+  #home-stock-body .pill, #store-report-result .pill { display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
   /* Sent to Zoho */
   #zh-tabs .zh-tab-end { margin-left:auto; }
   .zs-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; margin:10px 0 12px; }
@@ -4013,41 +4023,37 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
         </div>
 
         <div class="screen" id="screen-lporegister">
-          <div class="card" style="margin-bottom:0;">
-            <h2 style="margin:0 0 3px;">What did we pay for it?</h2>
-            <p style="font-size:12px; color:#888; margin:0 0 9px;">
-              Type a few letters of the material - every price paid for it, and who from.</p>
-            <input type="text" id="price-q" placeholder="cement, rebar 16, plywood..."
-                   oninput="debouncedPriceSearch()" autocomplete="off"
-                   style="width:100%; max-width:460px; font-size:14px; padding:8px 10px;">
-            <div id="price-results" style="margin-top:12px;"></div>
-          </div>
-
-          <div class="toolbar">
-            <label>Show:</label>
-            <select id="lpr-group" onchange="loadLpoReport()" style="width:170px;"></select>
-            <label>From:</label><input type="date" id="lpr-from" onchange="loadLpoReport()" style="width:150px;">
-            <label>To:</label><input type="date" id="lpr-to" onchange="loadLpoReport()" style="width:150px;">
-            <select id="lpr-show" onchange="loadLpoReport()" style="width:210px;">
-              <option value="all">All (cancelled struck through)</option>
-              <option value="issued">Issued only</option>
-              <option value="cancelled">Cancelled only</option>
-            </select>
-            <button class="btn btn-dark" onclick="exportLpoReport('view')">Preview</button>
-            <button class="btn btn-dark" onclick="exportLpoReport('pdf')">Export PDF</button>
-            <button class="btn btn-dark" onclick="exportLpoReport('excel')">Export Excel</button>
-          </div>
-          <div class="card">
-            <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+          <!-- one compact card for every filter (2 Nov 2026: three cards took half the screen before the list) -->
+          <div class="card lpr-filters">
+            <div class="lpr-top">
+              <h2 style="margin:0;">LPO register</h2>
+              <span class="lpr-price"><label for="price-q">What did we pay for it?</label>
+                <input type="text" id="price-q" placeholder="Type a material - every price paid, and who from"
+                       oninput="debouncedPriceSearch()" autocomplete="off"></span>
+              <span style="flex:1;"></span>
+              <span class="exp-btns">
+                <button class="btn btn-dark" onclick="exportLpoReport('view')">Preview</button>
+                <button class="btn btn-dark" onclick="exportLpoReport('pdf')">Export PDF</button>
+                <button class="btn btn-dark" onclick="exportLpoReport('excel')">Export Excel</button></span>
+            </div>
+            <div id="price-results"></div>
+            <div class="lpr-row">
+              <div class="field"><label>Show</label><select id="lpr-group" onchange="loadLpoReport()" style="width:150px;"></select></div>
+              <div class="field"><label>From</label><input type="date" id="lpr-from" onchange="loadLpoReport()" style="width:140px;"></div>
+              <div class="field"><label>To</label><input type="date" id="lpr-to" onchange="loadLpoReport()" style="width:140px;"></div>
+              <div class="field"><label>LPOs</label><select id="lpr-show" onchange="loadLpoReport()" style="width:200px;">
+                <option value="all">All (cancelled struck through)</option>
+                <option value="issued">Issued only</option>
+                <option value="cancelled">Cancelled only</option>
+              </select></div>
               <div class="field"><label>Supplier</label>
                 <input type="text" id="lpr-supplier" list="lpr-supplier-list" placeholder="Any - start typing"
-                       oninput="debouncedLpoReport()" autocomplete="off" style="width:210px;">
+                       oninput="debouncedLpoReport()" autocomplete="off" style="width:190px;">
                 <datalist id="lpr-supplier-list"></datalist></div>
-              <div class="field"><label>Project location</label><input type="text" id="lpr-site" placeholder="Any" oninput="debouncedLpoReport()" style="width:170px;"></div>
-              <div class="field"><label>Material</label><input type="text" id="lpr-material" placeholder="Any" oninput="debouncedLpoReport()" style="width:190px;"></div>
-              <div class="field" style="flex:1; min-width:230px;"><label>Columns</label>
-                <div id="lpr-measures" class="report-col-picker" style="padding:4px 0; min-height:52px;"></div></div>
+              <div class="field"><label>Project location</label><input type="text" id="lpr-site" placeholder="Any" oninput="debouncedLpoReport()" style="width:130px;"></div>
+              <div class="field"><label>Material</label><input type="text" id="lpr-material" placeholder="Any" oninput="debouncedLpoReport()" style="width:150px;"></div>
             </div>
+            <div class="lpr-cols"><label>Columns</label><div id="lpr-measures" class="report-col-picker"></div></div>
           </div>
           <div class="card">
             <h2 id="lpr-title">Purchase register</h2>
@@ -9311,6 +9317,14 @@ async function loadArrivePanel() {
 
 // Direct purchase lives on the requests screen; open it there with the
 // form already expanded so the keeper lands ready to type.
+// "Rental – Desarch Building Contracting L.L.C" -> "Rental · Desarch Building": the supplier's first two words,
+// so the type stays one short pill (the full name is on the pointer)
+function shortTypeLabel(t) {
+  const m = /^Rental\s*[–-]\s*(.+)$/.exec(String(t || ""));
+  if (!m) return t;
+  const w = m[1].replace(/[,.]?\s*(L\.?\s?L\.?\s?C\.?|FZ-?LLC|FZE|Co\.?)\s*$/i, "").split(/\s+/).filter(Boolean);
+  return "Rental · " + w.slice(0, 2).join(" ");
+}
 function goDirectPurchase() {
   switchScreen("requests");
   setTimeout(() => {
@@ -9393,7 +9407,7 @@ function drawStoreHome(stock, stk) {
       code:     { t: "Code", w: "8%", cell: r => `<td style="color:#999; font-size:12px;">${r.code}</td>` },
       name:     { t: "Material", w: "", cell: r => `<td style="font-weight:500;">${r.name}</td>` },
       unit:     { t: "Unit", w: "8%", cell: r => `<td>${r.unit}</td>` },
-      item_type:{ t: "Type", w: "15%", cell: r => `<td><span class="pill pill-${r.item_type}"${r.item_type === "rental" ? ` title="Rental: the supplier's, not ours - the same figures as Rentals"` : ""}>${escapeHtml(r._type_label || r.item_type)}</span></td>` },
+      item_type:{ t: "Type", w: "15%", cell: r => `<td><span class="pill pill-${r.item_type}"${r.item_type === "rental" ? ` title="${escapeAttr((r._type_label || "Rental") + " - the supplier's, not ours; the same figures as Rentals")}"` : ""}>${escapeHtml(shortTypeLabel(r._type_label || r.item_type))}</span></td>` },
       in_store: { t: '<span style="color:#2E86C1;">&#9679;</span>&nbsp;In central store', w: "13%",
                   cell: r => `<td class="num-col">${r.in_store ? num(r.in_store) : '<span class="zero">0</span>'}</td>` },
       at_sites: { t: '<span style="color:#D9930D;">&#9679;</span>&nbsp;Out at sites', w: "12%",
@@ -12761,7 +12775,7 @@ async function loadStore() {
         } else if (isDate(v)) {
           v = accDmy(v);
         } else if (k === "item_type" || (k === "type" && /^(consumable|returnable|asset|rental)$/.test(r[k]))) {
-          v = `<span class="pill pill-${r[k]}">${escapeHtml(k === "item_type" && r._type_label ? r._type_label : r[k])}</span>`;
+          v = `<span class="pill pill-${r[k]}"${k === "item_type" && r._type_label ? ` title="${escapeAttr(r._type_label)}"` : ""}>${escapeHtml(k === "item_type" && r._type_label ? shortTypeLabel(r._type_label) : r[k])}</span>`;
         } else if (typeof v === "string") {
           v = escapeHtml(v);
         }
