@@ -177,9 +177,18 @@ def main():
                     db.add(models.AuditLog(user_id=who.id if who else None, action="purchasing_cleanup", details=f"{ref}: bill OK, bill check closed [{TAG}]"))
             elif ans == "cancel":
                 if came:
-                    skipped.append(f"{ref}: marked Cancel, but a delivery is already booked on it ("
-                                   + "; ".join(f"{x['delivered']:g} {x['unit']} {x['description'][:40]}" for x in came)
-                                   + ") - NOT cancelled; decide: close it as came, or cancel and take the delivery back"); continue
+                    # a delivery is booked, so it is not cancelled (that would take stock back); the rest is closed as
+                    # not coming and the bill check is closed - the PO is already cancelled in Zoho, no bill to come
+                    if o.bill_checked and not left:
+                        already.append(f"{ref}: already closed"); continue
+                    got = "; ".join(f"{x['delivered']:g} {x['unit']} {x['description'][:40]}" for x in came)
+                    done.append(f"{ref} ({o.supplier_name}): marked Cancel, but {got} was booked as delivered - closed, delivery kept, "
+                                + (f"{len(left)} line(s) left closed as not coming, " if left else "") + "no bill to come (cancelled in Zoho)")
+                    if a.apply:
+                        T._close_lpo_old(db, o, "not_coming", f"Clean-up: {why}", True, who)
+                        o.bill_note = f"No bill - Arun marked Cancel; PO already cancelled in Zoho. Delivery kept. {TAG}"[:200]
+                        db.add(models.AuditLog(user_id=who.id if who else None, action="purchasing_cleanup", details=f"{ref}: closed, no bill (cancel with delivery) [{TAG}]"))
+                    continue
                 done.append(f"{ref} ({o.supplier_name}): LPO cancelled - {why}; cancel the PO in Zoho by hand")
                 shafeeq.append(f"{ref} {o.supplier_name}: CANCELLED - cancel the PO in Zoho (AED {M.lpo_total(o):,.2f})")
                 if a.apply:
