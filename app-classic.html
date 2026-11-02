@@ -4069,7 +4069,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="ot-head">
               <div><h2>Order tracker</h2>
                 <p>Every request and LPO, the step it has reached and who is next. Late ones first. Tap a number to ring.</p></div>
-              <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="otExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="otExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="otExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="otExport('view')">Share</button></div>
+              <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="otExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="otExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="otExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="otExport('view')">Share</button><button type="button" class="btn btn-dark" id="ot-cleanup-btn" style="display:none;" onclick="otCleanup()" title="Every order still open, as a form to tick (one click per line, remarks) - to close the old ones in one go">Clean-up form</button></div>
             </div>
             <div class="ot-sum" id="ot-sum"></div>
             <div class="form-row" style="margin:10px 0 8px;">
@@ -22364,6 +22364,7 @@ async function otLoad() {
     sel.innerHTML = `<option value="">All sites</option>` + list.map(x => `<option value="${escapeAttr(x)}"${x === cur ? " selected" : ""}>${/^\d+$/.test(x) ? "Site " + escapeHtml(x) : escapeHtml(x)}</option>`).join("");
   }
   const tb = document.getElementById("ot-tidy-btn"); if (tb) tb.style.display = otCanDo("purchaser") ? "" : "none";
+  const cb = document.getElementById("ot-cleanup-btn"); if (cb) cb.style.display = otCanDo("purchaser") ? "" : "none";
   otRender();
 }
 function otMine(r) { return r.stage < 5 && (OT.my_roles || []).includes(r.role); }
@@ -22703,6 +22704,10 @@ async function otLineArrived(rid, lid) {
       await apiCall(`/store/requests/${rid}/lines/${lid}/arrived`, { method: "POST", body: JSON.stringify({ note }) });
       await otRequest(rid); showStatus("ot-req-status", "ok", `${l.item_name || l.description}: arrived - ${note}.`); otLoad();
     });
+}
+async function otCleanup() {
+  if (!cachedDownloadToken) await refreshDownloadToken();
+  window.open(`${API}/export/store/tracker/cleanup?token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 // Preview / PDF / Excel / Share: what is on screen, the same filters
 async function otExport(fmt) {

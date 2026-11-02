@@ -525,3 +525,18 @@ def _fits_line(book, o, mrl):
                           for y in (l.description or "", it.name if it else "") if y):
             return True
     return False
+
+
+# ---- the clean-up form: every open order as a fillable PDF (Arun and Amal answer it once; the answers close it) ----
+@router.get("/export/store/tracker/cleanup")
+def export_cleanup(token: str, db: Session = Depends(get_db)):
+    from fastapi.responses import Response
+    import auth
+    import cleanup_form
+    u = auth.get_download_user_from_token(token, db)
+    if (u.role or "") != "admin" and "approvals" not in M.effective_permissions(u):
+        raise HTTPException(status_code=403, detail="For the purchaser and admin.")
+    pdf, n = cleanup_form.build_pdf(build(db), M._dubai_today())
+    M.log_action(db, u.id, "purchase_cleanup_form", f"clean-up form made: {n['A']} LPOs to come, {n['B']} bills, {n['C']} requests")
+    name = f"Purchasing_Cleanup_{M._dubai_today():%d.%m.%Y}.pdf"
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})
