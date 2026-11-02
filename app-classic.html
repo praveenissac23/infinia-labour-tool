@@ -22400,6 +22400,7 @@ function otRender() {
     const steps = OT_STEPS.map((s, i) => {
       if (r.cancelled) return i === 5 ? `<span class="x">Closed</span>` : `<span>&nbsp;</span>`;
       if (i < r.stage) return `<span class="d">&#10003;</span>`;
+      if (i === r.stage && !r.part && r.part_why === "site") return `<span class="h" title="The site asked to hold it">On hold</span>`;
       if (i === r.stage) return r.part ? `<span class="h" title="${r.part_why === "site" ? "Site asked to hold the rest" : r.part_why === "supplier" ? "Supplier sent less" : "Part came"}">${r.part_why === "site" ? "On hold" : r.part_why === "supplier" ? "Short" : "Part"}</span>` : `<span class="${r.late > 0 ? "l" : "c"}">${s}</span>`;
       return `<span>&nbsp;</span>`;
     }).join("");
@@ -22407,7 +22408,7 @@ function otRender() {
     const sup = r.supplier
       ? `<div class="t1">${escapeHtml(r.supplier)}</div>${r.contact ? `<div class="t2">${escapeHtml(r.contact)}</div>` : ""}${r.phone ? `<div class="t2"><a href="tel:${escapeAttr(r.phone.replace(/[^\d+]/g, ""))}" onclick="event.stopPropagation()" title="Call">${escapeHtml(r.phone)}</a></div>` : ""}${!r.contact && !r.phone ? `<div class="t2">no contact on file</div>` : ""}`
       : `<div class="t2">${r.stage === 0 ? "Waiting for approval" : r.stage === 5 ? "-" : "Approved - no LPO yet"}</div>`;
-    const note = (r.late > 0 ? `<div class="ot-late">${r.late} day${r.late === 1 ? "" : "s"} late</div>` : "") + (r.to_come ? `<div class="ot-come">${escapeHtml(r.to_come)} to come</div>` : "") + (r.part_why ? `<div class="ot-res">${r.part_why === "site" ? "Site asked to hold the rest" : "Supplier sent less"}${r.part_note ? " - " + escapeHtml(r.part_note) : ""}</div>` : (r.part ? `<div class="ot-res">why? - not said yet</div>` : "")) + (r.result ? `<div class="ot-res">${escapeHtml(r.result)}</div>` : "");
+    const note = (r.late > 0 ? `<div class="ot-late">${r.late} day${r.late === 1 ? "" : "s"} late</div>` : "") + (r.to_come ? `<div class="ot-come">${escapeHtml(r.to_come)} to come</div>` : "") + (r.part_why ? `<div class="ot-res">${r.part_why === "site" ? (r.part ? "Site asked to hold the rest" : "Site asked to hold it") : "Supplier sent less"}${r.part_note ? " - " + escapeHtml(r.part_note) : ""}</div>` : r.part_note ? `<div class="ot-res">${escapeHtml(r.part_note)}</div>` : (r.part ? `<div class="ot-res">why? - not said yet</div>` : "")) + (r.result ? `<div class="ot-res">${escapeHtml(r.result)}</div>` : "");
     const can = r.stage < 5 && r.action && otCanDo(r.role);
     return `<tr class="ot-r" data-k="${r.key}" onclick="otSheet('${r.key}')" title="Tap for everything that can be done">
       ${tidy ? `<td class="pick" onclick="event.stopPropagation()">${r.stage < 5 ? `<input type="checkbox" class="ot-pick" value="${r.key}" onchange="otTidyCount()">` : ""}</td>` : ""}

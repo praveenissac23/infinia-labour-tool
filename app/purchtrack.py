@@ -160,7 +160,7 @@ def build(db):
             "role": role if stage < 5 else "", "who": who.get(role, "") if stage < 5 else "", "action": act if stage < 5 else "",
             "date": o.order_date.isoformat() if o.order_date else "",
             "bill_checked": bool(o.bill_checked), "zoho": o.zoho_status or "", "rental": bool(p.get("rental")),
-            "result": result, "part_why": (o.part_why or "") if part else "", "part_note": (o.part_note or "") if part else "",
+            "result": result, "part_why": (o.part_why or "") if (part or stage == 2) else "", "part_note": (o.part_note or "") if (part or stage == 2) else "",
         })
 
     # ---- material requests not (yet) on a live LPO
