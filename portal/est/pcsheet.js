@@ -212,7 +212,7 @@ async function pcSheet(pcid) {
         : `<div class="card"><h3>Work done to date</h3><div class="muted small" style="margin-bottom:8px">No item schedule on this subcontract - type the totals, or <a href="#" id="sh-sched">set up the item schedule</a> to certify line by line.</div><div class="frm f4">
             <div class="f"><label>Value of work to date</label><input class="money" data-f="work_cum" value="${S.f.work_cum}"></div><div class="f"><label>Variations to date</label><input class="money" data-f="var_cum" value="${S.f.var_cum}"></div></div></div>`}
         <div class="card"><h3>Deductions ${tip("Material, manpower or plant supplied by Infinia, back-charges, damages. A deduction is entered once, on the certificate where it arises, and counts on every later certificate (the certificate works on figures to date).")}<span class="spacer"></span><span class="small muted">to date <b id="dedtot">${money(F.other, false)}</b></span></h3>
-          ${d.deds.filter(x => !x.mine).length ? `<div class="tw" style="margin-bottom:8px"><table class="t"><thead><tr><th>PC</th><th>Type</th><th>Date</th><th>Description</th><th class="r">Qty</th><th>Unit</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${d.deds.filter(x => !x.mine).map(x => `<tr class="${x.counted ? "" : "muted"}"><td>${pad(x.pc_seq, 2)}</td><td>${esc(x.cat)}</td><td>${dt(x.on_date)}</td><td>${esc(x.description)}${x.counted ? "" : " <i>(not deducted)</i>"}</td><td class="r">${x.qty || ""}</td><td>${esc(x.unit)}</td><td class="r">${x.rate ? money(x.rate) : ""}</td><td class="r">${money(x.amount)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+          ${d.deds.filter(x => !x.mine).length ? `<div class="tw" style="margin-bottom:8px"><table class="t"><thead><tr><th>PC</th><th>Type</th><th>Date</th><th>Description</th><th class="r">Qty</th><th>Unit</th><th class="r">Rate</th><th class="r">Amount</th><th></th></tr></thead><tbody>${d.deds.filter(x => !x.mine).map(x => `<tr class="${x.counted ? "" : "muted"}"><td>${pad(x.pc_seq, 2)}</td><td>${esc(x.cat)}</td><td>${dt(x.on_date)}</td><td>${esc(x.description)}${x.counted ? "" : " <i>(not deducted)</i>"}</td><td class="r">${x.qty || ""}</td><td>${esc(x.unit)}</td><td class="r">${x.rate ? money(x.rate) : ""}</td><td class="r">${money(x.amount)}</td><td>${locked ? "" : `<button class="btn btn-plain btn-sm" data-dedit="${x.id}">Edit</button>`}</td></tr>`).join("")}</tbody></table></div>` : ""}
           <div class="tw"><table class="t de"><thead><tr><th>Type</th><th>Date</th><th>Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th><th>Taken</th><th></th></tr></thead><tbody>
           ${S.deds.map((x, i) => `<tr><td><select data-d="${i}" data-k="cat">${DCATS.map(c => `<option ${x.cat === c ? "selected" : ""}>${c}</option>`).join("")}</select></td><td><input type="date" data-d="${i}" data-k="on_date" value="${x.on_date || ""}"></td>
             <td><input data-d="${i}" data-k="description" value="${esc(x.description)}" style="min-width:220px"></td><td><input class="n" data-d="${i}" data-k="qty" value="${x.qty || ""}" style="width:60px"></td><td><input data-d="${i}" data-k="unit" value="${esc(x.unit)}" style="width:50px"></td>
@@ -261,6 +261,22 @@ async function pcSheet(pcid) {
     $$("[data-rel]", B).forEach(b => b.onclick = e => { e.preventDefault(); const F = figures(); S.f.ret_rel_cum = b.dataset.rel === "all" ? F.ret : b.dataset.rel === "half" ? r2(F.ret / 2) : 0; $('[data-f="ret_rel_cum"]', B).value = S.f.ret_rel_cum; update(); });
     $$("[data-d]", B).forEach(inp => { inp.oninput = inp.onchange = () => { const x = S.deds[+inp.dataset.d], k = inp.dataset.k; x[k] = inp.type === "checkbox" ? inp.checked : inp.value; update(); }; });
     $$("[data-ddel]", B).forEach(b => b.onclick = () => { S.deds.splice(+b.dataset.ddel, 1); refreshFigures(); });
+    // a deduction from an earlier certificate: Edit on its row (saved straight away, logged with old and new figures)
+    $$("[data-dedit]", B).forEach(b => b.onclick = async () => {
+      const x = d.deds.find(y => String(y.id) === b.dataset.dedit); if (!x) return;
+      if (!locked && !(await save(false))) return;          // what is typed on this certificate is kept first
+      modal(`Edit deduction - PC ${pad(x.pc_seq, 2)}`, [
+        { k: "cat", label: "Type", type: "select", options: DCATS, value: x.cat },
+        { k: "on_date", label: "Date", type: "date", value: x.on_date || "" },
+        { k: "description", label: "Description", value: x.description || "", focus: true },
+        { k: "qty", label: "Qty", type: "num", value: x.qty || "" },
+        { k: "unit", label: "Unit", value: x.unit || "" },
+        { k: "rate", label: "Rate", type: "money", value: x.rate || "" },
+        { k: "amount", label: "Amount (when no qty x rate)", type: "money", value: x.amount || "" },
+        { k: "counted", label: "Taken", type: "check", text: "Deducted on the certificate", value: x.counted }],
+        async v => { d = await PATCH(`/store/est/subpcs/${pcid}/deducts/${x.id}`, v); S.d = d; init(); draw(); guardBase("big"); toast(`PC ${pad(x.pc_seq, 2)} deduction saved`); },
+        { top: `<div class="muted small" style="margin-bottom:8px">Entered on PC ${pad(x.pc_seq, 2)}. Changing it changes the deductions to date on this and later certificates.</div>` });
+    });
     const da = $("#de-add"); if (da) da.onclick = () => { const last = S.deds[S.deds.length - 1]; S.deds.push({ cat: last ? last.cat : "Manpower", on_date: today(), description: "", qty: "", unit: last ? last.unit : "", rate: last ? last.rate : "", amount: "", counted: true }); refreshFigures(); };
     $$("[data-il]", B).forEach(inp => inp.onchange = () => { S.f.inv_lines[+inp.dataset.il][inp.dataset.k] = inp.value; });
     $$("[data-ildel]", B).forEach(b => b.onclick = () => { S.f.inv_lines.splice(+b.dataset.ildel, 1); refreshFigures(); });

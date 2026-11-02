@@ -231,7 +231,13 @@ def _item_out(it, used=False):
 
 
 def _items(db, sid):
-    return sorted(db.query(EstSubItem).filter(EstSubItem.sub_id == sid).all(), key=lambda i: (bool(i.is_var), i.sort or 0, i.id))
+    """The schedule in order, each bill kept together: a line added later to bill 1 sits after bill 1's last line,
+    not after bill 2 (lines 8 and 9 of 912's 1-1 came after 2-2 - 2 Nov 2026)."""
+    rows = sorted(db.query(EstSubItem).filter(EstSubItem.sub_id == sid).all(), key=lambda i: (bool(i.is_var), i.sort or 0, i.id))
+    first = {}
+    for n, i in enumerate(rows):
+        first.setdefault((bool(i.is_var), "" if i.is_var else (i.bill or "")), n)
+    return sorted(rows, key=lambda i: (bool(i.is_var), first[(bool(i.is_var), "" if i.is_var else (i.bill or ""))], i.sort or 0, i.id))
 
 
 @router.get("/store/est/subs/{sid}/items")
@@ -582,6 +588,40 @@ def put_sheet(rid: int, data: dict = Body(...), db: Session = Depends(get_db), u
     E._check_pc(db, pc)
     db.commit()
     return sheet(db, pc, user)
+
+
+@router.patch("/store/est/subpcs/{rid}/deducts/{did}")
+def edit_deduction(rid: int, did: int, data: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
+    """Edit a deduction entered on an EARLIER certificate, from the certificate being worked on (Edit on its row).
+    Allowed while the certificate being worked on is open (or for an admin); every change goes in the activity log
+    with the old and new figures."""
+    x = db.query(EstPCDeduct).get(did)
+    if not x:
+        raise HTTPException(404, "That deduction is not there any more.")
+    on = db.query(E.EstSubPC).get(rid)
+    if not on or on.sub_id != x.sub_id:
+        raise HTTPException(400, "Open the certificate this is edited from.")
+    if _is_locked(_pcs(db, x.sub_id), on) and user.role != "admin":
+        raise HTTPException(400, "This certificate is paid (or a later one is) - its figures are locked. Ask an admin if it must change.")
+    was = f"{x.cat} | {E._iso(x.on_date) or '-'} | {x.description} | {x.qty or 0:g} {x.unit or ''} x {x.rate or 0:g} = {r2(x.amount):,.2f}{'' if x.counted else ' (not taken)'}"
+    desc = str(data.get("description") or "").strip()
+    qty, rate, amt = _f(data.get("qty")), _f(data.get("rate")), _f(data.get("amount"))
+    if qty and rate:
+        amt = r2(qty * rate)
+    if not desc and not amt:
+        raise HTTPException(400, "Give it a description or an amount.")
+    x.cat = data.get("cat") if data.get("cat") in DED_CATS else (x.cat or "Other")
+    x.on_date = _d(data.get("on_date"))
+    x.description, x.qty, x.unit, x.rate, x.amount = desc[:300], qty, str(data.get("unit") or "")[:12], rate, r2(amt)
+    if "counted" in data:
+        x.counted = data.get("counted") is not False
+    now = f"{x.cat} | {E._iso(x.on_date) or '-'} | {x.description} | {x.qty or 0:g} {x.unit or ''} x {x.rate or 0:g} = {r2(x.amount):,.2f}{'' if x.counted else ' (not taken)'}"
+    pc_of = db.query(E.EstSubPC).get(x.pc_id)
+    db.flush()
+    refresh_sub(db, x.sub_id)
+    db.commit()
+    E.M.log_action(db, user.id, "pc_deduction_edit", f"PC {(pc_of.seq if pc_of else 0):02d} deduction edited from PC {(on.seq or 0):02d}: {was} -> {now}")
+    return sheet(db, on, user)
 
 
 SIGN = {"site": ("verified_by", "verified_on"), "prep": ("prep_by", "prep_on"), "chk": ("chk_by", "chk_on"),
