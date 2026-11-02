@@ -55,7 +55,7 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS 
       if (r.covered.length) still = await p.evaluate(() => {
         const out = [];
         const els = [...document.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea, button')].filter(e => !e.disabled && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
-        const hit = e => { const rc = e.getBoundingClientRect(); if (rc.bottom < 0 || rc.top > innerHeight) return true; const y = rc.top + rc.height / 2;
+        const hit = e => { const rc = e.getBoundingClientRect(); if (rc.bottom < 0 || rc.top > innerHeight || rc.right < 0 || rc.left > innerWidth || !e.checkVisibility || !e.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return true; const y = rc.top + rc.height / 2;
           return [rc.left + 6, rc.left + rc.width / 2, rc.right - 6].some(x => { const t = document.elementFromPoint(x, y); return t && (t === e || e.contains(t) || (t.tagName === 'LABEL' && t.control === e)); }); };
         for (const e of els) { if (hit(e)) continue; e.scrollIntoView({ block: 'center' }); if (!hit(e)) { const rc = e.getBoundingClientRect(); const t = document.elementFromPoint(rc.left + rc.width / 2, rc.top + rc.height / 2);
           out.push(((e.id ? '#' + e.id + ' ' : '') + e.textContent.trim().slice(0, 25)) + ' under ' + (t ? (t.id ? '#' + t.id : String(t.className).slice(0, 30)) : '?')); } }
