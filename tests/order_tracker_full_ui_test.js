@@ -266,7 +266,7 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   const subs = await p.$$eval('#pg-sub .pg-subtab', x => x.map(e => e.textContent.trim()));
   ck(`Requests shows only Material requests (${subs.join(', ')})`, subs.length === 1 && subs[0] === 'Material requests', subs);
   await p.evaluate(() => pgGo('store', 'requests:followup')); await sleep(2500);
-  ck('an old link to Order follow-up still opens it', await p.evaluate(() => xlOn('followup')));
+  ck('an old link to Order follow-up goes to the Order tracker (one place)', await p.evaluate(() => xlOn('purchtrack') && !xlOn('followup')));
   await p.evaluate(r => openRequestRef(r), mrA.ref); await sleep(4500);
   ck('a request link (e.g. from a notification or the LPO screen) opens it in full on the tracker', await p.evaluate(r => xlOn('purchtrack') && document.getElementById('ot-req').classList.contains('on') && document.querySelector('#ot-req h3').textContent.includes(r), mrA.ref));
   await closeModals(p);

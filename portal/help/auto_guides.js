@@ -1588,31 +1588,6 @@ window.HELP_AUTO = [
   ]
  },
  {
-  "id": "scr-store-store-arrive",
-  "area": "Every screen",
-  "title": "Store & Purchasing > Stock > Material arrived",
-  "auto": true,
-  "words": "store   purchasing   stock   material arrived record delivery record a direct purchase screen buttons what is",
-  "go": {
-   "page": "store",
-   "tab": "store",
-   "sub": "arrive"
-  },
-  "steps": [
-   {
-    "say": "This is Store & Purchasing > Stock > Material arrived. The numbers on the picture match the list below."
-   },
-   {
-    "say": "1. Record delivery.",
-    "el": "button[onclick=\"event.stopPropagation(); openReceive(1)\"]"
-   },
-   {
-    "say": "2. Record a direct purchase.",
-    "el": "button[onclick=\"goDirectPurchase()\"]"
-   }
-  ]
- },
- {
   "id": "scr-store-store-other",
   "area": "Every screen",
   "title": "Store & Purchasing > Stock > Returns, lost & corrections",
@@ -1744,82 +1719,16 @@ window.HELP_AUTO = [
     "say": "This is Store & Purchasing > Requests > Material requests. The numbers on the picture match the list below."
    },
    {
-    "say": "1. Direct purchase (no request).",
-    "el": "button[onclick=\"toggleDirectPurchase()\"]"
-   },
-   {
-    "say": "2. Remove: removes it (it asks first).",
+    "say": "1. Remove: removes it (it asks first).",
     "el": "button[onclick=\"removeEntryRow(this,'mr-lines')\"]"
    },
    {
-    "say": "3. + Add another material: adds a new add another material.",
+    "say": "2. + Add another material: adds a new add another material.",
     "el": "button[onclick=\"addMrLine()\"]"
    },
    {
-    "say": "4. Send Request to Office.",
+    "say": "3. Send Request to Office.",
     "el": "#mr-send-btn"
-   }
-  ]
- },
- {
-  "id": "scr-store-requests-approvals",
-  "area": "Every screen",
-  "title": "Store & Purchasing > Requests > Approvals",
-  "auto": true,
-  "words": "store   purchasing   requests   approvals refresh preview export pdf export excel approve raise lpo screen buttons what is",
-  "go": {
-   "page": "store",
-   "tab": "requests",
-   "sub": "approvals"
-  },
-  "steps": [
-   {
-    "say": "This is Store & Purchasing > Requests > Approvals. The numbers on the picture match the list below."
-   },
-   {
-    "say": "1. Refresh: loads the latest figures.",
-    "el": "button[onclick=\"loadRequests()\"]"
-   },
-   {
-    "say": "2. Preview: opens it on screen to read or print.",
-    "el": "button[onclick=\"exportRequests('view')\"]"
-   },
-   {
-    "say": "3. Export PDF: downloads it as a PDF.",
-    "el": "button[onclick=\"exportRequests('pdf')\"]"
-   },
-   {
-    "say": "4. Export Excel: downloads it as an Excel sheet.",
-    "el": "button[onclick=\"exportRequests('excel')\"]"
-   },
-   {
-    "say": "5. Approve: approves it.",
-    "el": "button[onclick=\"event.stopPropagation(); setRequestStatus(2,'approved')\"]"
-   },
-   {
-    "say": "6. Raise LPO: Raise the LPO - this material is waiting there.",
-    "el": "button[onclick=\"event.stopPropagation(); switchScreen('purchase')\"]"
-   }
-  ]
- },
- {
-  "id": "scr-store-requests-followup",
-  "area": "Every screen",
-  "title": "Store & Purchasing > Requests > Order follow-up",
-  "auto": true,
-  "words": "store   purchasing   requests   order follow up refresh screen buttons what is",
-  "go": {
-   "page": "store",
-   "tab": "requests",
-   "sub": "followup"
-  },
-  "steps": [
-   {
-    "say": "This is Store & Purchasing > Requests > Order follow-up. The numbers on the picture match the list below."
-   },
-   {
-    "say": "1. Refresh: loads the latest figures.",
-    "el": "button[onclick=\"loadFollowUp()\"]"
    }
   ]
  },
@@ -1828,7 +1737,7 @@ window.HELP_AUTO = [
   "area": "Every screen",
   "title": "Store & Purchasing > Purchasing > Purchase orders",
   "auto": true,
-  "words": "store   purchasing   purchasing   purchase orders new purchase order generate lpo from ticked screen buttons what is",
+  "words": "store   purchasing   purchasing   purchase orders new purchase order  screen buttons what is",
   "go": {
    "page": "store",
    "tab": "purchasing",
@@ -1841,10 +1750,6 @@ window.HELP_AUTO = [
    {
     "say": "1. New Purchase Order.",
     "el": "button[onclick=\"newLpo()\"]"
-   },
-   {
-    "say": "2. Generate LPO from ticked.",
-    "el": "button[onclick=\"lpoFromTicked()\"]"
    }
   ]
  },

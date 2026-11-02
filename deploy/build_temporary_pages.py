@@ -130,8 +130,8 @@ PAGES = {
         tab("store", "store", "Stock", "store", subs=[
             sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),
             sub("give", "Move material", screen="store", right="storekeeper", go="pgStorePanel('give')"),
-            # Deliveries are booked on the Order tracker only (2 Nov 2026) - one place, no doubles.
-            sub("arrive", "Material arrived", screen="store", right="storekeeper", go="pgStorePanel('arrive')", hidden=True),
+            # Deliveries are booked on the Order tracker only (2 Nov 2026) - an old link goes there.
+            sub("arrive", "Material arrived", screen="store", right="storekeeper", go="setTimeout(() => pgGo('store', 'tracker'), 0)", hidden=True),
             sub("other", "Returns, lost & corrections", screen="store", right="store", go="pgStorePanel('other')"),
             sub("items", "Material list", screen="store", right="store", go="pgStorePanel('items')")]),
         tab("rentals", "store", "Rentals", "store", subs=[
@@ -140,9 +140,9 @@ PAGES = {
         tab("requests", "requests", "Requests", ["requests", "approvals"], subs=[
             sub("requests", "Material requests", screen="requests", right="requests"),
             # Approvals and Order follow-up live on the Order tracker (2 Nov 2026): every button they had is there.
-            # Kept out of sight so an old link still opens them; one line brings either back.
-            sub("approvals", "Approvals", screen="approvals", right="approvals", hidden=True),
-            sub("followup", "Order follow-up", screen="followup", right="requests", hidden=True)]),
+            # Out of sight; an old link to either goes straight to the Order tracker (one place, no doubles).
+            sub("approvals", "Approvals", screen="approvals", right="approvals", go="setTimeout(() => pgGo('store', 'tracker'), 0)", hidden=True),
+            sub("followup", "Order follow-up", screen="followup", right="requests", go="setTimeout(() => pgGo('store', 'tracker'), 0)", hidden=True)]),
         tab("purchasing", "purchase", "Purchasing", "approvals", subs=[
             sub("purchase", "Purchase orders", screen="purchase", right="approvals"),
             sub("lporegister", "LPO register", screen="lporegister", right="approvals"),
