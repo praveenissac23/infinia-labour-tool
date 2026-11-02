@@ -21,7 +21,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.evaluate(() => pgGo('store', 'tracker')); await sleep(3500);
   const t = await api('/store/purchase/tracker');
   const row = t.rows.find(r => r.ref === mr.ref);
-  ck('new request is at Requested, Arun to approve, late (needed by 30/10)', row && row.stage === 0 && row.who === 'Arun' && row.action === 'Approve' && row.late === 3, row);
+  ck('new request is at Requested, Purchase to approve, late (needed by 30/10)', row && row.stage === 0 && row.who === 'Purchase' && row.action === 'Approve' && row.late === 3, row);
   ck('counts add up to the rows', t.counts.reduce((a, b) => a + b, 0) === t.rows.length, t.counts);
   // every live LPO (not cancelled) is on the tracker exactly once, at the step its deliveries say
   const dl = await api('/store/purchase/deliveries?show=all');
@@ -52,7 +52,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ck('line 3 rejected with reason', L[2].status === 'rejected' && /Not needed now/.test(L[2].reject_reason || ''), L[2]);
   const t2 = await api('/store/purchase/tracker');
   const r2 = t2.rows.find(r => r.ref === mr.ref);
-  ck('request moves to Approved, Arun to raise the LPO (2 materials)', r2 && r2.stage === 1 && r2.action === 'Raise LPO' && /,/.test(r2.what), r2);
+  ck('request moves to Approved, Purchase to raise the LPO (2 materials)', r2 && r2.stage === 1 && r2.action === 'Raise LPO' && /,/.test(r2.what), r2);
   const pend = await api('/store/purchase/pending');
   ck('LPO queue has the 2 approved lines (10 and 15)', JSON.stringify(pend.filter(x => x.ref === mr.ref).map(x => x.qty).sort((a, b) => a - b)) === '[10,15]', pend.filter(x => x.ref === mr.ref));
   // Raise LPO opens the LPO form with them ticked

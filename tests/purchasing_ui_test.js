@@ -48,7 +48,7 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   const [, d1] = await api(`/store/purchase/orders/${po.id}/deliveries`);
   ck('...60 of 100 came, 40 to come, at 913', d1.lines[0].delivered === 60 && d1.lines[0].remaining === 40 && d1.history[0].to === '913' && d1.history[0].dn === 'DN-4401', d1.lines);
   await p.evaluate(id => lpoDlvOpen(id, m => { window.__msg = m; }), po.id); await sleep(1200);
-  await p.click('text=Everything still to come arrived'); await p.fill('#pu-dn', 'DN-4402'); await p.click('#pu-dlv-save'); await sleep(1800);
+  await p.click('text=All came - fill the quantities'); await p.fill('#pu-dn', 'DN-4402'); await p.click('#pu-dlv-save'); await sleep(1800);
   ck('the rest: Delivered', /Delivered/.test(await p.evaluate(() => window.__msg || '')), await p.evaluate(() => window.__msg));
 
   // ---- Order follow-up: direct LPO lines; petty cash for a request with no LPO ------------------------------
@@ -78,7 +78,7 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   await p.evaluate(() => { document.getElementById('lpr-show').value = 'all'; loadLpoReport(); }); await sleep(1800);
   const reg = await p.evaluate(() => [...document.querySelectorAll('#lpr-body tr')].map(tr => tr.innerText));
   ck('register: Delivered / Ordered shown per LPO', reg.some(t => t.includes(po.ref) && /Delivered/.test(t)) && reg.some(t => t.includes(po2.ref) && /Ordered/.test(t)), reg);
-  ck('register: Delivery and Bill buttons on the row', await p.evaluate(() => !!document.querySelector('#lpr-body .lpr-dlv') && !!document.querySelector('#lpr-body .lpr-bill')));
+  ck('register: look only - Deliveries to see, no Bill / Edit / Cancel (those are on the Order tracker)', await p.evaluate(() => !!document.querySelector('#lpr-body .lpr-dlv') && !document.querySelector('#lpr-body .lpr-bill') && !document.querySelector('#lpr-body .lpr-cancel')));
   await p.screenshot({ path: OUT + '/pu-register.png' });
   await p.evaluate(id => lpoBillOpen(id, m => { window.__msg = m; loadLpoReport(); }), po.id); await sleep(1500);
   await p.fill('#pb-no', 'AD/2231'); await p.fill('#pb-date', '2026-10-28'); await p.fill('#pb-amt', '1764'); await p.dispatchEvent('#pb-amt', 'input'); await sleep(300);

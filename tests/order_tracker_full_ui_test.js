@@ -103,7 +103,7 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   ck(`menu on a request waiting: ${mm.join(' | ')}`, ['Approve', 'Materials one by one (approve, reduce, not needed)', 'Request PDF', 'Delete the request', 'Close as it stands (came earlier / not needed)'].every(x => mm.includes(x)), mm);
   await pick(p, 'Materials one by one (approve, reduce, not needed)'); await sleep(1500);
   const rq = await p.evaluate(() => { const m = document.getElementById('ot-req'); return { on: m.classList.contains('on'), h: m.querySelector('h3').textContent, lines: m.querySelectorAll('tbody tr').length, btns: [...m.querySelectorAll('.acts button')].map(b => b.textContent), lineBtns: [...new Set([...m.querySelectorAll('tbody button')].map(b => b.textContent))] }; });
-  ck(`the request in full: ${rq.h} - ${rq.lines} materials, ${rq.btns.join(' / ')}`, rq.on && rq.h.includes(mrB.ref) && rq.lines === 3 && ['Approve', 'Approve less', 'Reject'].every(b => rq.lineBtns.includes(b)) && ['Request PDF', 'Edit request', 'Delete', 'Record what arrived', 'Close as it stands', 'Close'].every(b => rq.btns.includes(b)), rq);
+  ck(`the request in full: ${rq.h} - ${rq.lines} materials, ${rq.btns.join(' / ')}`, rq.on && rq.h.includes(mrB.ref) && rq.lines === 3 && ['Approve', 'Approve less', 'Reject'].every(b => rq.lineBtns.includes(b)) && ['Request PDF', 'Edit request', 'Delete', 'Close as it stands', 'Close'].every(b => rq.btns.includes(b)) && !rq.btns.includes('Record what arrived'), rq);
   // one material only: MR-0061's case - keep the first, the second not needed
   const lines0 = (await api(p, `/store/purchase/tracker/request/${mrB.id}`)).lines;
   await p.evaluate(lid => { const b = [...document.querySelectorAll('#ot-req button')].filter(b => /Reject|Not needed/.test(b.textContent))[1]; b.click(); }, 0); await sleep(500);
@@ -112,9 +112,14 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   ck('one material not needed: only that line rejected with the reason, the rest of the request goes on', lines1[1].status === 'rejected' && /Not needed: /.test(lines1[1].reject_reason) && lines1[0].status === lines0[0].status && lines1[2].status === lines0[2].status, lines1.map(l => [l.status, l.reject_reason]));
   const [pdf] = await Promise.all([p.context().waitForEvent('page', { timeout: 8000 }).catch(() => null), p.evaluate(() => [...document.querySelectorAll('#ot-req .acts button')].find(b => b.textContent === 'Request PDF').click())]);
   ck('Request PDF opens the request sheet', !!pdf && /\/export\/store\/request\/\d+\/view/.test(pdf.url()), pdf && pdf.url()); if (pdf) await pdf.close();
-  await p.evaluate(() => [...document.querySelectorAll('#ot-req .acts button')].find(b => b.textContent === 'Record what arrived').click()); await sleep(2500);
-  ck('Record what arrived opens the portal\'s receive form for it', await p.evaluate(r => document.getElementById('recv-modal-overlay').style.display === 'flex' && document.getElementById('recv-ref').textContent.includes(r), mrB.ref));
-  await p.evaluate(() => closeReceive()); await sleep(1500);
+  // one door for material without an LPO: It arrived on the material - 'From a supplier, no LPO' opens the receive form
+  await p.evaluate(() => { const b = [...document.querySelectorAll('#ot-req button')].find(b => b.textContent === 'It arrived'); if (b) b.click(); }); await sleep(800);
+  if (await p.evaluate(() => document.getElementById('ot-ask') && document.getElementById('ot-ask').classList.contains('on'))) {
+    await p.evaluate(() => [...document.querySelectorAll('#ot-ask .seg-chip')].find(b => /From a supplier/.test(b.textContent)).click());
+    await p.click('#ot-ask [data-go]'); await sleep(2500);
+    ck('It arrived > From a supplier, no LPO opens the portal\'s receive form', await p.evaluate(r => document.getElementById('recv-modal-overlay').style.display === 'flex' && document.getElementById('recv-ref').textContent.includes(r), mrB.ref));
+    await p.evaluate(() => closeReceive()); await sleep(1500);
+  }
   await toTracker(p);
   // Delete an untouched request (a third one)
   const mrC = await mk('C'); await p.evaluate(() => otLoad()); await sleep(1500);
@@ -134,7 +139,7 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   ck('Add to item list: the material is on the list and the line linked to it', !!linked.item_id && !!linked.item_code, linked);
   // Already booked in, from the request in full
   await p.evaluate(() => [...document.querySelectorAll('#ot-req button')].find(b => b.textContent === 'It arrived').click()); await sleep(600);
-  await p.click('#ot-ask .seg-chip'); await p.click('#ot-ask [data-go]'); await sleep(2500);
+  await p.evaluate(() => [...document.querySelectorAll('#ot-ask .seg-chip')].find(b => /site directly/.test(b.textContent)).click()); await p.click('#ot-ask [data-go]'); await sleep(2500);
   const lnD = (await api(p, `/store/purchase/tracker/request/${mrD.id}`));
   ck('It arrived (with a note): the material reads arrived, the request delivered - no stock added', lnD.lines[0].qty_received === 2 && lnD.status === 'delivered', lnD.status);
   await closeModals(p); await toTracker(p);
@@ -206,7 +211,7 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   await p.evaluate(() => otLoad()); await sleep(1500);
   T = await api(p, '/store/purchase/tracker');
   const z = T.rows.find(r => r.ref === 'IC/LPO/20260161');
-  ck('bill checked, not in Zoho yet: Bill checked, Shafeeq to send to Zoho', z.stage === 4 && z.who === 'Shafeeq' && z.action === 'Send to Zoho', z);
+  ck('bill checked, not in Zoho yet: Bill checked, Accounts to send to Zoho', z.stage === 4 && z.who === 'Accounts' && z.action === 'Send to Zoho', z);
   await p.evaluate(k => { const b = document.querySelector(`tr[data-k="${k}"] td.nx .btn-primary`); b.scrollIntoView({ block: 'center' }); b.click(); }, z.key); await sleep(3000);
   ck('Send to Zoho opens Accounts > Send to Zoho', await p.evaluate(() => xlOn('zoho')));
   // ---- close old orders: one LPO as it stands (came earlier - no stock), then several ticked together (not coming + bill)
@@ -218,7 +223,7 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   await p.check('#ot-bill1'); await p.fill('#ot-why1', 'Before Arun joined - came and used'); await p.click('#ot-ask [data-go]'); await sleep(2500);
   T = await api(p, '/store/purchase/tracker');
   const c0 = T.rows.find(r => r.ref === olds[0].ref);
-  ck(`${olds[0].ref} closed as came earlier, bill check closed: Done (or with Shafeeq if not in Zoho)`, c0.stage >= 4 && !c0.part, c0);
+  ck(`${olds[0].ref} closed as came earlier, bill check closed: Done (or with Accounts if not in Zoho)`, c0.stage >= 4 && !c0.part, c0);
   ck('closing as came earlier added no stock', JSON.stringify(await api(p, '/store/stock')) === st0);
   const hist = await api(p, `/store/purchase/orders/${olds[0].id}/deliveries`);
   ck('its history says it came earlier, no stock added', hist.history.some(h => /Came earlier, not booked then - no stock added/.test(h.notes)), hist.history.slice(-2));

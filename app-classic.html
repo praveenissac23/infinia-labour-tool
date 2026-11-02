@@ -378,7 +378,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .ot-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
   .ot-head h2 { margin-bottom: 4px; } .ot-head p { font-size: 12px; color: #888; margin: 0; }
   .ot-sum { display: flex; gap: 8px; margin: 14px 0 4px; flex-wrap: wrap; }
-  .ot-sum .k { flex: 1 1 0; min-width: 120px; border: 1px solid #E9EBEE; border-radius: 8px; padding: 8px 12px; cursor: pointer; background: #fff; display: flex; align-items: baseline; gap: 6px; }
+  .ot-sum .k { flex: 1 1 0; min-width: 120px; border: 1px solid #E9EBEE; border-radius: 8px; padding: 8px 12px; cursor: pointer; background: #fff; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
   .ot-sum .k b { font-size: 17px; } .ot-sum .k span { font-size: 12.5px; color: #444; white-space: nowrap; } .ot-sum .k em { font-style: normal; font-size: 11.5px; color: #999; margin-left: auto; white-space: nowrap; }
   .ot-sum .k:hover { border-color: #D9B6B0; } .ot-sum .k.on { border-color: var(--red); background: #FDF4F3; } .ot-sum .k.on span { color: var(--red); font-weight: 600; }
   #ot-table { table-layout: fixed; min-width: 940px; }
@@ -2858,7 +2858,6 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <p style="font-size:12px; color:#888; margin:0;">For the site or store keeper. Say what you need, how much, and what it is for.
                   <span style="color:#C0392B;">*</span> means the office needs it filled in.</p>
               </div>
-              <button class="btn btn-dark" onclick="toggleDirectPurchase()">Direct purchase (no request)</button>
             </div>
             <!-- Collapsed by default: the office and admin land straight
                  on the list of requests to process, which is their job.
@@ -2972,7 +2971,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           <div class="status-msg" id="lpo-status"></div>
 
           <!-- What the office has approved and nobody has ordered -->
-          <div class="card" id="lpo-pending-card">
+          <div class="card" id="lpo-pending-card" style="display:none;">
             <h2>Waiting to be ordered</h2>
             <p style="font-size:12px; color:#888; margin:0 0 8px;">
               Approved by the office and not yet placed with anyone. Tick what goes to one supplier
@@ -4087,7 +4086,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <label title="The bill is already with accounts - the bill check is closed too"><input type="checkbox" id="ot-bill"> Also close the bill check</label>
               </div>
               <div class="form-row" style="margin-bottom:0;">
-                <input type="text" id="ot-tidy-why" placeholder="Reason (required) - e.g. Before Arun joined, confirmed with site" style="width:420px;">
+                <input type="text" id="ot-tidy-why" placeholder="Reason (required) - e.g. From before the current purchaser, confirmed with site" style="width:420px;">
                 <button type="button" class="btn btn-gray" onclick="otTidy(false)">Cancel</button>
                 <button type="button" class="btn btn-gray" id="ot-tidy-del" onclick="otTidyDelete()" title="Delete the ticked requests that nothing has been done on yet (no approval, order or delivery)">Delete ticked requests</button>
                 <button type="button" class="btn btn-primary" data-main id="ot-tidy-go" onclick="otTidyGo()">Close ticked</button>
@@ -4138,10 +4137,6 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <div class="store-tile keeper-only" onclick="storeGo('give')">
                   <div class="store-tile-t">Move Material</div>
                   <div class="store-tile-s">Store to a site, back again, or site to site</div>
-                </div>
-                <div class="store-tile keeper-only" onclick="storeGo('arrive')">
-                  <div class="store-tile-t">Material Arrived</div>
-                  <div class="store-tile-s">A delivery has come to the store</div>
                 </div>
                 <div class="store-tile" onclick="switchScreen('requests')">
                   <div class="store-tile-t">Material Requests</div>
@@ -4779,7 +4774,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="form-row" style="align-items:center; gap:10px; flex-wrap:wrap;">
               <b style="width:170px; font-size:13px;">Purchase orders (LPO)</b>
               <input type="file" id="sig-file" accept="image/png,image/jpeg" style="width:290px;">
-              <input type="text" id="sig-name" placeholder="Whose signature (e.g. Arun)" style="width:200px;">
+              <input type="text" id="sig-name" placeholder="Whose signature (e.g. the purchaser)" style="width:200px;">
               <button class="btn btn-primary" onclick="uploadSignature('lpo')">Upload</button>
               <span id="sig-state" style="font-size:12px; color:#888;"></span>
             </div>
@@ -9388,7 +9383,7 @@ function drawStoreHome(stock, stk) {
     if (!rows.length) {
       head.innerHTML = "";
       body.innerHTML = all.length
-        ? `<tr><td class="empty-note">Nothing is in the central store right now${goneOut ? ` - ${num(goneOut)} material(s) are out at sites` : ""}. Use "Material arrived" to record a delivery.</td></tr>`
+        ? `<tr><td class="empty-note">Nothing is in the central store right now${goneOut ? ` - ${num(goneOut)} material(s) are out at sites` : ""}. Deliveries are booked on the Order tracker.</td></tr>`
         : `<tr><td class="empty-note">No materials in the list yet. Use "Manage the item list" to add them.</td></tr>`;
       return;
     }
@@ -10986,7 +10981,7 @@ function puWordsService(t) { t = t || ""; return PU_SVC_RX.test(t) || (/\bpump/i
 function lpoLineService(l) { return l.service === true || l.service === false ? l.service : puWordsService(l.description); }
 
 let puDlvAfter = null;
-async function lpoDlvOpen(id, after) {
+async function lpoDlvOpen(id, after, view) {
   puDlvAfter = after || null;
   const m = puModal("pu-dlv");
   m.innerHTML = `<div class="box"><div class="empty-note">Loading...</div></div>`;
@@ -10994,7 +10989,7 @@ async function lpoDlvOpen(id, after) {
   try {
     await puSites();
     const d = await apiCall(`/store/purchase/orders/${id}/deliveries`);
-    const open = d.lines.some(l => l.remaining > 0) && !["cancelled", "superseded"].includes(d.status) && puCanBook();
+    const open = !view && d.lines.some(l => l.remaining > 0) && !["cancelled", "superseded"].includes(d.status) && puCanBook();
     const rows = d.lines.map((l, i) => `<tr data-l="${l.line_id}" data-rem="${l.remaining}">
         <td style="text-align:center;">${i + 1}</td>
         <td>${escapeHtml(l.description)}${l.service ? ' <span class="pu-tag pu-svc" title="A service: no stock - its cost is the site\'s">Service - no stock</span>' : ""}${
@@ -11032,7 +11027,7 @@ async function lpoDlvOpen(id, after) {
         <tbody>${rows}</tbody></table></div>
       ${hist}
       <div class="status-msg" id="pu-dlv-status"></div>
-      <div class="acts">${open ? `<button type="button" class="btn btn-gray" onclick="lpoDlvAll()">Everything still to come arrived</button>` : ""}
+      <div class="acts">${open ? `<button type="button" class="btn btn-gray" onclick="lpoDlvAll()" title="Fills every line with the full quantity still to come - change any that came less">All came - fill the quantities</button>` : ""}
         <button type="button" class="btn btn-gray" onclick="document.getElementById('pu-dlv').classList.remove('on')">Close</button>
         ${open ? `<button type="button" class="btn btn-primary" id="pu-dlv-save" onclick="lpoDlvSave(${d.id})">Save delivery</button>` : ""}</div></div>`;
     puPartCheck();
@@ -11471,8 +11466,6 @@ async function loadRequests() {
     const orderBar = `<div id="mr-order-bar" style="display:none; align-items:center; gap:10px;
         background:#FFF8F7; border:1px solid #E8C7C2; border-radius:8px; padding:9px 14px; margin-bottom:10px;">
         <strong id="mr-order-count" style="font-size:12.5px;"></strong>
-        <button class="btn btn-dark" onclick="switchScreen('purchase')"
-                title="Everything approved is waiting on the Purchase Orders screen">Raise LPO</button>
         <button class="btn btn-danger" onclick="deletePicked()">Delete selected</button>
         <button class="btn btn-dark" onclick="clearOrderChecks()">Clear</button>
       </div>`;
@@ -11533,15 +11526,15 @@ async function loadRequests() {
             let actions = "";
             if (!finished) {
               if (toDecide) {
-                actions = `<button class="btn btn-primary" onclick="event.stopPropagation(); setRequestStatus(${r.id},'approved')">${
-                  live.length > 1 ? "Approve all" : "Approve"}</button>`;
+                // Approving is done on the Order tracker (2 Nov 2026) - one place, material by material
+                actions = `<button class="btn btn-primary" onclick="event.stopPropagation(); mrToTracker(${r.id})" title="Approve on the Order tracker">Approve</button>`;
               } else if (toOrder) {
                 // Approved material is ordered by raising the purchase
                 // order, where the supplier's TRN and the last rate
                 // paid are to hand. Marking it ordered here left no LPO
                 // behind - a request reading "ordered" with no paper.
-                actions = `<button class="btn btn-dark" onclick="event.stopPropagation(); switchScreen('purchase')"
-                    title="Raise the LPO - this material is waiting there">Raise LPO${
+                actions = `<button class="btn btn-dark" onclick="event.stopPropagation(); mrToTracker(${r.id}, true)"
+                    title="Raise the LPO on the Order tracker">Raise LPO${
                   toReceive ? ` (${num(toOrder)} left)` : ""}</button>`;
               }
             }
@@ -11590,7 +11583,7 @@ async function loadRequests() {
                 ${["delivered", "closed", "rejected"].includes(r.status)
                   ? '<span style="color:#B5B9BE; font-size:12px;">Finished &middot; click the row for details</span>'
                   : `${actions}
-                ${canReceive ? receiveButtonsHtml(r) : ""}`}
+`}
               </td></tr>
               <tr id="mr-detail-${r.id}" style="display:none; background:#FAFAFA;">
                 <td colspan="9" style="text-align:left; padding:14px 18px;">
@@ -12205,6 +12198,16 @@ function pickedOrderIds() {
   return [...document.querySelectorAll(".mr-pick:checked")].map(c => parseInt(c.value, 10));
 }
 
+// Approve / raise the LPO / book what came: all on the Order tracker - open it on this request
+function mrToTracker(id, raise) {
+  if (typeof pgGo === "function") pgGo("store", "tracker"); else switchScreen("purchtrack");
+  const t0 = Date.now();
+  (function go() {
+    const r = typeof otRow === "function" ? otRow("mr" + id) : null;
+    if (!r && Date.now() - t0 < 6000) { setTimeout(go, 300); return; }
+    try { if (raise && r) otRaise("mr" + id); else otRequest(id); } catch (e) {}
+  })();
+}
 function updateOrderBar() {
   const n = pickedOrderIds().length;
   const bar = document.getElementById("mr-order-bar");
@@ -13711,10 +13714,7 @@ async function loadLpoReport() {
       // the same order back in the form rather than raising a new one.
       if (r.group_by === "order") {
         cells.push(`<td style="text-align:right; white-space:nowrap;">${row.status === "cancelled" ? "" :
-          `<button class="btn btn-gray btn-sm lpr-dlv" title="What came against it, and book a delivery" onclick="event.stopPropagation(); lpoDlvOpen(${row.id}, (m) => { lprFlash = m; loadLpoReport(); })">Delivery</button>
-           <button class="btn btn-gray btn-sm lpr-bill" title="The supplier's bill: number, date, amount - checked against the LPO and DN" onclick="event.stopPropagation(); lpoBillOpen(${row.id}, (m) => { lprFlash = m; loadLpoReport(); })">Bill</button>
-           <button class="btn btn-gray btn-sm" onclick="event.stopPropagation(); editLpo(${row.id})">Edit</button>
-           <button class="btn btn-gray btn-sm lpr-cancel" style="color:#B03A2E;" onclick="event.stopPropagation(); cancelLpo(${row.id}, ${escapeAttr(jsq(row.label))})">Cancel</button>`}</td>`);
+          `<button class="btn btn-gray btn-sm lpr-dlv" title="What came against it - booking, bill, change and cancel are on the Order tracker" onclick="event.stopPropagation(); lpoDlvOpen(${row.id}, null, true)">Deliveries</button>`}</td>`);
       }
       // The tab is claimed in the click itself - asking for it after the
       // token fetch makes it a pop-up, which the browser blocks.
@@ -14960,14 +14960,11 @@ const DASH_ACTIONS = {
   creds:    ["Credentials", "Website and portal logins", "accounts", "credentials", "key", "accounts_credentials"],
   stock:    ["Stock on hand", "What the store holds", "store", "store:home", "box", "store"],
   give:     ["Move material", "Store to site, or back", "store", "store:give", "truck", "storekeeper"],
-  arrive:   ["Material arrived", "A delivery has come in", "store", "store:arrive", "inbox", "storekeeper"],
   returns:  ["Returns & corrections", "Came back, lost or wrong", "store", "store:other", "undo", "store"],
   items:    ["Material list", "Add or change materials", "store", "store:items", "list", "store"],
   rent:     ["On rent", "Rental equipment and returns", "store", "rentals:hire", "rent", "store"],
   track:    ["Order tracker", "Where every order is, who is next", "store", "tracker", "list", "requests"],
   mreq:     ["Material requests", "Ask the office for material", "store", "requests:requests", "clip", "requests"],
-  appr:     ["Approvals", "Approve and order requests", "store", "tracker", "ok", "approvals"],
-  follow:   ["Order follow-up", "What is coming, who to call", "store", "tracker", "phone", "requests"],
   lpo:      ["Purchase orders", "Raise an LPO", "store", "purchasing:purchase", "cart", "approvals"],
   lporeg:   ["LPO register", "Every LPO and its status", "store", "purchasing:lporegister", "list", "approvals"],
   supp:     ["Suppliers", "Who we buy from, TRN, terms", "store", "purchasing:suppliers", "shop", "approvals"],
@@ -14979,15 +14976,15 @@ const DASH_ACTIONS = {
 };
 // The buttons each job reaches for first - a full row of four per line.
 const DASH_JOBS = {
-  "admin":                ["att", "cards", "check", "ocycle", "appr", "lpo", "expiry", "pdc", "taxinv", "projpay", "zoho", "activity"],
-  "chief accountant":     ["zoho", "cards", "check", "ocycle", "ograt", "taxinv", "projpay", "projexp", "petty", "pdc", "appr", "expiry"],
-  "assistant accountant": ["att", "live", "cards", "ladj", "check", "master", "petty", "staff", "stock", "mreq", "appr", "expiry"],
+  "admin":                ["att", "cards", "check", "ocycle", "track", "lpo", "expiry", "pdc", "taxinv", "projpay", "zoho", "activity"],
+  "chief accountant":     ["zoho", "cards", "check", "ocycle", "ograt", "taxinv", "projpay", "projexp", "petty", "pdc", "track", "expiry"],
+  "assistant accountant": ["att", "live", "cards", "ladj", "check", "master", "petty", "staff", "stock", "mreq", "track", "expiry"],
   "pro":                  ["expiry", "staff", "oleave", "pettypro", "secq", "pdc", "creds", "att"],
   "purchase manager":     ["track", "lpo", "lporeg", "mreq", "supp", "stock", "sitecost", "rent"],
-  "store keeper":         ["track", "give", "arrive", "mreq", "stock", "returns", "rent", "items"]
+  "store keeper":         ["track", "give", "mreq", "stock", "returns", "rent", "items"]
 };
-const DASH_ANY = ["att", "live", "cards", "check", "ocycle", "staff", "expiry", "mreq", "appr", "follow", "stock", "give",
-                  "arrive", "lpo", "petty", "taxinv", "projpay", "projexp", "pdc", "monthly", "master", "ladj", "returns", "supp"];
+const DASH_ANY = ["att", "live", "cards", "check", "ocycle", "staff", "expiry", "mreq", "track", "stock", "give",
+                  "lpo", "petty", "taxinv", "projpay", "projexp", "pdc", "monthly", "master", "ladj", "returns", "supp"];
 let MY_JOB = "";
 function dqCan(id) {
   const a = DASH_ACTIONS[id]; if (!a) return false;
@@ -19263,7 +19260,7 @@ async function zaOpen(btn) {
   const kind = btn.dataset.kind, cur = btn.dataset.v;
   const pop = document.createElement("div"); pop.id = "za-pop"; pop.__btn = btn; pop.__at = Date.now();
   pop.innerHTML = `<div class="za-head"><input type="search" id="za-q" placeholder="Search accounts - e.g. machinery, tip, visa, transfer" autocomplete="off"></div><div class="za-list" id="za-list"></div>
-    <div class="za-foot"><span>Shafeeq's Zoho accounts · names as in Zoho</span>${kind !== "received" ? `<button type="button" class="za-ref" onclick="zaRefresh()">Read again from Zoho</button>` : ""}</div>`;
+    <div class="za-foot"><span>The company's Zoho accounts · names as in Zoho</span>${kind !== "received" ? `<button type="button" class="za-ref" onclick="zaRefresh()">Read again from Zoho</button>` : ""}</div>`;
   document.body.appendChild(pop);
   const r = btn.getBoundingClientRect(), w = Math.min(460, innerWidth - 16);
   pop.style.width = w + "px"; pop.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
@@ -22450,7 +22447,7 @@ function otActions(r) {
   if (r.kind === "mr") {
     if (r.stage === 0 && P) add("Approve", () => otApprove(k));
     if (r.stage === 1 && P) add("Raise LPO", () => otRaise(k));
-    if (r.stage <= 2 && S) add(r.stage === 2 ? "Record what arrived" : "Record what arrived (petty cash / no LPO)", () => otReceive(r.id));
+    if (r.stage <= 2 && S) add("It arrived (no LPO) - material by material", () => otRequest(r.id));
     if (r.stage < 5 && P) add("Close as it stands (came earlier / not needed)", () => otCloseOld([k]));
     add("Materials one by one (approve, reduce, not needed)", () => otRequest(r.id));
     add("Request PDF", () => downloadRequestPdf(r.id));
@@ -22499,7 +22496,7 @@ function otRaise(k) {
     document.querySelectorAll(".lpo-pick").forEach(b => { b.checked = ids.includes(Number(b.value)); if (b.checked) n++; });
     notePendingPick();
     if (n) lpoFromTicked();
-    else showStatus("lpo-status", "warn", `${r.ref}: its approved materials are not on the waiting list - tick them below.`);
+    else { const c = document.getElementById("lpo-pending-card"); if (c) c.style.display = ""; showStatus("lpo-status", "warn", `${r.ref}: its approved materials are not on the waiting list - tick them below.`); }
   });
 }
 // Record what arrived on a request (bought with petty cash, or ordered without an LPO) - the portal's own form
@@ -22541,7 +22538,7 @@ function otAsk(title, text, chips, goLabel, go) {
     try { await go(v); m.classList.remove("on"); } catch (e) { b.disabled = false; showStatus("ot-ask-status", "err", errText(e)); }
   };
 }
-// ---- Close old orders (Arun joined in Oct 2026; the two months before are not known): one by one or ticked together
+// ---- Close old orders (from before the current purchaser joined in Oct 2026): one by one or ticked together
 function otTidy(on) {
   OT_TIDY = !!on;
   document.getElementById("ot-tidybar").classList.toggle("on", OT_TIDY);
@@ -22564,7 +22561,7 @@ function otCloseOld(keys) {
         <label class="lpo-cx-opt"><input type="radio" name="ot-how1" value="came" checked> <span><b>Came earlier</b> - it arrived (and was used) but was not booked then. No stock is added now.</span></label>
         <label class="lpo-cx-opt"><input type="radio" name="ot-how1" value="not_coming"> <span><b>Not coming / not needed</b> - closed, the rest will not come.</span></label></div>
       ${r.kind === "lpo" ? `<label style="display:flex; gap:8px; align-items:center; font-size:13px; margin:6px 0;"><input type="checkbox" id="ot-bill1"> Also close the bill check (the bill is already with accounts)</label>` : ""}
-      <div class="field"><label>Reason *</label><input type="text" id="ot-why1" placeholder="e.g. Before Arun joined, confirmed with the site" style="width:100%;"></div>
+      <div class="field"><label>Reason *</label><input type="text" id="ot-why1" placeholder="e.g. From before the current purchaser, confirmed with the site" style="width:100%;"></div>
       <div class="status-msg" id="ot-ask-status"></div>
       <div class="acts"><button type="button" class="btn btn-gray" data-x>Back</button><button type="button" class="btn btn-primary" data-go>Close it</button></div></div>`;
     m.classList.add("on");
@@ -22648,7 +22645,6 @@ async function otRequest(id) {
       <button type="button" class="btn btn-dark" onclick="downloadRequestPdf(${d.id})">Request PDF</button>
       ${d.can_edit ? `<button type="button" class="btn btn-gray" onclick="document.getElementById('ot-req').classList.remove('on'); fuEditReq(${d.id})">Edit request</button>` : ""}
       ${d.can_delete && P ? `<button type="button" class="btn btn-gray" onclick="document.getElementById('ot-req').classList.remove('on'); otDelete('mr${d.id}')">Delete</button>` : ""}
-      ${S && !["delivered", "closed", "rejected"].includes(d.status) ? `<button type="button" class="btn btn-gray" onclick="document.getElementById('ot-req').classList.remove('on'); otReceive(${d.id})">Record what arrived</button>` : ""}
       ${P && !["delivered", "closed", "rejected"].includes(d.status) ? `<button type="button" class="btn btn-gray" onclick="document.getElementById('ot-req').classList.remove('on'); otCloseOld(['mr${d.id}'])">Close as it stands</button>` : ""}
       <button type="button" class="btn btn-primary" onclick="document.getElementById('ot-req').classList.remove('on')">Close</button></div></div>`;
 }
@@ -22699,10 +22695,14 @@ async function otLinkItem(rid, lid) {
 }
 async function otLineArrived(rid, lid) {
   const d = await apiCall(`/store/purchase/tracker/request/${rid}`); const l = (d.lines || []).find(x => x.id === lid); if (!l) return;
-  otAsk(`${l.item_name || l.description}: it arrived?`, `It comes off the list for ${d.ref}. No stock is added here - book it on Material arrived if it went into the store.`,
-    ["Delivered to the site directly", "Bought with petty cash", "Brought from the store", "Already booked in on Rentals"], "It arrived", async note => {
+  const PETTY = "Bought with petty cash - add to stock", SUP = "From a supplier, no LPO - add to stock";
+  otAsk(`${l.item_name || l.description}: it arrived?`, `How did it come? The first two add it to stock; the others only take it off the list for ${d.ref}.`,
+    [PETTY, SUP, "Delivered to the site directly", "Brought from the store", "Already booked in on Rentals"], "It arrived", async note => {
+      const back = (m) => { otRequest(rid); showStatus("ot-req-status", "ok", m); otLoad(); };
+      if (note === PETTY) { document.getElementById("ot-req").classList.remove("on"); return pettyArriveOpen(rid, (m) => { back(m); }); }
+      if (note === SUP) { document.getElementById("ot-req").classList.remove("on"); return otReceive(rid); }
       await apiCall(`/store/requests/${rid}/lines/${lid}/arrived`, { method: "POST", body: JSON.stringify({ note }) });
-      await otRequest(rid); showStatus("ot-req-status", "ok", `${l.item_name || l.description}: arrived - ${note}.`); otLoad();
+      back(`${l.item_name || l.description}: arrived - ${note}.`);
     });
 }
 // Preview / PDF / Excel / Share: what is on screen, the same filters
