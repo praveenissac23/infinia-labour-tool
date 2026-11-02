@@ -16,9 +16,9 @@ const api = (p, u, b) => p.evaluate(([u, b]) => apiCall(u, b ? { method: 'POST',
 const toTracker = async p => { await p.evaluate(() => pgGo('store', 'tracker')); await sleep(3500); };
 const modalOn = (p, id) => p.evaluate(id => { const m = document.getElementById(id); return !!(m && m.classList.contains('on')) ? (m.querySelector('h3') || m).textContent.replace(/\s+/g, ' ').trim() : ''; }, id);
 const closeModals = p => p.evaluate(() => document.querySelectorAll('.pu-modal.on, #lpo-cx-modal.on').forEach(m => m.classList.remove('on')));
-const menu = async (p, key) => { await p.evaluate(k => { document.querySelectorAll('.ot-menu').forEach(x => x.remove()); const b = document.querySelector(`tr[data-k="${k}"] .ot-dots`); b.scrollIntoView({ block: 'center' }); }, key); await sleep(150);
-  await p.click(`tr[data-k="${key}"] .ot-dots`); await sleep(250); return p.$$eval('.ot-menu div[data-i]', x => x.map(e => e.textContent)); };
-const pick = async (p, label) => { await p.evaluate(l => { const d = [...document.querySelectorAll('.ot-menu div[data-i]')].find(x => x.textContent === l); d.click(); }, label); await sleep(1800); };
+const menu = async (p, key) => { await p.evaluate(k => { const b = [...document.querySelectorAll(`tr[data-k="${k}"] td.nx button`)].find(x => x.textContent === 'More'); b.scrollIntoView({ block: 'center' }); b.click(); }, key); await sleep(400);
+  return p.$$eval('#ot-sheet .ot-acts button', x => x.map(e => e.textContent)); };
+const pick = async (p, label) => { await p.evaluate(l => { const d = [...document.querySelectorAll('#ot-sheet .ot-acts button')].find(x => x.textContent === l); d.click(); }, label); await sleep(1800); };
 (async () => {
   const br = await chromium.launch();
   // ===== admin
@@ -38,7 +38,7 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
     const hs = [...document.querySelectorAll('#ot-table .ot-sh span')].map(s => { const r = s.getBoundingClientRect(); return (r.left + r.right) / 2; });
     const row = document.querySelector('#ot-body tr.ot-r .ot-steps');
     const ss = [...row.children].map(s => { const r = s.getBoundingClientRect(); return (r.left + r.right) / 2; });
-    const rights = [...document.querySelectorAll('#ot-body tr.ot-r td.nx .ot-dots')].map(b => Math.round(b.getBoundingClientRect().right));
+    const rights = [...document.querySelectorAll('#ot-body tr.ot-r td.nx .btn-gray')].map(b => Math.round(b.getBoundingClientRect().right));
     const wrap = document.getElementById('ot-wrap');
     const cut = [...document.querySelectorAll('#ot-body td')].filter(td => td.scrollWidth > td.clientWidth + 1).length;
     const sum = [...document.querySelectorAll('#ot-sum .k')].map(k => k.offsetHeight);
@@ -51,7 +51,7 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   ck(`step names sit over their steps (off by ${lay.off.toFixed(1)}px)`, lay.off < 4, lay);
   ck('step names do not run into each other and none is cut off', !lay.ov.length, lay.ov);
   ck('the step written in the coloured step is never cut off', !lay.segCut.length, lay.segCut);
-  ck('the ... buttons line up on the right', Math.max(...lay.rights) - Math.min(...lay.rights) <= 1, lay.rights);
+  ck('the More buttons line up on the right', Math.max(...lay.rights) - Math.min(...lay.rights) <= 1, lay.rights);
   ck('no sideways scrolling at 1440 wide, no text cut off', !lay.sideways && lay.cut === 0, lay);
   ck('the six step boxes on top are the same height', lay.sum.length === 1, lay.sum);
   for (const w of [1280, 1024]) {
@@ -93,14 +93,14 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   const l161 = T.rows.find(r => r.ref === 'IC/LPO/20260161');
   const approved = T.rows.find(r => r.kind === 'mr' && r.stage === 1);
   // Approve button
-  await p.evaluate(k => document.querySelector(`tr[data-k="${k}"] td.nx button:not(.ot-dots)`).click(), rA.key); await sleep(500);
+  await p.evaluate(k => document.querySelector(`tr[data-k="${k}"] td.nx .btn-primary`).click(), rA.key); await sleep(500);
   ck(`Approve (${rA.ref}) opens its approval`, (await modalOn(p, 'ot-appr')).includes(rA.ref), await modalOn(p, 'ot-appr'));
   await p.click('#ot-appr [data-all="a"]'); await p.click('#ot-appr [data-go]'); await sleep(2500);
   T = await api(p, '/store/purchase/tracker');
   ck('Approve all: the request moves to Approved', T.rows.find(r => r.ref === mrA.ref).stage === 1);
   // MR menus
   const mm = await menu(p, rB.key);
-  ck(`menu on a request waiting: ${mm.join(' | ')}`, ['Approve / approve less / reject', 'The request in full (materials, history)', 'Request PDF', 'Delete the request', 'Close as it stands (came earlier / not needed)'].every(x => mm.includes(x)), mm);
+  ck(`menu on a request waiting: ${mm.join(' | ')}`, ['Approve', 'The request in full (materials, history)', 'Request PDF', 'Delete the request', 'Close as it stands (came earlier / not needed)'].every(x => mm.includes(x)), mm);
   await pick(p, 'The request in full (materials, history)'); await sleep(1500);
   const rq = await p.evaluate(() => { const m = document.getElementById('ot-req'); return { on: m.classList.contains('on'), h: m.querySelector('h3').textContent, lines: m.querySelectorAll('tbody tr').length, btns: [...m.querySelectorAll('.acts button')].map(b => b.textContent) }; });
   ck(`the request in full: ${rq.h} - ${rq.lines} materials, ${rq.btns.join(' / ')}`, rq.on && rq.h.includes(mrB.ref) && rq.lines === 3 && ['Request PDF', 'Edit request', 'Delete', 'Record what arrived', 'Close as it stands', 'Close'].every(b => rq.btns.includes(b)), rq);
@@ -146,7 +146,7 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   const rBc = T.rows.find(r => r.ref === mrB.ref);
   ck(`${mrB.ref} closed: under Done & closed, with the reason`, rBc && rBc.stage === 5 && /Not needed: Site no longer needs it/.test(rBc.result), rBc);
   // Ordered LPO: button + menu
-  await p.evaluate(k => document.querySelector(`tr[data-k="${k}"] td.nx button:not(.ot-dots)`).click(), ordered.key); await sleep(1500);
+  await p.evaluate(k => document.querySelector(`tr[data-k="${k}"] td.nx .btn-primary`).click(), ordered.key); await sleep(1500);
   ck(`Book delivery (${ordered.ref}) opens its delivery`, (await modalOn(p, 'pu-dlv')).includes(ordered.ref), await modalOn(p, 'pu-dlv'));
   await closeModals(p);
   const om = await menu(p, ordered.key);
@@ -162,10 +162,10 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   T = await api(p, '/store/purchase/tracker');
   ck('Keep the LPO: nothing changed', T.rows.find(r => r.ref === ordered.ref).stage === 2);
   // row click = history
-  await p.evaluate(k => document.querySelector(`tr[data-k="${k}"] td.site`).click(), ordered.key); await sleep(1500);
-  ck('clicking a row opens its history', (await modalOn(p, 'pu-dlv')).includes(ordered.ref)); await closeModals(p);
+  await p.evaluate(k => document.querySelector(`tr[data-k="${k}"] td.site`).click(), ordered.key); await sleep(800);
+  ck('tapping a row opens its pop-up with every option, the next step first', (await modalOn(p, 'ot-sheet')).includes(ordered.ref) && await p.evaluate(() => document.querySelector('#ot-sheet .ot-acts button').classList.contains('btn-primary'))); await closeModals(p);
   // a delivery booked from the tracker: part of the first line -> Part, says what is to come; stock in by that much
-  await p.evaluate(k => document.querySelector(`tr[data-k="${k}"] td.nx button:not(.ot-dots)`).click(), ordered.key); await sleep(1500);
+  await p.evaluate(k => document.querySelector(`tr[data-k="${k}"] td.nx .btn-primary`).click(), ordered.key); await sleep(1500);
   const line1 = await p.evaluate(() => { const tr = document.querySelector('#pu-dlv tr[data-l]'); return { rem: +tr.dataset.rem, q: !!tr.querySelector('.pu-q') }; });
   if (line1.q && line1.rem >= 2) {
     await p.fill('#pu-dlv tr[data-l] .pu-q', '1'); await p.fill('#pu-dn', 'DN-TRACK-1'); await p.click('#pu-dlv-save'); await sleep(2500);
@@ -176,13 +176,13 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   await closeModals(p); await toTracker(p);
   // part delivery menu
   const pm = await menu(p, part.key);
-  ck(`menu on a part delivery: ${pm.join(' | ')}`, ['Book more delivery', 'Close - rest not needed', 'Check bill (what came)', 'Change quantity / rate'].every(x => pm.includes(x)), pm);
+  ck(`menu on a part delivery: ${pm.join(' | ')}`, ['Book delivery', 'Close - rest not needed', 'Check bill (what came)', 'Change quantity / rate'].every(x => pm.includes(x)), pm);
   await pick(p, 'Change quantity / rate'); await sleep(5000);
   ck('Change quantity / rate opens the LPO for changing', await p.evaluate(id => xlOn('purchase') && lpoEditingId === id, part.id));
   await p.evaluate(() => typeof resetLpoForm === 'function' && resetLpoForm());
   await toTracker(p);
   // arrived: Check bill button -> bill form; save checked -> Done (in Zoho) / Bill checked (not yet in Zoho)
-  await p.evaluate(k => { const b = document.querySelector(`tr[data-k="${k}"] td.nx button:not(.ot-dots)`); b.scrollIntoView({ block: 'center' }); b.click(); }, arrived.key); await sleep(1500);
+  await p.evaluate(k => { const b = document.querySelector(`tr[data-k="${k}"] td.nx .btn-primary`); b.scrollIntoView({ block: 'center' }); b.click(); }, arrived.key); await sleep(1500);
   ck(`Check bill (${arrived.ref}) opens its bill`, (await modalOn(p, 'pu-bill')).includes(arrived.ref));
   await p.fill('#pb-no', 'B-1'); await p.fill('#pb-amt', '100'); await p.check('#pb-ok');
   await p.evaluate(() => [...document.querySelectorAll('#pu-bill button')].find(b => b.textContent === 'Save').click()); await sleep(2500);
@@ -194,7 +194,7 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   T = await api(p, '/store/purchase/tracker');
   const z = T.rows.find(r => r.ref === 'IC/LPO/20260161');
   ck('bill checked, not in Zoho yet: Bill checked, Shafeeq to send to Zoho', z.stage === 4 && z.who === 'Shafeeq' && z.action === 'Send to Zoho', z);
-  await p.evaluate(k => { const b = document.querySelector(`tr[data-k="${k}"] td.nx button:not(.ot-dots)`); b.scrollIntoView({ block: 'center' }); b.click(); }, z.key); await sleep(3000);
+  await p.evaluate(k => { const b = document.querySelector(`tr[data-k="${k}"] td.nx .btn-primary`); b.scrollIntoView({ block: 'center' }); b.click(); }, z.key); await sleep(3000);
   ck('Send to Zoho opens Accounts > Send to Zoho', await p.evaluate(() => xlOn('zoho')));
   // ---- close old orders: one LPO as it stands (came earlier - no stock), then several ticked together (not coming + bill)
   await toTracker(p); await p.evaluate(() => { OT_VIEW = 'open'; otRender(); });
@@ -261,16 +261,18 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
     const q = await login(br, u, 'Test12345');
     await q.evaluate(() => pgGo('store')); await sleep(3500);
     const tb = await q.$$eval('#pg-tabs .pg-tab', x => x.map(e => e.textContent.trim()));
-    ck(`${u}: sees the Order tracker tab, and Store & Purchasing opens on it`, tb[0] === 'Order tracker' && await q.evaluate(() => xlOn('purchtrack')), tb);
+    const land = u === 'amal' ? 'store' : 'purchtrack';
+    ck(`${u}: sees the Order tracker tab; Store & Purchasing opens on ${land === 'store' ? 'Stock (store keeper)' : 'the Order tracker'}`, tb[0] === 'Order tracker' && await q.evaluate(l => xlOn(l), land), tb);
+    await q.evaluate(() => pgGo('store', 'tracker')); await sleep(3500);
     const D = await api(q, '/store/purchase/tracker');
     ck(`${u}: My turn is the ${role}'s`, JSON.stringify(D.my_roles) === JSON.stringify([role]), D.my_roles);
     const chip = await q.$eval('#ot-chips button.on', e => e.textContent);
     const mine = D.rows.filter(r => r.stage < 5 && r.role === role).length;
     ck(`${u}: opens on My turn (${mine})`, chip.replace(/\s+/g, ' ').trim() === `My turn ${mine}`, chip);
-    const btns = await q.$$eval('#ot-body td.nx button:not(.ot-dots)', x => [...new Set(x.map(b => b.textContent))]);
+    const btns = await q.$$eval('#ot-body td.nx .btn-primary', x => [...new Set(x.map(b => b.textContent))]);
     ck(`${u}: My turn buttons ${btns.join(', ')}`, mine === 0 || (btns.length && btns.every(b => !notSees.includes(b))), btns);
     await q.evaluate(() => { OT_VIEW = 'open'; otRender(); }); await sleep(300);
-    const all = await q.$$eval('#ot-body td.nx button:not(.ot-dots)', x => [...new Set(x.map(b => b.textContent))]);
+    const all = await q.$$eval('#ot-body td.nx .btn-primary', x => [...new Set(x.map(b => b.textContent))]);
     ck(`${u}: on All open can use ${all.join(', ')}`, sees.every(s => all.includes(s) || !D.rows.some(r => r.action === s && r.stage < 5)), all);
     ck(`${u}: no page errors`, !q.errs.length, q.errs);
     await q.context().close();

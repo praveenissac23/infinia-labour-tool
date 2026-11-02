@@ -834,6 +834,11 @@ window.addEventListener("popstate", () => {
   const key = pgKeyOfPath(location.pathname);
   if (key !== PAGE.key && ALL_PAGES[key]) pgGo(key, (location.hash || "").slice(1), false);
 });
+function pgFirstTab(key) {
+  const job = String((typeof MY_JOB !== "undefined" && MY_JOB) || "").toLowerCase();
+  if (key === "store" && job === "store keeper") return "store";
+  return "";
+}
 function pgHas(r) { return CURRENT_ROLE === "admin" || (Array.isArray(r) ? r.some(x => MY_SCREENS.includes(x)) : (r !== "__admin__" && MY_SCREENS.includes(r))); }
 function pgAllowed(screen) { return pgHas(RIGHT_OF[screen] || screen); }
 // A hidden tab counts only once revealed, and only until its screen is left.
@@ -995,6 +1000,14 @@ firstScreenFor = function () {
       return PG_SUB ? (PG_SUB.screen || "pgreports") : t.screen;
     }
     return t.screen;
+  }
+  // The tab a login lands on when it opens a page: the store keeper opens Store & Purchasing on Stock, everyone
+  // else on the Order tracker (the first tab).
+  const pref = pgFirstTab(PAGE.key), pt = pref && PAGE.tabs.find(x => x.id === pref);
+  if (pt && pgTabOk(pt)) {
+    PG_TAB = pt;
+    if (pt.subs.length) { PG_SUB = pt.subs.find(pgSubOk) || null; if (PG_SUB && PG_SUB.go && /pgStorePanel\('([a-z]+)'\)/.test(PG_SUB.go)) STORE_PANEL_WANT = PG_SUB.go.match(/pgStorePanel\('([a-z]+)'\)/)[1]; return PG_SUB ? (PG_SUB.screen || "pgreports") : pt.screen; }
+    return pt.screen;
   }
   for (const tb of PAGE.tabs) if (pgTabOk(tb)) {
     PG_TAB = tb;
