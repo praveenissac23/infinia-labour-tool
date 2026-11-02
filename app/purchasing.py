@@ -477,9 +477,14 @@ class Book:
                             .filter(models.StoreMovement.id.in_(mids)).all()) if mids else {}
         # request lines: what came in on them that no LPO receipt already accounts for
         on_mrl = defaultdict(float)
+        lpo_line = {l.id: l for o in self.orders for l in o.lines}
         for r in self.receipts:
             if r.request_line_id and r.kind in ("delivered", "rentals", "service"):
-                on_mrl[r.request_line_id] += float(r.qty or 0)
+                q = float(r.qty or 0)
+                ll, mrl = lpo_line.get(r.line_id), self.mrl.get(r.request_line_id)
+                if ll is not None and mrl is not None and not _same_unit(ll.unit, mrl.unit) and float(ll.qty or 0) > EPS:
+                    q = float(mrl.qty_requested or 0) * q / float(ll.qty)      # 1 trip of 2 = 3 of 6 m3 on the request
+                on_mrl[r.request_line_id] += q
         pool = {l.id: max(0.0, float(l.qty_received or 0) - on_mrl.get(l.id, 0.0)) for l in self.mr_lines}
         # Rentals: hire-ins not already tied to an LPO line
         tied = defaultdict(float)
@@ -641,14 +646,31 @@ def _settle(mr):
     M._settle_status(mr)
 
 
+def _words_in(short, long_):
+    """Every word of one name in the other ('Aggregate' in '3/4 Aggregate 3M3', 'Black Sand' in 'Black Sand 3M3'),
+    sizes included - used only for a request line the LPO was raised from (ticked), never to guess."""
+    a, b = set(plain(short).split()), set(plain(long_).split())
+    if not a or not b:
+        return False
+    if len(a) > len(b):
+        a, b = b, a
+    return len("".join(a)) >= 4 and a <= b
+
+
 def _mr_line_for(book, o, l, it, exclude=()):
     """The request line an LPO line stands for, with something still to come on it."""
-    for mrl in [book.mrl[i] for i in book.of(o)["related"] if i in book.mrl]:
-        if mrl.id in exclude or (mrl.status or "pending") == "rejected":
-            continue
-        if (mrl.qty_requested or 0) - (mrl.qty_received or 0) <= EPS:
-            continue
+    cands = [book.mrl[i] for i in book.of(o)["related"] if i in book.mrl]
+    cands = [m for m in cands if m.id not in exclude and (m.status or "pending") != "rejected"
+             and (m.qty_requested or 0) - (m.qty_received or 0) > EPS]
+    for mrl in cands:
         if _fits(l, it, mrl, book.items.get(mrl.item_id)):
+            return mrl
+    # raised from these very request lines (ticked), ordered under the supplier's own name for it
+    ticked = set(_ids(o.request_line_ids))
+    for mrl in cands:
+        mi = book.items.get(mrl.item_id)
+        if mrl.id in ticked and any(_words_in(x, y) for x in (mrl.description or "", mi.name if mi else "") if x
+                                    for y in (l.description or "", it.name if it else "") if y):
             return mrl
     return None
 
@@ -746,7 +768,12 @@ def book_delivery(db, o, entries, dn_no, dn_date, user_id=None, location=None, t
                                          request_line_id=mrl.id if mrl else None, **base))
                 done.append(f"{name}: {qty:g} {p['unit']} in at {loc or M.CENTRAL_LABEL}{on_req}")
             if mrl:
-                take = min(qty, (mrl.qty_requested or 0) - (mrl.qty_received or 0))
+                due = (mrl.qty_requested or 0) - (mrl.qty_received or 0)
+                if not _same_unit(l.unit, mrl.unit) and float(l.qty or 0) > EPS:
+                    # counted in another unit (asked 6 m3, ordered 2 trips): the same share of what was asked
+                    take = min(due, float(mrl.qty_requested or 0) * qty / float(l.qty))
+                else:
+                    take = min(qty, due)
                 mrl.qty_received = (mrl.qty_received or 0) + take
                 used_mrl.add(mrl.id); touched.add(mrl.request)
         if e.get("close"):
@@ -756,7 +783,8 @@ def book_delivery(db, o, entries, dn_no, dn_date, user_id=None, location=None, t
                 done.append(f"{name}: the other {rest:g} {p['unit']} will not come - closed")
                 mrl = _mr_line_for(book, o, l, it)
                 if mrl:
-                    q = max(float(mrl.qty_received or 0), float(mrl.qty_requested or 0) - rest)
+                    gone = rest if _same_unit(l.unit, mrl.unit) or not float(l.qty or 0) > EPS else float(mrl.qty_requested or 0) * rest / float(l.qty)
+                    q = max(float(mrl.qty_received or 0), float(mrl.qty_requested or 0) - gone)
                     mrl.qty_requested = mrl.qty_approved = q
                     touched.add(mrl.request)
     for mr in [x for x in touched if x]:

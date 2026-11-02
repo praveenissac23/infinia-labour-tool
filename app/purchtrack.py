@@ -167,7 +167,7 @@ def build(db):
     with_lpo = {o.request_id for o in book.orders if o.request_id}
     name = lambda l: (book.items[l.item_id].name if l.item_id in book.items else "") or l.description or "(no name)"
     for mr in book.reqs:
-        if (mr.notes or "").startswith("Stock for the store, ordered on"):
+        if (mr.notes or "").startswith(("Stock for the store, ordered on", "Ordered direct on")):
             continue                              # an LPO's own tracking request: the LPO's row says it all
         every = book.by_req.get(mr.id, [])
         if (mr.status or "pending") in ("rejected", "closed", "delivered"):

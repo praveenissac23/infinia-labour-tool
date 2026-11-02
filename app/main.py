@@ -9299,9 +9299,11 @@ def _track_lpo(db, o, user, creating=False):
     request covers - added, changed and taken off as the LPO is raised and edited. What already arrived stays."""
     db.flush()
     covered = set()
+    ticked = []
     ids = [int(x) for x in (o.request_line_ids or "").split(",") if x.strip().isdigit()]
     if ids:
-        covered = {l.item_id for l in db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id.in_(ids)).all() if l.item_id}
+        ticked = db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id.in_(ids)).all()
+        covered = {l.item_id for l in ticked if l.item_id}
     elif o.request_id:
         mr0 = db.get(models.MaterialRequest, o.request_id)
         if mr0 and not (mr0.notes or "").startswith("Stock for the store, ordered on") and mr0.lpo_id != o.id:
@@ -9313,8 +9315,15 @@ def _track_lpo(db, o, user, creating=False):
                     .filter(models.MaterialRequestLine.supplier_id == o.supplier_id, models.MaterialRequest.lpo_id.is_(None),
                             models.MaterialRequest.status.in_(["approved", "ordered", "partial", "delivered"])).all() if l.item_id}
     want = {}                                   # site -> {item_id: [qty, description, unit]}
+    import purchasing as _pu
+    def _ticked_for(l):
+        # the site's request line it was raised from, ordered under the supplier's own name ('Black Sand' asked,
+        # 'Black Sand 3M3' ordered): that request is followed - no second request is made for it
+        it = l.item
+        return any(_pu._fits(l, it, t, t.item) or any(_pu._words_in(x, y) for x in (t.description or "", t.item.name if t.item else "") if x
+                                                     for y in (l.description or "", it.name if it else "") if y) for t in ticked)
     for l in o.lines:
-        if not l.item_id or (l.qty or 0) <= 0 or l.item_id in covered:
+        if not l.item_id or (l.qty or 0) <= 0 or l.item_id in covered or (ticked and _ticked_for(l)):
             continue
         w = want.setdefault(_lpo_site_key(o, l), {}).setdefault(l.item_id, [0.0, (l.description or "").strip(), l.unit or ""])
         w[0] += float(l.qty or 0)
@@ -9488,6 +9497,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     _lpo_amt = lambda lines: round(sum((l.qty or 0) * (l.rate or 0) for l in lines), 2)
     amount_was = _lpo_amt(o.lines)
     before = _lpo_snap(o)
+    items_before = {l.item_id for l in o.lines if l.item_id}
 
     supplier = _find_or_create_supplier(db, payload.supplier_name)
     if not (supplier is not None and supplier.id == o.supplier_id):    # the order's own supplier stays, deleted or not
@@ -9544,8 +9554,14 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     on_lpo = {l.item_id for l in o.lines if l.item_id}
     ids = [int(x) for x in (o.request_line_ids or "").split(",") if x.strip().isdigit()]
     if ids:
+        # A site's material counts as taken off only when this edit took its material off the LPO - not when the
+        # LPO orders it under another name ('Black Sand' asked, 'Black Sand 3M3' ordered): that released MR-0065
+        # back to 'to order' on every edit of IC/LPO/20260172 (2 Nov 2026).
+        import purchasing as _pu0
+        fits = lambda l: any(_pu0._fits(x, x.item, l, l.item) for x in o.lines)
         gone = [l for l in db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id.in_(ids)).all()
-                if l.item_id not in on_lpo and (l.qty_received or 0) <= 0 and (l.status or "pending") != "rejected"]
+                if l.item_id not in on_lpo and l.item_id in items_before and not fits(l)
+                and (l.qty_received or 0) <= 0 and (l.status or "pending") != "rejected"]
         if gone:
             _settle_request_lines(db, o, gone, False, "")
             keep = [i for i in ids if i not in {g.id for g in gone}]
