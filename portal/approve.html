@@ -100,6 +100,14 @@ textarea{height:80px;resize:vertical}
   const WORD = { "MD approved": "Approve", "CM approved": "Approve", "Verified": "Verified" };
   const BACKTO = [["Certified", "QS (to prepare again)"], ["Prepared", "Contracts manager"], ["CM approved", "Accounts (to verify again)"]];
 
+  // A kept sign-in on this phone starts its days again each time a link is opened - as the app does - so the
+  // MD, opening links every week, is never asked to sign in again on this browser.
+  let renewed = false;
+  function renewKept() {
+    if (renewed) return; renewed = true;
+    try { if (localStorage.getItem("infinia_keep") !== TOKEN) return; } catch (e) { return; }
+    api("/auth/renew", { method: "POST" }).then(r => { if (r && r.access_token) { TOKEN = r.access_token; try { sessionStorage.setItem("infinia_token", TOKEN); localStorage.setItem("infinia_keep", TOKEN); } catch (e) {} } }).catch(() => {});
+  }
   async function show() {
     if (!ids.length) { $("#app").innerHTML = `<div class="msg">No certificate in this link.</div>`; return; }
     if (!TOKEN) return login();
@@ -107,6 +115,7 @@ textarea{height:80px;resize:vertical}
     $("#app").innerHTML = `<div class="msg">Opening the certificate...</div>`;
     try { D = await api(`/store/est/subpcs/${id}/approval`); }
     catch (e) { if (e.signin) return login("Your sign-in has run out - sign in again."); $("#app").innerHTML = `<div class="msg">${esc(e.message)}</div>`; return; }
+    renewKept();
     // the others waiting at the same desk come after the ones in the link
     (D.others || []).forEach(o => { if (!ids.includes(o)) ids.push(o); });
     const n = ids.length;

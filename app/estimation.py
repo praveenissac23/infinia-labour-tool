@@ -30,6 +30,7 @@ import io
 import json
 import os
 import re
+import threading
 import time
 import uuid
 from datetime import date, datetime, timedelta
@@ -1920,6 +1921,31 @@ def _log(pc, entry):
 def pc_step(rid: int, data: dict = Body(...), db: Session = Depends(get_db), user: models.User = PAYER):
     """One click: the next step of a subcontractor certificate, by the person whose turn it is - their name and
     the time go on it, and the next person is told. Also: undo (back one step) and send back with a note."""
+    out = _pc_step_do(rid, data, db, user)
+    push_certificates_now()
+    return out
+
+
+def push_certificates_now():
+    """The next person's phone is told straight away (not at the next two-minute round) - so the MD's phone rings
+    when Accounts presses Send to MD, before anyone thinks of sending a WhatsApp. Quiet hours (9 pm - 7 am) still
+    hold: then it comes at 7 with the rest."""
+    def run():
+        try:
+            import database as _d
+            import push as _p
+            if not _p.available():
+                return
+            only = lambda db_, u_: [n for n in M._notes_for(db_, u_) if n.get("kind") == "subpc"]
+            _p.push_new(_d.SessionLocal, models, only)
+        except Exception as e:
+            print("certificate push:", e)
+    if os.environ.get("INFINIA_NO_PUSH") == "1":
+        return
+    threading.Thread(target=run, daemon=True, name="pc-push").start()
+
+
+def _pc_step_do(rid, data, db, user):
     pc = db.query(EstSubPC).get(rid)
     if not pc:
         raise HTTPException(404, "That invoice is not there any more.")
