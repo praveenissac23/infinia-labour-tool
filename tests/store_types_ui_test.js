@@ -29,8 +29,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const chips = await p.$$eval('#home-stock-type .seg-chip', x => x.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
   ck('Type chips: All, Consumables, Assets, Rentals with counts', chips.length === 4 && /^All \d/.test(chips[0]) && /^Rentals \d/.test(chips[3]), chips);
   await p.click('#home-stock-type .seg-chip:nth-child(4)'); await sleep(300);
-  const types = await p.$$eval('#home-stock-body tr[data-code] .pill', x => [...new Set(x.map(e => e.textContent))]);
-  ck('Rentals chip: only rentals (Rental - supplier)', types.length >= 1 && types.every(t => /^Rental – /.test(t)), types);
+  const types = await p.$$eval('#home-stock-body tr[data-code] .pill', x => [...new Set(x.map(e => e.textContent + ' | ' + e.title))]);
+  ck('Rentals chip: only rentals (short pill Rental · supplier, full name on hover)', types.length >= 1 && types.every(t => /^Rental · .+ \| Rental – /.test(t)), types);
   await p.screenshot({ path: '/tmp/claude-0/types_1.png' });
   await p.click('#home-stock-type .seg-chip:nth-child(1)'); await sleep(300);
   // the At Sites report and the site holding view

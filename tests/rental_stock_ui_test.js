@@ -49,7 +49,7 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   };
   await openStock();
   const find = async t => { await p.fill('#home-stock-search', t); await p.dispatchEvent('#home-stock-search', 'input'); await sleep(400);
-    return p.$$eval('#home-stock-body tr[data-key]', x => x.map(r => ({ key: r.dataset.key, text: r.textContent.replace(/\s+/g, ' ').trim() }))); };
+    return p.$$eval('#home-stock-body tr[data-key]', x => x.map(r => ({ key: r.dataset.key, text: r.textContent.replace(/\s+/g, ' ').trim() + ' ' + [...r.querySelectorAll('.pill[title]')].map(e => e.title).join(' ') }))); };
   let rows = await find(`T${run}`);
   const rl = rows.find(r => r.text.includes(`Rental Ledger 1.8M T${run}`)), ow = rows.find(r => r.text.includes(`Standard 2.0M T${run}`) && !r.text.includes('Rental Standard')),
     rs = rows.find(r => r.text.includes(`Rental Standard 2.0M T${run}`));
@@ -66,7 +66,7 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   ck('Type chips: Consumables / Assets / Rentals each with their own total held; the Rentals total says it is the suppliers\'',
      chips.length === 4 && /held/.test(chips[2].t) && /held/.test(chips[3].t) && /suppliers', not ours/.test(chips[3].title), chips);
   await p.click('#home-stock-type .seg-chip:nth-child(4)'); await sleep(400);
-  const pills = await p.$$eval('#home-stock-body tr[data-key] .pill', x => [...new Set(x.map(e => e.textContent.split(' – ')[0]))]);
+  const pills = await p.$$eval('#home-stock-body tr[data-key] .pill', x => [...new Set(x.map(e => e.textContent.split(/ [–·] /)[0]))]);
   ck('the Rentals chip shows only Rental rows', pills.length === 1 && pills[0] === 'Rental', pills);
   await p.screenshot({ path: OUT + '/rental-stock-chip.png' });
   await p.click('#home-stock-type .seg-chip:nth-child(1)'); await sleep(300);
