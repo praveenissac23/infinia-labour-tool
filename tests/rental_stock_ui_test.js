@@ -43,6 +43,7 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
 
   // ---- Stock screen ------------------------------------------------------------------------------------------------
   const openStock = async () => {
+    await p.evaluate(() => typeof pgGo === 'function' && pgGo('store', 'store', 'home')); await sleep(1500);
     await p.evaluate(() => { for (const k in API_SHARED) delete API_SHARED[k]; try { sessionStorage.removeItem(STOCK_HOME_KEY); } catch (e) {} if (typeof pgStorePanel === 'function') pgStorePanel('home'); else storeGo('home'); }); await sleep(2500);
     await p.evaluate(() => loadStoreHome && loadStoreHome()).catch(() => {}); await sleep(3000);
   };
@@ -103,7 +104,7 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   // ---- a delivery on a rental LPO ------------------------------------------------------------------------------------
   const po = await api('/store/purchase/orders', { method: 'POST', body: JSON.stringify({ supplier_name: SUP, order_date: await p.evaluate(() => isoLocal(new Date())),
     project_location: site, lines: [{ description: `Ledger 1.8m T${run}`, qty: 30, unit: 'nos', rate: 0.44, tax_pct: 5 }] }) });
-  await p.goto(B + '/?p=store#store:arrive'); await sleep(2500); await kill();
+  await p.goto(B + '/?p=store#tracker'); await sleep(2500); await kill();   // deliveries are booked from the Order tracker
   await p.evaluate(id => lpoDlvOpen(id, m => { window.__msg = m; }), po.id); await sleep(1500);
   const win = await p.evaluate(() => document.getElementById('pu-dlv').innerText);
   ck('the delivery window says Rental LPO and the line is Rental (booked as the Rental material already on the list)',
