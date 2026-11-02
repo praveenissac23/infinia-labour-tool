@@ -36,13 +36,13 @@ def tab(id, screen, label, right=None, show=None, subs=None, go=None, hidden=Fal
             "go": go or "", "hidden": hidden}
 
 
-def sub(id, label, screen=None, right=None, go=None, people=None, opts=None, show=None):
+def sub(id, label, screen=None, right=None, go=None, people=None, opts=None, show=None, hidden=False):
     """A second-level tab: the working screen itself. screen = the app
     screen to show, go = what to run once it is up (its own tab, its
     report panel), people = a People list drawn on the hub with its
     options (opts: group, days)."""
     return {"id": id, "label": label, "screen": screen or ("pgreports" if people else ""), "right": right or screen or "reports",
-            "go": go or "", "people": people or "", "opts": opts or "", "show": show or []}
+            "go": go or "", "people": people or "", "opts": opts or "", "show": show or [], "hidden": hidden}
 
 
 PEOPLE_RIGHTS = ["people_labour", "people_office", "people_local"]
@@ -138,8 +138,10 @@ PAGES = {
             sub("returns", "Return notes", screen="store", right="store", go="pgStorePanel('returns')")]),
         tab("requests", "requests", "Requests", ["requests", "approvals"], subs=[
             sub("requests", "Material requests", screen="requests", right="requests"),
-            sub("approvals", "Approvals", screen="approvals", right="approvals"),
-            sub("followup", "Order follow-up", screen="followup", right="requests")]),
+            # Approvals and Order follow-up now live on the Order tracker (2 Nov 2026): kept, out of sight, so an old
+            # link still opens them - and one line brings either back.
+            sub("approvals", "Approvals", screen="approvals", right="approvals", hidden=True),
+            sub("followup", "Order follow-up", screen="followup", right="requests", hidden=True)]),
         tab("purchasing", "purchase", "Purchasing", "approvals", subs=[
             sub("purchase", "Purchase orders", screen="purchase", right="approvals"),
             sub("lporegister", "LPO register", screen="lporegister", right="approvals"),
@@ -1020,14 +1022,14 @@ function pgRenderTabs() {
       // never paint it before the app has decided.
       const ok = list.filter(t => !t.hidden && pgTabRightOk(t));
       localStorage.setItem("infinia_tabs:" + key, JSON.stringify({ user: CURRENT_USERNAME || "", tabs: ok.map(t => ({ id: t.id, label: t.label,
-        subs: (t.subs || []).filter(pgSubOk).map(sb => ({ id: sb.id, label: sb.label })) })) }));
+        subs: (t.subs || []).filter(sb => pgSubOk(sb) && !sb.hidden).map(sb => ({ id: sb.id, label: sb.label })) })) }));
     }
   } catch (e) {}
   // Admin keeps its tab bar even with one tab (Forms) - more tabs come later.
   bar.innerHTML = (tabs.length > 1 || PAGE === ALL_PAGES.admin) ? tabs.map(t =>
     `<span class="pg-tab ${PG_TAB && PG_TAB.id === t.id ? "active" : ""}" data-tab="${t.id}" onclick="pgTab('${t.id}')">${t.label}</span>`).join("") : "";
   const sub = document.getElementById("pg-sub");
-  const subs = PG_TAB ? PG_TAB.subs.filter(pgSubOk) : [];
+  const subs = PG_TAB ? PG_TAB.subs.filter(sb => pgSubOk(sb) && (!sb.hidden || (PG_SUB && PG_SUB.id === sb.id))) : [];
   sub.innerHTML = subs.map(sb =>
     `<span class="pg-subtab ${PG_SUB && PG_SUB.id === sb.id ? "active" : ""}" data-sub="${sb.id}" onclick="pgSub('${sb.id}')">${sb.label}</span>`).join("");
   sub.classList.toggle("pg-sub-keep", !subs.length && PAGE.tabs.some(t => pgTabOk(t) && t.subs.some(pgSubOk)));

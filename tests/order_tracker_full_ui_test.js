@@ -39,19 +39,25 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
     const row = document.querySelector('#ot-body tr.ot-r .ot-steps');
     const ss = [...row.children].map(s => { const r = s.getBoundingClientRect(); return (r.left + r.right) / 2; });
     const rights = [...document.querySelectorAll('#ot-body tr.ot-r td.nx .ot-dots')].map(b => Math.round(b.getBoundingClientRect().right));
-    const wrap = document.querySelector('#screen-purchtrack .ot-wrap');
+    const wrap = document.getElementById('ot-wrap');
     const cut = [...document.querySelectorAll('#ot-body td')].filter(td => td.scrollWidth > td.clientWidth + 1).length;
     const sum = [...document.querySelectorAll('#ot-sum .k')].map(k => k.offsetHeight);
-    return { off: Math.max(...hs.map((h, i) => Math.abs(h - ss[i]))), rights: [...new Set(rights)], sideways: wrap.scrollWidth > wrap.clientWidth + 1, cut, sum: [...new Set(sum)] };
+    const over = el => el.scrollWidth > el.clientWidth + 1;
+    const hs2 = [...document.querySelectorAll('#ot-table .ot-sh span')]; const ov = hs2.filter(over).map(e => e.textContent);
+    for (let i = 1; i < hs2.length; i++) { const a = document.createRange(); a.selectNodeContents(hs2[i - 1]); const b = document.createRange(); b.selectNodeContents(hs2[i]); if (a.getBoundingClientRect().right > b.getBoundingClientRect().left - 2) ov.push(hs2[i - 1].textContent + '/' + hs2[i].textContent); }
+    const segCut = [...document.querySelectorAll('#ot-body .ot-steps span')].filter(over).map(e => e.textContent);
+    return { ov, segCut, off: Math.max(...hs.map((h, i) => Math.abs(h - ss[i]))), rights: [...new Set(rights)], sideways: wrap.scrollWidth > wrap.clientWidth + 1, cut, sum: [...new Set(sum)] };
   });
   ck(`step names sit over their steps (off by ${lay.off.toFixed(1)}px)`, lay.off < 4, lay);
-  ck('the ... buttons line up on the right', lay.rights.length === 1, lay.rights);
+  ck('step names do not run into each other and none is cut off', !lay.ov.length, lay.ov);
+  ck('the step written in the coloured step is never cut off', !lay.segCut.length, lay.segCut);
+  ck('the ... buttons line up on the right', Math.max(...lay.rights) - Math.min(...lay.rights) <= 1, lay.rights);
   ck('no sideways scrolling at 1440 wide, no text cut off', !lay.sideways && lay.cut === 0, lay);
   ck('the six step boxes on top are the same height', lay.sum.length === 1, lay.sum);
   for (const w of [1280, 1024]) {
     await p.setViewportSize({ width: w, height: 900 }); await sleep(500);
-    const o = await p.evaluate(() => { const r = [...document.querySelectorAll('#ot-body td.nx')].map(td => td.getBoundingClientRect().right); const card = document.querySelector('#screen-purchtrack .ot-card').getBoundingClientRect().right; const sum = [...document.querySelectorAll('#ot-sum .k')].some(k => k.scrollWidth > k.clientWidth + 1); return { cut: [...document.querySelectorAll('#ot-body td')].filter(td => td.scrollWidth > td.clientWidth + 1).length, beyond: r.filter(x => x > card + 1).length, page: card > innerWidth + 1, sum }; });
-    ck(`at ${w} wide: nothing cut off, buttons inside the card, the tracker fits the screen`, o.cut === 0 && !o.page && !o.beyond && !o.sum, o); await p.screenshot({ path: `/tmp/claude-0/otf_${w}.png` });
+    const o = await p.evaluate(() => { const r = [...document.querySelectorAll('#ot-body td.nx')].map(td => td.getBoundingClientRect().right); const card = document.querySelector('#screen-purchtrack .card').getBoundingClientRect().right; const sum = [...document.querySelectorAll('#ot-sum .k')].some(k => k.scrollWidth > k.clientWidth + 1); return { cut: [...document.querySelectorAll('#ot-body td')].filter(td => td.scrollWidth > td.clientWidth + 1).map(td => td.className + ':' + td.textContent.trim().slice(0, 30) + ':' + td.scrollWidth + '>' + td.clientWidth), beyond: r.filter(x => x > card + 1).length, page: card > innerWidth + 1, sum }; });
+    ck(`at ${w} wide: nothing cut off, buttons inside the card, the tracker fits the screen`, o.cut.length === 0 && !o.page && !o.beyond && !o.sum, o); await p.screenshot({ path: `/tmp/claude-0/otf_${w}.png` });
   }
   await p.setViewportSize({ width: 1440, height: 900 }); await sleep(400);
   // ---- chips, steps on top, site filter, search
@@ -94,22 +100,51 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   ck('Approve all: the request moves to Approved', T.rows.find(r => r.ref === mrA.ref).stage === 1);
   // MR menus
   const mm = await menu(p, rB.key);
-  ck(`menu on a request waiting: ${mm.join(' | ')}`, mm.includes('Approve / approve less / reject') && mm.includes('Open the request (full history)'), mm);
-  await pick(p, 'Open the request (full history)'); await sleep(2500);
-  ck('Open the request: Approvals opens on it', await p.evaluate(r => xlOn('approvals') && document.getElementById('mreq-list').textContent.includes(r), mrB.ref));
+  ck(`menu on a request waiting: ${mm.join(' | ')}`, ['Approve / approve less / reject', 'The request in full (materials, history)', 'Request PDF', 'Delete the request', 'Close as it stands (came earlier / not needed)'].every(x => mm.includes(x)), mm);
+  await pick(p, 'The request in full (materials, history)'); await sleep(1500);
+  const rq = await p.evaluate(() => { const m = document.getElementById('ot-req'); return { on: m.classList.contains('on'), h: m.querySelector('h3').textContent, lines: m.querySelectorAll('tbody tr').length, btns: [...m.querySelectorAll('.acts button')].map(b => b.textContent) }; });
+  ck(`the request in full: ${rq.h} - ${rq.lines} materials, ${rq.btns.join(' / ')}`, rq.on && rq.h.includes(mrB.ref) && rq.lines === 3 && ['Request PDF', 'Edit request', 'Delete', 'Record what arrived', 'Close as it stands', 'Close'].every(b => rq.btns.includes(b)), rq);
+  const [pdf] = await Promise.all([p.context().waitForEvent('page', { timeout: 8000 }).catch(() => null), p.evaluate(() => [...document.querySelectorAll('#ot-req .acts button')].find(b => b.textContent === 'Request PDF').click())]);
+  ck('Request PDF opens the request sheet', !!pdf && /\/export\/store\/request\/\d+\/view/.test(pdf.url()), pdf && pdf.url()); if (pdf) await pdf.close();
+  await p.evaluate(() => [...document.querySelectorAll('#ot-req .acts button')].find(b => b.textContent === 'Record what arrived').click()); await sleep(2500);
+  ck('Record what arrived opens the portal\'s receive form for it', await p.evaluate(r => document.getElementById('recv-modal-overlay').style.display === 'flex' && document.getElementById('recv-ref').textContent.includes(r), mrB.ref));
+  await p.evaluate(() => closeReceive()); await sleep(1500);
   await toTracker(p);
+  // Delete an untouched request (a third one)
+  const mrC = await mk('C'); await p.evaluate(() => otLoad()); await sleep(1500);
+  const rC = (await api(p, '/store/purchase/tracker')).rows.find(r => r.ref === mrC.ref);
+  await menu(p, rC.key); await pick(p, 'Delete the request'); await sleep(600);
+  await p.evaluate(() => { const b = [...document.querySelectorAll('button')].filter(b => b.offsetParent && b.textContent.trim() === 'Delete').pop(); b.click(); }); await sleep(2500);
+  ck(`Delete the request: ${mrC.ref} gone`, !(await api(p, '/store/purchase/tracker')).rows.some(r => r.ref === mrC.ref));
+  // add to item list, from the request in full: a request with a material not on the list
+  const mrD = await api(p, '/store/requests', { site: sites[0], requested_by: 'Test Engineer D', lines: [{ description: 'Tracker test widget ' + Date.now() % 100000, qty_requested: 2, unit: 'pcs' }] });
+  await api(p, `/store/requests/${mrD.id}/status`, { status: 'approved' });
+  await p.evaluate(id => otRequest(id), mrD.id); await sleep(1500);
+  if (await p.evaluate(() => !![...document.querySelectorAll('#ot-req button')].find(b => b.textContent === 'Add to item list'))) {
+    await p.evaluate(() => [...document.querySelectorAll('#ot-req button')].find(b => b.textContent === 'Add to item list').click()); await sleep(600);
+    await p.evaluate(() => { const b = [...document.querySelectorAll('button')].filter(b => b.offsetParent && b.textContent.trim() === 'Add').pop(); b.click(); }); await sleep(3000);
+  }
+  const linked = (await api(p, `/store/purchase/tracker/request/${mrD.id}`)).lines[0];
+  ck('Add to item list: the material is on the list and the line linked to it', !!linked.item_id && !!linked.item_code, linked);
+  // Already booked in, from the request in full
+  await p.evaluate(() => [...document.querySelectorAll('#ot-req button')].find(b => b.textContent === 'Already booked in').click()); await sleep(600);
+  await p.evaluate(() => { const b = [...document.querySelectorAll('button')].filter(b => b.offsetParent && b.textContent.trim() === 'Yes, booked in').pop(); b.click(); }); await sleep(2500);
+  const lnD = (await api(p, `/store/purchase/tracker/request/${mrD.id}`));
+  ck('Already booked in: the material reads arrived, the request delivered - no stock added', lnD.lines[0].qty_received === 2 && lnD.status === 'delivered', lnD.status);
+  await closeModals(p); await toTracker(p);
   const mm2 = await menu(p, approved.key);
-  ck(`menu on an approved request: ${mm2.join(' | ')}`, mm2.includes('Raise LPO') && mm2.includes('Close - not needed any more'), mm2);
+  ck(`menu on an approved request: ${mm2.join(' | ')}`, mm2.includes('Raise LPO') && mm2.includes('Close as it stands (came earlier / not needed)'), mm2);
   await p.mouse.click(5, 5);
-  // close a request not needed (mrB is waiting - approve then close)
-  await api(p, `/store/requests/${mrB.id}/status`, { status: 'approved' });
+  // close a request as it stands (mrB - waiting): not needed
   await p.evaluate(() => otLoad()); await sleep(1500);
-  const rB2 = (await api(p, '/store/purchase/tracker')).rows.find(r => r.ref === mrB.ref);
-  await menu(p, rB2.key); await pick(p, 'Close - not needed any more'); await sleep(300);
-  ck('Close - not needed: asks why', (await modalOn(p, 'ot-ask')).includes(mrB.ref));
-  await p.click('#ot-ask .chips button:first-child'); await p.click('#ot-ask [data-go]'); await sleep(2500);
+  await menu(p, rB.key); await pick(p, 'Close as it stands (came earlier / not needed)'); await sleep(300);
+  ck('Close as it stands: asks what happened and why', (await modalOn(p, 'ot-ask')).includes(mrB.ref));
+  await p.click('#ot-ask [value=not_coming]'); await p.click('#ot-ask [data-go]'); await sleep(300);
+  ck('Close as it stands: a reason is required', /reason/i.test(await p.$eval('#ot-ask-status', e => e.textContent)));
+  await p.fill('#ot-why1', 'Site no longer needs it'); await p.click('#ot-ask [data-go]'); await sleep(2500);
   T = await api(p, '/store/purchase/tracker');
-  ck(`${mrB.ref} closed and gone from the tracker`, !T.rows.some(r => r.ref === mrB.ref));
+  const rBc = T.rows.find(r => r.ref === mrB.ref);
+  ck(`${mrB.ref} closed: under Done & closed, with the reason`, rBc && rBc.stage === 5 && /Not needed: Site no longer needs it/.test(rBc.result), rBc);
   // Ordered LPO: button + menu
   await p.evaluate(k => document.querySelector(`tr[data-k="${k}"] td.nx button:not(.ot-dots)`).click(), ordered.key); await sleep(1500);
   ck(`Book delivery (${ordered.ref}) opens its delivery`, (await modalOn(p, 'pu-dlv')).includes(ordered.ref), await modalOn(p, 'pu-dlv'));
@@ -161,6 +196,62 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   ck('bill checked, not in Zoho yet: Bill checked, Shafeeq to send to Zoho', z.stage === 4 && z.who === 'Shafeeq' && z.action === 'Send to Zoho', z);
   await p.evaluate(k => { const b = document.querySelector(`tr[data-k="${k}"] td.nx button:not(.ot-dots)`); b.scrollIntoView({ block: 'center' }); b.click(); }, z.key); await sleep(3000);
   ck('Send to Zoho opens Accounts > Send to Zoho', await p.evaluate(() => xlOn('zoho')));
+  // ---- close old orders: one LPO as it stands (came earlier - no stock), then several ticked together (not coming + bill)
+  await toTracker(p); await p.evaluate(() => { OT_VIEW = 'open'; otRender(); });
+  T = await api(p, '/store/purchase/tracker');
+  const olds = T.rows.filter(r => r.kind === 'lpo' && r.stage === 2 && !r.rental).slice(0, 3);
+  const st0 = JSON.stringify(await api(p, '/store/stock'));
+  await menu(p, olds[0].key); await pick(p, 'Close as it stands (came earlier / not coming)'); await sleep(300);
+  await p.check('#ot-bill1'); await p.fill('#ot-why1', 'Before Arun joined - came and used'); await p.click('#ot-ask [data-go]'); await sleep(2500);
+  T = await api(p, '/store/purchase/tracker');
+  const c0 = T.rows.find(r => r.ref === olds[0].ref);
+  ck(`${olds[0].ref} closed as came earlier, bill check closed: Done (or with Shafeeq if not in Zoho)`, c0.stage >= 4 && !c0.part, c0);
+  ck('closing as came earlier added no stock', JSON.stringify(await api(p, '/store/stock')) === st0);
+  const hist = await api(p, `/store/purchase/orders/${olds[0].id}/deliveries`);
+  ck('its history says it came earlier, no stock added', hist.history.some(h => /Came earlier, not booked then - no stock added/.test(h.notes)), hist.history.slice(-2));
+  // ticked together
+  await p.click('#ot-tidy-btn'); await sleep(400);
+  ck('Close old orders: tick boxes and the close bar appear', await p.evaluate(() => document.querySelectorAll('#ot-body .ot-pick').length > 0 && document.getElementById('ot-tidybar').classList.contains('on')));
+  for (const r of olds.slice(1)) await p.check(`tr[data-k="${r.key}"] .ot-pick`);
+  ck('the button counts the ticked ones', /\(2\)/.test(await p.$eval('#ot-tidy-go', b => b.textContent)));
+  await p.check('[name="ot-how"][value="not_coming"]'); await p.fill('#ot-tidy-why', 'Before Arun joined - not coming');
+  await p.click('#ot-tidy-go'); await sleep(600);
+  await p.evaluate(() => { const b = [...document.querySelectorAll('button')].filter(b => b.offsetParent && b.textContent.trim() === 'Close them').pop(); b.click(); }); await sleep(4000);
+  T = await api(p, '/store/purchase/tracker');
+  const cl = olds.slice(1).map(o => T.rows.find(r => r.ref === o.ref));
+  ck('the 2 ticked LPOs closed as not coming: Done, "Nothing came - closed"', cl.every(r => r.stage === 5 && /Nothing came/.test(r.result)), cl.map(r => [r.ref, r.stage, r.result]));
+  ck('closing them moved no stock', JSON.stringify(await api(p, '/store/stock')) === st0);
+  await p.click('#ot-tidy-btn'); await sleep(300);
+  // ---- Done & closed shows cancelled LPOs and closed requests, with why
+  await p.evaluate(() => { OT_VIEW = 'done'; otRender(); }); await sleep(300);
+  const done = await p.$$eval('#ot-body tr.ot-r', x => x.map(e => e.textContent.replace(/\s+/g, ' ')));
+  ck(`Done & closed lists closed and cancelled ones with the reason (${done.length})`, done.some(t => /Cancelled/.test(t)) && done.some(t => /Not needed:/.test(t)), done.slice(0, 3));
+  // ---- Preview / PDF / Excel follow the filters on screen
+  await p.evaluate(() => { OT_VIEW = 'late'; otRender(); });
+  const ex = await p.evaluate(async () => { await refreshDownloadToken(); const out = {};
+    for (const f of ['view', 'pdf', 'excel']) { const r = await fetch(`${API}/export/store/tracker?view=late&site=&q=&step=&format=${f}&token=${encodeURIComponent(cachedDownloadToken)}`); out[f] = [r.status, r.headers.get('content-type'), f === 'view' ? (await r.text()) : (await r.arrayBuffer()).byteLength]; }
+    return out; });
+  const lateN = (await api(p, '/store/purchase/tracker')).rows.filter(r => r.stage < 5 && r.late > 0).length;
+  ck('Preview opens, titled Order Tracker, only the Late ones', ex.view[0] === 200 && /Order Tracker/.test(ex.view[2]) && new RegExp(`Late \\| ${lateN} order`).test(ex.view[2]), [ex.view[0], (ex.view[2].match(/Late[^<]{0,40}/) || [])[0], lateN]);
+  ck('Export PDF and Excel download', ex.pdf[0] === 200 && /pdf/.test(ex.pdf[1]) && ex.pdf[2] > 2000 && ex.excel[0] === 200 && /sheet/.test(ex.excel[1]), [ex.pdf, ex.excel]);
+  // ---- the app's own look: segment chips, standard buttons, standard table heading
+  const look = await p.evaluate(() => {
+    const on = document.querySelector('#ot-chips .seg-chip.on'), cs = on && getComputedStyle(on);
+    const th = getComputedStyle(document.querySelector('#ot-table th'));
+    const bt = [...document.querySelectorAll('#ot-body td.nx button')].every(b => b.classList.contains('btn') && (b.classList.contains('btn-primary') || b.classList.contains('btn-gray')));
+    const dark = [...document.querySelectorAll('#screen-purchtrack button, #screen-purchtrack select, #screen-purchtrack input')].filter(e => { const bg = getComputedStyle(e).backgroundColor; const c = bg.match(/[\d.]+/g) || [255, 255, 255]; return e.offsetParent && !(c.length === 4 && +c[3] === 0) && +c[0] < 60 && +c[1] < 60 && +c[2] < 60; }).map(e => e.tagName + ':' + e.className + ':' + e.textContent.slice(0, 20));
+    return { chip: on && on.className, chipBg: cs && cs.backgroundColor, th: th.backgroundColor, bt, dark };
+  });
+  ck('the app\'s own look: segment chips, standard buttons and heading, nothing black', look.chipBg === 'rgb(255, 255, 255)' && look.th === 'rgb(245, 243, 238)' && look.bt && look.dark.length === 0, look);
+  // ---- Approvals and Order follow-up are off the tab bar; an old link still opens them; a request link opens it in the tracker
+  await p.evaluate(() => pgGo('store', 'requests')); await sleep(2500);
+  const subs = await p.$$eval('#pg-sub .pg-subtab', x => x.map(e => e.textContent.trim()));
+  ck(`Requests shows only Material requests (${subs.join(', ')})`, subs.length === 1 && subs[0] === 'Material requests', subs);
+  await p.evaluate(() => pgGo('store', 'requests:followup')); await sleep(2500);
+  ck('an old link to Order follow-up still opens it', await p.evaluate(() => xlOn('followup')));
+  await p.evaluate(r => openRequestRef(r), mrA.ref); await sleep(4500);
+  ck('a request link (e.g. from a notification or the LPO screen) opens it in full on the tracker', await p.evaluate(r => xlOn('purchtrack') && document.getElementById('ot-req').classList.contains('on') && document.querySelector('#ot-req h3').textContent.includes(r), mrA.ref));
+  await closeModals(p);
   ck('admin: no page errors', !p.errs.length, p.errs);
   await p.context().close();
   // ===== the real logins, ticked tab by tab
@@ -175,7 +266,7 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
     ck(`${u}: My turn is the ${role}'s`, JSON.stringify(D.my_roles) === JSON.stringify([role]), D.my_roles);
     const chip = await q.$eval('#ot-chips button.on', e => e.textContent);
     const mine = D.rows.filter(r => r.stage < 5 && r.role === role).length;
-    ck(`${u}: opens on My turn (${mine})`, chip === `My turn (${mine})`, chip);
+    ck(`${u}: opens on My turn (${mine})`, chip.replace(/\s+/g, ' ').trim() === `My turn ${mine}`, chip);
     const btns = await q.$$eval('#ot-body td.nx button:not(.ot-dots)', x => [...new Set(x.map(b => b.textContent))]);
     ck(`${u}: My turn buttons ${btns.join(', ')}`, mine === 0 || (btns.length && btns.every(b => !notSees.includes(b))), btns);
     await q.evaluate(() => { OT_VIEW = 'open'; otRender(); }); await sleep(300);

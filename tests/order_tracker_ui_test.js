@@ -40,9 +40,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // approve popup: approve / approve less / reject
   await p.evaluate(k => otApprove(k), row.key); await sleep(500);
   const trs = await p.$$('#ot-appr tr[data-l]');
-  await (await trs[0].$('button[data-d=a]')).click();
-  await (await trs[1].$('button[data-d=p]')).click(); await (await trs[1].$('.q')).fill('15'); await (await trs[1].$('.rs')).fill('Only 15 needed this week');
-  await (await trs[2].$('button[data-d=r]')).click(); await (await trs[2].$('.rs')).fill('Not needed now');
+  await (await trs[0].$('[data-d=a]')).click();
+  await (await trs[1].$('[data-d=p]')).click(); await (await trs[1].$('.q')).fill('15'); await (await trs[1].$('.rs')).fill('Only 15 needed this week');
+  await (await trs[2].$('[data-d=r]')).click(); await (await trs[2].$('.rs')).fill('Not needed now');
   await p.screenshot({ path: '/tmp/claude-0/ot_2.png' });
   await p.click('#ot-appr [data-go]'); await sleep(2500);
   const mr2 = (await api('/store/requests')).find(x => x.id === mr.id);
