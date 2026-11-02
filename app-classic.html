@@ -381,9 +381,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .ot-sum .k { flex: 1 1 0; min-width: 120px; border: 1px solid #E9EBEE; border-radius: 8px; padding: 8px 12px; cursor: pointer; background: #fff; display: flex; align-items: baseline; gap: 6px; }
   .ot-sum .k b { font-size: 17px; } .ot-sum .k span { font-size: 12.5px; color: #444; white-space: nowrap; } .ot-sum .k em { font-style: normal; font-size: 11.5px; color: #999; margin-left: auto; white-space: nowrap; }
   .ot-sum .k:hover { border-color: #D9B6B0; } .ot-sum .k.on { border-color: var(--red); background: #FDF4F3; } .ot-sum .k.on span { color: var(--red); font-weight: 600; }
-  #ot-table { table-layout: fixed; min-width: 900px; }
+  #ot-table { table-layout: fixed; min-width: 940px; }
   #ot-table col.c-pick { width: 34px; } #ot-table col.c-site { width: 60px; } #ot-table col.c-what { width: 25%; } #ot-table col.c-sup { width: 20%; }
-  #ot-table col.c-steps { width: 348px; } #ot-table col.c-note { width: 150px; } #ot-table col.c-next { width: 120px; }
+  #ot-table col.c-steps { width: 348px; } #ot-table col.c-note { width: 140px; } #ot-table col.c-next { width: 176px; }
   #ot-table td { vertical-align: middle; text-align: left; }
   #ot-table tr.ot-r { cursor: pointer; } #ot-table tr.ot-r:hover td { background: #FBF8F6; }
   #ot-table td.site { font-weight: 600; }
@@ -397,7 +397,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .ot-steps .x { background: #9AA0A6; color: #fff; font-weight: 600; }
   .ot-late { color: #C0392B; font-size: 11.5px; font-weight: 600; } .ot-come { color: #B26A00; font-size: 11.5px; font-weight: 600; line-height: 1.3; word-break: break-word; }
   .ot-res { color: #666; font-size: 11.5px; line-height: 1.3; word-break: break-word; }
-  #ot-table td.nx { text-align: right; } .ot-nx { font-weight: 600; color: var(--red); font-size: 12.5px; line-height: 1.25; } #ot-table .ot-who { margin: 2px 0 0; }
+  #ot-table td.nx { text-align: right; } .ot-nx { font-weight: 600; color: var(--red); font-size: 12px; } #ot-table .ot-who { margin: 0 0 3px; }
+  .ot-btns { display: flex; gap: 4px; justify-content: flex-end; align-items: center; flex-wrap: wrap; } .ot-btns .btn { padding: 5px 9px; font-size: 12px; white-space: nowrap; }
   .ot-acts { display: flex; flex-direction: column; gap: 6px; } .ot-acts .btn { width: 100%; text-align: left; } .ot-who { font-size: 11.5px; color: #999; }
     .ot-menu { position: fixed; z-index: 4000; background: #fff; border: 1px solid #E7CEC9; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.14); min-width: 240px; padding: 6px 0; font-size: 13px; }
   .ot-menu div { padding: 8px 14px; cursor: pointer; color: #333; } .ot-menu div:hover { background: #FDF6F5; color: #5F2E27; }
@@ -408,6 +409,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #ot-tidybar { display: none; margin-top: 10px; padding: 12px 14px; border: 1px solid #E7CEC9; background: #FDF6F5; border-radius: 8px; }
   #ot-tidybar.on { display: block; } #ot-tidybar .form-row { margin-bottom: 6px; } #ot-tidybar label { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
   .ot-rq h4 { margin: 14px 0 6px; font-size: 13px; }
+  #ot-chips { flex-wrap: wrap; max-width: 100%; }
   @media (max-width: 1180px) {
     .ot-sum .k em { display: none; }
     #ot-table { min-width: 0; } #ot-table colgroup, #ot-table thead { display: none; }
@@ -416,7 +418,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
     #ot-table tr.ot-r td { border: 0; padding: 2px 0; background: none; }
     #ot-table tr.ot-r td.site { position: absolute; right: 12px; top: 10px; }
     #ot-table tr.ot-r td.pick { position: absolute; left: -2px; top: 10px; } #ot-table.tidy tr.ot-r { padding-left: 30px; }
-    #ot-table tr.ot-r td.what { padding-right: 60px; } #ot-table tr.ot-r td.st { padding: 6px 0 2px; } #ot-table td.nx { text-align: left; padding-top: 6px; } }
+    #ot-table tr.ot-r td.what { padding-right: 60px; } #ot-table tr.ot-r td.st { padding: 6px 0 2px; } #ot-table td.nx { text-align: left; padding-top: 6px; } #ot-table .ot-btns { justify-content: flex-start; } }
   .pu-modal { position: fixed; inset: 0; background: rgba(20,24,28,.45); z-index: 5000; display: none; align-items: center; justify-content: center; }
   .pu-modal.on { display: flex; } .pu-modal .box { background: #fff; border-radius: 12px; padding: 20px 22px; width: min(900px, 96vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
   .pu-modal.small .box { width: min(480px, 94vw); }
@@ -22388,14 +22390,14 @@ function otRender() {
       : `<div class="t2">${r.stage === 0 ? "Waiting for approval" : r.stage === 5 ? "-" : "Approved - no LPO yet"}</div>`;
     const note = (r.late > 0 ? `<div class="ot-late">${r.late} day${r.late === 1 ? "" : "s"} late</div>` : "") + (r.to_come ? `<div class="ot-come">${escapeHtml(r.to_come)} to come</div>` : "") + (r.result ? `<div class="ot-res">${escapeHtml(r.result)}</div>` : "");
     const can = r.stage < 5 && r.action && otCanDo(r.role);
-    return `<tr class="ot-r" data-k="${r.key}" onclick="otSheet('${r.key}')" title="Tap for what can be done">
+    return `<tr class="ot-r" data-k="${r.key}" onclick="otSheet('${r.key}')" title="Tap for everything that can be done">
       ${tidy ? `<td class="pick" onclick="event.stopPropagation()">${r.stage < 5 ? `<input type="checkbox" class="ot-pick" value="${r.key}" onchange="otTidyCount()">` : ""}</td>` : ""}
       <td class="site">${escapeHtml(r.site || "-")}</td>
       <td class="what"><div class="t1">${escapeHtml(r.what || "-")}</div><div class="t2">${escapeHtml(refs.join(" · "))}</div></td>
       <td>${sup}</td>
       <td class="st"><div class="ot-steps">${steps}</div></td>
       <td>${note}</td>
-      <td class="nx">${r.stage < 5 && r.action ? `<div class="ot-nx">${escapeHtml(r.action)}</div><div class="ot-who">${escapeHtml(r.who || "")}</div>` : `<div class="ot-who">${r.stage === 5 ? "Done" : ""}</div>`}</td>
+      <td class="nx" onclick="event.stopPropagation()">${r.who && r.stage < 5 ? `<div class="ot-who">${escapeHtml(r.who)}</div>` : ""}<div class="ot-btns">${can ? `<button type="button" class="btn btn-primary" onclick="otDo('${r.key}')">${escapeHtml(r.action)}</button>` : r.stage < 5 && r.action ? `<span class="ot-nx">${escapeHtml(r.action)}</span>` : ""}<button type="button" class="btn btn-gray" onclick="otSheet('${r.key}')" title="Everything else that can be done">More</button></div></td>
     </tr>`;
   }).join("");
   otTidyCount();
