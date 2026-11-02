@@ -138,9 +138,10 @@ PAGES = {
             sub("returns", "Return notes", screen="store", right="store", go="pgStorePanel('returns')")]),
         tab("requests", "requests", "Requests", ["requests", "approvals"], subs=[
             sub("requests", "Material requests", screen="requests", right="requests"),
-            # Also on the Order tracker; kept here as before - the purchaser works line by line on Approvals (2 Nov 2026).
-            sub("approvals", "Approvals", screen="approvals", right="approvals"),
-            sub("followup", "Order follow-up", screen="followup", right="requests")]),
+            # Approvals and Order follow-up live on the Order tracker (2 Nov 2026): every button they had is there.
+            # Kept out of sight so an old link still opens them; one line brings either back.
+            sub("approvals", "Approvals", screen="approvals", right="approvals", hidden=True),
+            sub("followup", "Order follow-up", screen="followup", right="requests", hidden=True)]),
         tab("purchasing", "purchase", "Purchasing", "approvals", subs=[
             sub("purchase", "Purchase orders", screen="purchase", right="approvals"),
             sub("lporegister", "LPO register", screen="lporegister", right="approvals"),

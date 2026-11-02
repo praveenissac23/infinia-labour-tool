@@ -493,6 +493,11 @@ class PurchaseOrder(Base):
     # the supplier's, booked into Rentals under a Rental material - never our own stock. None = decided by the
     # supplier (one we rent from, or whose LPO materials are Rentals materials) and shown ticked on the LPO;
     # True / False = ticked or unticked by hand. (No default: nothing is written to the existing rows.)
+    # Why only part came (2 Nov 2026): "supplier" = the supplier sent less, "site" = the site asked to hold the
+    # rest - so the tracker says which, not just "Part". Set by the store keeper with the delivery; cleared when
+    # everything has come.
+    part_why = Column(String, default="")
+    part_note = Column(String, default="")
     rental = Column(Boolean, nullable=True)
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)

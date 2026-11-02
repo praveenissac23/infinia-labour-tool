@@ -4077,11 +4077,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <select id="ot-site" onchange="otRender()" style="width:160px;"><option value="">All sites</option></select>
               <input type="text" id="ot-search" placeholder="Search LPO, request, supplier, material" oninput="otRender()" style="width:270px;">
               <span style="flex:1;"></span>
-              <button type="button" class="btn btn-gray" id="ot-tidy-btn" onclick="otTidy(!OT_TIDY)" style="display:none;" title="Orders from before you joined: close them as they stand - came earlier (no stock added) or not coming">Close old orders</button>
+              <button type="button" class="btn btn-gray" id="ot-tidy-btn" onclick="otTidy(!OT_TIDY)" style="display:none;" title="Tick several: close them as they stand (came earlier - no stock added, or not coming), or delete requests nothing was done on">Close old orders</button>
             </div>
             <div id="ot-tidybar">
               <div class="form-row">
-                <b style="font-size:13px;">Close the ticked ones as they stand:</b>
+                <b style="font-size:13px;">Ticked ones - close as they stand:</b>
                 <label><input type="radio" name="ot-how" value="came" checked> Came earlier - no stock added</label>
                 <label><input type="radio" name="ot-how" value="not_coming"> Not coming / not needed</label>
                 <label title="The bill is already with accounts - the bill check is closed too"><input type="checkbox" id="ot-bill"> Also close the bill check</label>
@@ -4089,6 +4089,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="form-row" style="margin-bottom:0;">
                 <input type="text" id="ot-tidy-why" placeholder="Reason (required) - e.g. Before Arun joined, confirmed with site" style="width:420px;">
                 <button type="button" class="btn btn-gray" onclick="otTidy(false)">Cancel</button>
+                <button type="button" class="btn btn-gray" id="ot-tidy-del" onclick="otTidyDelete()" title="Delete the ticked requests that nothing has been done on yet (no approval, order or delivery)">Delete ticked requests</button>
                 <button type="button" class="btn btn-primary" data-main id="ot-tidy-go" onclick="otTidyGo()">Close ticked</button>
               </div>
             </div>
@@ -11003,8 +11004,8 @@ async function lpoDlvOpen(id, after) {
         <td class="n">${num(l.ordered)} ${escapeHtml(l.unit || "")}</td>
         <td class="n">${num(l.delivered)}${l.closed ? `<div style="font-size:11px; color:#999;">${num(l.closed)} closed</div>` : ""}</td>
         <td class="n"><b>${num(l.remaining)}</b></td>
-        <td>${open && l.remaining > 0 ? `<input type="number" class="pu-q" step="any" min="0" max="${l.remaining}" placeholder="0" style="width:90px; text-align:right;">` : ""}</td>
-        <td>${open && l.remaining > 0 ? `<label style="font-size:12px; white-space:nowrap;" title="The rest of this line will not come (damaged and returned, no longer needed) - it is closed, not left to come"><input type="checkbox" class="pu-close"> rest not coming</label>` : ""}</td>
+        <td>${open && l.remaining > 0 ? `<input type="number" class="pu-q" step="any" min="0" max="${l.remaining}" placeholder="0" style="width:90px; text-align:right;" oninput="puPartCheck()">` : ""}</td>
+        <td>${open && l.remaining > 0 ? `<label style="font-size:12px; white-space:nowrap;" title="The rest of this line will not come (damaged and returned, no longer needed) - it is closed, not left to come"><input type="checkbox" class="pu-close" onchange="puPartCheck()"> rest not coming</label>` : ""}</td>
       </tr>`).join("");
     const hist = d.history.length ? `<div style="margin-top:14px; font-weight:700; font-size:13px;">What came so far</div>
       <table><thead><tr><th>DN date</th><th>DN no.</th><th style="text-align:left;">Material</th><th>Qty</th><th>How</th><th>To</th><th>By</th></tr></thead><tbody>${
@@ -11020,6 +11021,11 @@ async function lpoDlvOpen(id, after) {
         <div class="field"><label>DN date *</label><input type="date" id="pu-date" style="width:150px;" value="${isoLocal(new Date())}"></div>
         <div class="field"><label title="Where it was delivered: the LPO's site, unless the LPO is for the store">Delivered to</label><select id="pu-where" style="width:170px; min-width:150px;">${puWhereOpts(d.deliver_to)}</select></div>
         <div class="field" style="flex:1; min-width:160px;"><label>Note</label><input type="text" id="pu-note" placeholder="optional" style="width:100%;"></div>
+      </div>
+      <div class="form-row" id="pu-partwhy" style="display:none; gap:10px; align-items:center; flex-wrap:wrap;">
+        <b style="font-size:13px;">Only part came - why?</b>
+        <div class="seg-chips"><button type="button" class="seg-chip${d.part_why === "supplier" ? " on" : ""}" data-w="supplier" onclick="puPartWhy(this)">Supplier sent less</button><button type="button" class="seg-chip${d.part_why === "site" ? " on" : ""}" data-w="site" onclick="puPartWhy(this)">Site asked to hold the rest</button></div>
+        <input type="text" id="pu-partnote" placeholder="e.g. balance next week / site will call" style="width:260px;" value="${escapeAttr(d.part_note || "")}">
       </div>` : ""}
       <div class="grid-wrap" style="margin-top:10px; max-height:none;"><table>
         <thead><tr><th>#</th><th style="text-align:left;">Material</th><th>Ordered</th><th>Came</th><th>Still to come</th>${open ? "<th>Came now</th><th></th>" : "<th></th><th></th>"}</tr></thead>
@@ -11029,9 +11035,18 @@ async function lpoDlvOpen(id, after) {
       <div class="acts">${open ? `<button type="button" class="btn btn-gray" onclick="lpoDlvAll()">Everything still to come arrived</button>` : ""}
         <button type="button" class="btn btn-gray" onclick="document.getElementById('pu-dlv').classList.remove('on')">Close</button>
         ${open ? `<button type="button" class="btn btn-primary" id="pu-dlv-save" onclick="lpoDlvSave(${d.id})">Save delivery</button>` : ""}</div></div>`;
+    puPartCheck();
   } catch (e) {
     m.innerHTML = `<div class="box"><div class="status-msg err">${escapeHtml(errText(e))}</div><div class="acts"><button class="btn btn-gray" onclick="document.getElementById('pu-dlv').classList.remove('on')">Close</button></div></div>`;
   }
+}
+function puPartWhy(b) { b.parentElement.querySelectorAll(".seg-chip").forEach(x => x.classList.toggle("on", x === b)); }
+// the "why only part" row shows as soon as a line is being booked short (or the order is part delivered already)
+function puPartCheck() {
+  const m = document.getElementById("pu-dlv"), row = document.getElementById("pu-partwhy"); if (!m || !row) return;
+  const short = [...m.querySelectorAll("tr[data-l]")].some(tr => { const q = parseFloat((tr.querySelector(".pu-q") || {}).value) || 0, rem = parseFloat(tr.dataset.rem) || 0;
+    return rem > 0 && !(tr.querySelector(".pu-close") || {}).checked && (q > 0 ? q < rem - 1e-9 : /Part/.test((m.querySelector("h3") || {}).textContent || "")); });
+  row.style.display = short ? "" : "none";
 }
 function lpoDlvAll() {
   document.querySelectorAll("#pu-dlv tr[data-l]").forEach(tr => { const q = tr.querySelector(".pu-q"); if (q) q.value = tr.dataset.rem; });
@@ -11045,10 +11060,13 @@ async function lpoDlvSave(id) {
   if (!dn) { showStatus("pu-dlv-status", "warn", "Type the DN number from the supplier's delivery note."); m.querySelector("#pu-dn").focus(); return; }
   if (!on) { showStatus("pu-dlv-status", "warn", "Give the delivery note date."); return; }
   if (!lines.length) { showStatus("pu-dlv-status", "warn", "Enter how much came for at least one line (or tick 'rest not coming')."); return; }
+  const row = m.querySelector("#pu-partwhy");
+  if (row && row.style.display !== "none" && !m.querySelector("#pu-partwhy .seg-chip.on")) { showStatus("pu-dlv-status", "warn", "Only part came - say why: the supplier sent less, or the site asked to hold the rest."); return; }
   const btn = m.querySelector("#pu-dlv-save"); if (btn) btn.disabled = true;
   try {
     const r = await apiCall(`/store/purchase/orders/${id}/deliver`, { method: "POST", body: JSON.stringify({
-      dn_no: dn, dn_date: on, deliver_to: m.querySelector("#pu-where").value, notes: m.querySelector("#pu-note").value.trim(), lines }) });
+      dn_no: dn, dn_date: on, deliver_to: m.querySelector("#pu-where").value, notes: m.querySelector("#pu-note").value.trim(),
+      part_why: ((m.querySelector("#pu-partwhy .seg-chip.on") || {}).dataset || {}).w || "", part_note: (m.querySelector("#pu-partnote") || {}).value || "", lines }) });
     m.classList.remove("on");
     const msg = `Delivery booked - ${PU_WORD[r.status] || r.status}. ` + (r.done || []).slice(0, 4).join("; ") + ((r.done || []).length > 4 ? " ..." : "");
     if (puDlvAfter) puDlvAfter(msg, r);
@@ -22381,14 +22399,14 @@ function otRender() {
     const steps = OT_STEPS.map((s, i) => {
       if (r.cancelled) return i === 5 ? `<span class="x">Closed</span>` : `<span>&nbsp;</span>`;
       if (i < r.stage) return `<span class="d">&#10003;</span>`;
-      if (i === r.stage) return r.part ? `<span class="h">Part</span>` : `<span class="${r.late > 0 ? "l" : "c"}">${s}</span>`;
+      if (i === r.stage) return r.part ? `<span class="h" title="${r.part_why === "site" ? "Site asked to hold the rest" : r.part_why === "supplier" ? "Supplier sent less" : "Part came"}">${r.part_why === "site" ? "On hold" : r.part_why === "supplier" ? "Short" : "Part"}</span>` : `<span class="${r.late > 0 ? "l" : "c"}">${s}</span>`;
       return `<span>&nbsp;</span>`;
     }).join("");
     const refs = r.kind === "lpo" ? [r.ref, ...(r.requests || [])] : [r.ref + (r.requested_by ? " · " + r.requested_by : "")];
     const sup = r.supplier
       ? `<div class="t1">${escapeHtml(r.supplier)}</div>${r.contact ? `<div class="t2">${escapeHtml(r.contact)}</div>` : ""}${r.phone ? `<div class="t2"><a href="tel:${escapeAttr(r.phone.replace(/[^\d+]/g, ""))}" onclick="event.stopPropagation()" title="Call">${escapeHtml(r.phone)}</a></div>` : ""}${!r.contact && !r.phone ? `<div class="t2">no contact on file</div>` : ""}`
       : `<div class="t2">${r.stage === 0 ? "Waiting for approval" : r.stage === 5 ? "-" : "Approved - no LPO yet"}</div>`;
-    const note = (r.late > 0 ? `<div class="ot-late">${r.late} day${r.late === 1 ? "" : "s"} late</div>` : "") + (r.to_come ? `<div class="ot-come">${escapeHtml(r.to_come)} to come</div>` : "") + (r.result ? `<div class="ot-res">${escapeHtml(r.result)}</div>` : "");
+    const note = (r.late > 0 ? `<div class="ot-late">${r.late} day${r.late === 1 ? "" : "s"} late</div>` : "") + (r.to_come ? `<div class="ot-come">${escapeHtml(r.to_come)} to come</div>` : "") + (r.part_why ? `<div class="ot-res">${r.part_why === "site" ? "Site asked to hold the rest" : "Supplier sent less"}${r.part_note ? " - " + escapeHtml(r.part_note) : ""}</div>` : (r.part ? `<div class="ot-res">why? - not said yet</div>` : "")) + (r.result ? `<div class="ot-res">${escapeHtml(r.result)}</div>` : "");
     const can = r.stage < 5 && r.action && otCanDo(r.role);
     return `<tr class="ot-r" data-k="${r.key}" onclick="otSheet('${r.key}')" title="Tap for everything that can be done">
       ${tidy ? `<td class="pick" onclick="event.stopPropagation()">${r.stage < 5 ? `<input type="checkbox" class="ot-pick" value="${r.key}" onchange="otTidyCount()">` : ""}</td>` : ""}
@@ -22414,7 +22432,7 @@ function otDo(k) {
   if (r.action === "Approve") return otApprove(k);
   if (r.action === "Raise LPO") return otRaise(k);
   if (r.action === "Book delivery") return lpoDlvOpen(r.id, otAfter);
-  if (r.action === "Mark arrived") return otReceive(r.id);
+  if (r.action === "Mark arrived") return otRequest(r.id);
   if (r.action === "Check bill") return lpoBillOpen(r.id, otAfter);
   if (r.action === "Send to Zoho") return pgGo("accounts", "zoho");
 }
@@ -22460,7 +22478,7 @@ function otSheet(k) {
   m.innerHTML = `<div class="box"><h3>${escapeHtml(r.ref)} <span class="pill">${escapeHtml(where)}</span></h3>
     <div class="sub">${r.site ? (/^\d+$/.test(r.site) ? "Site " : "") + escapeHtml(r.site) + " · " : ""}${escapeHtml(r.what)}${(r.requests || []).filter(x => x !== r.ref).length ? `<div style="margin-top:4px;">Requests: ${r.requests.filter(x => x !== r.ref).map(x => `<a href="#" onclick="event.preventDefault(); document.getElementById('ot-sheet').classList.remove('on'); otRequestRef(${escapeAttr(jsq(x))})">${escapeHtml(x)}</a>`).join(" · ")}</div>` : ""}</div>
     ${r.supplier ? `<div style="font-size:13px; margin-bottom:6px;"><b>${escapeHtml(r.supplier)}</b>${r.contact ? " · " + escapeHtml(r.contact) : ""}${r.phone ? ` · <a href="tel:${escapeAttr(r.phone.replace(/[^\d+]/g, ""))}">${escapeHtml(r.phone)}</a>` : ""}</div>` : ""}
-    ${r.late > 0 || r.to_come ? `<div style="font-size:12.5px; margin-bottom:6px;">${r.late > 0 ? `<span class="ot-late">${r.late} day${r.late === 1 ? "" : "s"} late</span> ` : ""}${r.to_come ? `<span class="ot-come">${escapeHtml(r.to_come)} to come</span>` : ""}</div>` : ""}
+    ${r.late > 0 || r.to_come ? `<div style="font-size:12.5px; margin-bottom:6px;">${r.late > 0 ? `<span class="ot-late">${r.late} day${r.late === 1 ? "" : "s"} late</span> ` : ""}${r.to_come ? `<span class="ot-come">${escapeHtml(r.to_come)} to come</span>` : ""}${r.part_why ? ` <span class="ot-res">(${r.part_why === "site" ? "site asked to hold the rest" : "supplier sent less"}${r.part_note ? " - " + escapeHtml(r.part_note) : ""})</span>` : ""}</div>` : ""}
     ${r.who && r.stage < 5 ? `<div style="font-size:12.5px; color:#666; margin-bottom:10px;">Next: <b>${escapeHtml(r.action)}</b> - ${escapeHtml(r.who)}</div>` : ""}
     <div class="ot-acts">${it.map((x, i) => `<button type="button" class="btn ${x[2] ? "btn-primary" : "btn-gray"}" data-i="${i}">${escapeHtml(x[0])}</button>`).join("")}</div>
     <div class="acts"><button type="button" class="btn btn-gray" data-x>Close</button></div></div>`;
@@ -22526,7 +22544,7 @@ function otAsk(title, text, chips, goLabel, go) {
 function otTidy(on) {
   OT_TIDY = !!on;
   document.getElementById("ot-tidybar").classList.toggle("on", OT_TIDY);
-  document.getElementById("ot-tidy-btn").textContent = OT_TIDY ? "Done closing" : "Close old orders";
+  document.getElementById("ot-tidy-btn").textContent = OT_TIDY ? "Done" : "Close old orders";
   if (OT_TIDY && OT_STEP === null && OT_VIEW === "done") OT_VIEW = "open";
   otRender();
 }
@@ -22565,6 +22583,17 @@ function otCloseOne(r, how, why, bill) {
     ? apiCall(`/store/purchase/orders/${r.id}/close-old`, { method: "POST", body: JSON.stringify({ how, reason: why, bill }) })
     : apiCall(`/store/requests/${r.id}/close-old`, { method: "POST", body: JSON.stringify({ how, reason: why }) });
 }
+async function otTidyDelete() {
+  const keys = [...document.querySelectorAll("#ot-body .ot-pick:checked")].map(b => b.value);
+  const rows = keys.map(otRow).filter(r => r && r.kind === "mr" && r.untouched);
+  const skipped = keys.length - rows.length;
+  if (!rows.length) { showStatus("ot-status", "warn", "Tick requests nothing has been done on yet (no approval, order or delivery) - only those can be deleted; close the others instead."); return; }
+  if (!(await hrAsk(`Delete ${rows.length} request(s)?\n\n${rows.map(r => r.ref).join(", ")}${skipped ? `\n\n(${skipped} ticked one(s) skipped: already acted on - close those instead)` : ""}\n\nThis cannot be undone.`, "Delete", true))) return;
+  let ok = 0; const bad = [];
+  for (const r of rows) { try { await apiCall(`/store/requests/${r.id}`, { method: "DELETE" }); ok++; } catch (e) { bad.push(`${r.ref}: ${errText(e)}`); } }
+  await otLoad();
+  showStatus("ot-status", bad.length ? "warn" : "ok", `${ok} deleted.` + (bad.length ? ` Not deleted: ${bad.join("; ")}` : ""));
+}
 async function otTidyGo() {
   const keys = [...document.querySelectorAll("#ot-body .ot-pick:checked")].map(b => b.value);
   const why = document.getElementById("ot-tidy-why").value.trim();
@@ -22600,11 +22629,11 @@ async function otRequest(id) {
     const acts = [];
     const onLpo = (l.lpos || []).filter(x => !/Delivered|Closed/.test(x.status));
     if (P && l.status === "pending") acts.push(`<button type="button" class="btn btn-gray" onclick="otLineDecide(${d.id}, ${l.id}, 'a')">Approve</button>`, `<button type="button" class="btn btn-gray" onclick="otLineDecide(${d.id}, ${l.id}, 'p', ${l.qty_requested})">Approve less</button>`);
+    if (S && l.status === "approved" && left > 0 && onLpo.length === 0 && !acts.some(a => /It arrived/.test(a))) acts.push(`<button type="button" class="btn btn-gray" onclick="otLineArrived(${d.id}, ${l.id})" title="It arrived (bought with petty cash, brought by the site, or already booked in) - off the list with your note; no stock is added here">It arrived</button>`);
     if (P && l.status === "approved" && left > 0 && !onLpo.length && !(l.qty_received > 0)) acts.push(`<button type="button" class="btn btn-gray" onclick="otLineDecide(${d.id}, ${l.id}, 'p', ${l.qty_requested})" title="Fewer than asked - the request then asks for that many">Reduce</button>`);
     if (P && l.status !== "rejected" && left > 0 && !onLpo.length) acts.push(`<button type="button" class="btn btn-gray" onclick="otLineNotNeeded(${d.id}, ${l.id})" title="Only this material is not needed - the rest of the request goes on">${l.qty_received > 0 ? "Rest not needed" : l.status === "pending" ? "Reject" : "Not needed"}</button>`);
     if (P && onLpo.length) acts.push(`<button type="button" class="btn btn-gray" onclick="document.getElementById('ot-req').classList.remove('on'); otEdit('lpo${onLpo[0].id}')" title="It is on ${escapeAttr(onLpo[0].ref)} - take it off or reduce it there">Change ${escapeHtml(onLpo[0].ref.replace("IC/LPO/", "LPO "))}</button>`);
     if (!l.item_id && l.status !== "rejected" && P) acts.push(`<button type="button" class="btn btn-gray" onclick="otLinkItem(${d.id}, ${l.id})" title="It is not on the material list yet - add it so it can be ordered and go into stock">Add to item list</button>`);
-    if (l.status === "approved" && left > 0 && S) acts.push(`<button type="button" class="btn btn-gray" onclick="otLineArrived(${d.id}, ${l.id})" title="It arrived and is already booked in (on Rentals or at the site) - off the list, no stock added again">Already booked in</button>`);
     return `<tr><td>${escapeHtml(l.item_name || l.description || "(no name)")}${l.item_code ? `<div style="font-size:11px; color:#999;">${escapeHtml(l.item_code)}</div>` : ""}${l.notes ? `<div style="font-size:11px; color:#999;">${escapeHtml(l.notes)}</div>` : ""}</td>
       <td class="n">${num(l.qty_requested)} ${escapeHtml(l.unit || "")}</td><td class="n">${num(l.qty_received || 0)}</td><td>${escapeHtml(st)}</td><td style="text-align:right; white-space:nowrap;">${acts.join(" ")}</td></tr>`;
   };
@@ -22668,9 +22697,12 @@ async function otLinkItem(rid, lid) {
   } catch (e) { showStatus("ot-req-status", "err", errText(e)); }
 }
 async function otLineArrived(rid, lid) {
-  if (!(await hrAsk("It arrived and is already booked in (on Rentals or at the site)?\n\nIt comes off the list. No stock is added again.", "Yes, booked in"))) return;
-  try { await apiCall(`/store/requests/${rid}/lines/${lid}/arrived`, { method: "POST", body: JSON.stringify({}) }); await otRequest(rid); otLoad(); }
-  catch (e) { showStatus("ot-req-status", "err", errText(e)); }
+  const d = await apiCall(`/store/purchase/tracker/request/${rid}`); const l = (d.lines || []).find(x => x.id === lid); if (!l) return;
+  otAsk(`${l.item_name || l.description}: it arrived?`, `It comes off the list for ${d.ref}. No stock is added here - book it on Material arrived if it went into the store.`,
+    ["Delivered to the site directly", "Bought with petty cash", "Brought from the store", "Already booked in on Rentals"], "It arrived", async note => {
+      await apiCall(`/store/requests/${rid}/lines/${lid}/arrived`, { method: "POST", body: JSON.stringify({ note }) });
+      await otRequest(rid); showStatus("ot-req-status", "ok", `${l.item_name || l.description}: arrived - ${note}.`); otLoad();
+    });
 }
 // Preview / PDF / Excel / Share: what is on screen, the same filters
 async function otExport(fmt) {

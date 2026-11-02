@@ -41,7 +41,9 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   await p.click('#pu-dlv-save'); await sleep(800);
   const warn = await p.evaluate(() => document.getElementById('pu-dlv-status').innerText);
   ck('no DN number: it asks for it, nothing saved', /DN number/.test(warn), warn);
-  await p.fill('#pu-dn', 'DN-4401'); await p.click('#pu-dlv-save'); await sleep(1800);
+  await p.fill('#pu-dn', 'DN-4401'); await p.click('#pu-dlv-save'); await sleep(800);
+  ck('part delivery without a reason: it asks why (supplier sent less / site asked to hold)', /say why/i.test(await p.evaluate(() => document.getElementById('pu-dlv-status').innerText)));
+  await p.click('#pu-partwhy .seg-chip[data-w=supplier]'); await p.click('#pu-dlv-save'); await sleep(1800);
   ck('part delivery saved: Part delivered', /Part delivered/.test(await p.evaluate(() => window.__msg || '')), await p.evaluate(() => window.__msg));
   const [, d1] = await api(`/store/purchase/orders/${po.id}/deliveries`);
   ck('...60 of 100 came, 40 to come, at 913', d1.lines[0].delivered === 60 && d1.lines[0].remaining === 40 && d1.history[0].to === '913' && d1.history[0].dn === 'DN-4401', d1.lines);

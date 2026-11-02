@@ -946,7 +946,8 @@ def order_deliveries(order_id: int, db: Session = Depends(get_db),
             for r in db.query(models.LpoReceipt).filter(models.LpoReceipt.order_id == o.id).order_by(models.LpoReceipt.id).all()]
     return {"id": o.id, "ref": o.ref, "supplier": o.supplier_name or "", "site": o.project_location or "",
             "deliver_to": b.sites.key(o), "status": p["status"], "status_word": STATUS_WORDS[p["status"]], "rental": p["rental"],
-            "lines": p["lines"], "history": hist, "superseded_by": o.superseded_by or "", **bill_of(o)}
+            "lines": p["lines"], "history": hist, "superseded_by": o.superseded_by or "",
+            "part_why": o.part_why or "", "part_note": o.part_note or "", **bill_of(o)}
 
 
 @router.post("/store/purchase/orders/{order_id}/deliver")
@@ -970,6 +971,10 @@ def deliver(order_id: int, payload: dict = Body(...), db: Session = Depends(get_
             where = known.code if known else where[:40]
     done = book_delivery(db, o, entries, payload.get("dn_no"), _date(payload.get("dn_date")), user_id=user.id,
                          location=where, notes=str(payload.get("notes") or ""))
+    # why only part came: the supplier sent less, or the site asked to hold the rest
+    why = str(payload.get("part_why") or "").strip()
+    if why in ("supplier", "site"):
+        o.part_why, o.part_note = why, " ".join(str(payload.get("part_note") or "").split())[:200]
     db.commit()
     M.log_action(db, user.id, "lpo_delivery", f"{o.ref} DN {payload.get('dn_no')} ({_date(payload.get('dn_date')).strftime('%d/%m/%Y')}): " + "; ".join(done))
     b = Book(db)

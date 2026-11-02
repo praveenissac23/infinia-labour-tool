@@ -133,10 +133,10 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   const linked = (await api(p, `/store/purchase/tracker/request/${mrD.id}`)).lines[0];
   ck('Add to item list: the material is on the list and the line linked to it', !!linked.item_id && !!linked.item_code, linked);
   // Already booked in, from the request in full
-  await p.evaluate(() => [...document.querySelectorAll('#ot-req button')].find(b => b.textContent === 'Already booked in').click()); await sleep(600);
-  await p.evaluate(() => { const b = [...document.querySelectorAll('button')].filter(b => b.offsetParent && b.textContent.trim() === 'Yes, booked in').pop(); b.click(); }); await sleep(2500);
+  await p.evaluate(() => [...document.querySelectorAll('#ot-req button')].find(b => b.textContent === 'It arrived').click()); await sleep(600);
+  await p.click('#ot-ask .seg-chip'); await p.click('#ot-ask [data-go]'); await sleep(2500);
   const lnD = (await api(p, `/store/purchase/tracker/request/${mrD.id}`));
-  ck('Already booked in: the material reads arrived, the request delivered - no stock added', lnD.lines[0].qty_received === 2 && lnD.status === 'delivered', lnD.status);
+  ck('It arrived (with a note): the material reads arrived, the request delivered - no stock added', lnD.lines[0].qty_received === 2 && lnD.status === 'delivered', lnD.status);
   await closeModals(p); await toTracker(p);
   const mm2 = await menu(p, approved.key);
   ck(`menu on an approved request: ${mm2.join(' | ')}`, mm2.includes('Raise LPO') && mm2.includes('Close as it stands (came earlier / not needed)'), mm2);
@@ -174,10 +174,17 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   await p.evaluate(k => document.querySelector(`tr[data-k="${k}"] td.nx .btn-primary`).click(), ordered.key); await sleep(1500);
   const line1 = await p.evaluate(() => { const tr = document.querySelector('#pu-dlv tr[data-l]'); return { rem: +tr.dataset.rem, q: !!tr.querySelector('.pu-q') }; });
   if (line1.q && line1.rem >= 2) {
-    await p.fill('#pu-dlv tr[data-l] .pu-q', '1'); await p.fill('#pu-dn', 'DN-TRACK-1'); await p.click('#pu-dlv-save'); await sleep(2500);
+    await p.fill('#pu-dlv tr[data-l] .pu-q', '1'); await p.fill('#pu-dn', 'DN-TRACK-1'); await sleep(200);
+    ck('booking short: the form asks why only part came', await p.evaluate(() => document.getElementById('pu-partwhy').style.display !== 'none'));
+    await p.click('#pu-dlv-save'); await sleep(500);
+    ck('booking short without a reason is refused', /say why/i.test(await p.$eval('#pu-dlv-status', e => e.textContent)));
+    await p.click('#pu-partwhy .seg-chip[data-w=site]'); await p.fill('#pu-partnote', 'balance next week'); await p.click('#pu-dlv-save'); await sleep(2500);
     T = await api(p, '/store/purchase/tracker');
     const r = T.rows.find(x => x.ref === ordered.ref);
-    ck(`delivery of 1 booked: ${ordered.ref} reads Part, with what is still to come`, r.part && r.stage === 3 && !!r.to_come, r);
+    ck(`delivery of 1 booked: ${ordered.ref} reads Part, with what is still to come, and why (site asked to hold)`, r.part && r.stage === 3 && !!r.to_come && r.part_why === 'site' && r.part_note === 'balance next week', r);
+    await toTracker(p);
+    const cell = await p.$eval(`tr[data-k="${r.key}"]`, e => e.textContent.replace(/\s+/g, ' '));
+    ck('the row says On hold - site asked to hold the rest', /On hold/.test(cell) && /Site asked to hold the rest - balance next week/.test(cell), cell.slice(0, 200));
   } else ck('ordered LPO line to book', false, line1);
   await closeModals(p); await toTracker(p);
   // part delivery menu
@@ -252,9 +259,9 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
   // ---- Approvals and Order follow-up are off the tab bar; an old link still opens them; a request link opens it in the tracker
   await p.evaluate(() => pgGo('store', 'requests')); await sleep(2500);
   const subs = await p.$$eval('#pg-sub .pg-subtab', x => x.map(e => e.textContent.trim()));
-  ck(`Requests keeps Material requests, Approvals and Order follow-up (${subs.join(', ')})`, subs.join('|') === 'Material requests|Approvals|Order follow-up', subs);
+  ck(`Requests shows only Material requests (${subs.join(', ')})`, subs.length === 1 && subs[0] === 'Material requests', subs);
   await p.evaluate(() => pgGo('store', 'requests:followup')); await sleep(2500);
-  ck('Order follow-up opens as before', await p.evaluate(() => xlOn('followup')));
+  ck('an old link to Order follow-up still opens it', await p.evaluate(() => xlOn('followup')));
   await p.evaluate(r => openRequestRef(r), mrA.ref); await sleep(4500);
   ck('a request link (e.g. from a notification or the LPO screen) opens it in full on the tracker', await p.evaluate(r => xlOn('purchtrack') && document.getElementById('ot-req').classList.contains('on') && document.querySelector('#ot-req h3').textContent.includes(r), mrA.ref));
   await closeModals(p);
@@ -280,6 +287,20 @@ const pick = async (p, label) => { await p.evaluate(l => { const d = [...documen
     await q.evaluate(() => { OT_VIEW = 'open'; otRender(); }); await sleep(300);
     const all = await q.$$eval('#ot-body td.nx .btn-primary', x => [...new Set(x.map(b => b.textContent))]);
     ck(`${u}: on All open can use ${all.join(', ')}`, sees.every(s => all.includes(s) || !D.rows.some(r => r.action === s && r.stage < 5)), all);
+    if (u === 'amal') {
+      const mrE = await api(q, '/store/requests', { site: sites[0], requested_by: 'Site Eng', lines: [{ item_id: items[0].id, description: items[0].name, qty_requested: 7, unit: items[0].unit || 'pcs' }] });
+      await q.evaluate(id => apiCall(`/store/requests/${id}/status`, { method: 'POST', body: JSON.stringify({ status: 'approved' }) }), mrE.id).catch(() => 0);
+      const dd = await api(q, `/store/purchase/tracker/request/${mrE.id}`);
+      if (dd.lines[0].status !== 'approved') { const ad = await login(br, 'admin', 'changeme123'); await api(ad, `/store/requests/${mrE.id}/status`, { status: 'approved' }); await ad.context().close(); }
+      await q.evaluate(() => otLoad()); await sleep(1500);
+      await q.evaluate(id => otRequest(id), mrE.id); await sleep(1500);
+      const has = await q.evaluate(() => [...document.querySelectorAll('#ot-req button')].some(b => b.textContent === 'It arrived'));
+      ck('amal: a request material has an "It arrived" button', has);
+      await q.evaluate(() => [...document.querySelectorAll('#ot-req button')].find(b => b.textContent === 'It arrived').click()); await sleep(500);
+      await q.fill('#ot-why', 'Site people brought it'); await q.click('#ot-ask [data-go]'); await sleep(2500);
+      const after = await api(q, `/store/purchase/tracker/request/${mrE.id}`);
+      ck('amal: It arrived with a note - the material reads arrived, the request delivered, no stock added', after.lines[0].qty_received === 7 && after.status === 'delivered', [after.status, after.lines[0].qty_received]);
+    }
     ck(`${u}: no page errors`, !q.errs.length, q.errs);
     await q.context().close();
   }
