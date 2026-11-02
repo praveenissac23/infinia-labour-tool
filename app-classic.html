@@ -19774,7 +19774,7 @@ try { ZH_PANE = localStorage.getItem("infinia_zh_pane"); } catch (e) {}
 // so nothing below it moves.
 function zhTabsSkeleton() {
   const el = document.getElementById("zh-tabs"); if (!el || el.children.length) return;
-  const T = [["petty", "Petty cash"], ["bank", "Bank"], ["lpo", "LPOs"], ["loans", "Staff loans"], ["attention", "Needs attention"], ["october", "October check"], ["suppliers", "Suppliers"], ["sent", "Sent to Zoho"]];
+  const T = [["petty", "Petty cash"], ["bank", "Bank"], ["lpo", "LPOs"], ["loans", "Staff loans"], ["attention", "Needs attention"], ["suppliers", "Suppliers"], ["sent", "Sent to Zoho"]];
   const on = ZH_PANE || "petty";
   el.innerHTML = T.map(([k, lab]) => `<button type="button" class="zh-tab ${k === on ? "on" : ""}${k === "sent" ? " zh-tab-end" : ""}" onclick="zhPane('${k}')">${lab}${["october", "suppliers", "sent"].includes(k) ? "" : `<span class="zh-n zero">·</span>`}</button>`).join("");
   document.querySelectorAll("#screen-zoho .zh-pane").forEach(p => p.style.display = p.dataset.pane === on ? "block" : "none");
@@ -19786,7 +19786,7 @@ function zhTabsDraw() {
   const lpoWait = (ZH.pos || []).filter(o => !o.status && !o.cancelled).length, lpoFlag = (ZH.pos || []).filter(o => (o.note || []).length || o.status === "changed" || (o.cancelled && o.err)).length;
   const attn = (ZH.pending || []).length + (ZH.todo || []).length;
   const T = [["petty", "Petty cash", (ZH.rows || []).length], ["bank", "Bank", (ZH.bank || []).length], ["lpo", "LPOs", lpoWait + lpoFlag],
-             ["loans", "Staff loans", (ZH.loans || []).length], ["attention", "Needs attention", attn, attn ? "bad" : ""], ["october", "October check", ""], ["suppliers", "Suppliers", ""], ["sent", "Sent to Zoho", ""]];
+             ["loans", "Staff loans", (ZH.loans || []).length], ["attention", "Needs attention", attn, attn ? "bad" : ""], ["suppliers", "Suppliers", ""], ["sent", "Sent to Zoho", ""]];
   if (!ZH_PANE || !T.some(t => t[0] === ZH_PANE)) ZH_PANE = (T.find(t => t[2]) || T[0])[0];
   if (ZH_PANE === "sent" && !ZS) zsLoad();
   el.innerHTML = T.map(([k, lab, n, cls]) => `<button type="button" class="zh-tab ${k === ZH_PANE ? "on" : ""}${k === "sent" ? " zh-tab-end" : ""}" onclick="zhPane('${k}')">${lab}${n !== "" ? `<span class="zh-n ${cls || ""} ${n ? "" : "zero"}">${n}</span>` : ""}</button>`).join("");
