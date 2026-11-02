@@ -382,8 +382,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .ot-sum .k b { font-size: 17px; } .ot-sum .k span { font-size: 12.5px; color: #444; white-space: nowrap; } .ot-sum .k em { font-style: normal; font-size: 11.5px; color: #999; margin-left: auto; white-space: nowrap; }
   .ot-sum .k:hover { border-color: #D9B6B0; } .ot-sum .k.on { border-color: var(--red); background: #FDF4F3; } .ot-sum .k.on span { color: var(--red); font-weight: 600; }
   #ot-table { table-layout: fixed; min-width: 940px; }
-  #ot-table col.c-pick { width: 34px; } #ot-table col.c-site { width: 60px; } #ot-table col.c-what { width: 25%; } #ot-table col.c-sup { width: 20%; }
-  #ot-table col.c-steps { width: 348px; } #ot-table col.c-note { width: 196px; } #ot-table col.c-next { width: 124px; }
+  #ot-table col.c-pick { width: 34px; } #ot-table col.c-site { width: 60px; } #ot-table col.c-what { width: 25%; } #ot-table col.c-sup { width: auto; }
+  #ot-table col.c-steps { width: 330px; } #ot-table col.c-note { width: 184px; } #ot-table col.c-next { width: 118px; }
   #ot-table td { vertical-align: middle; text-align: left; }
   #ot-table tr.ot-r { cursor: pointer; } #ot-table tr.ot-r:hover td { background: #FBF8F6; }
   #ot-table td.site { font-weight: 600; }
@@ -1917,6 +1917,32 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pc-vmore { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-start; } .pc-vmore input { min-width:260px; height:36px; }
   /* LPO line description: grows with what is typed; Enter = new line */
   textarea.lpo-d2 { width:100%; min-height:34px; resize:vertical; font:inherit; line-height:1.4; padding:6px 8px; box-sizing:border-box; overflow:hidden; }
+
+  /* ===== UI STANDARD (2 Nov 2026) - one look on every screen; new screens use these, nothing else =====
+     1 page tabs: red filled pill (.pg-tabs; People's .viewtabs; Estimation's #pnav)
+     2 tabs inside a tab: red underline (.pg-sub; .zh-tabs; est .utabs)
+     3 filters and choices: grey segmented, the chosen one white (.seg-chips; .hr-seg; .vf-pills)
+     4 Preview / Export PDF / Export Excel / Share: pale red outline (.btn-dark) in .exp-btns, top right of the card, in that order
+     5 the page's main Save / Submit floats bottom right, left of INFI (floatSaves); Back sits top left */
+  .zh-tabs { gap: 22px; padding-bottom: 0; align-items: flex-end; }
+  .zh-tab { border: 0 !important; background: none !important; border-radius: 0; height: 36px; padding: 0 2px; color: #7A7470; box-shadow: inset 0 -2px 0 transparent; }
+  .zh-tab:hover { color: #C0392B; }
+  .zh-tab.on { background: none !important; color: #C0392B; box-shadow: inset 0 -3px 0 #C0392B; }
+  .hr-seg { border: 0; background: #F1EEEA; border-radius: 8px; padding: 2px; gap: 2px; overflow: visible; }
+  .hr-seg button { border: 0 !important; border-radius: 6px; padding: 5px 12px; font-size: 12.5px; color: #555; background: none; }
+  .hr-seg button:hover { background: rgba(255,255,255,.6); }
+  .hr-seg button.on { background: #fff; color: #C0392B; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .vf-pills, .pc-protabs, .vf-yn { display: inline-flex; gap: 2px; background: #F1EEEA; border-radius: 8px; padding: 2px; }
+  .vf-pill { border: 0 !important; background: none !important; border-radius: 6px !important; padding: 5px 12px; font-size: 12.5px; color: #555 !important; }
+  .vf-yn .vf-pill { height: 32px; }
+  .vf-pill.on { background: #fff !important; color: #C0392B !important; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  #screen-projpay .pc-head { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "t b" "c c"; align-items: center; row-gap: 8px; }
+  #screen-projpay .pc-title { display: contents; }
+  #screen-projpay .pc-title > h2 { grid-area: t; }
+  #screen-projpay .pp-ctrl { grid-area: c; }
+  #screen-projpay .pc-btns { grid-area: b; justify-content: flex-end; }
+  #screen-combine .card > .exp-btns { margin-top: 2px; }
+  .btn.fab { box-shadow: 0 4px 14px rgba(192,57,43,.35); }
 </style>
 <script>
 // The menu as this login last saw it, drawn before anything else runs, so
@@ -2643,15 +2669,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="card" style="flex:1; min-width:260px;">
               <h2>Combine to One File</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">The salary cards of the workers ticked under PAY (Paid status &amp; payslips below), in a single file.</p>
-              <button class="btn btn-dark" style="width:100%; margin-bottom:8px;" onclick="exportCombineCards('view')">Preview</button>
-              <button class="btn btn-dark" style="width:100%; margin-bottom:8px;" onclick="exportCombineCards('excel')">Combine to Excel</button>
-              <button class="btn btn-dark" style="width:100%;" onclick="exportCombineCards('pdf')">Combine to PDF</button>
+              <div class="exp-btns"><button class="btn btn-dark" onclick="exportCombineCards('view')">Preview</button><button class="btn btn-dark" onclick="exportCombineCards('pdf')">Export PDF</button><button class="btn btn-dark" onclick="exportCombineCards('excel')">Export Excel</button></div>
             </div>
             <div class="card" style="flex:1; min-width:260px;">
               <h2>Separate Files</h2>
               <p style="font-size:12px; color:#888; margin:0 0 10px;">One file per ticked worker, zipped together.</p>
-              <button class="btn btn-gray" style="width:100%; margin-bottom:8px;" onclick="exportCombineCards('excel-separate')">Separate Excel Files</button>
-              <button class="btn btn-gray" style="width:100%;" onclick="exportCombineCards('pdf-separate')">Separate PDF Files</button>
+              <div class="exp-btns"><button class="btn btn-dark" onclick="exportCombineCards('pdf-separate')">Separate PDF files</button><button class="btn btn-dark" onclick="exportCombineCards('excel-separate')">Separate Excel files</button></div>
             </div>
             <div class="card" style="flex:1; min-width:260px;">
               <h2>One Worker</h2>
@@ -2659,11 +2682,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <input type="text" id="combine-emp" list="combine-emp-list" placeholder="Type a name or number"
                      style="width:100%; margin-bottom:8px;" autocomplete="off">
               <datalist id="combine-emp-list"></datalist>
-              <div style="display:flex; gap:8px;">
-                <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('view')">Preview</button>
-                <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('pdf')">Export PDF</button>
-                <button class="btn btn-dark" style="flex:1;" onclick="exportOneWorker('excel')">Export Excel</button>
-              </div>
+              <div class="exp-btns"><button class="btn btn-dark" onclick="exportOneWorker('view')">Preview</button><button class="btn btn-dark" onclick="exportOneWorker('pdf')">Export PDF</button><button class="btn btn-dark" onclick="exportOneWorker('excel')">Export Excel</button></div>
             </div>
           </div>
 
