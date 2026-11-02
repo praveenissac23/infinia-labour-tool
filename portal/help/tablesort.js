@@ -82,6 +82,10 @@
   }
   // The sorter's own moves must not wake its watcher: what it changed is dropped from the watcher's queue before it
   // stands down - otherwise every sort set off another, and a sorted list redrew itself without end (flicker).
+  // Someone is typing in this table now (the cursor is in one of its boxes).
+  function editing(t) { const a = document.activeElement; return !!(a && a !== document.body && t.contains(a) && a.matches("input:not([type=checkbox]):not([type=radio]),select,textarea,[contenteditable]")); }
+  // A table whose rows are boxes to fill in, not a list to read.
+  function hasFields(t) { return [...t.tBodies].some(b => b.querySelector("input:not([type=checkbox]):not([type=radio]):not([type=hidden]),select,textarea")); }
   function quiet(t) { if (t.__obs) t.__obs.takeRecords(); t.__busy = false; }
   function applyOrder(t) {
     if (t.hasAttribute("data-nomove") || t.closest(".lc-compact")) return;
@@ -108,7 +112,7 @@
   }
   function saveOrder(t) { try { localStorage.setItem(storeKey(t), JSON.stringify([...headRow(t).cells].map(label))); } catch (e) {} }
   function applySort(t) {
-    const st = t.__sort; if (!st) return;
+    const st = t.__sort; if (!st || editing(t)) return;
     // A long list drawn a part at a time: sorting only the part on screen would leave rows out (the 8 rentals of 57
     // under All), so the whole list is drawn first and the sort covers every row.
     const all = t.querySelector("tr.list-more button[data-all]");
@@ -163,8 +167,15 @@
     });
     if (!t.__obs) {
       // Redrawn by its screen: put the remembered order and the sort back.
-      t.__obs = new MutationObserver(() => { if (t.__busy) return; cancelAnimationFrame(t.__raf); t.__raf = requestAnimationFrame(() => {
-        if (!headRow(t)) return; t.__sig = null; wire(t); t.__busy = true; arrange(t); quiet(t); applySort(t); }); });
+      // A form table (lines being typed in - Move material, a request, a delivery) is never re-sorted by itself:
+      // moving a row takes the cursor out of the box being typed in, so the keeper got one letter per click.
+      // Its rows are sorted only when a heading is clicked. While anything in the table is being typed in,
+      // nothing in it is moved at all; the remembered column order is put on new rows once typing stops.
+      t.__obs = new MutationObserver(() => { if (t.__busy) return; cancelAnimationFrame(t.__raf); t.__raf = requestAnimationFrame(redo); });
+      const redo = () => {
+        if (!headRow(t)) return;
+        if (editing(t)) { if (!t.__waitBlur) { t.__waitBlur = true; t.addEventListener("focusout", () => { t.__waitBlur = false; setTimeout(redo, 0); }, { once: true }); } return; }
+        t.__sig = null; wire(t); t.__busy = true; arrange(t); quiet(t); if (!hasFields(t)) applySort(t); };
       t.__obs.observe(t, { childList: true, subtree: true });
     }
   }
