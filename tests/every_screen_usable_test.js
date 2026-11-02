@@ -50,7 +50,17 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS 
         await p.evaluate(() => { const e = document.querySelector('[data-typetest]'); if (e) e.removeAttribute('data-typetest'); }); await p.keyboard.press('Escape');
         ck(`${where}: can type in "${typed}"`, got === 'Zq7', got);
       }
-      ck(`${where}: nothing covers a box or button`, !r.covered.length, r.covered.slice(0, 8));
+      // something floating (Save, INFI) over a row is fine only if the row can be scrolled clear of it
+      let still = [];
+      if (r.covered.length) still = await p.evaluate(() => {
+        const out = [];
+        const els = [...document.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea, button')].filter(e => !e.disabled && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
+        const hit = e => { const rc = e.getBoundingClientRect(); if (rc.bottom < 0 || rc.top > innerHeight) return true; const y = rc.top + rc.height / 2;
+          return [rc.left + 6, rc.left + rc.width / 2, rc.right - 6].some(x => { const t = document.elementFromPoint(x, y); return t && (t === e || e.contains(t) || (t.tagName === 'LABEL' && t.control === e)); }); };
+        for (const e of els) { if (hit(e)) continue; e.scrollIntoView({ block: 'center' }); if (!hit(e)) { const rc = e.getBoundingClientRect(); const t = document.elementFromPoint(rc.left + rc.width / 2, rc.top + rc.height / 2);
+          out.push(((e.id ? '#' + e.id + ' ' : '') + e.textContent.trim().slice(0, 25)) + ' under ' + (t ? (t.id ? '#' + t.id : String(t.className).slice(0, 30)) : '?')); } }
+        scrollTo(0, 0); return out; });
+      ck(`${where}: nothing covers a box or button (after scrolling it into view)`, !still.length, { still: still.slice(0, 8), atFirst: r.covered.slice(0, 4) });
       ck(`${where}: every dropdown has choices`, !r.noOpts.length, r.noOpts.slice(0, 8));
       ck(`${where}: no page errors`, errs.length === e0, errs.slice(e0, e0 + 3));
       await p.evaluate(() => { document.querySelectorAll('.modal.show, .overlay.show').forEach(m => m.classList.remove('show')); });

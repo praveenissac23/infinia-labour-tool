@@ -8658,6 +8658,9 @@ const UNITS = [
   ["Time (for rentals)", [["day", "day - Day"], ["week", "week - Week"], ["month", "month - Month"]]],
 ];
 
+// the material form's Unit list is filled before the form is first used (it was empty until "Clear" or Edit)
+(function fillUnitsFirst() { const go = () => { const u = document.getElementById("it-unit"); if (u && !u.options.length) u.innerHTML = unitOptionsHtml("pcs"); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else setTimeout(go, 0); })();
 function unitOptionsHtml(current) {
   const known = UNITS.flatMap(([, us]) => us.map(([v]) => v.toLowerCase()));
   const cur = (current || "").trim();
