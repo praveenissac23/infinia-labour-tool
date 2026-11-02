@@ -96,6 +96,11 @@ def _closed_mr(mr, lines, name, word):
 def build(db):
     today = M._dubai_today()
     book = P.Book(db)
+    try:
+        import zohosync
+        zoho_from = zohosync._start(db)
+    except Exception:
+        zoho_from = date(2026, 10, 1)
     sups = {s.id: s for s in db.query(models.Supplier).all()}
     who = people(db)
     try:
@@ -130,8 +135,8 @@ def build(db):
             stage = 5                            # nothing came and the rest was closed: nothing to bill
         elif not o.bill_checked:
             stage = 3
-        elif (o.zoho_status or "") in ("sent", "changed"):
-            stage = 5
+        elif (o.zoho_status or "") in ("sent", "changed", "skip") or (o.order_date and o.order_date < zoho_from):
+            stage = 5                            # in Zoho - or from before Zoho started (never sent there)
         else:
             stage = 4
         refs = sorted({mr_of_line[i].ref for i in p["related"] if mr_of_line.get(i) and

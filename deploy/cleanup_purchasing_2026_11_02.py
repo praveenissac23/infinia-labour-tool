@@ -19,7 +19,7 @@ No stock moves and no amount changes. One activity-log line per order, tagged.
 import argparse
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "app"))
@@ -28,6 +28,21 @@ TAG = "purchasing clean-up 02/11/2026"
 EPS = 1e-9
 
 ANSWERS = {
+    # final clean-up form (the 14 September LPOs), answered by Arun and Amal on 02/11/2026
+    'IC/LPO/20260100': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260101': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260102': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260103': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260104': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260105': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260106': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260107': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260108': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260109': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260111': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260112': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260113': ('came', 'All came (final clean-up form 02/11)'),
+    'IC/LPO/20260110': ('coming', 'Not yet started work'),
     'IC/LPO/20260114': ('came', ''),
     'IC/LPO/20260115': ('came', ''),
     'IC/LPO/20260116': ('came', ''),
@@ -163,7 +178,8 @@ def main():
                 if not parts:
                     already.append(f"{ref}: already closed"); continue
                 done.append(f"{ref} ({o.supplier_name}): " + "; ".join(parts))
-                shafeeq.append(f"{ref} {o.supplier_name}: closed as all came - expect the full LPO bill (AED {M.lpo_total(o):,.2f})")
+                if not (o.order_date and o.order_date < date(2026, 10, 1)):   # before Zoho (from 01/10) - accounts booked those direct
+                    shafeeq.append(f"{ref} {o.supplier_name}: closed as all came - expect the full LPO bill (AED {M.lpo_total(o):,.2f})")
                 if a.apply:
                     T._close_lpo_old(db, o, "came", f"Clean-up: {why}", True, who)
                     db.add(models.AuditLog(user_id=who.id if who else None, action="purchasing_cleanup", details=f"{ref}: all came - {'; '.join(parts)} [{TAG}]"))
