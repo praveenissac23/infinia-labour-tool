@@ -17,8 +17,8 @@ const toTracker = async p => { await p.evaluate(() => pgGo('store', 'tracker'));
 const modalOn = (p, id) => p.evaluate(id => { const m = document.getElementById(id); return !!(m && m.classList.contains('on')) ? (m.querySelector('h3') || m).textContent.replace(/\s+/g, ' ').trim() : ''; }, id);
 const closeModals = p => p.evaluate(() => document.querySelectorAll('.pu-modal.on, #lpo-cx-modal.on').forEach(m => m.classList.remove('on')));
 const menu = async (p, key) => { await p.evaluate(k => { const b = [...document.querySelectorAll(`tr[data-k="${k}"] td.nx button`)].find(x => x.textContent === 'More'); b.scrollIntoView({ block: 'center' }); b.click(); }, key); await sleep(400);
-  return p.$$eval('#ot-sheet .ot-acts button', x => x.map(e => e.textContent)); };
-const pick = async (p, label) => { await p.evaluate(l => { const d = [...document.querySelectorAll('#ot-sheet .ot-acts button')].find(x => x.textContent === l); d.click(); }, label); await sleep(1800); };
+  return p.$$eval('#ot-sheet .ot-acts button', x => x.map(e => e.firstChild.textContent)); };
+const pick = async (p, label) => { await p.evaluate(l => { const d = [...document.querySelectorAll('#ot-sheet .ot-acts button')].find(x => x.firstChild.textContent === l); d.click(); }, label); await sleep(1800); };
 (async () => {
   const br = await chromium.launch();
   // ===== admin

@@ -98,9 +98,9 @@ const REMOVED = ['Material arrived', 'Approvals', 'Order follow-up'];
     if (dept === 'store' || !dept) {
       await p.evaluate(() => pgGo('store', 'tracker')); await sleep(3000);
       await p.evaluate(() => { OT_VIEW = 'open'; OT_STEP = null; otRender(); }); await sleep(800);
-      const menuItems = await p.evaluate(k => { const b = [...document.querySelectorAll(`tr[data-k="${k}"] td.nx button`)].find(x => x.textContent === 'More'); if (!b) return null; b.click(); return [...document.querySelectorAll('#ot-sheet .ot-acts button')].map(e => e.textContent); }, 'mr' + mrArr.id);
+      const menuItems = await p.evaluate(k => { const b = [...document.querySelectorAll(`tr[data-k="${k}"] td.nx button`)].find(x => x.textContent === 'More'); if (!b) return null; b.click(); return [...document.querySelectorAll('#ot-sheet .ot-acts button')].map(e => e.firstChild.textContent); }, 'mr' + mrArr.id);
       ck(`${u}: menu on an approved request - ${menuItems && menuItems.join(' | ')}`, menuItems && !menuItems.some(x => /Record what arrived/.test(x)) && menuItems.includes('It arrived (no LPO) - material by material'), menuItems);
-      if (menuItems) { await p.evaluate(() => [...document.querySelectorAll('#ot-sheet .ot-acts button')].find(e => /^It arrived/.test(e.textContent)).click()); await sleep(2500); }
+      if (menuItems) { await p.evaluate(() => [...document.querySelectorAll('#ot-sheet .ot-acts button')].find(e => /^It arrived/.test(e.firstChild.textContent)).click()); await sleep(2500); }
       const btns = await p.evaluate(() => [...document.querySelectorAll('#ot-req button')].map(b => b.textContent.trim()));
       ck(`${u}: the request opens with It arrived per material, no second "Record what arrived"`, btns.includes('It arrived') && !btns.includes('Record what arrived'), btns);
       for (const [chip, modal] of [['Bought with petty cash', 'pu-petty'], ['From a supplier', 'recv-modal-overlay']]) {

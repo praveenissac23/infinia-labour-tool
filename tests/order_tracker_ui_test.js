@@ -79,7 +79,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // menus open for every kind of row
   for (const k of [t2.rows.find(r => r.stage === 2 && r.kind === 'lpo'), t2.rows.find(r => r.stage === 3)].filter(Boolean).map(r => r.key)) {
     await p.evaluate(k => otSheet(k), k); await sleep(300);
-    const items = await p.$$eval('#ot-sheet .ot-acts button', x => x.map(e => e.textContent));
+    const items = await p.$$eval('#ot-sheet .ot-acts button', x => x.map(e => e.firstChild.textContent));
     ck(`menu for ${k}: ${items.join(' | ')}`, items.length >= 3, items);
     await p.evaluate(() => document.getElementById('ot-sheet').classList.remove('on')); await sleep(200);
   }

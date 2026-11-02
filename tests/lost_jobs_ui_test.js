@@ -54,7 +54,7 @@ const api = (p, u, b) => p.evaluate(([u, b]) => apiCall(u, b ? { method: 'POST',
   await pu.evaluate(() => { OT_VIEW = 'open'; OT_STEP = null; otRender(); }); await sleep(600);
   const T = await api(pu, '/store/purchase/tracker');
   const old = T.rows.find(r => r.kind === 'lpo' && r.stage === 2);
-  const menu = await pu.evaluate(k => { const b = [...document.querySelectorAll(`tr[data-k="${k}"] td.nx button`)].find(x => x.textContent === 'More'); b.click(); return [...document.querySelectorAll('#ot-sheet .ot-acts button')].map(e => e.textContent); }, old.key);
+  const menu = await pu.evaluate(k => { const b = [...document.querySelectorAll(`tr[data-k="${k}"] td.nx button`)].find(x => x.textContent === 'More'); b.click(); return [...document.querySelectorAll('#ot-sheet .ot-acts button')].map(e => e.firstChild.textContent); }, old.key);
   ck(`an open LPO's More menu has Close as it stands (${old.ref})`, menu.includes('Close as it stands (came earlier / not coming)'), menu);
   console.log(bad ? `${bad} FAILED` : 'ALL PASS');
   await br.close(); process.exit(bad ? 1 : 0);
