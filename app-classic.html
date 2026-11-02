@@ -386,12 +386,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .ot-chips button { border: 1px solid #E0D9D5; background: #fff; border-radius: 14px; padding: 4px 12px; font-size: 12px; color: #5C5450; cursor: pointer; }
   .ot-chips button.on { background: #26211F; color: #fff; border-color: #26211F; }
   .ot-bar select { width: 130px; } .ot-bar input { width: 250px; height: 32px; padding: 0 10px; border: 1px solid #E0D9D5; border-radius: 6px; font-size: 12.5px; }
-  .ot-wrap { overflow-x: auto; }
-  table.ot-t { width: 100%; min-width: 1150px; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+  .ot-wrap { overflow-x: auto; } #screen-purchtrack { min-width: 0; max-width: 100%; }
+  table.ot-t { width: 100%; min-width: 960px; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
   .ot-t col.c-site { width: 62px; } .ot-t col.c-what { width: 26%; } .ot-t col.c-sup { width: 22%; } .ot-t col.c-steps { width: 310px; }
   .ot-t col.c-note { width: 160px; } .ot-t col.c-next { width: 200px; }
   .ot-t th { background: #fff !important; color: #9A918C !important; font-size: 10px; font-weight: 600; text-align: left; padding: 7px 10px; border-bottom: 1px solid #EFEAE7; letter-spacing: .3px; text-transform: uppercase; position: static; }
-  .ot-sh { display: flex; gap: 2px; } .ot-sh span { flex: 1; text-align: center; white-space: nowrap; font-size: 9.5px; text-transform: none; }
+  .ot-sh { display: flex; gap: 2px; } .ot-sh span { flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; font-size: 9.5px; text-transform: none; }
   .ot-t td { padding: 8px 10px; border-bottom: 1px solid #F1EDEA; vertical-align: middle; text-align: left; }
   .ot-t tr.ot-r:hover td { background: #FCFAF9; } .ot-t tr.ot-r { cursor: pointer; }
   .ot-t td.site { font-weight: 600; color: #5C5450; font-size: 14px; }
@@ -401,7 +401,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .ot-t .ot-ph { overflow: visible; } .ot-ph a { color: #26211F !important; font-weight: 500; white-space: nowrap; }
   .ot-t .t2 a { color: #5C5450; text-decoration: none; } .ot-t .t2 a:hover { text-decoration: underline; }
   .ot-steps { display: flex; gap: 2px; }
-  .ot-steps span { flex: 1; text-align: center; font-size: 10.5px; padding: 4px 0; background: #F3F0EE; color: #B3AAA5; white-space: nowrap; overflow: hidden; }
+  .ot-steps span { flex: 1 1 0; min-width: 0; text-align: center; font-size: 10.5px; padding: 4px 0; background: #F3F0EE; color: #B3AAA5; white-space: nowrap; overflow: hidden; }
   .ot-steps span:first-child { border-radius: 12px 0 0 12px; } .ot-steps span:last-child { border-radius: 0 12px 12px 0; }
   .ot-steps .d { background: #E3F1E8; color: #2E7D52; font-weight: 700; } .ot-steps .c { background: #2E8B57; color: #fff; font-weight: 600; }
   .ot-steps .l { background: #C33A2C; color: #fff; font-weight: 600; } .ot-steps .h { background: #E09A1A; color: #fff; font-weight: 600; }
@@ -417,7 +417,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .ot-seg button:last-child { border-right: 0; }
   .ot-seg button.on.a { background: #2E8B57; color: #fff; } .ot-seg button.on.p { background: #E09A1A; color: #fff; } .ot-seg button.on.r { background: #C33A2C; color: #fff; }
   .ot-ap td { padding: 7px 8px; vertical-align: middle; } .ot-ap input.q { width: 70px; text-align: right; } .ot-ap input.rs { width: 100%; min-width: 180px; }
-  @media (max-width: 760px) {
+  @media (max-width: 1180px) {
+    .ot-sum .k em { display: none; } .ot-sum .k { padding: 8px 10px; }
     table.ot-t { min-width: 0; } .ot-t colgroup, .ot-t thead { display: none; }
     .ot-t, .ot-t tbody, .ot-t tr.ot-r, .ot-t tr.ot-r td { display: block; width: auto; }
     .ot-t tr.ot-r { position: relative; padding: 10px 12px; border-bottom: 1px solid #EFEAE7; }

@@ -221,6 +221,7 @@ def seed_on_startup():
         _grant_zoho_to_chief_accountant(db)
         _grant_bank_to_chief_accountant(db)
         _tick_new_accounts_tabs(db)
+        _tick_tracker_tab(db)
         _grant_projects_to_chief_accountant(db)
         _grant_est_projects(db)
         _tick_est_tabs(db)
@@ -739,6 +740,24 @@ def _tick_new_accounts_tabs(db):
         if add:
             setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="zoho_bank_tabs_ticked", value="1"))
+    db.commit()
+
+
+def _tick_tracker_tab(db):
+    """Store & Purchasing > Order tracker (2 Nov 2026): a login or role ticked tab by tab sees only ticked tabs, so
+    the new tab is ticked for whoever holds a right it is for (requests, approvals, the store keeper's, Send to
+    Zoho). Nothing else changes. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "tracker_tab_ticked").first():
+        return
+    rights = {"requests", "approvals", "storekeeper", "accounts_zoho"}
+    for obj in list(db.query(models.User).all()) + list(db.query(models.AccessRole).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        if not any("." in k for k in keys) or "store.tracker" in keys:
+            continue
+        if rights & set(keys):
+            setattr(obj, field, ",".join(keys + ["store.tracker"]))
+    db.add(models.Setting(key="tracker_tab_ticked", value="1"))
     db.commit()
 
 
