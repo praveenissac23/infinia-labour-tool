@@ -5,7 +5,7 @@ const B = process.env.BASE;
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(B + '/?p=store'); await p.fill('#login-username','admin'); await p.fill('#login-password','changeme123'); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(2500);
-  await p.evaluate(() => pgGo('store')); await p.waitForTimeout(6000);
+  await p.evaluate(() => pgGo('store', 'store:home')); await p.waitForTimeout(6000);
   console.log(await p.evaluate(() => JSON.stringify({u: location.href, act: (document.querySelector('.screen.active')||{}).id, hs: !!window.HOME_STOCK, loaded: typeof loadStoreHome})));
   if (!(await p.evaluate(() => !!HOME_STOCK))) { await p.evaluate(() => typeof loadStoreHome==='function' && loadStoreHome()); await p.waitForTimeout(5000); }
   const n = () => p.evaluate(() => document.querySelectorAll('#home-stock-body tr[data-key]').length);

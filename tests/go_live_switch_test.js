@@ -27,7 +27,7 @@ const B = 'http://127.0.0.1:8032';
   ck('no TEMPORARY / classic entries in the menu', !/TEMPORARY|classic/i.test(menu), menu);
   // moving between pages: the address changes, the page does not reload
   await p.evaluate('window.__same = 1');
-  for (const [pg, want, screen] of [['store', '/?p=store', 'store'], ['payroll', '/?p=payroll', 'combine'], ['reports', '/?p=reports', null], ['settings', '/?p=settings', 'settings'], ['people', '/?p=people', 'pgstaff'], ['dashboard', '/', 'dashboard']]) {
+  for (const [pg, want, screen] of [['store', '/?p=store', 'purchtrack'], ['payroll', '/?p=payroll', 'combine'], ['reports', '/?p=reports', null], ['settings', '/?p=settings', 'settings'], ['people', '/?p=people', 'pgstaff'], ['dashboard', '/', 'dashboard']]) {
     await p.click(`.pg-side .pg-item[data-page="${pg}"]`); await p.waitForTimeout(700);
     const a = addr().split('#')[0];
     ck(`menu ${pg}: address ${want}${screen ? ', screen ' + screen : ''}, no reload`, a === want && await p.evaluate('window.__same === 1') && (!screen || await p.locator(`#screen-${screen}.active`).count() === 1), a);
@@ -40,7 +40,7 @@ const B = 'http://127.0.0.1:8032';
   await p.goto(B + '/?p=payroll#hrpayroll'); await p.waitForTimeout(2500);
   ck('reloading /?p=payroll#hrpayroll opens that page and tab, still signed in', await p.locator('#screen-hrpayroll.active').count() === 1 && !(await p.locator('#login-screen').isVisible()), addr());
   // old bookmarks, signed in
-  for (const [from, screen] of [['/app.html', 'dashboard'], ['/portal/store.html', 'store'], ['/temporary/Infinia/settings.html#logins', 'pglogins']]) {
+  for (const [from, screen] of [['/app.html', 'dashboard'], ['/portal/store.html', 'purchtrack'], ['/temporary/Infinia/settings.html#logins', 'pglogins']]) {
     await p.goto(B + from); await p.waitForTimeout(2200);
     ck(`old link ${from} opens the right screen, signed in`, await p.locator(`#screen-${screen}.active`).count() === 1 && !(await p.locator('#login-screen').isVisible()), addr());
   }

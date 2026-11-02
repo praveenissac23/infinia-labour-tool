@@ -18,7 +18,7 @@ const B = process.env.BASE || 'http://127.0.0.1:8032', SH = process.env.SHOTS ||
     return it.id;
   }, [today, NAME, site]);
   await p.evaluate(() => loadStoreItems(true)); await p.waitForTimeout(800);
-  await p.evaluate(() => pgGo('store')); await p.waitForTimeout(1500); await p.evaluate(() => pgTab('store')); await p.waitForTimeout(800); await p.evaluate(() => pgSub('other')); await p.waitForTimeout(1200);
+  await p.evaluate(() => pgGo('store', 'store:home')); await p.waitForTimeout(1500); await p.evaluate(() => pgTab('store')); await p.waitForTimeout(800); await p.evaluate(() => pgSub('other')); await p.waitForTimeout(1200);
   await p.evaluate(() => setMvKind('lost')); await p.waitForTimeout(500);
   const opts = await p.evaluate(NAME => { const t = document.getElementById('mv-item-txt'); const dl = document.getElementById(t.getAttribute('list'));
     return [...dl.options].filter(o => o.value.includes(NAME)).map(o => [o.value, o.label]); }, NAME);

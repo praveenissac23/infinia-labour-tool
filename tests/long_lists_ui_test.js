@@ -10,7 +10,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(B + '/?p=store'); await p.fill('#login-username', 'admin'); await p.fill('#login-password', 'changeme123'); await p.evaluate('doLogin()');
   await p.waitForSelector('#app-screen', { state: 'visible' }); await sleep(2500);
-  await p.evaluate(() => pgGo('store')); await sleep(6000);
+  await p.evaluate(() => pgGo('store', 'store:home')); await sleep(6000);
   const rows = sel => p.$$eval(sel + ' tr[data-code]', x => x.length).catch(() => 0);
   const home = await rows('#home-stock-body');
   ck('Store home: 150 rows drawn, with "Show more"', home === 150 && /Showing 150 of/.test(await p.textContent('#home-stock-body .list-more')), home);

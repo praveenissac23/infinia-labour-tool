@@ -124,6 +124,9 @@ PAGES = {
                                   tab("estproj", "pgestproj", "Projects", "estimation_projects"),
                                   tab("boards", "pgboards", "Trello", "estimation_boards")]),
     "store": ("Store & Purchasing", [
+        # Every open request and LPO on one line: its step, who is next, late, part delivery, supplier contact -
+        # the same screen for the purchaser, the store keeper and accounts (2 Nov 2026).
+        tab("tracker", "purchtrack", "Order tracker", ["requests", "approvals", "storekeeper", "accounts_zoho"]),
         tab("store", "store", "Stock", "store", subs=[
             sub("home", "Stock on hand", screen="store", right="store", go="pgStorePanel('home')"),
             sub("give", "Move material", screen="store", right="storekeeper", go="pgStorePanel('give')"),

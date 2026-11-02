@@ -374,6 +374,49 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #lpo-cx-modal h3 { margin: 0 0 6px; } #lpo-cx-modal textarea { width: 100%; box-sizing: border-box; min-height: 78px; margin-top: 10px; font: inherit; padding: 8px 10px; }
   #lpo-cx-modal .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; } #lpo-cx-modal .chips button { border: 1px solid #E2C9C5; background: #FDF6F5; border-radius: 14px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; }
   /* purchasing (31 Oct 2026): LPO deliveries, petty cash arrivals, the supplier's bill */
+  /* Order tracker */
+  #screen-purchtrack .ot-sum { display: flex; background: #fff; border: 1px solid #E7E1DD; border-radius: 10px; overflow: hidden; margin-bottom: 12px; }
+  .ot-sum .k { flex: 1; padding: 9px 14px; display: flex; align-items: baseline; gap: 7px; border-right: 1px solid #EFEAE7; cursor: pointer; min-width: 0; }
+  .ot-sum .k:last-child { border-right: 0; } .ot-sum .k b { font-size: 18px; } .ot-sum .k span { font-weight: 500; white-space: nowrap; }
+  .ot-sum .k em { font-style: normal; color: #9A918C; font-size: 11.5px; margin-left: auto; white-space: nowrap; }
+  .ot-sum .k.on { background: #F7F4F2; box-shadow: inset 0 -2px 0 #26211F; }
+  .ot-card { padding: 0 !important; overflow: hidden; }
+  .ot-bar { display: flex; gap: 6px; align-items: center; padding: 10px 14px; border-bottom: 1px solid #EFEAE7; flex-wrap: wrap; }
+  .ot-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ot-chips button { border: 1px solid #E0D9D5; background: #fff; border-radius: 14px; padding: 4px 12px; font-size: 12px; color: #5C5450; cursor: pointer; }
+  .ot-chips button.on { background: #26211F; color: #fff; border-color: #26211F; }
+  .ot-bar select { width: 130px; } .ot-bar input { width: 250px; height: 32px; padding: 0 10px; border: 1px solid #E0D9D5; border-radius: 6px; font-size: 12.5px; }
+  .ot-wrap { overflow-x: auto; }
+  table.ot-t { width: 100%; min-width: 1150px; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+  .ot-t col.c-site { width: 62px; } .ot-t col.c-what { width: 27%; } .ot-t col.c-sup { width: 21%; } .ot-t col.c-steps { width: 340px; }
+  .ot-t col.c-note { width: 150px; } .ot-t col.c-next { width: 200px; }
+  .ot-t th { background: #fff !important; color: #9A918C !important; font-size: 10px; font-weight: 600; text-align: left; padding: 7px 10px; border-bottom: 1px solid #EFEAE7; letter-spacing: .3px; text-transform: uppercase; position: static; }
+  .ot-sh { display: flex; gap: 2px; } .ot-sh span { flex: 1; text-align: center; white-space: nowrap; font-size: 9.5px; text-transform: none; }
+  .ot-t td { padding: 8px 10px; border-bottom: 1px solid #F1EDEA; vertical-align: middle; text-align: left; }
+  .ot-t tr.ot-r:hover td { background: #FCFAF9; } .ot-t tr.ot-r { cursor: pointer; }
+  .ot-t td.site { font-weight: 600; color: #5C5450; font-size: 14px; }
+  .ot-t .t1 { font-weight: 500; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ot-t .t2 { color: #9A918C; font-size: 11.5px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ot-t .ot-ph { display: flex; } .ot-ph .cn { overflow: hidden; text-overflow: ellipsis; white-space: pre; min-width: 0; } .ot-ph a { flex-shrink: 0; }
+  .ot-t .t2 a { color: #5C5450; text-decoration: none; } .ot-t .t2 a:hover { text-decoration: underline; }
+  .ot-steps { display: flex; gap: 2px; }
+  .ot-steps span { flex: 1; text-align: center; font-size: 10.5px; padding: 4px 0; background: #F3F0EE; color: #B3AAA5; white-space: nowrap; overflow: hidden; }
+  .ot-steps span:first-child { border-radius: 12px 0 0 12px; } .ot-steps span:last-child { border-radius: 0 12px 12px 0; }
+  .ot-steps .d { background: #E3F1E8; color: #2E7D52; font-weight: 700; } .ot-steps .c { background: #2E8B57; color: #fff; font-weight: 600; }
+  .ot-steps .l { background: #C33A2C; color: #fff; font-weight: 600; } .ot-steps .h { background: #E09A1A; color: #fff; font-weight: 600; }
+  .ot-late { color: #C33A2C; font-size: 11.5px; font-weight: 600; } .ot-come { color: #B9770E; font-size: 11.5px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+  .ot-t td.nx { text-align: right; white-space: nowrap; } .ot-who { font-size: 11.5px; color: #9A918C; margin-right: 8px; }
+  .ot-t td.nx button { background: #C33A2C; color: #fff; border: 0; border-radius: 6px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+  .ot-t td.nx button.ot-dots { background: #fff; color: #26211F; border: 1px solid #E0D9D5; padding: 4px 9px; font-size: 14px; line-height: 1; margin-left: 4px; }
+  .ot-menu { position: fixed; z-index: 4000; background: #fff; border: 1px solid #E0D9D5; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.14); min-width: 230px; padding: 6px 0; font-size: 12.5px; }
+  .ot-menu div { padding: 8px 14px; cursor: pointer; } .ot-menu div:hover { background: #F7F4F2; } .ot-menu .mh { color: #9A918C; font-size: 11px; cursor: default; } .ot-menu .mh:hover { background: none; }
+  .ot-menu .sep { border-top: 1px solid #EFEAE7; padding: 0; margin: 4px 0; }
+  .ot-seg { display: inline-flex; border: 1px solid #E0D9D5; border-radius: 7px; overflow: hidden; }
+  .ot-seg button { border: 0; border-right: 1px solid #E0D9D5; background: #fff; padding: 6px 11px; font-size: 12px; color: #5C5450; cursor: pointer; }
+  .ot-seg button:last-child { border-right: 0; }
+  .ot-seg button.on.a { background: #2E8B57; color: #fff; } .ot-seg button.on.p { background: #E09A1A; color: #fff; } .ot-seg button.on.r { background: #C33A2C; color: #fff; }
+  .ot-ap td { padding: 7px 8px; vertical-align: middle; } .ot-ap input.q { width: 70px; text-align: right; } .ot-ap input.rs { width: 100%; min-width: 180px; }
+  @media (max-width: 760px) { .ot-sum { flex-wrap: wrap; } .ot-sum .k { flex: 1 1 33%; } .ot-sum .k em { display: none; } .ot-bar input { width: 100%; } }
   .pu-modal { position: fixed; inset: 0; background: rgba(20,24,28,.45); z-index: 5000; display: none; align-items: center; justify-content: center; }
   .pu-modal.on { display: flex; } .pu-modal .box { background: #fff; border-radius: 12px; padding: 20px 22px; width: min(900px, 96vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
   .pu-modal.small .box { width: min(480px, 94vw); }
@@ -4017,6 +4060,26 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           </div>
         </div>
 
+        <!-- ORDER TRACKER (2 Nov 2026): one screen for the purchaser, the store keeper and accounts - every open
+             request and LPO on one line, the step it has reached, who is next, late, part delivery, supplier contact. -->
+        <div class="screen" id="screen-purchtrack">
+          <div class="ot-sum" id="ot-sum"></div>
+          <div class="card ot-card">
+            <div class="ot-bar">
+              <div class="ot-chips" id="ot-chips"></div>
+              <span style="flex:1"></span>
+              <select id="ot-site" onchange="otRender()"><option value="">All sites</option></select>
+              <input type="text" id="ot-search" placeholder="Search LPO, request, supplier, material" oninput="otRender()">
+            </div>
+            <div class="status-msg" id="ot-status"></div>
+            <div class="ot-wrap"><table class="ot-t" id="ot-table" data-nosort data-nomove>
+              <colgroup><col class="c-site"><col class="c-what"><col class="c-sup"><col class="c-steps"><col class="c-note"><col class="c-next"></colgroup>
+              <thead><tr><th>Site</th><th>Item / LPO</th><th>Supplier</th><th><div class="ot-sh"><span>Requested</span><span>Approved</span><span>Ordered</span><span>Arrived</span><span>Bill checked</span><span>Done</span></div></th><th></th><th style="text-align:right;">Next</th></tr></thead>
+              <tbody id="ot-body"><tr><td colspan="6" class="empty-note">Loading...</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+
         <div class="screen" id="screen-followup">
           <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
@@ -5603,6 +5666,7 @@ function switchScreen(name) {
   }
 
   if (name === "followup") loadFollowUp();
+  if (name === "purchtrack") otLoad();
 
   if (name === "approvals") {
     // Every visit starts on Still open, nothing searched - so no request
@@ -14861,6 +14925,7 @@ const DASH_ACTIONS = {
   returns:  ["Returns & corrections", "Came back, lost or wrong", "store", "store:other", "undo", "store"],
   items:    ["Material list", "Add or change materials", "store", "store:items", "list", "store"],
   rent:     ["On rent", "Rental equipment and returns", "store", "rentals:hire", "rent", "store"],
+  track:    ["Order tracker", "Where every order is, who is next", "store", "tracker", "list", "requests"],
   mreq:     ["Material requests", "Ask the office for material", "store", "requests:requests", "clip", "requests"],
   appr:     ["Approvals", "Approve and order requests", "store", "requests:approvals", "ok", "approvals"],
   follow:   ["Order follow-up", "What is coming, who to call", "store", "requests:followup", "phone", "requests"],
@@ -14879,8 +14944,8 @@ const DASH_JOBS = {
   "chief accountant":     ["zoho", "cards", "check", "ocycle", "ograt", "taxinv", "projpay", "projexp", "petty", "pdc", "appr", "expiry"],
   "assistant accountant": ["att", "live", "cards", "ladj", "check", "master", "petty", "staff", "stock", "mreq", "appr", "expiry"],
   "pro":                  ["expiry", "staff", "oleave", "pettypro", "secq", "pdc", "creds", "att"],
-  "purchase manager":     ["appr", "lpo", "follow", "lporeg", "mreq", "supp", "stock", "sitecost"],
-  "store keeper":         ["give", "arrive", "mreq", "follow", "stock", "returns", "rent", "items"]
+  "purchase manager":     ["track", "appr", "lpo", "follow", "lporeg", "mreq", "supp", "stock"],
+  "store keeper":         ["track", "give", "arrive", "mreq", "follow", "stock", "returns", "rent"]
 };
 const DASH_ANY = ["att", "live", "cards", "check", "ocycle", "staff", "expiry", "mreq", "appr", "follow", "stock", "give",
                   "arrive", "lpo", "petty", "taxinv", "projpay", "projexp", "pdc", "monthly", "master", "ladj", "returns", "supp"];
@@ -22235,6 +22300,237 @@ function workerLink(empNo, text) {
 
 // A material request: Approvals with that request open (or Order
 // follow-up for someone who raises but does not approve).
+// ============ ORDER TRACKER (2 Nov 2026) ============
+// One screen for the purchaser, the store keeper and accounts: every open request and LPO on one line - the step it
+// has reached (Requested -> Approved -> Ordered -> Arrived -> Bill checked -> Done), who is next, late, what part
+// delivery is still to come, the supplier's contact. Every button opens the screen's existing form (approve, raise
+// LPO, delivery, bill, cancel) - nothing here works a different way from the rest of the portal.
+let OT = null, OT_VIEW = "", OT_STEP = null;
+const OT_STEPS = ["Requested", "Approved", "Ordered", "Arrived", "Bill checked", "Done"];
+function otCanDo(role) {
+  if (CURRENT_ROLE === "admin") return true;
+  if (role === "purchaser") return xlCan("approvals");
+  if (role === "store") return puCanBook();
+  if (role === "accounts") return xlCan("accounts_zoho");
+  return false;
+}
+async function otLoad() {
+  try {
+    OT = await apiCall("/store/purchase/tracker");
+  } catch (e) { showStatus("ot-status", "err", errText(e)); return; }
+  if (!OT_VIEW) OT_VIEW = (OT.my_roles || []).length && CURRENT_ROLE !== "admin" ? "mine" : "open";
+  const sel = document.getElementById("ot-site");
+  if (sel) {
+    const cur = sel.value, list = [...new Set(OT.rows.map(r => r.site).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    sel.innerHTML = `<option value="">All sites</option>` + list.map(x => `<option${x === cur ? " selected" : ""}>${escapeHtml(x)}</option>`).join("");
+  }
+  otRender();
+}
+function otMine(r) { return r.stage < 5 && (OT.my_roles || []).includes(r.role); }
+function otRender() {
+  if (!OT) return;
+  const site = (document.getElementById("ot-site") || {}).value || "";
+  const q = ((document.getElementById("ot-search") || {}).value || "").trim().toLowerCase();
+  const base = OT.rows.filter(r => (!site || r.site === site) && (!q || [r.ref, r.what, r.supplier, r.contact, r.phone, r.site, (r.requests || []).join(" "), r.requested_by || ""].join(" ").toLowerCase().includes(q)));
+  const open = base.filter(r => r.stage < 5);
+  const views = [["mine", "My turn", open.filter(otMine).length], ["late", "Late", open.filter(r => r.late > 0).length],
+                 ["open", "All open", open.length], ["done", "Done", base.filter(r => r.stage === 5).length]];
+  if (!(OT.my_roles || []).length) views.shift();
+  document.getElementById("ot-chips").innerHTML = views.map(([k, l, n]) =>
+    `<button type="button" class="${OT_VIEW === k && OT_STEP === null ? "on" : ""}" onclick="OT_VIEW='${k}'; OT_STEP=null; otRender()">${l} (${n})</button>`).join("");
+  const cnt = OT_STEPS.map((_, i) => base.filter(r => r.stage === i).length);
+  const ppl = OT.people || {};
+  const whoAt = ["purchaser", "purchaser", "store", "purchaser", "accounts", ""];
+  document.getElementById("ot-sum").innerHTML = OT_STEPS.map((s, i) =>
+    `<div class="k${OT_STEP === i ? " on" : ""}" onclick="OT_STEP = OT_STEP === ${i} ? null : ${i}; otRender()" title="Show only what is at ${escapeAttr(s)}"><b>${num(cnt[i])}</b><span>${s}</span><em>${escapeHtml(ppl[whoAt[i]] || "")}</em></div>`).join("");
+  let rows = OT_STEP !== null ? base.filter(r => r.stage === OT_STEP)
+    : OT_VIEW === "mine" ? open.filter(otMine) : OT_VIEW === "late" ? open.filter(r => r.late > 0)
+    : OT_VIEW === "done" ? base.filter(r => r.stage === 5) : open;
+  const body = document.getElementById("ot-body");
+  if (!rows.length) { body.innerHTML = `<tr><td colspan="6" class="empty-note">${OT_VIEW === "mine" && OT_STEP === null ? "Nothing waiting on you." : "Nothing here."}</td></tr>`; return; }
+  body.innerHTML = rows.map(r => {
+    const steps = OT_STEPS.map((s, i) => {
+      if (i < r.stage) return `<span class="d">&#10003;</span>`;
+      if (i === r.stage) return r.part ? `<span class="h">Part</span>` : `<span class="${r.late > 0 ? "l" : "c"}">${s}</span>`;
+      return `<span>&nbsp;</span>`;
+    }).join("");
+    const refs = r.kind === "lpo" ? [r.ref, ...(r.requests || [])] : [r.ref + (r.requested_by ? " · " + r.requested_by : "")];
+    const sup = r.supplier
+      ? `<div class="t1" title="${escapeAttr(r.supplier)}">${escapeHtml(r.supplier)}</div><div class="t2 ot-ph"><span class="cn" title="${escapeAttr(r.contact || "")}">${escapeHtml(r.contact || "")}${r.contact && r.phone ? " · " : ""}</span>${r.phone ? `<a href="tel:${escapeAttr(r.phone.replace(/[^\d+]/g, ""))}" onclick="event.stopPropagation()" title="Call">${escapeHtml(r.phone)}</a>` : ""}${!r.contact && !r.phone ? "no contact on file" : ""}</div>`
+      : `<div class="t2">${r.stage === 0 ? "Waiting for approval" : "Approved - no LPO yet"}</div>`;
+    const note = (r.late > 0 ? `<div class="ot-late">${r.late} day${r.late === 1 ? "" : "s"} late</div>` : "") + (r.to_come ? `<div class="ot-come" title="${escapeAttr(r.to_come)}">${escapeHtml(r.to_come)} to come</div>` : "");
+    const can = r.stage < 5 && r.action && otCanDo(r.role);
+    return `<tr class="ot-r" data-k="${r.key}" onclick="otHistory('${r.key}')">
+      <td class="site">${escapeHtml(r.site || "-")}</td>
+      <td><div class="t1" title="${escapeAttr(r.what)}">${escapeHtml(r.what || "-")}</div><div class="t2">${escapeHtml(refs.join(" · "))}</div></td>
+      <td>${sup}</td>
+      <td><div class="ot-steps">${steps}</div></td>
+      <td>${note}</td>
+      <td class="nx" onclick="event.stopPropagation()">${r.who ? `<span class="ot-who">${escapeHtml(r.who)}</span>` : ""}${can ? `<button type="button" onclick="otDo('${r.key}')">${escapeHtml(r.action)}</button>` : ""}<button type="button" class="ot-dots" title="More" onclick="otMenu(event, '${r.key}')">&#8943;</button></td>
+    </tr>`;
+  }).join("");
+}
+function otRow(k) { return (OT && OT.rows || []).find(r => r.key === k); }
+function otAfter(msg) { if (msg) showStatus("ot-status", "ok", msg); otLoad(); }
+// reload once a form opened from here is closed (cancel, edit) - whatever was done there shows straight away
+function otWhenClosed(id) {
+  const t0 = Date.now();
+  (function wait() { const m = document.getElementById(id); if (m && m.classList.contains("on")) { setTimeout(wait, 400); return; }
+    if (Date.now() - t0 < 1500 && !m) { setTimeout(wait, 300); return; } otLoad(); })();
+}
+function otDo(k) {
+  const r = otRow(k); if (!r) return;
+  if (r.action === "Approve") return otApprove(k);
+  if (r.action === "Raise LPO") return otRaise(k);
+  if (r.action === "Book delivery") return lpoDlvOpen(r.id, otAfter);
+  if (r.action === "Mark arrived") return openRequestRef(r.ref);
+  if (r.action === "Check bill") return lpoBillOpen(r.id, otAfter);
+  if (r.action === "Send to Zoho") return pgGo("accounts", "zoho");
+}
+function otHistory(k) {
+  const r = otRow(k); if (!r) return;
+  if (r.kind === "lpo") lpoDlvOpen(r.id, otAfter); else openRequestRef(r.ref);
+}
+function otMenu(ev, k) {
+  ev.stopPropagation();
+  const r = otRow(k); if (!r) return;
+  document.querySelectorAll(".ot-menu").forEach(x => x.remove());
+  const P = otCanDo("purchaser"), S = otCanDo("store"), A = otCanDo("accounts");
+  const it = [];
+  if (r.kind === "mr") {
+    if (r.stage === 0 && P) it.push(["Approve / approve less / reject", () => otApprove(k)]);
+    if (r.stage === 1 && P) it.push(["Raise LPO", () => otRaise(k)], ["Close - not needed any more", () => otCloseMr(k)]);
+    if (r.stage === 2 && S) it.push(["Mark arrived", () => openRequestRef(r.ref)]);
+    it.push(["-"], ["Open the request (full history)", () => openRequestRef(r.ref)]);
+  } else {
+    if (r.stage <= 3 && (r.stage === 2 || r.part) && S) it.push([r.part ? "Book more delivery" : "Book delivery", () => lpoDlvOpen(r.id, otAfter)]);
+    if (r.part && (S || P)) it.push(["Close - rest not needed", () => otCloseRest(k)]);
+    if (r.stage >= 3 && !r.part && P) it.push([r.bill_checked ? "Bill - look again" : "Check bill", () => lpoBillOpen(r.id, otAfter)]);
+    if (r.part && P) it.push(["Check bill (what came)", () => lpoBillOpen(r.id, otAfter)]);
+    if (r.stage === 4 && A) it.push(["Send to Zoho", () => pgGo("accounts", "zoho")]);
+    if (r.stage <= 3 && P) it.push(["Change quantity / rate", () => otEdit(k)], ["Cancel LPO (give reason)", () => { cancelLpo(r.id, r.ref); otWhenClosed("lpo-cx-modal"); }]);
+    it.push(["-"], ["View the LPO", () => openLpo(r.id)], ["Deliveries and history", () => lpoDlvOpen(r.id, otAfter)]);
+  }
+  const m = document.createElement("div"); m.className = "ot-menu";
+  m.innerHTML = `<div class="mh">${escapeHtml(r.ref)} - what next?</div>` + it.map((x, i) => x[0] === "-" ? `<div class="sep"></div>` : `<div data-i="${i}">${escapeHtml(x[0])}</div>`).join("");
+  document.body.appendChild(m);
+  const b = ev.currentTarget.getBoundingClientRect();
+  m.style.top = Math.min(b.bottom + 4, innerHeight - m.offsetHeight - 8) + "px";
+  m.style.left = Math.max(8, b.right - m.offsetWidth) + "px";
+  m.querySelectorAll("[data-i]").forEach(d => d.onclick = () => { m.remove(); it[+d.dataset.i][1](); });
+  setTimeout(() => document.addEventListener("click", function off() { m.remove(); document.removeEventListener("click", off); }), 0);
+}
+function otEdit(k) {
+  const r = otRow(k); if (!r) return;
+  xlGo("store", "purchasing", "purchase", () => xlOn("purchase") && typeof editLpo === "function" && (lpoRegister || []).length, () => editLpo(r.id));
+}
+function otRaise(k) {
+  const r = otRow(k); if (!r) return;
+  const ids = (r.lines || []).filter(l => l.status === "approved").map(l => l.id);
+  xlGo("store", "purchasing", "purchase", () => xlOn("purchase") && document.querySelectorAll(".lpo-pick").length, () => {
+    let n = 0;
+    document.querySelectorAll(".lpo-pick").forEach(b => { b.checked = ids.includes(Number(b.value)); if (b.checked) n++; });
+    notePendingPick();
+    if (n) lpoFromTicked();
+    else showStatus("lpo-status", "warn", `${r.ref}: its approved materials are not on the waiting list - tick them below.`);
+  });
+}
+async function otCloseMr(k) {
+  const r = otRow(k); if (!r) return;
+  otAsk(`Close ${r.ref} - not needed any more?`, `Nothing is ordered for it. It is closed with your reason and drops off the lists.`,
+    ["Site no longer needs it", "Bought with petty cash", "Taken from the store", "Duplicate request"], async why => {
+      await apiCall(`/store/requests/${r.id}/status`, { method: "POST", body: JSON.stringify({ status: "closed", office_remark: why }) });
+      otAfter(`${r.ref} closed - ${why}.`);
+    });
+}
+function otCloseRest(k) {
+  const r = otRow(k); if (!r) return;
+  otAsk(`${r.ref}: close the rest - not needed?`, `Still to come: ${r.to_come}. It is closed as not coming - no stock moves, and the bill to expect is what came.`,
+    ["Site requirement changed", "Enough came for the work", "Supplier cannot supply the rest", "Ordered elsewhere"], async why => {
+      const x = await apiCall(`/store/purchase/orders/${r.id}/close-rest`, { method: "POST", body: JSON.stringify({ reason: why }) });
+      otAfter(`${r.ref}: the rest closed - ${why}.`);
+    });
+}
+// a small question with a reason: chips to pick from, or type one
+function otAsk(title, text, chips, go) {
+  const m = puModal("ot-ask", true);
+  m.innerHTML = `<div class="box"><h3>${escapeHtml(title)}</h3><div class="sub">${escapeHtml(text)}</div>
+    <div class="chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">${chips.map(c => `<button type="button" class="btn btn-gray" style="font-size:12px; padding:4px 10px;" data-c="${escapeAttr(c)}">${escapeHtml(c)}</button>`).join("")}</div>
+    <input type="text" id="ot-why" placeholder="Reason (required)" style="width:100%; height:34px; padding:0 10px; border:1px solid #D5D9DE; border-radius:7px;">
+    <div class="status-msg" id="ot-ask-status"></div>
+    <div class="acts" style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;"><button type="button" class="btn btn-gray" data-x>Back</button><button type="button" class="btn btn-primary" data-go>Close it</button></div></div>`;
+  m.classList.add("on");
+  const why = m.querySelector("#ot-why"); setTimeout(() => why.focus(), 30);
+  m.querySelectorAll("[data-c]").forEach(b => b.onclick = () => { why.value = b.dataset.c; why.focus(); });
+  m.querySelector("[data-x]").onclick = () => m.classList.remove("on");
+  m.querySelector("[data-go]").onclick = async () => {
+    const v = why.value.trim();
+    if (!v) { showStatus("ot-ask-status", "warn", "Give the reason."); why.focus(); return; }
+    const b = m.querySelector("[data-go]"); b.disabled = true;
+    try { await go(v); m.classList.remove("on"); } catch (e) { b.disabled = false; showStatus("ot-ask-status", "err", errText(e)); }
+  };
+}
+// Approve a request material by material: approve, approve fewer (type how many), or reject (with a reason)
+function otApprove(k) {
+  const r = otRow(k); if (!r) return;
+  const lines = (r.lines || []);
+  const m = puModal("ot-appr");
+  m.innerHTML = `<div class="box"><h3>Approve ${escapeHtml(r.ref)}</h3>
+    <div class="sub">${r.site ? "Site " + escapeHtml(r.site) + " · " : ""}${escapeHtml(r.requested_by || "")}${r.date ? " · " + dmy(r.date) : ""}${r.due ? " · needed by " + dmy(r.due) : ""}</div>
+    <table class="ot-ap"><thead><tr><th style="text-align:left;">Material</th><th style="text-align:right;">Asked</th><th style="text-align:left;">Decision</th><th style="text-align:left;">How many / reason</th></tr></thead><tbody>${
+      lines.map(l => l.status !== "pending"
+        ? `<tr><td>${escapeHtml(l.name)}</td><td style="text-align:right;">${num(l.qty)} ${escapeHtml(l.unit)}</td><td colspan="2" style="color:#888;">already ${escapeHtml(l.status)}</td></tr>`
+        : `<tr data-l="${l.id}" data-q="${l.qty}"><td>${escapeHtml(l.name)}${l.purpose ? `<div style="font-size:11px; color:#999;">${escapeHtml(l.purpose)}</div>` : ""}</td>
+            <td style="text-align:right; white-space:nowrap;">${num(l.qty)} ${escapeHtml(l.unit)}</td>
+            <td><div class="ot-seg"><button type="button" class="a" data-d="a">Approve</button><button type="button" class="p" data-d="p">Approve less</button><button type="button" class="r" data-d="r">Reject</button></div></td>
+            <td><input type="number" class="q" step="any" min="0" placeholder="how many" style="display:none;"> <input type="text" class="rs" placeholder="" style="display:none;"></td></tr>`).join("")}</tbody></table>
+    <div class="status-msg" id="ot-appr-status"></div>
+    <div class="acts" style="display:flex; align-items:center; gap:8px; margin-top:12px; border-top:1px solid #EFEAE7; padding-top:12px;">
+      <span id="ot-appr-sum" style="font-size:12px; color:#666;"></span><span style="flex:1"></span>
+      <button type="button" class="btn btn-gray" data-all="a">Approve all</button><button type="button" class="btn btn-gray" data-all="r">Reject all</button>
+      <button type="button" class="btn btn-gray" data-x>Back</button><button type="button" class="btn btn-primary" data-go>Save decision</button></div></div>`;
+  m.classList.add("on");
+  const set = (tr, d) => {
+    tr.dataset.d = d;
+    tr.querySelectorAll(".ot-seg button").forEach(b => b.classList.toggle("on", b.dataset.d === d));
+    const q = tr.querySelector(".q"), rs = tr.querySelector(".rs");
+    q.style.display = d === "p" ? "" : "none"; rs.style.display = d === "p" || d === "r" ? "" : "none";
+    rs.placeholder = d === "r" ? "Why rejected (required)" : "Why fewer (optional)";
+    otApprSum();
+  };
+  m.querySelectorAll("tr[data-l]").forEach(tr => tr.querySelectorAll(".ot-seg button").forEach(b => b.onclick = () => set(tr, b.dataset.d)));
+  m.querySelectorAll("[data-all]").forEach(b => b.onclick = () => m.querySelectorAll("tr[data-l]").forEach(tr => set(tr, b.dataset.all)));
+  m.querySelector("[data-x]").onclick = () => m.classList.remove("on");
+  otApprSum();
+  m.querySelector("[data-go]").onclick = async () => {
+    const trs = [...m.querySelectorAll("tr[data-l]")].filter(tr => tr.dataset.d);
+    if (!trs.length) { showStatus("ot-appr-status", "warn", "Choose Approve, Approve less or Reject for at least one material."); return; }
+    for (const tr of trs) {
+      const d = tr.dataset.d, q = parseFloat(tr.querySelector(".q").value), why = tr.querySelector(".rs").value.trim();
+      if (d === "p" && !(q > 0 && q < +tr.dataset.q)) { showStatus("ot-appr-status", "warn", "Approve less: type a number above 0 and below what was asked."); tr.querySelector(".q").focus(); return; }
+      if (d === "r" && !why) { showStatus("ot-appr-status", "warn", "Give the reason for each material rejected."); tr.querySelector(".rs").focus(); return; }
+    }
+    const go = m.querySelector("[data-go]"); go.disabled = true;
+    let done = 0;
+    try {
+      for (const tr of trs) {
+        const d = tr.dataset.d, id = tr.dataset.l, q = parseFloat(tr.querySelector(".q").value), why = tr.querySelector(".rs").value.trim();
+        if (d === "p") await apiCall(`/store/request-lines/${id}/approve-less`, { method: "POST", body: JSON.stringify({ qty: q, reason: why }) });
+        else await apiCall(`/store/request-lines/${id}/decision`, { method: "POST", body: JSON.stringify({ decision: d === "a" ? "approved" : "rejected", reason: why }) });
+        done++;
+      }
+      m.classList.remove("on");
+      otAfter(`${r.ref}: decision saved for ${done} material(s).`);
+    } catch (e) { go.disabled = false; showStatus("ot-appr-status", "err", (done ? `${done} saved, then: ` : "") + errText(e)); if (done) otLoad(); }
+  };
+}
+function otApprSum() {
+  const trs = [...document.querySelectorAll("#ot-appr tr[data-l]")];
+  const c = d => trs.filter(t => t.dataset.d === d).length;
+  const el = document.getElementById("ot-appr-sum");
+  if (el) el.textContent = `${c("a")} approve · ${c("p")} approve less · ${c("r")} reject · ${trs.length - c("a") - c("p") - c("r")} not decided`;
+}
+
 function openRequestRef(ref, status) {
   if (xlCan("approvals")) {
     // Wait for the screen's own load to finish first, or it redraws the

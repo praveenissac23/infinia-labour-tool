@@ -6,7 +6,7 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS 
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(B + '/?p=store'); await p.fill('#login-username','admin'); await p.fill('#login-password','changeme123'); await p.evaluate('doLogin()').catch(()=>{}); await p.waitForTimeout(1500);
   await p.waitForSelector('#app-screen', { state: 'visible' }); await p.waitForTimeout(2500);
-  await p.evaluate(() => pgGo('store')); await p.waitForTimeout(6000);
+  await p.evaluate(() => pgGo('store', 'store:home')); await p.waitForTimeout(6000);
   const r = await p.evaluate(async () => {
     const b = document.getElementById('home-stock-body'); let m = 0;
     const ob = new MutationObserver(x => m += x.length); ob.observe(b, { childList: true, subtree: true });

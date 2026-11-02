@@ -15242,6 +15242,8 @@ import pozoho  # noqa: E402
 app.include_router(pozoho.router)
 import purchasing  # noqa: E402  - deliveries against LPOs, Rentals links, bill check (31 Oct 2026)
 app.include_router(purchasing.router)
+import purchtrack  # noqa: E402  - the order tracker: one line per request / LPO, its step and who is next (2 Nov 2026)
+app.include_router(purchtrack.router)
 import ppe  # noqa: E402
 app.include_router(ppe.router)
 import forms  # noqa: E402  - Admin > Forms

@@ -18,7 +18,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await post('/store/movements', { item_id: c.id, kind: 'out', qty: 20, location: site, incharge: 'Akhil', moved_on: today });
     await post('/store/items', { name: 'Bob Cat monthly ' + run, unit: 'nos', item_type: 'rental', rental_supplier: 'Al Hassai Hire' });
   }, [run, today, site]);
-  await p.evaluate(() => { for (const k in API_SHARED) delete API_SHARED[k]; try { sessionStorage.removeItem(STOCK_HOME_KEY); } catch (e) {} pgGo('store'); }); await sleep(5000);
+  await p.evaluate(() => { for (const k in API_SHARED) delete API_SHARED[k]; try { sessionStorage.removeItem(STOCK_HOME_KEY); } catch (e) {} pgGo('store', 'store:home'); }); await sleep(5000);
   await p.evaluate(() => loadStoreHome && loadStoreHome()).catch(() => {}); await sleep(3000);
   const find = async t => { await p.fill('#home-stock-search', t); await p.dispatchEvent('#home-stock-search', 'input'); await sleep(300); return p.$$eval('#home-stock-body tr[data-code]', x => x.map(r => r.textContent.replace(/\s+/g, ' ').trim())); };
   const cem = await find('Cement bag ' + run);
