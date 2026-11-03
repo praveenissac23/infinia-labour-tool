@@ -208,6 +208,7 @@ class EstSubPC(Base):
     paid_by = Column(String, default="")
     stage_at = Column(DateTime, nullable=True)  # when it reached the step it is at (Dubai time) - "days here"
     flow_log = Column(Text, default="")         # every step, by whom and when, and notes sent back: JSON [{s, by, at, note, back}]
+    hide_cols = Column(Text, default="")        # printed certificate: columns left off, per table kind {"S"|"A"|"B"|"C": [col index]} - "" = the default
     locals().update(_audit())
 
 

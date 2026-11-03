@@ -884,6 +884,37 @@ def _drop_col(data, sty, widths, k):
     return data, out, widths
 
 
+COL_KINDS = {"S": ["Bill", "Description", "Contract", "Previous %", "This %", "To date %", "Previous", "This", "To date"],
+             "A": ["No", "Description", "Type", "Int. Qty", "Unit", "Contract amt", "Rate", "Measured", "Area/Qty", "Deduction", "% done",
+                   "Previous", "This PC", "Certified to date", "Remarks"],
+             "B": ["Sr", "Payment Certificate No.", "Period ending", "Certified on", "Certified", "Paid", "VAT", "Retention"],
+             "C": ["Sl", "Deduction", "PC", "Qty", "Unit", "Rate", "Total"]}
+
+
+def hidden_cols(pc, want=None):
+    """The columns left off the printed certificate, per table kind: what was saved on it, else the default -
+    Int. Qty and Contract amt (internal) left off once the Contracts manager has approved it."""
+    import json as _j
+    try:
+        h = _j.loads(pc.hide_cols) if (getattr(pc, "hide_cols", "") or "").strip() else None
+    except ValueError:
+        h = None
+    if h is None:
+        h = {} if show_int_qty(pc, want) else {"A": [3, 5]}
+    out = {}
+    for k, v in (h or {}).items():
+        if k in COL_KINDS:
+            out[k] = sorted({int(i) for i in v if str(i).lstrip("-").isdigit() and 0 <= int(i) < len(COL_KINDS[k])})
+    return out
+
+
+def _drop_cols(data, sty, widths, idx):
+    for k in sorted(set(idx), reverse=True):
+        if 0 <= k < len(widths) and len(widths) > 2:
+            data, sty, widths = _drop_col(data, sty, widths, k)
+    return data, sty, widths
+
+
 def show_int_qty(pc, want=None):
     """The internal quantity (Int. Qty) on the printed certificate: shown while it is worked on, hidden once the
     Contracts manager has approved it (the copy that goes to the subcontractor) - either way can be asked for."""
@@ -897,6 +928,7 @@ def show_int_qty(pc, want=None):
 
 
 def render_pdf(doc):
+    HIDE = doc.get("hide") or {}
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_RIGHT
     from reportlab.lib.pagesizes import A4, landscape
@@ -1055,14 +1087,16 @@ def render_pdf(doc):
             tp, tcum = sum(b["prev"] for b in bb), sum(b["cum"] for b in bb)
             sm.append(["", "TOTAL", _m(tc), f"{100 * tp / tc if tc else 0:.2f}%", f"{100 * (tcum - tp) / tc if tc else 0:.2f}%",
                        f"{100 * tcum / tc if tc else 0:.2f}%", _m(tp), _m(tcum - tp), _m(tcum)])
-            t = Table(sm, colWidths=[14 * mm, lw - 14 * mm - 7 * 30 * mm] + [30 * mm] * 7, repeatRows=1)
-            t.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 7.4), ("BACKGROUND", (0, 0), (-1, 0), HEAD), ("TEXTCOLOR", (0, 0), (-1, 0), INK2), ("LINEBELOW", (0, 0), (-1, 0), 1, RED),
-                                   ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("GRID", (0, 0), (-1, -1), .3, LINE), ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-                                   ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+            sst = [("FONTSIZE", (0, 0), (-1, -1), 7.4), ("BACKGROUND", (0, 0), (-1, 0), HEAD), ("TEXTCOLOR", (0, 0), (-1, 0), INK2), ("LINEBELOW", (0, 0), (-1, 0), 1, RED),
+                   ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("GRID", (0, 0), (-1, -1), .3, LINE), ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
+                   ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]
+            sm, sst, sw = _drop_cols(sm, sst, [14 * mm, lw - 14 * mm - 7 * 30 * mm] + [30 * mm] * 7, HIDE.get("S", []))
+            t = Table(sm, colWidths=sw, repeatRows=1)
+            t.setStyle(TableStyle(sst))
             el += [Paragraph("<b>Summary</b>", cap_st), t, Spacer(1, 4 * mm)]
         cols = ["No", "Description", "Type", "Int. Qty", "Unit", "Contract amt", "Rate", "Measured", "Area/Qty", "Deduction", "% done",
                 "Previous", "This PC", "Certified to date", "Remarks"]
-        show_iq = doc.get("show_iq", True)          # Int. Qty and Contract amt: hidden on the copy sent to the subcontractor
+        # columns left off (Int. Qty and Contract amt by default once approved - the copy sent to the subcontractor)
         cw = [9, 0, 16, 11, 10, 21, 17, 17, 17, 17, 12, 20, 19, 22, 30]
         cw[1] = lw / mm - sum(cw)
         for b in doc["bills"]:
@@ -1093,9 +1127,7 @@ def render_pdf(doc):
             data.append(["", P("Total", stb), "", "", "", _m(b["contract"]), "", "", "", "", "", _m(b["prev"]), _m(b["cum"] - b["prev"]), _m(b["cum"]), ""])
             sty += [("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"), ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#FDF0EE"))]
             widths = [x * mm for x in cw]
-            if not show_iq:
-                for k in (5, 3):                  # Contract amt, Int. Qty - the internal columns
-                    data, sty, widths = _drop_col(data, sty, widths, k)
+            data, sty, widths = _drop_cols(data, sty, widths, HIDE.get("A", []))
             t = Table(data, colWidths=widths, repeatRows=1)
             t.setStyle(TableStyle(sty))
             cap = (f"{b['bill']} - " if b["bill"] else "") + (b["title"] or ("Contract works" if not b["var"] else ""))
@@ -1113,10 +1145,12 @@ def render_pdf(doc):
         hb.append([str(i), h["name"], h["period"], h["cert"], _m(h["amount"]), _m(h["paid"]), _m(h["vat"]), _m(h["ret"])])
     ht = doc["hist_total"]
     hb.append(["", "Total carried to the Certificate page", "", "", _m(ht["amount"]), _m(ht["paid"]), _m(ht["vat"]), _m(ht["ret"])])
-    t = Table(hb, colWidths=[8 * mm, tw - 8 * mm - 6 * 22 * mm] + [22 * mm] * 6, repeatRows=1)
-    t.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 7.4), ("BACKGROUND", (0, 0), (-1, 0), HEAD), ("TEXTCOLOR", (0, 0), (-1, 0), INK2), ("LINEBELOW", (0, 0), (-1, 0), 1, RED),
-                           ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("GRID", (0, 0), (-1, -1), .3, LINE), ("ALIGN", (4, 0), (-1, -1), "RIGHT"),
-                           ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold")]))
+    bst = [("FONTSIZE", (0, 0), (-1, -1), 7.4), ("BACKGROUND", (0, 0), (-1, 0), HEAD), ("TEXTCOLOR", (0, 0), (-1, 0), INK2), ("LINEBELOW", (0, 0), (-1, 0), 1, RED),
+           ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("GRID", (0, 0), (-1, -1), .3, LINE), ("ALIGN", (4, 0), (-1, -1), "RIGHT"),
+           ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold")]
+    hb, bst, bw = _drop_cols(hb, bst, [8 * mm, tw - 8 * mm - 6 * 22 * mm] + [22 * mm] * 6, HIDE.get("B", []))
+    t = Table(hb, colWidths=bw, repeatRows=1)
+    t.setStyle(TableStyle(bst))
     el += [t, Spacer(1, 6 * mm)]
     # Appendix C
     if doc["deds"]:
@@ -1131,10 +1165,12 @@ def render_pdf(doc):
                 data.append([str(i), P(desc, sts), f"{x['pc_seq']:02d}", f"{x['qty']:g}" if x["qty"] else "", x["unit"], _m(x["rate"]) if x["rate"] else "",
                              _m(x["amount"]) if x["counted"] else f"({_m(x['amount'], False)})*"])
             data.append(["", "", "", "", "", "Total", _m(sum(x["amount"] for x in ds if x["counted"]))])
-            t = Table(data, colWidths=[8 * mm, tw - 96 * mm, 10 * mm, 16 * mm, 14 * mm, 22 * mm, 26 * mm], repeatRows=1)
-            t.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 7.4), ("BACKGROUND", (0, 0), (-1, 0), TINT), ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                                   ("GRID", (0, 0), (-1, -1), .3, LINE), ("ALIGN", (3, 0), (-1, -1), "RIGHT"), ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-                                   ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+            cst = [("FONTSIZE", (0, 0), (-1, -1), 7.4), ("BACKGROUND", (0, 0), (-1, 0), TINT), ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                   ("GRID", (0, 0), (-1, -1), .3, LINE), ("ALIGN", (3, 0), (-1, -1), "RIGHT"), ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                   ("VALIGN", (0, 0), (-1, -1), "TOP")]
+            data, cst, cw_ = _drop_cols(data, cst, [8 * mm, tw - 96 * mm, 10 * mm, 16 * mm, 14 * mm, 22 * mm, 26 * mm], HIDE.get("C", []))
+            t = Table(data, colWidths=cw_, repeatRows=1)
+            t.setStyle(TableStyle(cst))
             el += [t, Spacer(1, 3 * mm)]
         el.append(Paragraph(f"<b>Grand total: AED {_m(sum(x['amount'] for x in doc['deds'] if x['counted']), False)}</b>", stb))
         el.append(Spacer(1, 6 * mm))
@@ -1168,9 +1204,14 @@ def render_pdf(doc):
 
 def render_html(doc, pdf_url, toggle_url=""):
     from html import escape as X
+    import json as _json
+    hide_json = _json.dumps(doc.get("hide") or {})
     # the internal quantity: one click shows / hides it; the PDF and Share follow what is on screen
-    iq_btn = (f'<a href="{toggle_url}" title="Int. Qty and Contract amt are internal - hide them on the copy sent to the subcontractor; the PDF and Share follow">'
-              f'{"Hide internal columns" if doc.get("show_iq", True) else "Show internal columns"}</a>') if toggle_url else ""
+    # Hide columns: pressing it puts a tick box in every column heading; untick = left off the screen, the PDF and Share.
+    # Saved on the certificate. Done puts the boxes away.
+    nh = sum(len(v) for v in (doc.get("hide") or {}).values())
+    iq_btn = (f'<button id="colbtn" type="button" title="Choose the columns to leave off - Int. Qty and Contract amt are internal">'
+              f'{"Hide columns" + (f" ({nh} hidden)" if nh else "")}</button>') if toggle_url else ""
     import export_web
     e = lambda v: X(str(v or ""))
     rows = lambda pairs: "".join(f"<tr><th>{e(a)}</th><td>: {e(b)}</td></tr>" for a, b in pairs)
@@ -1204,14 +1245,14 @@ def render_html(doc, pdf_url, toggle_url=""):
         if doc["multi_bill"]:
             bb = [b for b in doc["bills"] if not b["var"]]
             pct = lambda v, c: f"{(100 * v / c) if c else 0:.2f}%"
-            ae += "<h3>Summary</h3><table class=t><tr><th>Bill</th><th>Description</th><th>Contract</th><th>Previous %</th><th>This %</th><th>To date %</th><th>Previous</th><th>This</th><th>To date</th></tr>"
+            ae += "<h3>Summary</h3><table class=t data-k=S><tr><th>Bill</th><th>Description</th><th>Contract</th><th>Previous %</th><th>This %</th><th>To date %</th><th>Previous</th><th>This</th><th>To date</th></tr>"
             for b in bb:
                 ae += f"<tr><td>{e(b['bill'])}</td><td>{e(b['title'])}</td><td class=r>{_m(b['contract'])}</td><td class=r>{pct(b['prev'], b['contract'])}</td><td class=r>{pct(b['cum'] - b['prev'], b['contract'])}</td><td class=r>{pct(b['cum'], b['contract'])}</td><td class=r>{_m(b['prev'])}</td><td class=r>{_m(b['cum'] - b['prev'])}</td><td class=r>{_m(b['cum'])}</td></tr>"
             tc, tp, tcum = sum(b["contract"] for b in bb), sum(b["prev"] for b in bb), sum(b["cum"] for b in bb)
             ae += f"<tr class=b><td></td><td>TOTAL</td><td class=r>{_m(tc)}</td><td class=r>{pct(tp, tc)}</td><td class=r>{pct(tcum - tp, tc)}</td><td class=r>{pct(tcum, tc)}</td><td class=r>{_m(tp)}</td><td class=r>{_m(tcum - tp)}</td><td class=r>{_m(tcum)}</td></tr></table>"
         for b in doc["bills"]:
             cap = (f"{b['bill']} - " if b["bill"] else "") + (b["title"] or ("Contract works" if not b["var"] else ""))
-            ae += f"<h3>{e(cap)}</h3><div class=tw><table class=t><tr><th>No</th><th>Description</th><th>Type</th><th class=iq>Int. Qty</th><th>Unit</th><th class=iq>Contract amt</th><th>Rate</th><th>Measured</th><th>Area/Qty</th><th>Deduction</th><th>% done</th><th>Previous</th><th>This PC</th><th>Certified to date</th><th>Remarks</th></tr>"
+            ae += f"<h3>{e(cap)}</h3><div class=tw><table class=t data-k=A><tr><th>No</th><th>Description</th><th>Type</th><th>Int. Qty</th><th>Unit</th><th>Contract amt</th><th>Rate</th><th>Measured</th><th>Area/Qty</th><th>Deduction</th><th>% done</th><th>Previous</th><th>This PC</th><th>Certified to date</th><th>Remarks</th></tr>"
             sec_ = None
             for r in b["rows"]:
                 it, ln = r["it"], r["ln"]
@@ -1221,15 +1262,15 @@ def render_html(doc, pdf_url, toggle_url=""):
                 meas, done = _cell_measure(r)
                 ch = r["chg"]
                 k = lambda *f: " chg" if ch & set(f) else ""          # the figure that moved, a shade deeper
-                ae += (f"<tr{' class=mv' if ch else ''}><td>{e(it['no'])}</td><td class=d>{e(it['description'])}</td><td>{e(it['ref'] or it['var_ref'])}</td><td class='r iq'>{it['qty']:g}</td><td>{e(it['unit'])}</td>"
-                       f"<td class='r iq'>{_m(it['amount'])}</td><td class=r>{_m(it['rate']) if it['rate'] else ''}</td><td class='c{k('measure')}'>{meas}</td><td class='r{k('measure')}'>{done}</td>"
+                ae += (f"<tr{' class=mv' if ch else ''}><td>{e(it['no'])}</td><td class=d>{e(it['description'])}</td><td>{e(it['ref'] or it['var_ref'])}</td><td class=r>{it['qty']:g}</td><td>{e(it['unit'])}</td>"
+                       f"<td class=r>{_m(it['amount'])}</td><td class=r>{_m(it['rate']) if it['rate'] else ''}</td><td class='c{k('measure')}'>{meas}</td><td class='r{k('measure')}'>{done}</td>"
                        f"<td class='r{k('deduct')}'>{_m(-ln['deduct']) if ln.get('deduct') else '-'}</td><td class='r{k('pct')}'>{_pct_txt(r)}</td><td class=r>{_m(r['prev'])}</td>"
                        f"<td class='r{k('amount')}'>{_m(r['amount'] - r['prev'])}</td><td class=r><b>{_m(r['amount'])}</b></td><td class='s{k('remark')}'>{e(ln.get('remark', ''))}</td></tr>")
-            ae += f"<tr class=b><td></td><td>Total</td><td></td><td class=iq></td><td></td><td class='r iq'>{_m(b['contract'])}</td><td></td><td></td><td></td><td></td><td></td><td class=r>{_m(b['prev'])}</td><td class=r>{_m(b['cum'] - b['prev'])}</td><td class=r>{_m(b['cum'])}</td><td></td></tr></table></div>"
+            ae += f"<tr class=b><td></td><td>Total</td><td></td><td></td><td></td><td class=r>{_m(b['contract'])}</td><td></td><td></td><td></td><td></td><td></td><td class=r>{_m(b['prev'])}</td><td class=r>{_m(b['cum'] - b['prev'])}</td><td class=r>{_m(b['cum'])}</td><td></td></tr></table></div>"
         ae += f"<p class=b>Total to date carried over to the Certificate page: AED {_m(sum(b['cum'] for b in doc['bills']), False)}</p>"
     hb = "".join(f"<tr><td>{i}</td><td>{e(h['name'])}</td><td>{e(h['period'])}</td><td>{e(h['cert'])}</td><td class=r>{_m(h['amount'])}</td><td class=r>{_m(h['paid'])}</td><td class=r>{_m(h['vat'])}</td><td class=r>{_m(h['ret'])}</td></tr>" for i, h in enumerate(doc["hist"], 1))
     ht = doc["hist_total"]
-    appb = (f"<h2>Appendix - B &nbsp; Previous Payments</h2><table class=t><tr><th>Sr</th><th>Payment Certificate No.</th><th>Period ending</th><th>Certified on</th><th>Certified</th><th>Paid</th><th>VAT</th><th>Retention</th></tr>{hb}"
+    appb = (f"<h2>Appendix - B &nbsp; Previous Payments</h2><table class=t data-k=B><tr><th>Sr</th><th>Payment Certificate No.</th><th>Period ending</th><th>Certified on</th><th>Certified</th><th>Paid</th><th>VAT</th><th>Retention</th></tr>{hb}"
             f"<tr class=b><td></td><td>Total carried to the Certificate page</td><td></td><td></td><td class=r>{_m(ht['amount'])}</td><td class=r>{_m(ht['paid'])}</td><td class=r>{_m(ht['vat'])}</td><td class=r>{_m(ht['ret'])}</td></tr></table>")
     appc = ""
     if doc["deds"]:
@@ -1238,7 +1279,7 @@ def render_html(doc, pdf_url, toggle_url=""):
             ds = [x for x in doc["deds"] if x["cat"] == cat]
             if not ds:
                 continue
-            appc += f"<table class=t><tr><th>Sl</th><th>Deduction for {e(cat.lower())}</th><th>PC</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Total</th></tr>"
+            appc += f"<table class=t data-k=C><tr><th>Sl</th><th>Deduction for {e(cat.lower())}</th><th>PC</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Total</th></tr>"
             for i, x in enumerate(ds, 1):
                 desc = (f"{_dt(_d(x['on_date']))} - " if x["on_date"] else "") + x["description"]
                 note = (f"<div class=m>*{e(x['note'])}</div>" if x["note"] else "") + ("" if x["counted"] else "<div class=m>*Not deducted</div>")
@@ -1286,8 +1327,14 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
   .hd>tbody>tr>td,.hd>tr>td{{display:block;width:auto!important}} .hd>tbody>tr>td+td,.hd>tr>td+td{{border-top:1px solid #E3E5E8}} .hd th{{width:40%;white-space:normal}} .hd td{{overflow-wrap:anywhere}}
   .ctr th{{white-space:normal}} .kvt{{display:block;overflow-x:auto}} .ce{{table-layout:auto}} .ce col{{width:auto!important}}}}
 body{{overflow-x:hidden}} .pg{{overflow-x:auto}}
-.noiq .iq{{display:none}}
-</style></head><body class="{'' if doc.get('show_iq', True) else 'noiq'}"><div class="bar"><b>{e(doc['ref'])}</b>{iq_btn}<button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><button onclick="shr()">Share</button></div>
+.t .gone{{display:none}} body.cedit .t .gone{{display:table-cell;background:repeating-linear-gradient(135deg,#F7F7F7 0 6px,#F0F0F0 6px 12px)!important;color:#B0B4B8!important}}
+.t th .tk{{display:none}} body.cedit .t th .tk{{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-right:5px;vertical-align:-2px;border-radius:3px;border:1.5px solid #C0392B;background:#C0392B;color:#fff;font-size:9px;cursor:pointer}}
+body.cedit .t th.gone .tk{{background:#fff;border-color:#B0B4B8;color:transparent}} body.cedit .t th{{cursor:pointer}}
+.cnote{{display:none;position:sticky;top:44px;z-index:5;background:#FFF8E6;border:1px solid #F0D58A;color:#6B5A1E;border-radius:8px;padding:8px 12px;margin:8px auto;max-width:1100px;font-size:13px}} body.cedit .cnote{{display:block}}
+@media print{{.cnote,.t th .tk{{display:none!important}}}}
+</style></head><body><div class="bar"><b>{e(doc['ref'])}</b>{iq_btn}<button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><button onclick="shr()">Share</button></div>
+<div class="cnote">Untick a column heading to leave that column off - on screen, the PDF and Share. Saved on this certificate. Press <b>Done</b> when finished.</div>
+<script>window.PC_HIDE={hide_json};window.PC_SAVE="{toggle_url}";</script>
 <script>async function shr(){{try{{const r=await fetch("{pdf_url}");const b=await r.blob();const f=new File([b],"{fname}.pdf",{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{e(doc['ref'])}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}</script>
 <section class="pg"><div class="top"><img src="{logo}"><div class="ref">{e(doc['ref'])}<span>Payment Certificate No.: {doc['pc_seq']:02d}</span></div></div>
 <h1>{e(title)}</h1>
@@ -1307,11 +1354,43 @@ def pc_print(pc_id: int, token: str, format: str = "preview", intqty: str = "", 
     if not pc:
         raise HTTPException(404, "That certificate is not there any more.")
     doc = build_doc(db, pc)
-    doc["show_iq"] = show_int_qty(pc, intqty or None)
-    iq = "1" if doc["show_iq"] else "0"
+    doc["hide"] = hidden_cols(pc, intqty or None)
     if format == "pdf":
         buf = render_pdf(doc)
         name = re.sub(r"[^A-Za-z0-9]+", "_", doc["ref"]).strip("_")
         return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={name}.pdf"})
-    return HTMLResponse(render_html(doc, f"/export/est/pc/{pc_id}?token={token}&format=pdf&intqty={iq}",
-                                    f"/export/est/pc/{pc_id}?token={token}&format=preview&intqty={'0' if doc['show_iq'] else '1'}"))
+    html = render_html(doc, f"/export/est/pc/{pc_id}?token={token}&format=pdf", f"/export/est/pc/{pc_id}/cols?token={token}")
+    return HTMLResponse(html.replace("</body></html>", COL_JS + "</body></html>"))
+
+
+@router.post("/export/est/pc/{pc_id}/cols")
+def pc_cols(pc_id: int, token: str, data: dict = Body(...), db: Session = Depends(get_db)):
+    """The columns left off this certificate's print, from the preview's Hide columns: {hide: {kind: [col index]}}."""
+    import json as _j
+    u = auth.get_download_user_from_token(token, db)
+    if not ({E.RIGHT, "accounts_bank"} & set(E.M.effective_permissions(u))):
+        raise HTTPException(status_code=403, detail="Estimation only.")
+    pc = db.query(E.EstSubPC).get(pc_id)
+    if not pc:
+        raise HTTPException(404, "That certificate is not there any more.")
+    h = {}
+    for k, v in (data.get("hide") or {}).items():
+        if k in COL_KINDS and isinstance(v, list):
+            h[k] = sorted({int(i) for i in v if str(i).isdigit() and int(i) < len(COL_KINDS[k])})
+    pc.hide_cols = _j.dumps(h)
+    db.commit()
+    return {"ok": True, "hide": h}
+
+
+# the preview's Hide columns: tick boxes in the headings while choosing; the choice saved straight away
+COL_JS = """<script>(function(){
+var H=window.PC_HIDE||{},btn=document.getElementById('colbtn');if(!btn)return;
+function cells(t){var out=[];t.querySelectorAll('tr').forEach(function(tr){var c=0;[].forEach.call(tr.children,function(td){var sp=+td.getAttribute('colspan')||1;out.push([td,c,sp]);c+=sp;});});return out;}
+function apply(){var n=0;document.querySelectorAll('table.t[data-k]').forEach(function(t){var k=t.dataset.k,h=H[k]||[];
+ cells(t).forEach(function(x){var on=x[2]===1&&h.indexOf(x[1])>=0;x[0].classList.toggle('gone',on);});});
+ for(var k in H)n+=H[k].length;btn.textContent=document.body.classList.contains('cedit')?'Done':('Hide columns'+(n?' ('+n+' hidden)':''));}
+document.querySelectorAll('table.t[data-k]').forEach(function(t){var k=t.dataset.k,hr=t.querySelector('tr');
+ [].forEach.call(hr.children,function(th,i){if(th.tagName!=='TH')return;var b=document.createElement('span');b.className='tk';b.innerHTML='&#10003;';th.insertBefore(b,th.firstChild);
+  th.addEventListener('click',function(){if(!document.body.classList.contains('cedit'))return;var h=H[k]=H[k]||[],j=h.indexOf(i);if(j>=0)h.splice(j,1);else h.push(i);apply();save();});});});
+var tm;function save(){clearTimeout(tm);tm=setTimeout(function(){fetch(window.PC_SAVE,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hide:H})});},250);}
+btn.addEventListener('click',function(){document.body.classList.toggle('cedit');apply();});apply();})();</script>"""

@@ -39,29 +39,30 @@ def heads(h):
 # ---- before the CM approves: shown
 h = prev()
 hd = heads(h)
-ck(f"order: Int. Qty, Unit, Contract amt, Rate, Measured ({hd[3:8]})", hd[3:8] == ["Int. Qty", "Unit", "Contract amt", "Rate", "Measured"], hd)
-ck("before CM approval: shown (no 'noiq'), button says Hide internal columns", 'class="noiq"' not in h and "Hide internal columns" in h, h[:300])
-ck("the PDF link carries intqty=1", "format=pdf&intqty=1" in h)
+ck(f"order: Int. Qty, Unit, Contract amt, Rate, Measured ({hd[3:8]})", [re.sub("<[^>]+>", "", x) for x in hd[3:8]] == ["Int. Qty", "Unit", "Contract amt", "Rate", "Measured"], hd)
+ck("before CM approval: nothing hidden, button 'Hide columns'", "window.PC_HIDE={}" in h and ">Hide columns<" in h, h[:300])
 t = pdf_txt()
 ck("PDF before approval: Int. Qty and Contract amt there", "Int. Qty" in t and "Contract amt" in t and "42,900.00" in t, t[:1500])
 ck("PDF row: 286 M3 42,900.00 150.00 (Int. Qty, Unit, Contract amt, Rate)", re.search(r"286\s+M3\s+42,900\.00\s+150\.00", t) is not None, t[:3000])
 
-# ---- after the CM approves: hidden by default
+# ---- after the CM approves: Int. Qty and Contract amt left off by default
 for st in ("Certified", "Prepared", "CM approved"):
     r = c.post(f"/store/est/subpcs/{pc}/step", headers=H, json={"step": st})
 ck("CM approved", r.status_code == 200 and r.json()["status"] == "CM approved", r.text)
 h = prev()
-ck("after CM approval: hidden (body noiq), button says Show internal columns", 'class="noiq"' in h and "Show internal columns" in h)
-ck("the PDF link carries intqty=0", "format=pdf&intqty=0" in h)
+ck("after CM approval: Int. Qty (3) and Contract amt (5) hidden, button says 2 hidden", 'window.PC_HIDE={"A": [3, 5]}' in h and "Hide columns (2 hidden)" in h, re.findall(r"PC_HIDE=[^;]*", h))
 t = pdf_txt()
 ck("PDF after approval: no Int. Qty, no Contract amt column, no 42,900.00 / 21,500.00", "Int. Qty" not in t and "Contract amt" not in t and "42,900.00" not in t and "21,500.00" not in t, t[:2500])
 ck("... but Unit, Rate, Measured and the amounts are there (195 x 150 = 29,250.00)", re.search(r"M3\s+150\.00", t) is not None and "29,250.00" in t, t[:3000])
-ck("... and the Summary is kept as it is (the Contract figure of the bill)", "Summary" not in t or "CONTRACT" in t.upper())
-# asked for either way
-t = pdf_txt("&intqty=1")
-ck("asked to show them after approval: PDF has them again", "Int. Qty" in t and "42,900.00" in t)
-h = prev("&intqty=1")
-ck("preview asked to show: shown, PDF link intqty=1", 'class="noiq"' not in h and "format=pdf&intqty=1" in h)
-ck("preview shown -> its switch goes to hide (intqty=0)", "format=preview&intqty=0" in h)
+# chosen on the preview: show them again, leave Remarks and Rate off instead; Appendix B's Retention off
+sv = c.post(f"/export/est/pc/{pc}/cols?token={tok()}", json={"hide": {"A": [6, 14], "B": [7], "X": [1], "C": [99]}})
+ck("the choice is saved on the certificate (unknown table / column ignored)", sv.status_code == 200 and sv.json()["hide"] == {"A": [6, 14], "B": [7], "C": []}, sv.text)
+t = pdf_txt()
+ck("PDF follows the choice: Int. Qty and Contract amt back, Rate gone", "Int. Qty" in t and "42,900.00" in t and not re.search(r"\bRate\b", t.split("Appendix - A")[1].split("Appendix - B")[0]), t[:2000])
+ck("... Appendix B without Retention", "Retention" not in t.split("Appendix - B")[1][:600], t.split("Appendix - B")[1][:600] if "Appendix - B" in t else t[-1500:])
+h = prev()
+ck("preview shows the saved choice, 3 hidden", 'window.PC_HIDE={"A": [6, 14], "B": [7], "C": []}' in h and "Hide columns (3 hidden)" in h)
+sv = c.post(f"/export/est/pc/{pc}/cols?token={tok()}", json={"hide": {}})
+ck("everything shown again", "Int. Qty" in pdf_txt() and "Hide columns<" in prev())
 print("ALL PASS" if not fails else f"{len(fails)} FAILED")
 sys.exit(1 if fails else 0)
