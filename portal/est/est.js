@@ -1305,32 +1305,40 @@ SECTIONS["client.boq"] = el => {
   const tot = inScope.reduce((a, x) => a + x.counted, 0), cost = inScope.reduce((a, x) => a + x.cost, 0);
   const out = all.filter(x => x.scope).reduce((a, x) => a + x.amount, 0);
   const open = ST.boqOpen = ST.boqOpen || {};
-  let html = tools("boq", { add: `<button class="btn btn-primary" id="boq-up" title="The estimation team's internal BOQ workbook (1.PRELIM, 2.SUBSTR ... 20. SPECIALIZED ITEMS). Only the lines are kept - the file is not stored.">Upload BOQ</button><input type="file" id="boq-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-plain" id="boq-paste">Paste from Excel</button><button class="btn btn-ghost" id="boq-add">+ Line</button>` });
+  const pick = ST.boqPick = ST.boqPick || new Set();                 // ticked lines (ids), to take out together
+  for (const id of [...pick]) if (!all.some(x => x.id === id)) pick.delete(id);
+  const tl = b.boq_tally, tb = (tl && tl.bills) || {};
+  const near = (a, c) => Math.abs(a - c) < 0.015;
+  const unpricedN = all.filter(x => !x.amount).length;
+  let html = tools("boq", { add: `<button class="btn btn-primary" id="boq-up" title="The estimation team's internal BOQ workbook (1.PRELIM, 2.SUBSTR ... 20. SPECIALIZED ITEMS). Only the lines are kept - the file is not stored.">Upload BOQ</button><input type="file" id="boq-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-plain" id="boq-paste">Paste from Excel</button><button class="btn btn-ghost" id="boq-add">+ Line</button>${unpricedN ? `<button class="btn btn-plain" id="boq-unpriced" title="Every line with no amount (blank, By Client, Included, N/A ...) out in one go">Remove ${unpricedN} unpriced line${unpricedN === 1 ? "" : "s"}</button>` : ""}` });
   if (!all.length) html += `<div class="empty">No BOQ yet. Press <b>Upload internal BOQ</b> and pick the internal BOQ Excel - every line comes in, grouped by trade, with what is excluded or phase 2 kept aside. ${tip("The workbook is read once and only its lines are kept; the Excel file itself is not stored. Upload a newer revision any time - the cost rates and done % you typed stay on the lines that come back.")}</div>`;
   else {
-    html += `<div class="strip">${[["BOQ value", tot, "In the awarded scope"], ["Budget cost", cost, "Qty x your cost rate"], ["Budget margin", tot - cost, ""]].map(([l, v, t]) => `<div class="fig"><div class="l">${l}${t ? " " + tip(t) : ""}</div><div class="v">${aed(v)}</div></div>`).join("")}<div class="fig"><div class="l">Margin %</div><div class="v">${tot && cost ? (100 * (tot - cost) / tot).toFixed(1) + "%" : '<span class="muted">-</span>'}</div></div>${out ? `<div class="fig"><div class="l">Not in scope ${tip("Bills and sections the internal BOQ leaves out (Excluded, Phase 02, N/A ...). Kept for reference, not counted. Click the tag on a bill to bring it into scope when it is awarded.")}</div><div class="v muted">${aed(out)}</div></div>` : ""}</div>`;
+    html += `<div class="strip">${[["BOQ value", tot, "In the awarded scope"], ["Budget cost", cost, "Qty x your cost rate"], ["Budget margin", tot - cost, ""]].map(([l, v, t]) => `<div class="fig"><div class="l">${l}${t ? " " + tip(t) : ""}</div><div class="v">${aed(v)}</div></div>`).join("")}<div class="fig"><div class="l">Margin %</div><div class="v">${tot && cost ? (100 * (tot - cost) / tot).toFixed(1) + "%" : '<span class="muted">-</span>'}</div></div>${tl && tl.total != null ? `<div class="fig ${near(tot, tl.total) ? "green" : ""}"><div class="l">Workbook total ${tip(`What the ${tl.sheet || "SUMMARY"} sheet of ${tl.file || "the internal BOQ"} says. Each bill below shows a tick when its lines add up to the workbook's figure, or the difference when they do not.`)}</div><div class="v">${aed(near(tot, tl.total) ? tot : tl.total)}</div><div class="s">${near(tot, tl.total) ? '<span class="st g">&#10003; tallies</span>' : `<span class="st r">BOQ is ${money(Math.abs(tot - tl.total), false)} ${tot > tl.total ? "more" : "less"}</span>`}</div></div>` : ""}${out ? `<div class="fig"><div class="l">Not in scope ${tip("Bills and sections the internal BOQ leaves out (Excluded, Phase 02, N/A ...). Kept for reference, not counted. Click the tag on a bill to bring it into scope when it is awarded.")}</div><div class="v muted">${aed(out)}</div></div>` : ""}</div>`;
     const bills = [...new Set(rows.map(x => x.bill || ""))];
     const many = bills.length > 1;
-    html += `<div class="tw"><table class="t boq"><thead><tr><th style="width:62px">Item</th><th>Description</th><th>Unit</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th><th class="r">Cost rate ${tip("Your budget cost per unit. Click any figure to change it.")}</th><th class="r">Budget</th><th class="r">Done %</th></tr></thead><tbody>`;
+    html += `<div class="boq-pickbar ${pick.size ? "on" : ""}">${pick.size ? `<b>${pick.size} line${pick.size === 1 ? "" : "s"} ticked</b> · ${money(all.filter(x => pick.has(x.id)).reduce((a, x) => a + x.amount, 0))} <button class="btn btn-primary btn-sm" id="boq-delpick">Delete ticked</button> <button class="btn btn-plain btn-sm" id="boq-unpick">Clear ticks</button>` : `<span class="muted small">Tick lines, a whole section or a whole bill to take them out together.</span>`}</div>`;
+    html += `<div class="tw"><table class="t boq"><thead><tr><th class="ck"><input type="checkbox" id="boq-ckall" title="Tick every line shown" ${rows.length && rows.every(x => pick.has(x.id)) ? "checked" : ""}></th><th style="width:62px">Item</th><th>Description</th><th>Unit</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th><th class="r">Cost rate ${tip("Your budget cost per unit. Click any figure to change it.")}</th><th class="r">Budget</th><th class="r">Done %</th></tr></thead><tbody>`;
     for (const bl of bills) {
       const L = rows.filter(x => (x.bill || "") === bl), cnt = L.reduce((a, x) => a + x.counted, 0), bc = L.reduce((a, x) => a + x.cost, 0);
       const scopes = [...new Set(L.map(x => x.scope))], whole = scopes.length === 1 && scopes[0];
       const isOpen = !many || q || open[bl];
-      if (many) html += `<tr class="bill ${isOpen ? "open" : ""} ${whole ? "out" : ""}" data-bill="${esc(bl)}"><td colspan="5"><span class="caret">${isOpen ? "▾" : "▸"}</span> ${esc(bl || "Other lines")} <span class="small muted">${L.length} line${L.length === 1 ? "" : "s"}</span>${whole ? ` <span class="st b scopetag" data-scope="${esc(bl)}" title="Not counted - click to change">${esc(whole)}</span>` : (scopes.some(x => x) ? ` <span class="small muted">· part left out</span>` : "")}</td><td class="r">${whole ? `<span class="muted">${money(L.reduce((a, x) => a + x.amount, 0))}</span>` : money(cnt)}</td><td></td><td class="r">${money(bc)}</td><td></td></tr>`;
+      const tw = tb[bl], tag = tw == null ? "" : near(cnt, tw) ? ` <span class="st g" title="Adds up to the workbook's ${money(tw, false)}">&#10003; tallies</span>` : ` <span class="st r" title="The workbook says ${money(tw, false)}">workbook ${money(tw, false)} &middot; ${cnt > tw ? "+" : "-"}${money(Math.abs(cnt - tw), false)}</span>`;
+      const allB = L.every(x => pick.has(x.id));
+      if (many) html += `<tr class="bill ${isOpen ? "open" : ""} ${whole ? "out" : ""}" data-bill="${esc(bl)}"><td class="ck"><input type="checkbox" data-pkbill="${esc(bl)}" ${allB ? "checked" : ""} title="Tick the whole bill"></td><td colspan="5"><span class="caret">${isOpen ? "▾" : "▸"}</span> ${esc(bl || "Other lines")} <span class="small muted">${L.length} line${L.length === 1 ? "" : "s"}</span>${tag}${whole ? ` <span class="st b scopetag" data-scope="${esc(bl)}" title="Not counted - click to change">${esc(whole)}</span>` : (scopes.some(x => x) ? ` <span class="small muted">· part left out</span>` : "")}</td><td class="r">${whole ? `<span class="muted">${money(L.reduce((a, x) => a + x.amount, 0))}</span>` : money(cnt)}</td><td></td><td class="r">${money(bc)}</td><td></td></tr>`;
       if (!isOpen) continue;
       let sec = null;
       for (const x of L) {
         if (x.section !== sec) {
           sec = x.section;
           if (sec || !many) { const S = L.filter(y => y.section === sec), so = S.every(y => y.scope) && !whole ? S[0].scope : "";
-            html += `<tr class="sec ${so ? "out" : ""}"><td colspan="5">${esc(sec || "General")}${so ? ` <span class="st b scopetag" data-scope="${esc(bl)}" data-ssec="${esc(sec)}" title="Not counted - click to change">${esc(so)}</span>` : ""}</td><td class="r">${so ? `<span class="muted">${money(S.reduce((a, y) => a + y.amount, 0))}</span>` : money(S.reduce((a, y) => a + y.counted, 0))}</td><td></td><td class="r">${money(S.reduce((a, y) => a + y.cost, 0))}</td><td></td></tr>`; }
+            html += `<tr class="sec ${so ? "out" : ""}"><td class="ck"><input type="checkbox" data-pksec="${esc(bl)}\u0001${esc(sec || "")}" ${S.every(y => pick.has(y.id)) ? "checked" : ""} title="Tick the whole section"></td><td colspan="5">${esc(sec || "General")}${so ? ` <span class="st b scopetag" data-scope="${esc(bl)}" data-ssec="${esc(sec)}" title="Not counted - click to change">${esc(so)}</span>` : ""}</td><td class="r">${so ? `<span class="muted">${money(S.reduce((a, y) => a + y.amount, 0))}</span>` : money(S.reduce((a, y) => a + y.counted, 0))}</td><td></td><td class="r">${money(S.reduce((a, y) => a + y.cost, 0))}</td><td></td></tr>`; }
         }
         const amt = x.scope ? `<span class="muted" title="${esc(x.scope)} - not counted">${money(x.amount)}</span>` : money(x.amount);
-        html += `<tr class="${x.scope ? "out" : ""}"><td class="small">${esc(x.code)}</td><td class="rowc" data-boq="${x.id}">${esc(x.description)}${x.remark ? ` <span class="small muted">· ${esc(x.remark)}</span>` : ""}</td><td>${esc(x.unit)}</td>${["qty", "rate"].map(k => `<td class="r rowc" data-ed="${x.id}:${k}">${money(x[k])}</td>`).join("")}<td class="r">${amt}</td><td class="r rowc" data-ed="${x.id}:cost_rate">${money(x.cost_rate)}</td><td class="r">${money(x.cost)}</td><td class="r rowc" data-ed="${x.id}:done_pct">${x.done_pct ? x.done_pct + "%" : '<span class="muted">-</span>'}</td></tr>`;
+        html += `<tr class="${x.scope ? "out" : ""}${pick.has(x.id) ? " picked" : ""}"><td class="ck"><input type="checkbox" data-pk="${x.id}" ${pick.has(x.id) ? "checked" : ""}></td><td class="small">${esc(x.code)}</td><td class="rowc" data-boq="${x.id}">${esc(x.description)}${x.remark ? ` <span class="small muted">· ${esc(x.remark)}</span>` : ""}</td><td>${esc(x.unit)}</td>${["qty", "rate"].map(k => `<td class="r rowc" data-ed="${x.id}:${k}">${money(x[k])}</td>`).join("")}<td class="r">${amt}</td><td class="r rowc" data-ed="${x.id}:cost_rate">${money(x.cost_rate)}</td><td class="r">${money(x.cost)}</td><td class="r rowc" data-ed="${x.id}:done_pct">${x.done_pct ? x.done_pct + "%" : '<span class="muted">-</span>'}</td></tr>`;
       }
     }
     const shownT = rows.reduce((a, x) => a + x.counted, 0), shownC = rows.reduce((a, x) => a + x.cost, 0);
-    html += `<tr class="tot"><td></td><td colspan="4">Total${q ? " (lines found)" : ""}${many && !q ? ` <a href="#" class="small" id="boq-all">${bills.every(x => open[x]) ? "close all" : "open all"}</a>` : ""}</td><td class="r">${money(shownT)}</td><td></td><td class="r">${money(shownC)}</td><td></td></tr></tbody></table></div>`;
+    html += `<tr class="tot"><td></td><td></td><td colspan="4">Total${q ? " (lines found)" : ""}${many && !q ? ` <a href="#" class="small" id="boq-all">${bills.every(x => open[x]) ? "close all" : "open all"}</a>` : ""}</td><td class="r">${money(shownT)}</td><td></td><td class="r">${money(shownC)}</td><td></td></tr></tbody></table></div>`;
   }
   el.innerHTML = html;
   bindTools(el, () => SECTIONS["client.boq"](el));
@@ -1343,12 +1351,32 @@ SECTIONS["client.boq"] = el => {
     async v => { const r = await POST(`/store/est/projects/${ST.pid}/boq-paste`, v); await reload(); toast(r.added + " lines added"); },
     { after: () => { $("#f-text").style.height = "220px"; } });
   $("#boq-add", el).onclick = () => boqForm();
-  $$("tr.bill", el).forEach(tr => tr.onclick = e => { if (e.target.closest("[data-scope]")) return; open[tr.dataset.bill] = !open[tr.dataset.bill]; SECTIONS["client.boq"](el); });
+  const redraw = () => SECTIONS["client.boq"](el);
+  const tick = (ids, on) => { ids.forEach(id => on ? pick.add(id) : pick.delete(id)); redraw(); };
+  $$("[data-pk]", el).forEach(c => c.onclick = e => { e.stopPropagation(); tick([+c.dataset.pk], c.checked); });
+  $$("[data-pkbill]", el).forEach(c => c.onclick = e => { e.stopPropagation(); tick(rows.filter(x => (x.bill || "") === c.dataset.pkbill).map(x => x.id), c.checked); });
+  $$("[data-pksec]", el).forEach(c => c.onclick = e => { e.stopPropagation(); const [bl, sc] = c.dataset.pksec.split("\u0001"); tick(rows.filter(x => (x.bill || "") === bl && (x.section || "") === sc).map(x => x.id), c.checked); });
+  const ca = $("#boq-ckall", el); if (ca) ca.onclick = () => tick(rows.map(x => x.id), ca.checked);
+  const up_ = $("#boq-unpick", el); if (up_) up_.onclick = () => { pick.clear(); redraw(); };
+  const dp = $("#boq-delpick", el); if (dp) dp.onclick = () => boqDelete([...pick]);
+  const un = $("#boq-unpriced", el); if (un) un.onclick = () => boqDelete(null, true);
+  $$("tr.bill", el).forEach(tr => tr.onclick = e => { if (e.target.closest("[data-scope]") || e.target.closest(".ck")) return; open[tr.dataset.bill] = !open[tr.dataset.bill]; SECTIONS["client.boq"](el); });
   const ab = $("#boq-all", el); if (ab) ab.onclick = e => { e.preventDefault(); const bl = [...new Set(b.boq.map(x => x.bill || ""))], all2 = bl.every(x => open[x]); bl.forEach(x => open[x] = !all2); SECTIONS["client.boq"](el); };
   $$("[data-scope]", el).forEach(t => t.onclick = e => { e.stopPropagation(); boqScope(t.dataset.scope, t.dataset.ssec, t.textContent); });
   $$("[data-boq]", el).forEach(td => td.onclick = () => boqForm(b.boq.find(x => x.id === +td.dataset.boq)));
   $$("[data-ed]", el).forEach(td => td.onclick = () => inlineEdit(td, "boq"));
 };
+// Many lines out together: ticked ones, or every line with no price. Says how many and how much first.
+function boqDelete(ids, unpriced) {
+  const L = unpriced ? ST.b.boq.filter(x => !x.amount) : ST.b.boq.filter(x => ids.includes(x.id));
+  if (!L.length) return;
+  const amt = L.reduce((a, x) => a + x.amount, 0), bills = [...new Set(L.map(x => x.bill || "Other lines"))];
+  modal(unpriced ? "Remove the unpriced lines" : "Delete the ticked lines", [], async () => {
+    const r = await POST(`/store/est/projects/${ST.pid}/boq-delete`, unpriced ? { unpriced: true } : { ids: L.map(x => x.id) });
+    (ST.boqPick || new Set()).clear(); await reload(); toast(`${r.deleted} line${r.deleted === 1 ? "" : "s"} taken out${r.amount ? " - " + money(r.amount, false) : ""}`);
+  }, { save: `Delete ${L.length} line${L.length === 1 ? "" : "s"}`,
+       top: `<div style="font-size:14px;line-height:1.6"><b>${L.length}</b> line${L.length === 1 ? "" : "s"} &middot; <b>${money(amt, false)}</b><br><span class="small muted">From ${bills.map(esc).join(", ")}</span>${amt ? `<div class="small" style="margin-top:6px">The BOQ value goes down by ${money(amt, false)}.</div>` : ""}</div>` });
+}
 // A bill or section left out (Excluded, Phase 02 ...) brought into scope once awarded - or left out again.
 function boqScope(bill, section, now) {
   const what = section ? `${section} (${bill})` : bill;
@@ -1362,28 +1390,42 @@ function boqScope(bill, section, now) {
 function isDoc(file) { return /\.(pdf|docx|jpe?g|png|webp)$/i.test(file.name || "") || /^image\//.test(file.type || ""); }
 async function boqImport(file, pid) {
   pid = pid || ST.pid;
-  let send = async (save, mode) => { const fd = new FormData(); await addFile(fd, file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace"); return api(`/store/est/projects/${pid}/boq-import`, { method: "POST", body: fd }); };
+  const opt = { unpriced: 0, out: 0 };
+  let send = async (save, mode) => { const fd = new FormData(); await addFile(fd, file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace");
+    fd.append("keep_unpriced", opt.unpriced ? "1" : "0"); fd.append("keep_out", opt.out ? "1" : "0"); return api(`/store/est/projects/${pid}/boq-import`, { method: "POST", body: fd }); };
   if (isDoc(file)) {                     // a PDF, Word file or scan: read here, only its words are sent
     let d; try { d = await readAgreement(file, m => toast(m)); } catch (e) { return fail(e); }
     send = (save, mode) => POST(`/store/est/projects/${pid}/boq-import-text`, { lines: d.lines, save: save ? 1 : 0, mode: mode || "replace", name: file.name });
   }
   let r; try { toast("Reading " + file.name + " ..."); r = await send(false); } catch (e) { return fail(e); }
-  const ok = r.summary_total === null || r.summary_total === undefined ? "" : Math.abs(r.total - r.summary_total) < 0.01 ? `<span class="st g">matches the ${esc(r.summary_sheet)} sheet</span>` : `<span class="st r">${esc(r.summary_sheet)} sheet says ${money(r.summary_total, false)}</span>`;
-  modal(`Internal BOQ - ${file.name}`, [], async () => {
-    const mode = ($("input[name=boqmode]:checked") || {}).value || "replace";
-    const x = await send(true, mode); ST.boqOpen = {};
-    if (pid === ST.pid) await reload();
-    toast(`${x.saved} BOQ lines ${mode === "replace" ? "in" : "added"}${x.kept_budget ? ` - cost rate / done % kept on ${x.kept_budget}` : ""}`);
-  }, {
-    wide: true, save: `Bring in ${r.lines} lines`,
-    top: `<div class="strip"><div class="fig"><div class="l">Lines</div><div class="v">${r.lines}</div></div><div class="fig green"><div class="l">BOQ value (in scope)</div><div class="v">${money(r.total, false)}</div><div class="s">${ok}</div></div>${r.left_out ? `<div class="fig"><div class="l">Not in scope</div><div class="v muted">${money(r.left_out, false)}</div><div class="s">kept for reference</div></div>` : ""}</div>
-      ${r.existing ? `<div class="warn" style="margin:8px 0">This project already has ${r.existing} BOQ line(s).
-        <label class="chk" style="display:flex;gap:8px;margin-top:6px"><input type="radio" name="boqmode" value="replace" checked><span><b>Replace them</b> with this workbook - cost rates and done % already typed stay on the lines that come back</span></label>
-        <label class="chk" style="display:flex;gap:8px;margin-top:4px"><input type="radio" name="boqmode" value="add"><span><b>Add</b> these lines after them</span></label></div>` : ""}
-      ${r.notes.length ? `<div class="small" style="margin:6px 0">${r.notes.map(n => "• " + esc(n)).join("<br>")}</div>` : ""}
-      <div class="tw" style="max-height:360px;overflow:auto"><table class="t"><thead><tr><th>Bill</th><th class="r">Lines</th><th class="r">Counted</th><th>Left out</th></tr></thead><tbody>${r.bills.map(x => `<tr><td>${esc(x.bill)}</td><td class="r">${x.lines}</td><td class="r">${money(x.counted)}</td><td>${x.scope ? `<span class="st b">${esc(x.scope)}</span> <span class="small muted">${money(x.left_out, false)}</span>` : x.sections_out.length ? `<span class="small">${x.sections_out.map(esc).join("<br>")}</span> <span class="small muted">${money(x.left_out, false)}</span>` : ""}</td></tr>`).join("")}
-      <tr class="tot"><td>Total</td><td class="r">${r.lines}</td><td class="r">${money(r.total)}</td><td>${r.left_out ? `<span class="small muted">${money(r.left_out, false)} not counted</span>` : ""}</td></tr></tbody></table></div>
-      <div class="small muted" style="margin-top:6px">Only the lines are kept - the file itself is not stored.</div>` });
+  const show = r => {
+    const st = r.summary_total, matches = st == null ? null : Math.abs(r.total - st) < 0.015;
+    const src = r.summary_sheet === "document" ? "the document's total" : `the ${esc(r.summary_sheet)} sheet`;
+    const ok = st == null ? "" : matches ? `<span class="st g">&#10003; tallies with ${src}</span>` : `<span class="st r">${src} says ${money(st, false)}</span>`;
+    const outs = r.bills.flatMap(b => (b.sections_out || []).map(s => ({ b: b.bill, ...s })));
+    const isXl = !isDoc(file);
+    modal(`Internal BOQ - ${file.name}`, [], async () => {
+      const mode = ($("input[name=boqmode]:checked") || {}).value || "replace";
+      const x = await send(true, mode); ST.boqOpen = {}; ST.boqPick = new Set();
+      if (pid === ST.pid) await reload();
+      toast(`${x.saved} BOQ lines ${mode === "replace" ? "in" : "added"}${x.kept_budget ? ` - cost rate / done % kept on ${x.kept_budget}` : ""}`);
+    }, {
+      wide: true, save: `Bring in ${r.lines} priced line${r.lines === 1 ? "" : "s"}`,
+      top: `<div class="strip"><div class="fig"><div class="l">Priced lines</div><div class="v">${r.lines}</div></div><div class="fig ${matches ? "green" : ""}"><div class="l">BOQ value</div><div class="v">${money(r.total, false)}</div><div class="s">${ok}</div></div>${r.left_out ? `<div class="fig"><div class="l">Left out ${tip("Sections and bills the workbook does not price (Excluded, Rate only, Phase 02 ...) - listed below, not brought in.")}</div><div class="v muted">${money(r.left_out, false)}</div></div>` : ""}${r.unpriced ? `<div class="fig"><div class="l">Lines with no price</div><div class="v muted">${r.unpriced}</div><div class="s">not brought in</div></div>` : ""}</div>
+        ${r.existing ? `<div class="warn" style="margin:8px 0">This project already has ${r.existing} BOQ line(s).
+          <label class="chk" style="display:flex;gap:8px;margin-top:6px"><input type="radio" name="boqmode" value="replace" checked><span><b>Replace them</b> with this workbook - cost rates and done % already typed stay on the lines that come back</span></label>
+          <label class="chk" style="display:flex;gap:8px;margin-top:4px"><input type="radio" name="boqmode" value="add"><span><b>Add</b> these lines after them</span></label></div>` : ""}
+        ${r.notes.length ? `<div class="small" style="margin:6px 0">${r.notes.map(n => "&bull; " + esc(n)).join("<br>")}</div>` : ""}
+        <div class="tw" style="max-height:340px;overflow:auto"><table class="t"><thead><tr><th>Bill</th><th>Sheet</th><th class="r">Lines</th><th class="r">Lines add up to</th><th class="r">Workbook says</th><th>Tally</th></tr></thead><tbody>${r.bills.map(x => `<tr><td>${esc(x.bill)}</td><td class="small muted">${esc(x.sheet || "")}</td><td class="r">${x.lines}</td><td class="r">${money(x.counted)}</td><td class="r">${x.summary == null ? `<span class="muted">${esc(x.summary_words || "-")}</span>` : money(x.summary)}</td><td>${x.diff == null ? "" : x.ok ? '<span class="st g">&#10003;</span>' : `<span class="st r">${x.diff > 0 ? "+" : ""}${money(x.diff, false)}</span>`}</td></tr>`).join("")}
+        <tr class="tot"><td>Total</td><td></td><td class="r">${r.lines}</td><td class="r">${money(r.total)}</td><td class="r">${st == null ? "" : money(st)}</td><td>${matches == null ? "" : matches ? '<span class="st g">&#10003;</span>' : '<span class="st r">check</span>'}</td></tr></tbody></table></div>
+        ${outs.length || (r.skipped || []).length ? `<div class="small" style="margin-top:8px"><b>Left out - the workbook does not price these:</b><br>${(r.skipped || []).map(x => `&bull; ${esc(x.bill)} - ${esc(x.why)}${x.amount ? " (" + money(x.amount, false) + ")" : ""}`).concat(outs.map(x => `&bull; ${esc(x.b)}: ${esc(x.name)} - ${esc(x.why)} (${money(x.amount, false)})`)).join("<br>")}</div>` : ""}
+        ${isXl ? `<div style="margin-top:8px;display:flex;gap:16px;flex-wrap:wrap"><label class="chk"><input type="checkbox" id="bq-unpriced" ${opt.unpriced ? "checked" : ""}> Also bring the lines with no price (By Client, Included, N/A ...)</label><label class="chk"><input type="checkbox" id="bq-out" ${opt.out ? "checked" : ""}> Also bring the left-out sections (kept aside, not counted)</label></div>` : ""}
+        <div class="small muted" style="margin-top:6px">Only priced lines come in. Anything brought in by mistake: tick it (or its section / bill) on the BOQ and delete in one go. The file itself is not stored.</div>`,
+      after: () => ["bq-unpriced", "bq-out"].forEach(id => { const c = $("#" + id); if (c) c.onchange = async () => { opt[id === "bq-unpriced" ? "unpriced" : "out"] = c.checked ? 1 : 0;
+        try { const r2 = await send(false); closeModal(true); show(r2); } catch (e) { fail(e); } }; })
+    });
+  };
+  show(r);
 }
 function boqForm(x) {
   x = x || {};

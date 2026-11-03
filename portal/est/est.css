@@ -751,3 +751,19 @@ table.sb .resub { margin-top: 4px; }
 
 /* the Next step buttons wrap inside their cell rather than running off the right edge */
 .pc-next { white-space: normal; min-width: 150px; } .pc-next .btn { margin: 2px 0; }
+
+/* BOQ: tick lines / a section / a bill and take them out together */
+table.boq th.ck, table.boq td.ck { width: 30px; text-align: center; padding-left: 6px; padding-right: 2px; }
+table.boq td.ck input, table.boq th.ck input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--red); }
+table.boq tr.picked td { background: #FDF1EF; }
+.boq-pickbar { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 6px 12px; margin: 6px 0; border-radius: 10px; background: #F7F5F1; font-size: 13px; }
+.boq-pickbar.on { background: #FDF1EF; border: 1px solid #F0C9C3; }
+/* fixed columns: the description takes what is left (long bill titles no longer widen the Item column) */
+table.t.boq { table-layout: fixed; }
+table.t.boq thead th:nth-child(1) { width: 34px; } table.t.boq thead th:nth-child(2) { width: 64px; }
+table.t.boq thead th:nth-child(4) { width: 70px; } table.t.boq thead th:nth-child(5) { width: 92px; } table.t.boq thead th:nth-child(6) { width: 92px; }
+table.t.boq thead th:nth-child(7) { width: 116px; } table.t.boq thead th:nth-child(8) { width: 104px; } table.t.boq thead th:nth-child(9) { width: 104px; }
+table.t.boq thead th:nth-child(10) { width: 84px; }
+table.t.boq td { overflow-wrap: anywhere; }
+/* the ticked bar stays in sight at the bottom of the window while lines are ticked */
+.boq-pickbar.on { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 50; margin: 0; box-shadow: 0 8px 24px rgba(0,0,0,.14); background: #fff; }

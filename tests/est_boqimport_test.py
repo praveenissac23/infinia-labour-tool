@@ -62,29 +62,64 @@ def book(extra_line=False, elec_summary=None):
     bio = io.BytesIO(); wb.save(bio); return bio.getvalue()
 
 
-# ---- reading ----
+# ---- reading: only priced lines in the priced scope come in; the rest is listed ----
 r = B.read_internal_boq(book())
 L = {x["description"]: x for x in r["lines"]}
 ck("prelim lump sums come in as 1 LS x amount", L["Insurance"]["qty"] == 1 and L["Insurance"]["unit"] == "LS" and L["Insurance"]["amount"] == 6000)
-ck("an amount in words is kept as the remark, no money", L["Municipality permit"]["remark"] == "Authority payment" and L["Municipality permit"]["amount"] == 0)
+ck("a line with an amount in words and no money is NOT brought in (counted as unpriced)", "Municipality permit" not in L and r["unpriced"] >= 2, r["unpriced"])
 ck("sub-items carry their lead-in line", "Allowance for site administrator - 1 Engineer (part time)" in L and L["Allowance for site administrator - 1 Engineer (part time)"]["amount"] == 145000)
 ck("unpriced template rows and OHP / Others left out", "Watchman" not in L and "Others" not in L and not any(d.startswith("OHP") for d in L))
-ck("bill and section names", L["Excavation"]["bill"] == "02. Substructure" and L["Excavation"]["section"] == "A. EARTHWORKS")
+ck("bill named as the SUMMARY has it, section from the heading", L["Excavation"]["bill"] == "02. Sub Structure" and L["Excavation"]["section"] == "A. EARTHWORKS", (L["Excavation"]["bill"], L["Excavation"]["section"]))
 ck("decimals kept (10.5 m3 x 25 = 262.50)", L["Imported fill"]["qty"] == 10.5 and L["Imported fill"]["amount"] == 262.5)
-ck("a section the sheet's summary excludes is kept but left out", L["Dewatering"]["scope"] == "Excluded" and L["Dewatering"]["amount"] == 96000)
+ck("a section the sheet's summary excludes is NOT brought in, and is listed", "Dewatering" not in L and any(s["why"] == "Excluded" and s["amount"] == 96000 for b in r["bills"] for s in b["sections_out"]))
 ck("a lump sum whose rate is 'LS' keeps its amount", L["Curved column shutter"]["amount"] == 8000 and L["Curved column shutter"]["rate"] == 0)
-ck("a bill the summary marks Phase 02 is kept but left out", L["Supply and fixing of all wooden doors - D1 (1.2 x 2.2 m, Single)"]["scope"] == "Phase 02")
+ck("a bill the summary marks Phase 02 is NOT brought in, and is listed", not any(x["bill"].startswith("07") for x in r["lines"]) and any(x["why"] == "Phase 02" for x in r["skipped"]), r["skipped"])
 ck("price comparison tables are not BOQ lines", "Electrical" not in L)
-ck("total = summary total, the discount added as a line", r["total"] == r["summary_total"] and any(x["description"].startswith("Discount") and x["amount"] == -100 for x in r["lines"]), (r["total"], r["summary_total"]))
+ck("total = summary total, the summary's own discount added as one line", abs(r["total"] - r["summary_total"]) < 0.005 and any(x["description"].startswith("Discount") and x["amount"] == -100 for x in r["lines"]), (r["total"], r["summary_total"]))
+ck("every bill tallies with the summary", r["tally_ok"] and all(b["ok"] for b in r["bills"]), [(b["bill"], b["diff"]) for b in r["bills"]])
+rk = B.read_internal_boq(book(), keep_unpriced=True, keep_out=True)
+Lk = {x["description"]: x for x in rk["lines"]}
+ck("asked for: unpriced lines come in at 0 with their words", Lk["Municipality permit"]["amount"] == 0 and Lk["Municipality permit"]["remark"] == "Authority payment")
+ck("asked for: left-out section / bill come in, kept aside (not counted)", Lk["Dewatering"]["scope"] == "Excluded" and any(x["scope"] == "Phase 02" for x in rk["lines"]) and abs(rk["total"] - r["total"]) < 0.005)
 r2 = B.read_internal_boq(book(extra_line=True))
 ck("an extra line added in the workbook comes in", any(x["description"] == "Extra item added by the QS" and x["amount"] == 1000 for x in r2["lines"]))
 r3 = B.read_internal_boq(book(elec_summary=650000))
-adj = [x for x in r3["lines"] if x["description"].startswith("Difference")]
-ck("a bill whose summary figure differs gets the difference as a line, with the note", len(adj) == 1 and adj[0]["amount"] == 625000 and "Yet to Confirm" in adj[0]["description"] and r3["total"] == r3["summary_total"])
+e3 = next(b for b in r3["bills"] if b["bill"].startswith("10"))
+ck("a bill whose summary figure differs: the difference is SHOWN, never put in as a line", not any(x["description"].startswith("Difference") for x in r3["lines"]) and e3["diff"] == -625000 and not e3["ok"] and not r3["tally_ok"]
+   and any("625,000.00 less" in n for n in r3["notes"]), (e3, r3["notes"]))
+# a sheet with no number in its name, between numbered ones, numbered as the summary has it (WS-25 R10)
+def book2():
+    wb = openpyxl.Workbook(); wb.active.title = "COVER PAGE"
+    a = wb.create_sheet("1.PRELIM")
+    for r_ in [["1. PRELIMINARIES"], ["S/NO.", "ITEMS", "LUMPSUM AMOUNT"], [1, "Insurance", 4000], [None, "TOTAL", 4000]]: a.append(r_)
+    sp = wb.create_sheet("SWIMMING POOL")
+    for r_ in [["J. SWIMMING POOL"], ["S/NO.", "ITEMS", "CONS. QTY", "IC QTY", "UNIT", "RATE", "LUMPSUM AMOUNT"], [45, "Excavation", None, 119, "m3", 25, 2975],
+               [None, "TOTAL", None, 1, "Item", "LS", "exclude"], [], ["L. POOL UNDERGROUND WATER TANK & BALANCING TANK"],
+               ["S/NO.", "ITEMS", "CONS. QTY", "IC QTY", "UNIT", "RATE", "LUMPSUM AMOUNT"], [170, "Excavation", None, 54, "m3", 25, 1350],
+               [171, "Backfilling", None, 32, "m3", 20, 640], [None, "TOTAL", 1990], [],
+               ["B. PUMP ROOM FOR POOL 4.3m L x 2.2m W", None, None, None, "(From 907 Int.BOQ)"],
+               ["S/NO.", "ITEMS", "CONS. QTY", "IC QTY", "UNIT", "RATE", "LUMPSUM AMOUNT"], [22, "Excavation", None, 58, "m3", 25, 1450],
+               [None, "TOTAL", None, None, None, None, "exclude"]]: sp.append(r_)
+    s3 = wb.create_sheet("3.SUPERSTR")
+    for r_ in [["3. SUPERSTRUCTURE"], ["A. REINFORCED CONCRETE"], ["S/NO.", "ITEMS", "CONS. QTY", "IC QTY", "UNIT", "RATE", "LUMPSUM AMOUNT"],
+               [1, "Columns", None, 10, "m3", 800, 8000], [None, "TOTAL", 8000], [], [None, "UNDERGROUND WATER TANK"],
+               ["S/NO.", "ITEMS", "CONS. QTY", "IC QTY", "UNIT", "RATE", "LUMPSUM AMOUNT"], [1, "RCC Wall", None, 2, "m3", 700, 1400], [None, "TOTAL", 1400]]: s3.append(r_)
+    m_ = wb.create_sheet("SUMMARY")
+    for r_ in [["TOTAL SUMMARY"], ["S/NO.", "DESCRIPTION", "AMOUNT"], [1, "Preliminaries", 4000], [2, "Swimming pool & holding tank", 1990],
+               [3, "Super structure", 9400], [None, "TOTAL", 15390]]: m_.append(r_)
+    bio = io.BytesIO(); wb.save(bio); return bio.getvalue()
+w = B.read_internal_boq(book2())
+bn = {b["bill"]: b for b in w["bills"]}
+ck("an unnumbered sheet (SWIMMING POOL) is read, numbered as the summary has it", "02. Swimming Pool & Holding Tank" in bn and bn["02. Swimming Pool & Holding Tank"]["counted"] == 1990 and bn["02. Swimming Pool & Holding Tank"]["ok"], list(bn))
+ck("... and the sheet after it ('3.SUPERSTR') is bill 03 Super Structure, tallying", "03. Super Structure" in bn and bn["03. Super Structure"]["ok"], list(bn))
+ck("sections marked 'exclude' on their TOTAL row are left out (pool, pump room with a note beside its heading)",
+   not any(x["section"].startswith(("J.", "B. PUMP")) for x in w["lines"]) and {s["name"][:7] for s in bn["02. Swimming Pool & Holding Tank"]["sections_out"]} == {"J. SWIM", "B. PUMP"}, bn["02. Swimming Pool & Holding Tank"]["sections_out"])
+ck("an unlettered heading is its own section", any(x["section"] == "UNDERGROUND WATER TANK" and x["description"] == "RCC Wall" for x in w["lines"]))
+ck("the whole workbook tallies (15,390.00)", w["tally_ok"] and w["total"] == 15390, (w["total"], w["notes"]))
 # ---- the real workbooks, if given: every one adds up to its own summary ----
 for f in sys.argv[1:]:
     rr = B.read_internal_boq(open(f, "rb").read())
-    ck(f"{os.path.basename(f)}: {len(rr['lines'])} lines, {rr['total']:,.2f} = summary {rr['summary_total']:,.2f}", rr["summary_total"] is not None and abs(rr["total"] - rr["summary_total"]) < 0.005)
+    ck(f"{os.path.basename(f)}: {len(rr['lines'])} lines, {rr['total']:,.2f} = summary {rr['summary_total']:,.2f}, every bill tallies", rr["summary_total"] is not None and abs(rr["total"] - rr["summary_total"]) < 0.015 and rr["tally_ok"], [(b["bill"], b["diff"]) for b in rr["bills"] if not b["ok"]])
 
 # ---- through the app ----
 tok = c.post("/auth/login", data={"username": "admin", "password": "changeme123"}).json()["access_token"]
@@ -111,12 +146,16 @@ ck("a given amount is shown as given", line["amount"] == 8000 and line["given"])
 c.patch(f"/store/est/boq/{line['id']}", json={"qty": 6, "rate": 1500}, headers=H)
 line = next(b for b in c.get(f"/store/est/projects/{pid}", headers=H).json()["boq"] if b["id"] == line["id"])
 ck("typing qty / rate works the amount out again", line["amount"] == 9000 and not line["given"])
-c.post(f"/store/est/projects/{pid}/boq-scope", json={"bill": "07. Carpentry and Joinery", "scope": ""}, headers=H)
-v2 = c.get(f"/store/est/projects/{pid}", headers=H).json()["summary"]["boq_value"]
-ck("bringing the Phase 02 bill into scope counts it", abs(v2 - (r["total"] + 1000 + 6000)) < 0.005, v2)
-c.post(f"/store/est/projects/{pid}/boq-scope", json={"bill": "02. Substructure", "section": "B. DEWATERING WORKS", "scope": ""}, headers=H)
-v3 = c.get(f"/store/est/projects/{pid}", headers=H).json()["summary"]["boq_value"]
-ck("one section brought in on its own", abs(v3 - v2 - 96000) < 0.005, v3)
+ck("the workbook's summary is kept on the project, to tally against", bq["boq_tally"] and bq["boq_tally"]["sheet"] == "SUMMARY" and bq["boq_tally"]["bills"].get("02. Sub Structure") == 3262.5 + 634850, bq.get("boq_tally"))
+# taken out together: ticked ids, then every unpriced line
+ids = [b["id"] for b in bq["boq"] if b["section"] == "A. EARTHWORKS"]
+d = c.post(f"/store/est/projects/{pid}/boq-delete", json={"ids": ids}, headers=H).json()
+ck(f"several lines deleted in one go ({d})", d["deleted"] == len(ids) == 2 and d["amount"] == 3262.5, d)
+up(book(), save=1, mode="replace", keep_unpriced=1)
+nun = sum(1 for b in c.get(f"/store/est/projects/{pid}", headers=H).json()["boq"] if not b["amount"])
+d = c.post(f"/store/est/projects/{pid}/boq-delete", json={"unpriced": True}, headers=H).json()
+ck(f"every unpriced line out in one go ({nun})", nun >= 2 and d["deleted"] == nun and d["amount"] == 0 and not any(not b["amount"] for b in c.get(f"/store/est/projects/{pid}", headers=H).json()["boq"]), d)
+ck("nothing ticked: refused with a message", c.post(f"/store/est/projects/{pid}/boq-delete", json={"ids": []}, headers=H).status_code == 400)
 n0 = db.query(E.EstBoq).filter_by(project_id=pid).count()
 up(book(extra_line=True), save=1, mode="add")
 ck("add: lines go after the ones there", db.query(E.EstBoq).filter_by(project_id=pid).count() > n0)

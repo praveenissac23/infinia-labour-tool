@@ -2,17 +2,23 @@
 
 The file itself is never kept: it is read in memory and only the lines go into the database.
 
-Layout it understands (T247, T252, 922 ...):
-  * one sheet per trade, named "N. NAME" (1.PRELIM, 2.SUBSTR ... 20. SPECIALIZED ITEMS) - any
-    extra numbered sheet added later is read the same way;
-  * row 1 the bill title ("2. SUBSTRUCTURE"), then sections ("A. EARTHWORKS") each with a
-    header row "S/NO. | ITEMS | CONS. QTY | IC QTY | UNIT | RATE | AMOUNT" and its items;
-  * TOTAL rows, the sheet's own SUMMARY block and price comparisons (SL.NO tables) are not items;
-  * an amount written as words ("Phase 02", "Excluded", "Included above", "By Client") is kept
-    on the line as its remark, with no money;
-  * the SUMMARY / TOTAL SUMMARY sheet gives each bill's total, used to check the read.
-Lines with nothing priced (blank / zero amount and no remark) are left out - they are the
-template's unused rows.
+No fixed template (3 Nov 2026 - WS-25 R10 had SWIMMING POOL between 2.SUBSTR and 3.SUPERSTR, and the
+summary numbered the bills 1 to 21 differently from the sheet names). The workbook explains itself:
+  * its SUMMARY sheet lists the bills - number, name, amount (or words: Excluded, Phase 02, Rate only ...).
+    Each BOQ sheet is matched to its summary line by NAME (PRELIM = Preliminaries, SUBSTR = Sub structure,
+    SWIMMING POOL = Swimming pool & holding tank, FF & FA = Fire Fighting & Fire Alarm ...), with the order
+    of the sheets as the tie-break - the bill is named and numbered as the summary has it;
+  * a sheet (any name) is a BOQ sheet when it has "S/NO. | ITEMS | ... | AMOUNT" header rows;
+  * a section is the heading just above a header row ("A. EARTHWORKS", "UNDERGROUND WATER TANK",
+    "B. PUMP ROOM ... (From 907 Int.BOQ)") - lettered or not, notes beside it or not;
+  * what is priced: the sheet's own SUMMARY block (A..H, in the order of the sections) and each section's
+    TOTAL row say which sections count ("exclude", "Rate only" = not priced); the main SUMMARY says which
+    bills count;
+  * only priced lines in the priced scope come in. Lines with no price (By Client, Included, N/A, Phase 02,
+    blank template rows) and sections / bills left out are NOT brought in - each is listed in the notes with
+    its value, and either can be asked for (keep_unpriced / keep_out);
+  * nothing is invented: every bill is tallied against its summary figure and a difference is SHOWN (never
+    put in as a balancing line). Only a discount on the summary's grand total comes in as one line.
 """
 import io
 import re
@@ -21,6 +27,8 @@ import openpyxl
 
 TITLE = re.compile(r"^\s*(\d{1,2})\s*[.\-)_ ]\s*([A-Za-z].*)$")     # "1.PRELIM", "2 SUBSTR", "3-SUPER", "4) FINISHES"
 SECTION = re.compile(r"^\s*([A-Z])\s*[.)]\s*(.+)$")
+OUT_WORDS = re.compile(r"(exclud|phase|n/?a$|not in|by client|by others|omit|rate only)", re.I)
+NOT_BOQ = re.compile(r"(summary|cover|project details|price bank|ps amount|comparison)", re.I)
 
 
 def _s(v):
@@ -45,12 +53,13 @@ def _n(v):
     return -x if neg else x
 
 
-SMALL = {"And": "and", "Of": "of", "For": "for", "To": "to", "In": "in", "Ac": "AC", "Mep": "MEP", "Rcc": "RCC", "Ss": "SS", "Pt": "PT", "Ff": "FF", "Fa": "FA"}
+SMALL = {"And": "and", "Of": "of", "For": "for", "To": "to", "In": "in", "Ac": "AC", "A/C": "A/C", "Mep": "MEP", "Rcc": "RCC", "Ss": "SS",
+         "Pt": "PT", "Ff": "FF", "Fa": "FA", "Lpg": "LPG", "Ug": "UG"}
 
 
 def _bill_name(num, text):
-    words = [SMALL.get(w, w) for w in text.strip().title().split()]
-    return f"{int(num):02d}. " + " ".join(words)
+    words = [SMALL.get(w, w) for w in re.sub(r"\s+", " ", text.strip()).title().split()]
+    return (f"{int(num):02d}. " if num is not None else "") + " ".join(words)
 
 
 def _header(row):
@@ -86,25 +95,85 @@ def _header(row):
     return cols
 
 
+# ---- the summary sheet, and which sheet is which bill ----------------------------------------------------------
+
 def _summary(wb):
-    """The workbook's own summary sheet (the one listing the most bills):
-    {bill number: (amount or None, words, note)}, its total, its name."""
-    best = ({}, None, "")
+    """The workbook's own summary sheet (the one listing the most bills): [{num, name, amount, words, note, pos}],
+    its grand total, its name."""
+    best = ([], None, "")
     for name in wb.sheetnames:
         if "SUMMARY" not in name.upper():
             continue
-        out, total = {}, None
+        out, total = [], None
         for row in wb[name].iter_rows(max_col=5, values_only=True):
             row = list(row) + [None] * 5
             m = re.match(r"^\s*(\d{1,2})\s*\.?\s*$", _s(row[0]))
-            if m and _s(row[1]):
+            if m and _s(row[1]) and not any(x["num"] == int(m.group(1)) for x in out):
                 v = row[2]
-                out.setdefault(int(m.group(1)), (_n(v), "" if _n(v) is not None else _s(v), _s(row[3])))
+                out.append({"num": int(m.group(1)), "name": _s(row[1]), "amount": _n(v), "words": "" if _n(v) is not None else _s(v),
+                            "note": _s(row[3]) if _n(row[3]) is None else "", "pos": len(out)})
             elif out and total is None and "TOTAL" in _s(row[1]).upper() and _n(row[2]) is not None:
                 total = _n(row[2])
         if len(out) > len(best[0]):
             best = (out, total, name)
     return best
+
+
+ABBR = {"ELEC": "ELECTRICAL", "FF": "FIRE FIGHTING", "FA": "FIRE ALARM", "WP": "WATERPROOFING", "SUBSTR": "SUBSTRUCTURE",
+        "SUPERSTR": "SUPERSTRUCTURE", "AL": "ALUMINUM", "SS": "STAINLESS", "PRELIM": "PRELIMINARIES", "INT": "INTERNAL",
+        "EXT": "EXTERNAL", "MECH": "MECHANICAL", "LV": "LOW CURRENT", "ELV": "LOW CURRENT", "UG": "UNDERGROUND", "AC": "AC"}
+STOP = {"AND", "OF", "THE", "WORKS", "WORK", "ITEMS", "ITEM", "INCLUDING", "TOTAL", "FOR", "TO", "IN", "WITH", "OTHER", "OTHERS", "BOQ"}
+
+
+def _words(text, expand=False):
+    t = re.sub(r"[^A-Z ]", " ", str(text or "").upper().replace("&", " ").replace("A/C", "AC").replace("/", ""))
+    out = []
+    for w in t.split():
+        if expand and w in ABBR:
+            out += ABBR[w].split()
+        elif len(w) >= 2 and w not in STOP:
+            out.append(w)
+    out = [w for w in out if w not in STOP]
+    joined = [a + b for a, b in zip(out, out[1:])]          # "SUB STRUCTURE" also as "SUBSTRUCTURE"
+    return out, out + joined
+
+
+def _pfx(a, b):
+    n = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
+def _score(sheet_text, bill_name):
+    mine, _ = _words(sheet_text, expand=True)
+    _, theirs = _words(bill_name)
+    s = 0
+    for w in mine:
+        best = max((_pfx(w, u) for u in theirs), default=0)
+        if best >= 3 or (best == len(w) == 2):
+            s += best
+    return s
+
+
+def _match(sheets, bills):
+    """{sheet index: summary line}: by name, the order of the sheets breaking a tie."""
+    pairs = []
+    for i, sh in enumerate(sheets):
+        for b in bills:
+            sc = _score(sh["text"], b["name"])
+            if sc >= 3:
+                pairs.append((-sc, abs(i - b["pos"]), i, b["num"]))
+    pairs.sort()
+    got, used = {}, set()
+    for _sc, _d, i, num in pairs:
+        if i in got or num in used:
+            continue
+        got[i] = next(b for b in bills if b["num"] == num)
+        used.add(num)
+    return got
 
 
 def _sheet_summary(rows):
@@ -117,14 +186,13 @@ def _sheet_summary(rows):
             continue
         if not on:
             continue
+        if re.search(r"total", " ".join(_s(x) for x in r[:3]), re.I):
+            continue
         m = re.match(r"^([A-Z])\s*[.)]?$", first)
         if m:
             val = next((v for v in list(r)[2:12] if _s(v) != ""), None)
             out.append((m.group(1), _n(val), "" if _n(val) is not None else _s(val)))
     return out
-
-
-OUT_WORDS = re.compile(r"(exclud|phase|n/?a$|not in|by client|by others|omit)", re.I)
 
 
 def _scope_word(words, note=""):
@@ -137,133 +205,229 @@ def _scope_word(words, note=""):
         return "Phase 02"
     if re.match(r"^n/?a$", w, re.I):
         return "N/A"
+    if re.match(r"^rate\s*only", w, re.I):
+        return "Rate only"
     return w[:40]
 
 
-def read_internal_boq(data: bytes):
-    """Lines, bills and checks from an internal BOQ workbook. A line with scope "" is in the
-    awarded scope and counts; anything else (Excluded, Phase 02 ...) is kept for reference
-    but not counted, exactly as the workbook's summary does."""
-    wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True, read_only=False)
-    lines, bills, notes = [], [], []
-    summary, summary_total, summary_sheet = _summary(wb)
-    seen = set()
-    for ws in wb.worksheets:
-        m = TITLE.match(ws.title)
-        if not m:
+def _has_number(r, cols=None):
+    idx = [cols[k] for k in ("qty", "rate", "amount") if k in cols] if cols else range(1, min(len(r), 12))
+    return any(_n(r[i]) not in (None, 0.0) for i in idx if i < len(r))
+
+
+# ---- one sheet --------------------------------------------------------------------------------------------------
+
+def _read_sheet(ws, bill, keep_unpriced, keep_out):
+    """(lines, sections [{name, scope, amount}], unpriced lines [desc], notes)."""
+    hidden = {i for i, d in ws.row_dimensions.items() if d.hidden}
+    rows = [list(r) + [None] * 6 for i, r in enumerate(ws.iter_rows(values_only=True), start=1) if i not in hidden]
+    notes = [f"{ws.title}: {len(hidden)} hidden row(s) left out."] if hidden else []
+    ssum = _sheet_summary(rows)
+    sections, section, cols, parent, mine, unpriced = [], None, None, "", [], []
+    last_text = None             # the last row with words and no figures: a heading, if a header row follows
+
+    def new_section(name):
+        nonlocal section
+        section = {"name": name, "scope": "", "amount": 0.0, "left": 0.0, "n": 0}
+        sections.append(section)
+
+    for r in rows:
+        first = _s(r[0])
+        up = first.upper()
+        if up.startswith("SUMMARY") and not _s(r[1]):
+            break
+        h = _header(r)
+        if h:
+            # the heading above this header row names the section - lettered ("A. EARTHWORKS") or not ("UNDERGROUND WATER TANK")
+            if last_text is not None:
+                new_section(last_text)
+            elif section is None:
+                new_section("")
+            cols, parent, last_text = h, "", None
             continue
-        if ws.sheet_state != "visible":
-            notes.append(f"Sheet {ws.title} is hidden in the workbook - not brought in.")
+        if up.startswith("PRICE COMPARISON") or up.startswith("SL.NO") or up.startswith("SL NO"):
+            cols, last_text = None, None
             continue
-        num = int(m.group(1))
-        seen.add(num)
-        # rows hidden in the workbook (options, old figures) are not part of the BOQ
-        hidden = {i for i, d in ws.row_dimensions.items() if d.hidden}
-        rows = [list(r) + [None] * 4 for i, r in enumerate(ws.iter_rows(values_only=True), start=1) if i not in hidden]
-        if hidden:
-            notes.append(f"{ws.title}: {len(hidden)} hidden row(s) left out.")
-        if not rows:
-            continue
-        title = next((_s(r[0]) for r in rows[:3] if TITLE.match(_s(r[0]))), "")
-        tm = TITLE.match(title) if title else None
-        bill = _bill_name(num, tm.group(2) if tm else m.group(2))
-        # the sheet's own summary says which of its sections are left out
-        ssum, sec_scope, sec_i = _sheet_summary(rows), {}, -1
-        section, cols, parent, mine = "", None, "", []
-        for r in rows:
-            first = _s(r[0])
-            h = _header(r)
-            if h:
-                cols, parent = h, ""
-                continue
-            up = first.upper()
-            if up.startswith("SUMMARY"):
-                break
-            if up.startswith("PRICE COMPARISON") or up.startswith("SL.NO") or up.startswith("SL NO"):
+        texts = [_s(x) for x in r[:12] if _s(x)]
+        sm = SECTION.match(first)
+        if sm and not _has_number(r):
+            last_text = f"{sm.group(1)}. {sm.group(2).strip()}"
+            if cols is not None:          # a lettered heading straight after items, before its own header row
                 cols = None
-                continue
-            sm = SECTION.match(first)
-            if sm and not any(_s(x) for x in r[1:8]):
-                section, cols, parent = f"{sm.group(1)}. {sm.group(2).strip()}", None, ""
-                sec_i += 1
-                if sec_i < len(ssum):
-                    _, a, w = ssum[sec_i]
-                    sec_scope[section] = "" if a is not None else _scope_word(w)
-                continue
-            if cols is None:
-                continue
-            desc = _s(r[cols["desc"]])
-            if not desc or re.match(r"^(sub ?total|total)\b", desc, re.I) or re.search(r"\btotal$", desc, re.I) or desc.upper().startswith("TOTAL"):
-                if desc:
-                    parent = ""
-                continue
-            qty = _n(r[cols["qty"]]) if "qty" in cols else None
-            unit = _s(r[cols["unit"]]) if "unit" in cols else ""
-            rate = _n(r[cols["rate"]]) if "rate" in cols else None
-            raw = r[cols["amount"]]
-            amt = _n(raw)
-            words = "" if amt is not None else _s(raw)
-            if words in ("-", "--", "0"):
-                words = ""
-            if not amt and not words:
-                if not (qty or rate) and len(desc) > 6:
-                    parent = desc
-                continue
-            if re.fullmatch(r"(others?|ohp)", desc, re.I) and not amt:
-                continue
-            if _n(unit) is not None:
-                unit = ""
-            if (not first or len(desc) <= 6) and parent:
-                desc = f"{parent} - {desc}"
-            extra = []
-            if "size" in cols:
-                a, b = _n(r[cols["size"]]), _n(r[cols["size"] + 1])
-                if a and b:
-                    extra.append(f"{a:g} x {b:g} m")
-            if "type" in cols and _s(r[cols["type"]]):
-                extra.append(_s(r[cols["type"]]))
-            if extra:
-                desc += " (" + ", ".join(extra) + ")"
-            if "qty" not in cols and "rate" not in cols:       # preliminaries: a lump sum
-                qty, rate, unit = (1.0, amt, "LS") if amt else (0.0, 0.0, "LS")
-            mine.append({"bill": bill, "section": section, "code": first[:20], "description": desc[:500], "unit": unit[:20],
-                         "qty": round(qty or 0.0, 4), "rate": round(rate or 0.0, 4), "amount": round(amt, 2) if amt else 0.0,
-                         "remark": words[:120], "scope": sec_scope.get(section, "")})
-        if not mine:
             continue
-        s_amt, s_words, s_note = summary.get(num, (None, "", ""))
-        bill_scope = "" if (s_amt is not None or not summary) else _scope_word(s_words, s_note)
-        for x in mine:
-            if bill_scope:
-                x["scope"] = bill_scope
-        counted = round(sum(x["amount"] for x in mine if not x["scope"]), 2)
-        adj = 0.0
-        if not bill_scope and s_amt is not None and abs(counted - round(s_amt, 2)) > 0.005:
-            adj = round(s_amt - counted, 2)
-            note = f" ({s_note})" if s_note else ""
-            mine.append({"bill": bill, "section": "Summary", "code": "", "description": f"Difference to the summary figure{note}",
-                         "unit": "", "qty": 0.0, "rate": 0.0, "amount": adj, "remark": "as per summary", "scope": ""})
-            notes.append(f"{bill}: lines {counted:,.2f}, summary {s_amt:,.2f}{note} - difference {adj:,.2f} added as a line")
-        lines += mine
-        out = sorted({x["scope"] for x in mine if x["scope"]})
-        bills.append({"bill": bill, "lines": len(mine), "counted": round(counted + adj, 2), "scope": bill_scope,
-                      "left_out": round(sum(x["amount"] for x in mine if x["scope"]), 2),
-                      "sections_out": [sct for sct, v in sec_scope.items() if v] if not bill_scope else [],
-                      "summary": s_amt, "summary_words": s_words or s_note})
+        if not first and texts and not _has_number(r) and len(texts) == 1 and texts[0] == texts[0].upper() and len(texts[0]) > 5 \
+                and not re.match(r"^(sub ?total|total)\b", texts[0], re.I):
+            last_text = texts[0]          # an unlettered heading, e.g. "UNDERGROUND WATER TANK"
+            continue
+        if TITLE.match(first) and not _has_number(r):
+            last_text = None              # the bill title row
+            continue
+        if cols is None:
+            continue
+        desc = _s(r[cols["desc"]])
+        if not desc or re.match(r"^(sub ?total|total)\b", desc, re.I) or re.search(r"\btotal$", desc, re.I) or desc.upper().startswith("TOTAL"):
+            if desc and section is not None and re.match(r"^total$", desc, re.I) and not section["scope"]:
+                w = " ".join(_s(x) for x in r[cols["desc"] + 1:] if _n(x) is None and _s(x))
+                mo = OUT_WORDS.search(w)
+                if mo:
+                    section["scope"] = _scope_word(w[mo.start():])     # the section's own TOTAL says "exclude" / "Rate only"
+            if desc:
+                parent = ""
+            continue
+        last_text = None
+        qty = _n(r[cols["qty"]]) if "qty" in cols else None
+        unit = _s(r[cols["unit"]]) if "unit" in cols else ""
+        rate = _n(r[cols["rate"]]) if "rate" in cols else None
+        raw = r[cols["amount"]]
+        amt = _n(raw)
+        words = "" if amt is not None else _s(raw)
+        if words in ("-", "--", "0"):
+            words = ""
+        if not amt and not words:
+            if not (qty or rate) and len(desc) > 6:
+                parent = desc
+            continue
+        if re.fullmatch(r"(others?|ohp)", desc, re.I) and not amt:
+            continue
+        if _n(unit) is not None:
+            unit = ""
+        if (not first or len(desc) <= 6) and parent:
+            desc = f"{parent} - {desc}"
+        extra = []
+        if "size" in cols:
+            a, b = _n(r[cols["size"]]), _n(r[cols["size"] + 1])
+            if a and b:
+                extra.append(f"{a:g} x {b:g} m")
+        if "type" in cols and _s(r[cols["type"]]):
+            extra.append(_s(r[cols["type"]]))
+        if extra:
+            desc += " (" + ", ".join(extra) + ")"
+        if "qty" not in cols and "rate" not in cols:       # preliminaries: a lump sum
+            qty, rate, unit = (1.0, amt, "LS") if amt else (0.0, 0.0, "LS")
+        if section is None:
+            new_section("")
+        line = {"bill": bill, "section": section["name"], "code": first[:20], "description": desc[:500], "unit": unit[:20],
+                "qty": round(qty or 0.0, 4), "rate": round(rate or 0.0, 4), "amount": round(amt, 2) if amt else 0.0,
+                "remark": words[:120], "scope": "", "_sec": section, "_raw": amt or 0.0}
+        if not amt:
+            unpriced.append(line)
+            continue
+        mine.append(line)
+    # the sheet's own summary: one letter per section, in order
+    if ssum and len(ssum) == len([s for s in sections if s["name"]]):
+        for s, (_l, a, w) in zip([s for s in sections if s["name"]], ssum):
+            if a is None or (w and OUT_WORDS.search(w)):
+                s["scope"] = s["scope"] or _scope_word(w)
+            elif a == 0 and not any(x["_sec"] is s for x in mine):
+                s["scope"] = s["scope"] or "Not priced"
+    elif ssum:
+        notes.append(f"{ws.title}: its own summary has {len(ssum)} line(s) but {len([s for s in sections if s['name']])} section(s) were found - "
+                     f"each section's TOTAL row was used instead.")
+    for x in mine + unpriced:
+        x["scope"] = x["_sec"]["scope"]
+    for x in mine:
+        s = x["_sec"]
+        if s["scope"]:
+            s["left"] = round(s["left"] + x["amount"], 2)
+        else:
+            s["amount"] = round(s["amount"] + x["amount"], 2)
+            s["n"] += 1
+    return mine, sections, unpriced, notes
+
+
+# ---- the workbook -----------------------------------------------------------------------------------------------
+
+def read_internal_boq(data: bytes, keep_unpriced=False, keep_out=False):
+    """Lines, bills, tally and notes from an internal BOQ workbook.
+    keep_unpriced: also bring lines with no price (By Client, Included, Phase 02 ...), at 0.
+    keep_out: also bring sections / bills the workbook leaves out (kept aside, not counted)."""
+    wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True, read_only=False)
+    summ, summary_total, summary_sheet = _summary(wb)
+    # the BOQ sheets, in workbook order: any sheet with S/NO. header rows that is not the summary / cover / price bank
+    sheets = []
+    for ws in wb.worksheets:
+        if NOT_BOQ.search(ws.title) and not TITLE.match(ws.title):
+            continue
+        has = False
+        for r in ws.iter_rows(max_row=min(ws.max_row, 400), max_col=12, values_only=True):
+            if _header(list(r) + [None] * 6):
+                has = True
+                break
+        if not has:
+            continue
+        t1 = next((_s(r[0]) for r in ws.iter_rows(max_row=3, max_col=1, values_only=True) if TITLE.match(_s(r[0]))), "")
+        sheets.append({"ws": ws, "text": f"{ws.title} {t1}", "title1": t1})
+    match = _match(sheets, summ) if summ else {}
+    lines, bills, notes, skipped = [], [], [], []
+    for i, sh in enumerate(sheets):
+        ws, b = sh["ws"], match.get(i)
+        if b:
+            bill = _bill_name(b["num"], b["name"])
+        else:
+            m = TITLE.match(sh["title1"]) or TITLE.match(ws.title)
+            bill = _bill_name(int(m.group(1)), m.group(2)) if m else _bill_name(None, ws.title)
+        bill_out = ""
+        if b and b["amount"] is None:
+            bill_out = _scope_word(b["words"], b["note"])
+        elif b and not b["amount"]:
+            bill_out = "Not priced"
+        elif not b and summ:
+            bill_out = "Not on the summary"
+        if ws.sheet_state != "visible" and (bill_out or not b):
+            continue                                       # a hidden sheet that is not priced: the template's spare trade
+        mine, secs, unpriced, sn = _read_sheet(ws, bill, keep_unpriced, keep_out)
+        notes += sn
+        if bill_out:
+            for x in mine + unpriced:
+                x["scope"] = bill_out
+        raw = sum(x["_raw"] for x in mine if not x["scope"])          # unrounded: the workbook's own figures
+        counted = round(raw, 2)
+        left = round(sum(x["amount"] for x in mine if x["scope"]), 2)
+        if not mine and not unpriced:
+            continue
+        if bill_out and not counted:
+            skipped.append({"bill": bill, "why": bill_out, "amount": left, "lines": len(mine)})
+        take = [x for x in mine if keep_out or not x["scope"]] + ([x for x in unpriced if keep_out or not x["scope"]] if keep_unpriced else [])
+        take.sort(key=lambda x: (secs.index(x["_sec"]) if x["_sec"] in secs else 0))
+        if keep_unpriced:                                 # back into the workbook's order within each section
+            order = {id(x): k for k, x in enumerate(mine + unpriced)}
+            take.sort(key=lambda x: (secs.index(x["_sec"]) if x["_sec"] in secs else 0, order[id(x)]))
+        for x in take:
+            x.pop("_sec", None)
+            x.pop("_raw", None)
+        lines += take
+        s_amt = b["amount"] if b else None
+        diff = (raw - s_amt) if (s_amt is not None and not bill_out) else None
+        if bill_out and not counted:
+            continue
+        bills.append({"bill": bill, "sheet": ws.title, "lines": len([x for x in take if not x["scope"]]), "counted": counted,
+                      "summary": round(s_amt, 2) if s_amt is not None else None, "summary_words": (b["words"] or b["note"]) if b else "",
+                      "diff": round(diff, 2) if diff is not None else None,
+                      "ok": diff is None or abs(diff) < 0.01, "scope": bill_out, "left_out": left,
+                      "sections_out": [{"name": s["name"] or "General", "why": s["scope"], "amount": s["left"]} for s in secs if s["scope"] and s["left"]],
+                      "unpriced": len(unpriced)})
+        if diff is not None and abs(diff) >= 0.01:
+            notes.append(f"{bill}: the lines add up to {counted:,.2f}, the {summary_sheet} sheet says {s_amt:,.2f} - "
+                         f"{abs(diff):,.2f} {'more' if diff > 0 else 'less'} - check that bill before saving.")
     if not lines:
-        raise ValueError("No BOQ lines found. Upload the internal BOQ workbook (sheets 1.PRELIM, 2.SUBSTR ...).")
+        raise ValueError("No priced BOQ lines found. Upload the internal BOQ workbook (the sheets with S/NO. | ITEMS | ... | AMOUNT).")
+    # bills on the summary with money but no sheet read
+    read_nums = {match[i]["num"] for i in match}
+    for b in summ:
+        if b["amount"] and b["num"] not in read_nums:
+            notes.append(f"The {summary_sheet} sheet lists {b['num']}. {b['name']} ({b['amount']:,.2f}) but no sheet was found for it.")
     total = round(sum(x["amount"] for x in lines if not x["scope"]), 2)
-    # a bill on the summary with no sheet read: said plainly - its value is never put in as a "discount"
-    missing = [(n, v) for n, (v, _w, _nt) in summary.items() if n not in seen and v]
-    for n, v in missing:
-        notes.append(f"The summary lists bill {n} ({v:,.2f}) but no sheet for it was read - check the sheet name (it should start with {n}.)")
-    if summary_total is not None and abs(total - round(summary_total, 2)) > 0.005 and not missing:
-        d = round(summary_total - total, 2)
-        lines.append({"bill": "99. Summary", "section": "", "code": "", "description": "Discount / rounding as per summary total",
-                      "unit": "", "qty": 0.0, "rate": 0.0, "amount": d, "remark": "as per summary", "scope": ""})
-        bills.append({"bill": "99. Summary", "lines": 1, "counted": d, "scope": "", "left_out": 0.0, "sections_out": [],
-                      "summary": None, "summary_words": ""})
-        notes.append(f"Bills add up to {total:,.2f}, the summary total is {summary_total:,.2f} - {d:,.2f} added as a discount / rounding line")
-        total = round(total + d, 2)
-    return {"lines": lines, "bills": bills, "notes": notes, "summary_sheet": summary_sheet, "summary_total": summary_total,
-            "total": total, "left_out": round(sum(x["amount"] for x in lines if x["scope"]), 2)}
+    # a discount on the summary itself (the grand total below the bills added up): one line, as the summary has it
+    if summary_total is not None and summ:
+        bills_sum = round(sum(b["amount"] or 0 for b in summ), 2)
+        d = round(summary_total - bills_sum, 2)
+        if abs(d) >= 0.01:
+            lines.append({"bill": "99. Summary", "section": "", "code": "", "description": "Discount / rounding as per summary total",
+                          "unit": "", "qty": 0.0, "rate": 0.0, "amount": d, "remark": "as per summary", "scope": ""})
+            bills.append({"bill": "99. Summary", "sheet": summary_sheet, "lines": 1, "counted": d, "summary": d, "summary_words": "",
+                          "diff": 0.0, "ok": True, "scope": "", "left_out": 0.0, "sections_out": [], "unpriced": 0})
+            total = round(total + d, 2)
+    unpriced_n = sum(b["unpriced"] for b in bills)
+    return {"lines": lines, "bills": bills, "notes": notes, "skipped": skipped, "summary_sheet": summary_sheet,
+            "summary_total": summary_total, "total": total, "left_out": round(sum(b["left_out"] for b in bills), 2),
+            "unpriced": unpriced_n, "tally_ok": all(b["ok"] for b in bills) and (summary_total is None or abs(total - summary_total) < 0.015)}

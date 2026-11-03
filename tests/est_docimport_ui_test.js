@@ -21,7 +21,7 @@ const C = JSON.parse(execSync(`python3 ${__dirname}/est_docimport_fixtures.py /t
   ck('BOQ: the upload takes PDF / Word / photos', /\.pdf/.test(await p.getAttribute('#boq-up-f', 'accept')));
   await p.setInputFiles('#boq-up-f', C.boq.file); await p.waitForSelector('#m-save', { state: 'visible', timeout: 60000 }); await sleep(400);
   const body = await p.textContent('#m-body');
-  ck('BOQ preview: 5 lines in 2 bills, 191,785.00 = the document\'s grand total', /Bring in 5 lines/.test(await p.textContent('#m-save')) && /191,785/.test(body) && /matches the document/.test(body), body.slice(0, 300));
+  ck('BOQ preview: 5 lines in 2 bills, 191,785.00 = the document\'s grand total', /Bring in 5 priced lines/.test(await p.textContent('#m-save')) && /191,785/.test(body) && /tallies with the document's total/.test(body), body.slice(0, 300));
   await p.screenshot({ path: SH + 'boq.png' });
   const rep = await p.$('input[name=boqmode][value=replace]'); if (rep) await rep.check();
   await p.click('#m-save'); await sleep(1800);

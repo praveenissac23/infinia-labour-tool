@@ -91,6 +91,7 @@ class EstProject(Base):
     status = Column(String, default="Running")
     qs = Column(String, default="")             # the QS looking after it
     notes = Column(Text, default="")
+    boq_tally = Column(Text, default="")        # the internal BOQ's own summary (per bill), from the last upload - to tally against
     locals().update(_audit())
 
 
@@ -1282,8 +1283,15 @@ def project_bundle(db, p, rules=None, pre=None):
         "finals": [_plain(f, KINDS["finals"][2]) for f in finals],
         "files": [dict(_plain(f, KINDS["files"][2]), kind=f.kind, row_id=f.row_id, size=f.size, by=names.get(f.created_by, ""),
                        at=f.created_at.isoformat() if f.created_at else "", url=_file_url(f)) for f in files],
-        "invoices": invoices, "rules": rules,
+        "invoices": invoices, "rules": rules, "boq_tally": _tally_of(p),
     }
+
+
+def _tally_of(p):
+    try:
+        return json.loads(p.boq_tally or "") or None
+    except (ValueError, TypeError):
+        return None
 
 
 # ---- endpoints: lists to pick from ------------------------------------------------------
@@ -2308,6 +2316,7 @@ async def upload_data(file, upload_id, parts, filename, user):
 @router.post("/store/est/projects/{pid}/boq-import")
 async def boq_import(pid: int, file: UploadFile = File(None), save: int = Form(0), mode: str = Form("replace"),
                      upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""),
+                     keep_unpriced: int = Form(0), keep_out: int = Form(0),
                      db: Session = Depends(get_db), user: models.User = VIEW):
     """The estimation team's internal BOQ workbook (1.PRELIM ... 20. SPECIALIZED ITEMS). The first
     call only reads it and shows what will come in; save=1 puts the lines on the project.
@@ -2321,7 +2330,7 @@ async def boq_import(pid: int, file: UploadFile = File(None), save: int = Form(0
     if not data[:2] == b"PK":
         raise HTTPException(400, "That is not an Excel workbook (.xlsx). Save the internal BOQ as .xlsx and upload it again.")
     try:
-        r = est_boqimport.read_internal_boq(data)
+        r = est_boqimport.read_internal_boq(data, keep_unpriced=bool(keep_unpriced), keep_out=bool(keep_out))
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception:
@@ -2370,7 +2379,7 @@ def boq_import_text(pid: int, data: dict = Body(...), db: Session = Depends(get_
 def _boq_take(db, p, r, save, mode, user, fname):
     pid = p.id
     have = db.query(EstBoq).filter(EstBoq.project_id == pid).order_by(EstBoq.sort, EstBoq.id).all()
-    out = {k: r[k] for k in ("bills", "notes", "summary_sheet", "summary_total", "total", "left_out")}
+    out = {k: r.get(k) for k in ("bills", "notes", "summary_sheet", "summary_total", "total", "left_out", "skipped", "unpriced", "tally_ok")}
     out.update({"lines": len(r["lines"]), "existing": len(have), "file": fname})
     if not save:
         return out
@@ -2393,9 +2402,39 @@ def _boq_take(db, p, r, save, mode, user, fname):
         db.add(EstBoq(project_id=pid, bill=x["bill"][:120], section=x["section"][:200], code=x["code"][:40], description=x["description"][:1000],
                       unit=x["unit"][:20], qty=x["qty"], rate=x["rate"], amount=r2(x["amount"]), remark=x["remark"][:200],
                       scope=x["scope"][:60], cost_rate=cr, done_pct=dp, sort=base + i, created_by=user.id))
+    if r.get("summary_sheet") and r.get("summary_sheet") != "document":
+        # what the workbook itself says each bill is worth: the BOQ screen tallies against it after any change
+        p.boq_tally = json.dumps({"file": fname, "sheet": r["summary_sheet"], "total": r.get("summary_total"), "mode": mode,
+                                  "bills": {b["bill"]: b["summary"] for b in r["bills"] if b.get("summary") is not None}})
     db.commit()
     out.update({"saved": len(r["lines"]), "kept_budget": kept, "mode": mode, "project": p.code})
     return out
+
+
+@router.post("/store/est/projects/{pid}/boq-delete")
+def boq_delete(pid: int, data: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
+    """Many BOQ lines out at once - ticked lines, a whole section or bill, or every line with no price:
+    {ids: [...]} or {unpriced: true}. Logged with the count and the amount."""
+    _project(db, pid)
+    q = db.query(EstBoq).filter(EstBoq.project_id == pid)
+    if data.get("unpriced"):
+        rows = [b for b in q.all() if not boq_amount(b)]
+    else:
+        ids = {int(i) for i in (data.get("ids") or []) if str(i).isdigit()}
+        if not ids:
+            raise HTTPException(400, "Tick the lines to take out.")
+        rows = q.filter(EstBoq.id.in_(ids)).all()
+    if not rows:
+        return {"deleted": 0, "amount": 0.0}
+    amt = r2(sum(boq_amount(b) for b in rows))
+    for b in rows:
+        db.delete(b)
+    db.commit()
+    try:
+        M.log_action(db, user.id, "boq_delete", f"Project {_project(db, pid).code}: {len(rows)} BOQ line(s) taken out, AED {amt:,.2f}")
+    except Exception:
+        pass
+    return {"deleted": len(rows), "amount": amt}
 
 
 @router.post("/store/est/projects/{pid}/boq-scope")
