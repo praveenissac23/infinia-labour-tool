@@ -1103,7 +1103,7 @@ function allPcs() { return ST.b.subs.flatMap(s => s.pcs.map(p => Object.assign({
 function pcCan(role) { const m = (ST.meta && ST.meta.me) || {}; return (m.pc_can || []).includes(role); }
 function pcMine(p) { const m = (ST.meta && ST.meta.me) || {}; return !!(p.flow && p.flow.turn && (m.pc_mine || []).includes(p.flow.turn)); }
 function ageTxt(h) { return h < 1 ? "just now" : h < 24 ? `${h} h` : `${Math.floor(h / 24)} day${h >= 48 ? "s" : ""}`; }
-function stampTxt(l) { if (!l) return ""; const t = l.at ? `${dt(l.at.slice(0, 10))} ${l.at.slice(11, 16)}` : ""; return `${l.back ? "&#8630; Sent back" : "&#10003; " + esc(STEP_DONE[l.s] || l.s)} - ${esc(l.by || "")}${t ? ", " + t : ""}`; }
+function stampTxt(l) { if (!l) return ""; const t = l.at ? `${dt(l.at.slice(0, 10))} ${l.at.slice(11, 16)}` : ""; return `${l.back ? "&#8630; Sent back" : l.old ? "&#10003; Already paid (old PC, before the app)" : "&#10003; " + esc(STEP_DONE[l.s] || l.s)} - ${esc(l.by || "")}${t ? ", " + t : ""}`; }
 // a verified certificate waits with Accounts until "Send to MD"; then it is with the MD
 function pcStage(status, fl) { return status === "Verified" ? (fl && fl.md_sent === false ? "Verified - send to MD" : "With the MD") : status === "MD approved" ? "MD approved - to pay" : (STEP_LABEL[status] || status); }
 function nextBtns(p) {
@@ -1140,9 +1140,10 @@ SECTIONS["subs.inv"] = el => {
       <td>${fl.turn ? (mine ? `<b style="color:#C0392B">You</b>` : `<b>${esc(fl.waiting)}</b>`) + `<div class="small muted">${esc(fl.task)}</div>` : '<span class="muted">-</span>'}</td>
       <td class="nowrap ${fl.stuck ? "late" : ""}">${fl.turn ? ageTxt(fl.hours) + (fl.stuck ? '<div class="small">stuck</div>' : "") : ""}</td>
       <td class="r">${p.work_cum || p.adv_amount ? money(p.payable, false) : '<span class="muted">-</span>'}</td>
-      <td class="nowrap">${nextBtns(p) || (fl.turn ? `<span class="small muted">${esc(fl.waiting)}'s turn</span>` : "")}${p.status === "Verified" && fl.md_sent ? ` <button class="btn btn-plain btn-sm" data-wa="${p.id}" title="Tell the Managing Director on WhatsApp - the link opens this certificate">WhatsApp</button>` : ""}${i > 0 && pcCan(TURN_OF[STEPS[i - 1]]) ? ` <button class="btn btn-plain btn-sm" data-undo="${p.id}" data-st="${p.status}" title="Back one step">&#8630;</button>` : ""} <button class="btn btn-plain btn-sm" data-open="${p.id}" data-sub="${p.sub.id}">Open</button></td></tr>`; }).join("")}
+      <td class="pc-next">${nextBtns(p) || (fl.turn ? `<span class="small muted">${esc(fl.waiting)}'s turn</span>` : "")}${p.status === "Verified" && fl.md_sent ? ` <button class="btn btn-plain btn-sm" data-wa="${p.id}" title="Tell the Managing Director on WhatsApp - the link opens this certificate">WhatsApp</button>` : ""}${i > 0 && (pcCan(TURN_OF[STEPS[i - 1]]) || (p.status === "Paid" && fl.last && fl.last.old && pcCan("qs"))) ? ` <button class="btn btn-plain btn-sm" data-undo="${p.id}" data-st="${p.status}" title="Back one step">&#8630;</button>` : ""}${oldPaidBtn(p)} <button class="btn btn-plain btn-sm" data-open="${p.id}" data-sub="${p.sub.id}">Open</button></td></tr>`; }).join("")}
     </tbody></table></div>` : `<div class="empty">${f === "__mine" ? "Nothing waiting for you." : f === "__stuck" ? "Nothing stuck." : "No invoices" + (f ? " at this step" : "") + "."}</div>`);
   bindTools(el, () => SECTIONS["subs.inv"](el));
+  $$("[data-oldpaid]", el).forEach(b => b.onclick = () => oldPaidForm(+b.dataset.oldpaid, () => reload()));
   $("#add-inv", el).onclick = () => invoiceForm();
   $("#rules", el).onclick = rulesForm;
   bindPcButtons(el, () => reload());
@@ -1209,6 +1210,22 @@ function payForm(sid, pcid, after) {
     { k: "ref", label: "Cheque / transfer ref.", focus: true },
   ], async v => { await POST(`/store/est/subpcs/${pcid}/step`, Object.assign({ step: "Paid" }, v)); await (after || reload)(); toast("Marked paid - Estimation can see it"); });
 }
+// Temporary (Nov 2026): an old certificate typed in only to bring the history up to date - already paid before the app.
+// Straight to Paid, no approvals, nobody told. Never the newest certificate of a subcontract.
+function oldPaidBtn(p) {
+  if (p.status === "Paid" || !(pcCan("qs") || ((ST.meta && ST.meta.me) || {}).admin)) return "";
+  if (!p.sub.pcs.some(x => x.seq > p.seq)) return "";
+  return ` <button class="btn btn-plain btn-sm" data-oldpaid="${p.id}" title="Already paid before the app - goes straight to Paid, not to the Contracts manager, Accounts or the MD">Old PC - already paid</button>`;
+}
+function oldPaidForm(pcid, after) {
+  const p = pcOf(pcid); if (!p) return;
+  modal(`Old PC - already paid: PC ${pad(p.seq, 2)} ${p.sub.name}`, [
+    { k: "amount", label: "Amount paid (AED)", type: "money", value: p.payable, tip: "Filled in with the amount payable on this certificate (incl. VAT). Change it if a different amount was paid." },
+    { k: "date", label: "Paid on", type: "date", value: p.inv_date || p.received || today(), tip: "When it was paid, if known - otherwise leave the invoice date." },
+    { k: "ref", label: "Cheque / transfer ref. (if known)" },
+  ], async v => { await POST(`/store/est/subpcs/${pcid}/oldpaid`, v); await (after || reload)(); toast(`PC ${pad(p.seq, 2)} marked as already paid - it does not go to Accounts or the MD`); },
+  { top: `<div class="small" style="line-height:1.5">For a certificate entered only to bring the history up to date, that was paid before the app. It goes straight to <b>Paid</b> - it is <b>not</b> sent to the Contracts manager, Accounts or the MD, and nobody is notified.</div>`, save: "Mark as already paid" });
+}
 function rulesForm() {
   const r = ST.b.rules;
   modal("Days allowed", [
@@ -1233,10 +1250,11 @@ SECTIONS["subs.pcs"] = el => {
     ${list.map(p => { const fl = p.flow || {}; return `<tr class="${fl.stuck ? "late-row" : ""}"><td><b>${esc(p.sub.name)}</b><div class="small muted">${esc(p.sub.scope)}</div></td><td class="nowrap">PC ${pad(p.seq, 2)}${p.pc_type !== "Interim" ? ` <span class="small muted">${esc(p.pc_type)}</span>` : ""}</td><td class="r">${money(p.this, false)}</td><td class="r">${money(p.vat)}</td><td class="r"><b>${money(p.payable, false)}</b></td>
       <td class="small">${stampTxt(fl.last)}</td><td>${fl.turn ? (pcMine(p) ? '<b style="color:#C0392B">You</b>' : esc(fl.waiting)) + ` <span class="small ${fl.stuck ? "late" : "muted"}">${ageTxt(fl.hours)}</span>` : ""}</td>
       <td>${dt(p.paid_on)}<div class="small muted">${esc(p.paid_ref)}</div></td><td class="r">${money(p.paid_amount)}</td><td>${st(STEP_LABEL[p.status] || p.status)}</td>
-      <td class="nowrap"><button class="btn btn-plain btn-sm" data-print="${p.id}">Print</button> ${nextBtns(p)}</td></tr>`; }).join("")}
+      <td class="nowrap"><button class="btn btn-plain btn-sm" data-print="${p.id}">Print</button> ${nextBtns(p)}${oldPaidBtn(p)}</td></tr>`; }).join("")}
     <tr class="tot"><td>Total</td><td></td><td class="r">${money(tot("this"))}</td><td class="r">${money(tot("vat"))}</td><td class="r">${money(tot("payable"))}</td><td></td><td></td><td></td><td class="r">${money(tot("paid_amount"))}</td><td></td><td></td></tr>
     </tbody></table></div>` : '<div class="empty">No certificates here yet. They appear once the QS presses Prepared.</div>');
   bindTools(el, () => SECTIONS["subs.pcs"](el));
+  $$("[data-oldpaid]", el).forEach(b => b.onclick = () => oldPaidForm(+b.dataset.oldpaid, () => reload()));
   $$("[data-print]", el).forEach(b => b.onclick = () => exportGo("preview", "pc", { id: +b.dataset.print }));
   bindPcButtons(el, () => reload());
 };

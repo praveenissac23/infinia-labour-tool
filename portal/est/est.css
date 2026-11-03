@@ -748,3 +748,6 @@ table.sb .resub { margin-top: 4px; }
 /* Dashboard > client payment certificates: six columns in a half-width card - headings may wrap, cells a little tighter */
 .dcpc table.t th { white-space: normal; line-height: 1.25; }
 .dcpc table.t td, .dcpc table.t th { padding-left: 6px; padding-right: 6px; }
+
+/* the Next step buttons wrap inside their cell rather than running off the right edge */
+.pc-next { white-space: normal; min-width: 150px; } .pc-next .btn { margin: 2px 0; }

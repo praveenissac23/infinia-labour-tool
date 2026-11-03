@@ -1997,6 +1997,18 @@ def _pc_step_do(rid, data, db, user):
         raise HTTPException(400, "Unknown step.")
     if not (can - {"acc"}) and step not in ("Verified", "Paid"):
         raise HTTPException(403, "Accounts verifies a certificate and marks it paid.")
+    if data.get("undo") and step == "Paid" and cur == "Paid" and (flow_of(pc) or [{}])[-1].get("old"):
+        # an old certificate marked 'already paid' goes back to the step it was at - not on to Accounts to pay
+        if "qs" not in can and user.role != "admin":
+            raise HTTPException(403, "Estimation (or an admin) can undo this.")
+        back_to = (flow_of(pc) or [{}])[-1].get("from") or "Received"
+        pc.paid_amount, pc.paid_ref, pc.paid_by, pc.paid_on = 0.0, "", "", None
+        pc.status = back_to
+        pc.stage_at = now
+        _log(pc, {"s": back_to, "from": "Paid", "by": who, "at": now.isoformat(timespec="minutes"), "undo": True, "note": "Not an old paid certificate after all"})
+        pc.updated_by = user.id
+        db.commit()
+        return {"ok": True, "status": pc.status}
     if data.get("undo"):
         # back one step: the step undone loses its date and stamp
         if step != cur:
@@ -2061,6 +2073,47 @@ def _pc_step_do(rid, data, db, user):
     pc.updated_by = user.id
     db.commit()
     return {"ok": True, "status": pc.status}
+
+
+@router.post("/store/est/subpcs/{rid}/oldpaid")
+def pc_old_paid(rid: int, data: dict = Body(default={}), db: Session = Depends(get_db), user: models.User = PAYER):
+    """Temporary (Nov 2026): a certificate entered only to bring the history up to date, already paid before the app.
+    It goes straight to Paid - no Contracts manager / Accounts / MD steps, nobody is told. Not for the newest
+    certificate of a subcontract (that one goes through the approvals); its figures must be filled in."""
+    pc = db.query(EstSubPC).get(rid)
+    if not pc:
+        raise HTTPException(404, "That certificate is not there any more.")
+    can, _mine = pc_roles(user, _rules(db))
+    if "qs" not in can and user.role != "admin":
+        raise HTTPException(403, "Estimation marks an old certificate as already paid.")
+    if pc.status == "Paid":
+        return {"ok": True, "status": "Paid"}
+    later = db.query(EstSubPC).filter(EstSubPC.sub_id == pc.sub_id, EstSubPC.seq > (pc.seq or 0)).count()
+    if not later:
+        raise HTTPException(400, "This is the newest certificate - it goes through the approvals. Only older ones can be marked as already paid.")
+    if not _has_figures(db, pc):
+        raise HTTPException(400, "Fill in the certificate first (work done to date) - then mark it as already paid.")
+    s = _sub_of(db, pc.sub_id)
+    calc = {c["id"]: c for c in chain(db.query(EstSubPC).filter(EstSubPC.sub_id == s.id).all(), s.adv_pct, s.ret_pct, s.vat_pct)}
+    now = dubai_now()
+    who = (user.full_name or user.username or "").strip()
+    amt = data.get("amount")
+    on = _coerce(D, data.get("date"), "date") or pc.inv_date or pc.received or today()
+    old = pc.status
+    pc.paid_amount = _coerce(F, amt, "amount") if amt not in (None, "") else calc[pc.id]["payable"]
+    pc.paid_ref = (str(data.get("ref") or "").strip() or "Paid before the app")[:200]
+    pc.paid_by = who
+    pc.paid_on = on
+    pc.status = "Paid"
+    pc.stage_at = now
+    _log(pc, {"s": "Paid", "from": old, "by": who, "at": now.isoformat(timespec="minutes"), "note": "Old certificate - already paid before the app", "old": True})
+    pc.updated_by = user.id
+    try:
+        M.log_action(db, user.id, "pc_old_paid", f"PC {pc.seq:02d} of {s.name}: {old} -> Paid (already paid before the app), AED {pc.paid_amount:,.2f}")
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True, "status": "Paid"}
 
 
 # ---- the bell (and the phone): a certificate waiting at someone's desk ---------------------------
