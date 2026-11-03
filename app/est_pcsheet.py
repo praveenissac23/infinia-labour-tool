@@ -866,6 +866,36 @@ def _pct_txt(r):
 
 # -------------------- PDF --------------------
 
+def _drop_col(data, sty, widths, k):
+    """A table without column k: the rows, the styles (columns after k move one left) and the widths -
+    the width it had goes to the Description column, so the table stays the page's width."""
+    data = [r[:k] + r[k + 1:] for r in data]
+    w = widths[k]
+    widths = widths[:k] + widths[k + 1:]
+    widths[1] += w
+    mv = lambda c: c if c < 0 or c < k else (c - 1 if c > k else k)
+    out = []
+    for st in sty:
+        (c1, r1), (c2, r2) = st[1], st[2]
+        if c1 == k and c2 == k:
+            continue                                   # a style on that column alone goes with it
+        n1, n2 = mv(c1), (c2 if c2 < 0 else (c2 - 1 if c2 >= k else c2))
+        out.append((st[0], (n1, r1), (n2, r2)) + tuple(st[3:]))
+    return data, out, widths
+
+
+def show_int_qty(pc, want=None):
+    """The internal quantity (Int. Qty) on the printed certificate: shown while it is worked on, hidden once the
+    Contracts manager has approved it (the copy that goes to the subcontractor) - either way can be asked for."""
+    if want in ("1", "show", "true", True):
+        return True
+    if want in ("0", "hide", "false", False):
+        return False
+    steps = ["Received", "At site", "Certified", "Prepared", "CM approved", "Verified", "MD approved", "Paid"]
+    st = pc.status if pc.status in steps else "Received"
+    return steps.index(st) < steps.index("CM approved")
+
+
 def render_pdf(doc):
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_RIGHT
@@ -1030,9 +1060,10 @@ def render_pdf(doc):
                                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("GRID", (0, 0), (-1, -1), .3, LINE), ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
                                    ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
             el += [Paragraph("<b>Summary</b>", cap_st), t, Spacer(1, 4 * mm)]
-        cols = ["No", "Description", "Type", "Qty", "Unit", "Rate", "Contract amt", "Measured", "Area/Qty", "Deduction", "% done",
+        cols = ["No", "Description", "Type", "Int. Qty", "Unit", "Contract amt", "Rate", "Measured", "Area/Qty", "Deduction", "% done",
                 "Previous", "This PC", "Certified to date", "Remarks"]
-        cw = [9, 0, 16, 11, 10, 17, 21, 17, 17, 17, 12, 20, 19, 22, 30]
+        show_iq = doc.get("show_iq", True)          # Int. Qty and Contract amt: hidden on the copy sent to the subcontractor
+        cw = [9, 0, 16, 11, 10, 21, 17, 17, 17, 17, 12, 20, 19, 22, 30]
         cw[1] = lw / mm - sum(cw)
         for b in doc["bills"]:
             data = [cols]
@@ -1057,11 +1088,15 @@ def render_pdf(doc):
                                 sty.append(("BACKGROUND", (c_, y), (c_, y), colors.HexColor("#FDF1C7")))
                     sty.append(("LINEBEFORE", (0, y), (0, y), 2, colors.HexColor("#E0B84C")))
                 data.append([it["no"], P(it["description"], sts), P(it["ref"] or it["var_ref"], sts), f"{it['qty']:g}" if it["qty"] else "", it["unit"],
-                             _m(it["rate"]) if it["rate"] else "", _m(it["amount"]), meas, done, _m(-ln["deduct"]) if ln.get("deduct") else "-",
+                             _m(it["amount"]), _m(it["rate"]) if it["rate"] else "", meas, done, _m(-ln["deduct"]) if ln.get("deduct") else "-",
                              _pct_txt(r), _m(r["prev"]), _m(r["amount"] - r["prev"]), _m(r["amount"]), P(ln.get("remark", ""), sts)])
-            data.append(["", P("Total", stb), "", "", "", "", _m(b["contract"]), "", "", "", "", _m(b["prev"]), _m(b["cum"] - b["prev"]), _m(b["cum"]), ""])
+            data.append(["", P("Total", stb), "", "", "", _m(b["contract"]), "", "", "", "", "", _m(b["prev"]), _m(b["cum"] - b["prev"]), _m(b["cum"]), ""])
             sty += [("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"), ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#FDF0EE"))]
-            t = Table(data, colWidths=[x * mm for x in cw], repeatRows=1)
+            widths = [x * mm for x in cw]
+            if not show_iq:
+                for k in (5, 3):                  # Contract amt, Int. Qty - the internal columns
+                    data, sty, widths = _drop_col(data, sty, widths, k)
+            t = Table(data, colWidths=widths, repeatRows=1)
             t.setStyle(TableStyle(sty))
             cap = (f"{b['bill']} - " if b["bill"] else "") + (b["title"] or ("Contract works" if not b["var"] else ""))
             el += [Paragraph(f"<b>{X(cap)}</b>", cap_st), t, Spacer(1, 4 * mm)]
@@ -1107,7 +1142,13 @@ def render_pdf(doc):
     inv = doc["inv"]
     vb, vo = doc["verified"]
     if inv["ref"] or inv["lines"] or vb:
-        el.append(Paragraph("<b>Subcontractor's Invoice</b>", ParagraphStyle("h4", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4, keepWithNext=1)))
+        # "Verified at site" sits on the heading's own line (right) - no line of its own that could fall alone onto
+        # an extra page; the heading and the invoice table stay together
+        vtxt = f"Verified at site: <b>{X(vb)}</b> on {_dt(vo)}" if vb else "Verified at site: not yet"
+        hd = Table([[Paragraph("<b>Subcontractor's Invoice</b>", ParagraphStyle("h4", fontName="Helvetica-Bold", fontSize=10)),
+                     Paragraph(vtxt, ParagraphStyle("vr", parent=st, alignment=2))]], colWidths=[tw * .5, tw * .5])
+        hd.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0),
+                                ("BOTTOMPADDING", (0, 0), (-1, -1), 4), ("VALIGN", (0, 0), (-1, -1), "BOTTOM")]))
         data = [["Invoice no.", inv["ref"], "Invoice date", inv["date"], "Received", inv["received"], "Amount (AED)", _m(inv["amount"])]]
         for x in inv["lines"]:
             data.append([P(x.get("d", ""), sts), "", "", "", "", "", "", _m(x.get("a", 0))])
@@ -1117,8 +1158,7 @@ def render_pdf(doc):
         for i in range(1, len(data)):
             sty.append(("SPAN", (0, i), (-2, i)))
         t.setStyle(TableStyle(sty))
-        el += [t, Spacer(1, 2 * mm)]
-        el.append(Paragraph(f"Verified at site: <b>{X(vb)}</b> on {_dt(vo)}" if vb else "Verified at site: not yet", st))
+        el.append(KeepTogether([hd, t]))
     d.build(el)
     buf.seek(0)
     return buf
@@ -1126,8 +1166,11 @@ def render_pdf(doc):
 
 # -------------------- preview (HTML) --------------------
 
-def render_html(doc, pdf_url):
+def render_html(doc, pdf_url, toggle_url=""):
     from html import escape as X
+    # the internal quantity: one click shows / hides it; the PDF and Share follow what is on screen
+    iq_btn = (f'<a href="{toggle_url}" title="Int. Qty and Contract amt are internal - hide them on the copy sent to the subcontractor; the PDF and Share follow">'
+              f'{"Hide internal columns" if doc.get("show_iq", True) else "Show internal columns"}</a>') if toggle_url else ""
     import export_web
     e = lambda v: X(str(v or ""))
     rows = lambda pairs: "".join(f"<tr><th>{e(a)}</th><td>: {e(b)}</td></tr>" for a, b in pairs)
@@ -1168,7 +1211,7 @@ def render_html(doc, pdf_url):
             ae += f"<tr class=b><td></td><td>TOTAL</td><td class=r>{_m(tc)}</td><td class=r>{pct(tp, tc)}</td><td class=r>{pct(tcum - tp, tc)}</td><td class=r>{pct(tcum, tc)}</td><td class=r>{_m(tp)}</td><td class=r>{_m(tcum - tp)}</td><td class=r>{_m(tcum)}</td></tr></table>"
         for b in doc["bills"]:
             cap = (f"{b['bill']} - " if b["bill"] else "") + (b["title"] or ("Contract works" if not b["var"] else ""))
-            ae += f"<h3>{e(cap)}</h3><div class=tw><table class=t><tr><th>No</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Contract amt</th><th>Measured</th><th>Area/Qty</th><th>Deduction</th><th>% done</th><th>Previous</th><th>This PC</th><th>Certified to date</th><th>Remarks</th></tr>"
+            ae += f"<h3>{e(cap)}</h3><div class=tw><table class=t><tr><th>No</th><th>Description</th><th>Type</th><th class=iq>Int. Qty</th><th>Unit</th><th class=iq>Contract amt</th><th>Rate</th><th>Measured</th><th>Area/Qty</th><th>Deduction</th><th>% done</th><th>Previous</th><th>This PC</th><th>Certified to date</th><th>Remarks</th></tr>"
             sec_ = None
             for r in b["rows"]:
                 it, ln = r["it"], r["ln"]
@@ -1178,11 +1221,11 @@ def render_html(doc, pdf_url):
                 meas, done = _cell_measure(r)
                 ch = r["chg"]
                 k = lambda *f: " chg" if ch & set(f) else ""          # the figure that moved, a shade deeper
-                ae += (f"<tr{' class=mv' if ch else ''}><td>{e(it['no'])}</td><td class=d>{e(it['description'])}</td><td>{e(it['ref'] or it['var_ref'])}</td><td class=r>{it['qty']:g}</td><td>{e(it['unit'])}</td>"
-                       f"<td class=r>{_m(it['rate']) if it['rate'] else ''}</td><td class=r>{_m(it['amount'])}</td><td class='c{k('measure')}'>{meas}</td><td class='r{k('measure')}'>{done}</td>"
+                ae += (f"<tr{' class=mv' if ch else ''}><td>{e(it['no'])}</td><td class=d>{e(it['description'])}</td><td>{e(it['ref'] or it['var_ref'])}</td><td class='r iq'>{it['qty']:g}</td><td>{e(it['unit'])}</td>"
+                       f"<td class='r iq'>{_m(it['amount'])}</td><td class=r>{_m(it['rate']) if it['rate'] else ''}</td><td class='c{k('measure')}'>{meas}</td><td class='r{k('measure')}'>{done}</td>"
                        f"<td class='r{k('deduct')}'>{_m(-ln['deduct']) if ln.get('deduct') else '-'}</td><td class='r{k('pct')}'>{_pct_txt(r)}</td><td class=r>{_m(r['prev'])}</td>"
                        f"<td class='r{k('amount')}'>{_m(r['amount'] - r['prev'])}</td><td class=r><b>{_m(r['amount'])}</b></td><td class='s{k('remark')}'>{e(ln.get('remark', ''))}</td></tr>")
-            ae += f"<tr class=b><td></td><td>Total</td><td></td><td></td><td></td><td></td><td class=r>{_m(b['contract'])}</td><td></td><td></td><td></td><td></td><td class=r>{_m(b['prev'])}</td><td class=r>{_m(b['cum'] - b['prev'])}</td><td class=r>{_m(b['cum'])}</td><td></td></tr></table></div>"
+            ae += f"<tr class=b><td></td><td>Total</td><td></td><td class=iq></td><td></td><td class='r iq'>{_m(b['contract'])}</td><td></td><td></td><td></td><td></td><td></td><td class=r>{_m(b['prev'])}</td><td class=r>{_m(b['cum'] - b['prev'])}</td><td class=r>{_m(b['cum'])}</td><td></td></tr></table></div>"
         ae += f"<p class=b>Total to date carried over to the Certificate page: AED {_m(sum(b['cum'] for b in doc['bills']), False)}</p>"
     hb = "".join(f"<tr><td>{i}</td><td>{e(h['name'])}</td><td>{e(h['period'])}</td><td>{e(h['cert'])}</td><td class=r>{_m(h['amount'])}</td><td class=r>{_m(h['paid'])}</td><td class=r>{_m(h['vat'])}</td><td class=r>{_m(h['ret'])}</td></tr>" for i, h in enumerate(doc["hist"], 1))
     ht = doc["hist_total"]
@@ -1207,8 +1250,8 @@ def render_html(doc, pdf_url):
     appd = ""
     if inv["ref"] or inv["lines"] or vb:
         il = "".join(f"<tr><td colspan=7>{e(x.get('d'))}</td><td class=r>{_m(x.get('a', 0))}</td></tr>" for x in inv["lines"])
-        appd = (f"<h2>Subcontractor's Invoice</h2><table class=kvt><tr><th>Invoice no.</th><td>{e(inv['ref'])}</td><th>Invoice date</th><td>{e(inv['date'])}</td><th>Received</th><td>{e(inv['received'])}</td><th>Amount</th><td class=r>{_m(inv['amount'])}</td></tr>{il}</table>"
-                f"<p>Verified at site: {('<b>' + e(vb) + '</b> on ' + _dt(vo)) if vb else 'not yet'}</p>")
+        appd = (f"<h2 style='display:flex;justify-content:space-between;align-items:baseline;gap:12px'>Subcontractor's Invoice<span style='font-size:11px;font-weight:400'>Verified at site: {('<b>' + e(vb) + '</b> on ' + _dt(vo)) if vb else 'not yet'}</span></h2><table class=kvt><tr><th>Invoice no.</th><td>{e(inv['ref'])}</td><th>Invoice date</th><td>{e(inv['date'])}</td><th>Received</th><td>{e(inv['received'])}</td><th>Amount</th><td class=r>{_m(inv['amount'])}</td></tr>{il}</table>"
+                "")
     logo = export_web.logo_data_uri()
     terms = (("Contract: " + doc["contract_type"] + "<br>") if doc["contract_type"] else "") + e(doc["pay_terms"]).replace("\n", "<br>")
     title = doc["title"] + ("" if doc["kind"] == "Interim" else f" ({doc['kind'].upper()})")
@@ -1243,7 +1286,8 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
   .hd>tbody>tr>td,.hd>tr>td{{display:block;width:auto!important}} .hd>tbody>tr>td+td,.hd>tr>td+td{{border-top:1px solid #E3E5E8}} .hd th{{width:40%;white-space:normal}} .hd td{{overflow-wrap:anywhere}}
   .ctr th{{white-space:normal}} .kvt{{display:block;overflow-x:auto}} .ce{{table-layout:auto}} .ce col{{width:auto!important}}}}
 body{{overflow-x:hidden}} .pg{{overflow-x:auto}}
-</style></head><body><div class="bar"><b>{e(doc['ref'])}</b><button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><button onclick="shr()">Share</button></div>
+.noiq .iq{{display:none}}
+</style></head><body class="{'' if doc.get('show_iq', True) else 'noiq'}"><div class="bar"><b>{e(doc['ref'])}</b>{iq_btn}<button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><button onclick="shr()">Share</button></div>
 <script>async function shr(){{try{{const r=await fetch("{pdf_url}");const b=await r.blob();const f=new File([b],"{fname}.pdf",{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{e(doc['ref'])}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}</script>
 <section class="pg"><div class="top"><img src="{logo}"><div class="ref">{e(doc['ref'])}<span>Payment Certificate No.: {doc['pc_seq']:02d}</span></div></div>
 <h1>{e(title)}</h1>
@@ -1255,7 +1299,7 @@ body{{overflow-x:hidden}} .pg{{overflow-x:auto}}
 
 
 @router.get("/export/est/pc/{pc_id}")
-def pc_print(pc_id: int, token: str, format: str = "preview", db: Session = Depends(get_db)):
+def pc_print(pc_id: int, token: str, format: str = "preview", intqty: str = "", db: Session = Depends(get_db)):
     u = auth.get_download_user_from_token(token, db)
     if not ({E.RIGHT, "accounts_bank"} & set(E.M.effective_permissions(u))):
         raise HTTPException(status_code=403, detail="Estimation only.")
@@ -1263,8 +1307,11 @@ def pc_print(pc_id: int, token: str, format: str = "preview", db: Session = Depe
     if not pc:
         raise HTTPException(404, "That certificate is not there any more.")
     doc = build_doc(db, pc)
+    doc["show_iq"] = show_int_qty(pc, intqty or None)
+    iq = "1" if doc["show_iq"] else "0"
     if format == "pdf":
         buf = render_pdf(doc)
         name = re.sub(r"[^A-Za-z0-9]+", "_", doc["ref"]).strip("_")
         return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={name}.pdf"})
-    return HTMLResponse(render_html(doc, f"/export/est/pc/{pc_id}?token={token}&format=pdf"))
+    return HTMLResponse(render_html(doc, f"/export/est/pc/{pc_id}?token={token}&format=pdf&intqty={iq}",
+                                    f"/export/est/pc/{pc_id}?token={token}&format=preview&intqty={'0' if doc['show_iq'] else '1'}"))
