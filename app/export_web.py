@@ -2345,8 +2345,9 @@ def build_lpo_pdf(po: dict):
     hd = lambda t, a=TA_CENTER: Paragraph(f"<b>{t}</b>", ParagraphStyle(
         "hd", parent=styles["Normal"], fontSize=8.5, leading=11,
         textColor=colors.white, alignment=a, fontName="Helvetica-Bold"))
-    data = [[hd("#"), hd("Item &amp; Description", TA_LEFT), hd("Qty", TA_RIGHT),
-             hd("Rate", TA_RIGHT), hd("Tax %", TA_RIGHT), hd("Tax", TA_RIGHT), hd("Amount", TA_RIGHT)]]
+    import main as _Mq
+    data = [[hd("#"), hd("Item &amp; Description", TA_LEFT), hd("Qty", TA_RIGHT), hd("Unit"),
+             hd("Rate", TA_RIGHT), hd("Tax %", TA_RIGHT), hd("Amount", TA_RIGHT)]]
     sub = 0.0
     for i, l in enumerate(po.get("lines", []), start=1):
         qty = float(l.get("qty") or 0)
@@ -2361,12 +2362,12 @@ def build_lpo_pdf(po: dict):
             # several lines / a long description: as typed, the material's size; a short note: small grey
             desc.append(P(_M.lpo_rich(_x(d2), "<br/>"), 8.5, leading=12) if _M.lpo_long_note(d2) else P(_x(d2), 7.5, colour="#555555"))
         data.append([P(i, 8.5, align=TA_CENTER), desc,
-                     P(f"{qty:,.2f}", 8.5, align=TA_RIGHT),
+                     P(_Mq.lpo_qty(qty), 8.5, align=TA_RIGHT),
+                     P(_x(l.get("unit", "") or ""), 8.5, align=TA_CENTER),
                      P(f"{rate:,.2f}", 8.5, align=TA_RIGHT),
                      P(f"{taxpc:,.2f}", 8.5, align=TA_RIGHT),
-                     P(f"{amount * taxpc / 100:,.2f}", 8.5, align=TA_RIGHT),
                      P(f"{amount:,.2f}", 8.5, align=TA_RIGHT)])
-    widths = [W * x for x in (0.05, 0.40, 0.09, 0.11, 0.08, 0.11, 0.16)]
+    widths = [W * x for x in (0.05, 0.40, 0.10, 0.08, 0.12, 0.08, 0.17)]
     line_style = [
         ("BACKGROUND", (0, 0), (-1, 0), dark),
         ("GRID", (0, 0), (-1, -1), 0.5, grid),
@@ -2494,7 +2495,7 @@ def build_lpo_excel(po: dict):
     wb = Workbook()
     ws = wb.active
     ws.title = "LPO"
-    widths = [5, 30, 12, 12, 8, 11, 14]
+    widths = [5, 32, 11, 8, 12, 8, 15]    # # | Item | Qty | Unit | Rate | Tax % | Amount
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
     thin = Side(style="thin", color="8C8C8C")
@@ -2553,7 +2554,7 @@ def build_lpo_excel(po: dict):
 
     r += 2
     head_row = r
-    for i, label in enumerate(["#", "Item & Description", "Qty", "Rate", "Tax %", "Tax", "Amount"], start=1):
+    for i, label in enumerate(["#", "Item & Description", "Qty", "Unit", "Rate", "Tax %", "Amount"], start=1):
         c = ws.cell(row=r, column=i, value=label)
         c.font = Font(bold=True, color="FFFFFF", size=9.5)
         c.fill = PatternFill("solid", fgColor="7B1F1A")
@@ -2568,15 +2569,17 @@ def build_lpo_excel(po: dict):
         desc = l.get("description", "")
         if (l.get("description2") or "").strip():
             desc += "\n" + l["description2"].strip().replace("**", "")
-        vals = [i, desc, qty, rate, taxpc, None, None]
+        vals = [i, desc, qty, l.get("unit", "") or "", rate, taxpc, None]
         for col, v in enumerate(vals, start=1):
             c = ws.cell(row=r, column=col, value=v)
             c.border = box
-            c.alignment = L if col == 2 else (C if col == 1 else R)
+            c.alignment = L if col == 2 else (C if col in (1, 4) else R)
             c.font = Font(size=9.5)
-        ws.cell(row=r, column=6).value = f"=ROUND(C{r}*D{r}*E{r}/100,2)"
-        ws.cell(row=r, column=7).value = f"=ROUND(C{r}*D{r},2)"
-        for col in (3, 4, 6, 7):
+        ws.cell(row=r, column=7).value = f"=ROUND(C{r}*E{r},2)"
+        # the quantity as typed (9.091 stays 9.091): at least 2 decimals, more when typed
+        dq = len(f"{qty:.6f}".rstrip("0").partition(".")[2])
+        ws.cell(row=r, column=3).number_format = "#,##0." + "0" * max(2, dq)
+        for col in (5, 6, 7):
             ws.cell(row=r, column=col).number_format = "#,##0.00"
         ws.row_dimensions[r].height = (min(400, 14 * (desc.count("\n") + 1) + 6 + 14 * sum(len(x) // 60 for x in desc.split("\n")))
                                        if (l.get("description2") or "").strip() else 17)
@@ -2598,8 +2601,8 @@ def build_lpo_excel(po: dict):
     if disc:
         money(f"Discount({disc:g}%)", f"=-SUM(G{first_line}:G{last_line})*{disc}/100")
     money(f"Standard Rate ({po.get('tax_pct', 5):g}%)",
-          f"=SUM(F{first_line}:F{last_line})" if not disc
-          else f"=SUM(F{first_line}:F{last_line})*(1-{disc}/100)")
+          f"=SUMPRODUCT(C{first_line}:C{last_line},E{first_line}:E{last_line},F{first_line}:F{last_line})/100" if not disc
+          else f"=SUMPRODUCT(C{first_line}:C{last_line},E{first_line}:E{last_line},F{first_line}:F{last_line})/100*(1-{disc}/100)")
     ro = round(float(po.get("round_off") or 0), 2)
     if ro:
         money("Round off", ro)               # after VAT, no VAT on it - the Total below adds it in

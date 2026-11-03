@@ -8720,6 +8720,17 @@ def lpo_rate_history(item_id: int = None, description: str = "", limit: int = 8,
 
 
 
+def lpo_qty(q):
+    """An LPO quantity as it was typed - never rounded (9.091 TON stays 9.091): at least 2 decimals, more when typed."""
+    try:
+        q = float(q or 0)
+    except (TypeError, ValueError):
+        return str(q or "")
+    t = f"{q:,.6f}".rstrip("0")
+    whole, _, dec = t.partition(".")
+    return f"{whole}.{dec.ljust(2, '0')}"
+
+
 def _lpo_net_vat(o):
     """An order's amount after discount, and its VAT: each line's own VAT rate on that line's discounted
     amount - the one rule the register, the report, the printed order, the PDF, the Excel and Zoho all use
@@ -10044,8 +10055,8 @@ def _lpo_html(o):
         second = (f'<div class="{"det" if lpo_long_note(d2) else "sub"}">{lpo_rich(esc(d2), "<br>")}</div>' if d2 else "")
         rows.append(
             f'<tr><td class="c">{i}</td><td>{esc(l.description)}{second}</td>'
-            f'<td class="r">{l.qty:,.2f}</td><td class="r">{l.rate:,.2f}</td>'
-            f'<td class="r">{(l.tax_pct or 0):,.2f}</td><td class="r">{tax:,.2f}</td>'
+            f'<td class="r">{lpo_qty(l.qty)}</td><td class="c">{esc(l.unit)}</td><td class="r">{l.rate:,.2f}</td>'
+            f'<td class="r">{(l.tax_pct or 0):,.2f}</td>'
             f'<td class="r">{amount:,.2f}</td></tr>')
     discount = sub * (o.discount_pct or 0) / 100.0
     net, vat = _lpo_net_vat(o)
@@ -10114,8 +10125,8 @@ def _lpo_html(o):
           <table class="pairs">{right}</table></div>
       </div>
       <div class="lines-wrap"><table class="lines"><thead><tr><th class="c">#</th><th>Item &amp; Description</th>
-        <th class="r">Qty</th><th class="r">Rate</th><th class="r">Tax %</th>
-        <th class="r">Tax</th><th class="r">Amount</th></tr></thead>
+        <th class="r">Qty</th><th class="c">Unit</th><th class="r">Rate</th><th class="r">Tax %</th>
+        <th class="r">Amount</th></tr></thead>
         <tbody>{''.join(rows)}<tr class="fill"><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr></tbody></table></div>
       <div class="foot">
         <div class="terms">
