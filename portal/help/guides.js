@@ -1238,7 +1238,7 @@ window.HELP_TIPS = {
   "#hin-location": "Where the rental item arrived - central store or a site.",
   "#hin-incharge": "Who received it on site.",
   "#rn-supplier": "The supplier the rental items are going back to.",
-  "#rn-from": "The site or store they are collected from.",
+  "#rn-from": "Pick the site first: it lists the sites with rental material standing there. The suppliers and lines below then show only what is still on rent at that site.",
   "#out-person": "Filled with the site engineer when a site is picked. Type another name if someone else takes it.",
   "#out-from": "Central store, or a site if the material is moving site to site.",
   "#out-site": "Where the material is going. Its engineer is filled in as the receiver.",

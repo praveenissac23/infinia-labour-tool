@@ -4318,12 +4318,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
                 <div class="field"><label>Note No</label>
                   <input type="text" id="rn-ref" readonly style="width:110px; background:#F7F7F7;"></div>
+                <div class="field"><label>Returned from (site) *</label>
+                  <select id="rn-from" style="width:200px;" onchange="onReturnPlace()"></select></div>
                 <div class="field"><label>Going back to *</label>
-                  <select id="rn-supplier" style="width:230px;" onchange="onReturnSupplier()"></select></div>
+                  <select id="rn-supplier" style="width:250px;" onchange="onReturnSupplier()"></select></div>
                 <div class="field"><label>Date *</label>
                   <input type="date" id="rn-date" style="width:150px;"></div>
-                <div class="field"><label>Returned from *</label>
-                  <select id="rn-from" style="width:190px;" onchange="onReturnPlace()"></select></div>
                 <div class="field"><label>Driver</label>
                   <input type="text" id="rn-driver" style="width:150px;"></div>
                 <div class="field"><label>Vehicle</label>
@@ -9039,7 +9039,8 @@ async function newReturnNote(supplierId) {
   // A rental nobody is named against cannot be sent back, because a
   // return note has to be addressed to somebody. Say so where the
   // person is, rather than opening a form that cannot be saved.
-  if (supplierId === null || supplierId === undefined || Number.isNaN(Number(supplierId))) {
+  // (the panel's own "New return note" button names nobody: it starts at the site, with every supplier there)
+  if (supplierId === null || (supplierId !== undefined && Number.isNaN(Number(supplierId)))) {
     const loose = (hireOnHire.suppliers || []).find(g => !g.supplier_id);
     const what = loose && loose.items.length ? loose.items.map(i => i.name).join(", ") : "that material";
     showStatus("rn-list-status", "warn",
@@ -9061,33 +9062,41 @@ async function newReturnNote(supplierId) {
   if (!hireOnHire.suppliers || !hireOnHire.suppliers.length) {
     try { hireOnHire = await apiCall("/store/hire"); } catch (e) { hireOnHire = { suppliers: [] }; }
   }
-  const sel = document.getElementById("rn-supplier");
-  sel.innerHTML = hireOnHire.suppliers.length
-    ? hireOnHire.suppliers.map(g => `<option value="${g.supplier_id}">${g.supplier}</option>`).join("")
-    : `<option value="">Nothing is on rent</option>`;
-  if (supplierId) sel.value = String(supplierId);
-  onReturnSupplier();
+  // The site first: every site with rental material standing there, and how many materials each holds
+  const places = {};
+  (hireOnHire.suppliers || []).forEach(g => g.items.forEach(i => Object.entries(i.by_location || {})
+    .forEach(([loc, q]) => { if (q > 1e-9) places[loc] = (places[loc] || 0) + 1; })));
+  const codes = Object.keys(places).sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b, undefined, { numeric: true })));
+  const fromSel = document.getElementById("rn-from");
+  fromSel.innerHTML = !codes.length ? `<option value="__pick">Nothing is on rent</option>`
+    : (codes.length > 1 ? `<option value="__pick">- Pick the site -</option>` : "")
+      + codes.map(c => `<option value="${c.replace(/"/g, "&quot;")}">${rnPlaceLabel(c)} (${places[c]} item${places[c] > 1 ? "s" : ""})</option>`).join("");
+  if (supplierId) {                        // opened from a supplier's rental: start at a site holding his material
+    const g = (hireOnHire.suppliers || []).find(x => x.supplier_id === Number(supplierId));
+    const at = codes.find(c => g && g.items.some(i => ((i.by_location || {})[c] || 0) > 1e-9));
+    if (at !== undefined) fromSel.value = at;
+  }
+  onReturnPlace(supplierId);
   window.scrollTo(0, 0);
 }
 
 // The lines come from what is actually on hire from the chosen trader, at the chosen site,
 // so a note can never be written for material he never sent or that is not standing there.
 function rnPlaceLabel(code) { return code ? code : "Central store"; }
-function onReturnSupplier() {
-  const sid = parseInt(document.getElementById("rn-supplier").value || "0", 10);
-  const g = (hireOnHire.suppliers || []).find(x => x.supplier_id === sid);
-  // the sites where this trader's material is standing now, with how many materials each holds
-  const places = {};
-  (g ? g.items : []).forEach(i => Object.entries(i.by_location || {}).forEach(([loc, q]) => { if (q > 1e-9) places[loc] = (places[loc] || 0) + 1; }));
-  const codes = Object.keys(places).sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b, undefined, { numeric: true })));
-  const sel = document.getElementById("rn-from");
-  const was = sel.value;
-  sel.innerHTML = (codes.length > 1 ? `<option value="__pick">- Pick the site -</option>` : "")
-    + codes.map(c => `<option value="${c.replace(/"/g, "&quot;")}">${rnPlaceLabel(c)} (${places[c]} item${places[c] > 1 ? "s" : ""})</option>`).join("");
-  if (codes.includes(was)) sel.value = was;
-  onReturnPlace();
+// The site picked: only the suppliers whose rental material is standing at that site, with how many materials
+function onReturnPlace(want) {
+  const place = document.getElementById("rn-from").value;
+  const sel = document.getElementById("rn-supplier");
+  const was = want ? String(want) : sel.value;
+  const here = place === "__pick" ? [] : (hireOnHire.suppliers || [])
+    .map(g => ({ g, n: g.items.filter(i => ((i.by_location || {})[place] || 0) > 1e-9).length })).filter(x => x.n);
+  sel.innerHTML = place === "__pick" ? `<option value="">- Pick the site first -</option>`
+    : here.length ? here.map(({ g, n }) => `<option value="${g.supplier_id}">${g.supplier} (${n} item${n > 1 ? "s" : ""})</option>`).join("")
+    : `<option value="">Nothing on rent at this site</option>`;
+  if (here.some(({ g }) => String(g.supplier_id) === was)) sel.value = was;
+  onReturnSupplier();
 }
-function onReturnPlace() {
+function onReturnSupplier() {
   const sid = parseInt(document.getElementById("rn-supplier").value || "0", 10);
   const g = (hireOnHire.suppliers || []).find(x => x.supplier_id === sid);
   const place = document.getElementById("rn-from").value;
@@ -9121,7 +9130,7 @@ function renderReturnLines() {
   if (!body) return;
   if (!rnLines.length) {
     const pick = (document.getElementById("rn-from") || {}).value === "__pick";
-    body.innerHTML = `<tr><td colspan="7" class="empty-note">${pick ? "Pick the site it is going back from - its materials on rent show here." : "Nothing is on rent from this supplier."}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7" class="empty-note">${pick ? "Pick the site it is going back from - what is still on rent there shows here." : "Nothing is on rent from this supplier at this site."}</td></tr>`;
     renderReturnTotals();
     return;
   }
@@ -9219,6 +9228,7 @@ async function editReturnNote(id) {
 async function saveReturnNote() {
   const v = id => (document.getElementById(id).value || "").trim();
   const sid = parseInt(v("rn-supplier") || "0", 10);
+  if (v("rn-from") === "__pick") { showStatus("rn-status", "warn", "Pick the site it is going back from."); return; }
   if (!sid) { showStatus("rn-status", "warn", "Nothing is on rent to return."); return; }
   if (v("rn-from") === "__pick") { showStatus("rn-status", "warn", "Pick the site it is going back from."); return; }
   const over = rnLines.find(l => (parseFloat(l.qty_returned) || 0) + (parseFloat(l.qty_short) || 0) > (l.qty_on_hire || 0) + 1e-9);
@@ -20404,8 +20414,25 @@ async function editUsageRow(idx) {
       <div class="field" style="flex:1; min-width:240px;"><label>Remarks</label><input type="text" id="ue-notes" value="${escapeAttr(r.notes || "")}" style="width:100%;"></div>
     </div>
     <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
+      <button type="button" class="btn btn-gray" id="ue-del" style="margin-right:auto; color:#C0392B;">Delete this line</button>
       <button type="button" class="btn btn-gray" onclick="this.closest('.zx-modal').remove()">Cancel</button>
       <button type="button" class="btn btn-primary" id="ue-save">Save</button></div>`, true);
+  // a line entered by mistake (the wrong material, a delivery that never came): taken off altogether.
+  // Two taps - the first asks, the second deletes - no pop-up.
+  const del = ov.querySelector("#ue-del");
+  del.onclick = async () => {
+    if (!del.dataset.sure) {
+      del.dataset.sure = "1"; del.className = "btn btn-primary"; del.style.color = "";
+      del.textContent = `Yes, delete ${r.qty} ${r.unit || ""} ${r.name}`;
+      return;
+    }
+    try {
+      await apiCall(`/store/movements/${r._mid}`, { method: "DELETE" });
+      ov.remove();
+      await loadStore();
+      showStatus("store-status", "ok", `${r.name}: line deleted.`);
+    } catch (e) { const m = ov.querySelector("#pe-msg"); m.className = "status-msg err"; m.textContent = errText(e); }
+  };
   ov.querySelector("#ue-save").onclick = async () => {
     const g = id => (ov.querySelector("#" + id) || {}).value;
     const body = { date: g("ue-date"), qty: g("ue-qty"), site: g("ue-site"), given_to: g("ue-given"), ref: g("ue-ref"), notes: g("ue-notes") };

@@ -6662,7 +6662,18 @@ def delete_store_movement(movement_id: int, db: Session = Depends(get_db),
     _it = db.query(models.StoreItem).filter(models.StoreItem.id == m.item_id).first()
     _what = (f"#{movement_id} {m.kind} {m.qty:g} {(_it.unit if _it else '')} {(_it.name if _it else '')}"
              f"{(' - ' + m.location) if m.location else ' - central store'} on {m.moved_on}")
+    # Taking a wrong line away must not leave a place holding less than nothing (a delivery whose
+    # material has already been issued on or sent back): say so instead.
+    iid = m.item_id
+    neg_before = {k for k, q in _stock_map(db, by_owner=True).items() if k[0] == iid and q < -1e-6}
     db.delete(m)
+    db.flush()
+    for k, q in _stock_map(db, by_owner=True).items():
+        if k[0] == iid and q < -1e-6 and k not in neg_before:
+                db.rollback()
+                raise HTTPException(status_code=400,
+                    detail=f"{_it.name if _it else 'That material'}: removing this line would leave {_place_label(k[1])} with {round(q, 2)} {(_it.unit if _it else '')} - "
+                           f"some of it has already been issued on or sent back. Correct those lines first, or edit this one instead.")
     db.commit()
     log_action(db, user.id, "store_delete_movement", _what)
     return {"ok": True}
