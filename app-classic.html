@@ -4372,12 +4372,30 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <button class="btn btn-primary" onclick="newReturnNote()">New return note</button>
               </div>
               <div class="status-msg" id="rn-list-status"></div>
+              <div class="form-row" style="margin-top:10px; gap:10px; align-items:center; flex-wrap:wrap;">
+                <select id="rnl-site" onchange="drawReturnList()" style="width:170px;"></select>
+                <select id="rnl-sup" onchange="drawReturnList()" style="width:240px;"></select>
+                <select id="rnl-status" onchange="drawReturnList()" style="width:150px;">
+                  <option value="">All statuses</option><option value="confirmed">Confirmed</option>
+                  <option value="issued">Issued</option><option value="draft">Draft</option><option value="cancelled">Cancelled</option></select>
+                <label style="font-size:12px; display:flex; gap:6px; align-items:center; white-space:nowrap;">
+                  <input type="checkbox" id="rnl-mats" onchange="drawReturnList()"> Show by material</label>
+                <span id="rnl-sum" style="font-size:12px; color:#666; margin-left:auto;"></span>
+              </div>
+              <div class="grid-wrap" id="rnl-mat-wrap" style="display:none; max-height:40vh; margin-top:8px;">
+                <table>
+                  <thead><tr><th style="text-align:left;">Material</th><th style="width:12%;">Notes</th>
+                    <th style="width:14%;">Returned</th><th style="width:14%;">Short</th></tr></thead>
+                  <tbody id="rnl-mat"></tbody>
+                </table>
+              </div>
               <div class="grid-wrap" style="max-height:52vh; margin-top:10px;">
                 <table>
                   <thead><tr>
-                    <th style="width:11%; text-align:left;">Note</th>
-                    <th style="width:11%;">Date</th>
-                    <th style="width:22%; text-align:left;">Supplier</th>
+                    <th style="width:10%; text-align:left;">Note</th>
+                    <th style="width:10%;">Date</th>
+                    <th style="width:8%;">Site</th>
+                    <th style="width:19%; text-align:left;">Supplier</th>
                     <th style="width:8%;">Lines</th>
                     <th style="width:10%;">Returned</th>
                     <th style="width:9%;">Short</th>
@@ -8987,8 +9005,48 @@ async function refreshReturnList() {
   let rows = [];
   try { rows = await apiCall("/store/returns"); }
   catch (e) { showStatus("rn-list-status", "err", errText(e)); return; }
+  RN_ALL = rows;
+  // the filters offer only the sites and suppliers that have notes, with how many each
+  const cnt = (f) => rows.reduce((o, r) => (o[f(r)] = (o[f(r)] || 0) + 1, o), {});
+  const fill = (id, all, counts, label) => {
+    const sel = document.getElementById(id); if (!sel) return; const was = sel.value;
+    const keys = Object.keys(counts).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    sel.innerHTML = `<option value="__all">${all}</option>` + keys.map(k => `<option value="${escapeAttr(k)}">${escapeHtml(label(k))} (${counts[k]})</option>`).join("");
+    sel.value = keys.includes(was) ? was : "__all";
+  };
+  fill("rnl-site", "All sites", cnt(r => r.from_location || ""), rnPlaceLabel);
+  fill("rnl-sup", "All suppliers", cnt(r => r.supplier || ""), k => k || "-");
+  drawReturnList();
+}
+let RN_ALL = [];
+function drawReturnList() {
+  const body = document.getElementById("rn-list");
+  if (!body) return;
+  const v = id => (document.getElementById(id) || {}).value || "";
+  const site = v("rnl-site"), sup = v("rnl-sup"), st = v("rnl-status");
+  const rows = RN_ALL.filter(r => (site === "__all" || site === "" || (r.from_location || "") === site)
+    && (sup === "__all" || sup === "" || (r.supplier || "") === sup) && (!st || r.status === st));
+  // totals of what is shown: cancelled notes moved nothing, so they never count
+  const live = rows.filter(r => r.status !== "cancelled");
+  const tR = live.reduce((a, r) => a + (r.total_returned || 0), 0), tS = live.reduce((a, r) => a + (r.total_short || 0), 0);
+  const sumEl = document.getElementById("rnl-sum");
+  if (sumEl) sumEl.innerHTML = `${rows.length} note${rows.length === 1 ? "" : "s"} · returned <b>${num(tR)}</b>${tS ? ` · short <b style="color:#C0392B;">${num(tS)}</b>` : ""}`;
+  // by material: what came back from the site(s) shown, material by material
+  const showM = (document.getElementById("rnl-mats") || {}).checked;
+  const mw = document.getElementById("rnl-mat-wrap");
+  if (mw) mw.style.display = showM ? "" : "none";
+  if (showM) {
+    const by = {};
+    live.forEach(r => (r.materials || []).forEach(m => {
+      const k = m.name + "|" + m.unit; const o = by[k] || (by[k] = { name: m.name, unit: m.unit, n: new Set(), ret: 0, sh: 0 });
+      o.n.add(r.id); o.ret += m.returned || 0; o.sh += m.short || 0; }));
+    const list = Object.values(by).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    document.getElementById("rnl-mat").innerHTML = list.length ? list.map(o => `<tr><td style="text-align:left;">${escapeHtml(o.name)}</td><td>${o.n.size}</td>
+      <td>${num(o.ret)} ${escapeHtml(o.unit)}</td><td${o.sh ? ' style="color:#C0392B; font-weight:600;"' : ""}>${o.sh ? num(o.sh) + " " + escapeHtml(o.unit) : "-"}</td></tr>`).join("")
+      : `<tr><td colspan="4" class="empty-note">Nothing returned for this choice.</td></tr>`;
+  }
   if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="8" class="empty-note">No return notes yet.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" class="empty-note">${RN_ALL.length ? "No return note for this choice." : "No return notes yet."}</td></tr>`;
     return;
   }
   const pill = s => {
@@ -8999,8 +9057,9 @@ async function refreshReturnList() {
   };
   body.innerHTML = rows.map(r => `
     <tr>
-      <td style="text-align:left;"><strong>${xlink(r.ref, `printReturn(${r.id}, 'view')`, null, "Open the return note")}</strong></td>
+      <td style="text-align:left; white-space:nowrap;"><strong>${xlink(r.ref, `printReturn(${r.id}, 'view')`, null, "Open the return note")}</strong></td>
       <td>${r.return_date ? dmy(r.return_date) : "-"}</td>
+      <td>${escapeHtml(rnPlaceLabel(r.from_location || ""))}</td>
       <td style="text-align:left;">${r.supplier ? supplierLink(r.supplier) : "-"}</td>
       <td>${r.lines}</td>
       <td>${num(r.total_returned)}</td>

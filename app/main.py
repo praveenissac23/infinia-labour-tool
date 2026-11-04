@@ -6009,6 +6009,10 @@ def list_hire_returns(status: str = "", db: Session = Depends(get_db),
              "lines": len(r.lines),
              "total_returned": round(sum(l.qty_returned or 0 for l in r.lines), 2),
              "total_short": round(sum(l.qty_short or 0 for l in r.lines), 2),
+             # where it came back from, and what - so the register can be read one site at a time
+             "from_location": r.from_location or "",
+             "materials": [{"name": l.description or "", "unit": l.unit or "", "returned": round(l.qty_returned or 0, 2),
+                            "short": round(l.qty_short or 0, 2)} for l in r.lines if (l.qty_returned or 0) or (l.qty_short or 0)],
              "received_by": r.received_by or "",
              "confirmed_on": r.confirmed_on.isoformat() if r.confirmed_on else ""}
             for r in rows]

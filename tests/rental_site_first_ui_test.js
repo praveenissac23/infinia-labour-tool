@@ -73,6 +73,27 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS 
     try { await apiCall('/store/movements/' + row._mid, { method: 'DELETE' }); return 'deleted'; } catch (e) { return errText(e); }
   }, [ids.b, TAG]);
   ck('a delivery already moved on to another site cannot be deleted, and says why', /would leave 902 with -30/.test(guard), guard);
+  // ---- the register read one site at a time
+  const reg = await p.evaluate(async T => {
+    const h = await apiCall('/store/hire'), A = h.suppliers.find(g => g.supplier === 'Scaff A ' + T), Bs = h.suppliers.find(g => g.supplier === 'Scaff B ' + T);
+    const it = (g, n) => g.items.find(i => i.name.startsWith(n)).item_id, today = new Date().toISOString().slice(0, 10);
+    const mk = (g, loc, item, q) => apiCall('/store/returns', { method: 'POST', body: JSON.stringify({ supplier_id: g.supplier_id, return_date: today, from_location: loc, lines: [{ item_id: item, qty_returned: q }] }) });
+    await mk(A, '901', it(A, 'Rental Standard 2.5M'), 6); await mk(A, '902', it(A, 'Rental Standard 2.5M'), 2); await mk(Bs, '902', it(Bs, 'Rental Tube 3M'), 4);
+    await refreshReturnList();
+    const sites = [...document.querySelectorAll('#rnl-site option')].map(o => o.textContent);
+    const pick = (id, v) => { const s = document.getElementById(id); s.value = [...s.options].find(o => o.textContent.startsWith(v)).value; drawReturnList(); };
+    pick('rnl-sup', 'Scaff A ' + T); pick('rnl-site', '902');
+    const rows902A = [...document.querySelectorAll('#rn-list tr')].map(tr => tr.children[2] && tr.children[2].textContent.trim());
+    const sum902A = document.getElementById('rnl-sum').textContent;
+    pick('rnl-sup', 'All suppliers'); document.getElementById('rnl-mats').checked = true; drawReturnList();
+    const mats = [...document.querySelectorAll('#rnl-mat tr')].map(tr => [...tr.children].map(td => td.textContent.trim()).join(' | ')).filter(t => t.includes(T));
+    return { sites, rows902A, sum902A, mats };
+  }, TAG);
+  ck('the register filters by site, listing each site with its notes', reg.sites[0] === 'All sites' && reg.sites.some(t => /^901 \(/.test(t)) && reg.sites.some(t => /^902 \(/.test(t)), reg.sites);
+  ck('site 902 + Scaff A: just its one note, with the Site column, total returned 2', reg.rows902A.length === 1 && reg.rows902A[0] === '902' && /1 note · returned 2/.test(reg.sum902A), reg);
+  ck('by material: what came back from 902, material by material', reg.mats.length === 2 && reg.mats.some(t => t.startsWith('Rental Standard 2.5M') && t.endsWith('| 1 | 2 pcs | -')) && reg.mats.some(t => t.startsWith('Rental Tube 3M') && t.endsWith('| 1 | 4 pcs | -')), reg.mats);
+  await p.evaluate(() => document.getElementById('rnl-site').scrollIntoView()); await p.evaluate(() => scrollBy(0, -120));
+  await p.screenshot({ path: '/tmp/claude-0/ui2/rn_register_site.png' });
   ck('no page errors or pop-ups', !errs.length, errs);
   console.log(bad ? bad + ' FAILED' : 'ALL PASS'); await br.close();
 })();
