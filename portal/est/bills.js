@@ -424,7 +424,18 @@ function workSection(t, i) {
   const ed = t.editable && canEditBill();
   // the section's headings in between (3.1.1 Concrete ..., a section added on the bill) - not while searching
   const heads = IPA.q || IPA.filter ? [] : (t.heads || []);
-  const rows = shown.map(l => ({ r: l.r, h: lineRow(t.sheet, l, ed) })).concat(heads.map(h => ({ r: h.r, h: headRow(t.sheet, h, ed) }))).sort((a, b) => a.r - b.r);
+  // a heading with only one line under it is shown as that one line, under the heading's own item and name
+  // ("D  BLOCK WORKS 269,013.00"), as the bill itself reads - not the heading and then "33 200mm thick Solid blocks"
+  const all = shown.map(l => ({ r: l.r, l })).concat(heads.map(h => ({ r: h.r, hd: h }))).sort((a, b) => a.r - b.r);
+  const rows = [];
+  for (let k = 0; k < all.length; k++) {
+    const x = all[k];
+    if (x.hd) {
+      let n = 0, j = k + 1; while (j < all.length && !all[j].hd) { n++; j++; }
+      if (n === 1 && !x.hd.added) { const l = all[k + 1].l; rows.push({ r: x.r, h: lineRow(t.sheet, l, ed, x.hd) }); k++; continue; }
+      rows.push({ r: x.r, h: headRow(t.sheet, x.hd, ed) });
+    } else rows.push({ r: x.r, h: lineRow(t.sheet, x.l, ed) });
+  }
   return `<div class="ipa-card ipa-sec ${t.hidden ? "hid" : ""}" id="ipa-sec-${i}"><div class="ipa-sec-h"><h3>${esc(t.sheet)}${t.hidden ? ` <span class="st">hidden sheet - not printed</span>` : ""}</h3>
       ${ed ? `<span class="ipa-sec-add"><button class="btn btn-ghost btn-sm" data-addln="${esc(t.sheet)}" title="A new item or variation at the end of ${esc(t.sheet)}">+ Line</button><button class="btn btn-ghost btn-sm" data-addsec="${esc(t.sheet)}" title="A heading at the end of ${esc(t.sheet)}, to put new lines under">+ Section</button></span>` : ""}</div>
     <div class="ipa-tw"><table class="ipa-lines"><colgroup><col style="width:64px"><col><col style="width:118px"><col style="width:86px"><col style="width:104px"><col style="width:104px"><col style="width:118px"><col style="width:118px">${ed ? '<col style="width:40px">' : ""}</colgroup>
@@ -442,10 +453,18 @@ function lineCells(l) {
 }
 const pnum = v => v === null || v === undefined ? "" : String(Math.round(v * 1e6) / 1e4);
 const pnow = v => v === null || v === undefined || Math.abs(v) < 1e-9 ? "" : pnum(v);          // nothing this month: left empty
-function lineRow(sh, l, ed) {
+function lineRow(sh, l, ed, hd) {
   const c = lineCells(l), id = `${sh}|${l.r}`, paid = IPA.bill.status === "Paid" && !ST.meta.me.admin;
   const edit = l.how && !paid;
   const inp = (k, v) => edit ? `<input class="ipa-in" data-noclear data-row="${esc(id)}" data-w="${k}" value="${k === "now" ? pnow(v) : pnum(v)}" placeholder="0" inputmode="decimal" autocomplete="off"><span class="pc">%</span>` : `<span class="ro">${v === null ? "" : pctTxt(v)}</span>`;
+  if (hd) return `<tr class="${c.cls} one" data-line="${esc(id)}" data-head="${esc(sh + "|" + hd.r)}"><td class="it"><b>${esc(hd.item)}</b></td>
+    <td class="ds" title="${esc([l.item, l.desc].filter(Boolean).join(" "))}"><b>${esc(hd.desc)}</b>${l.added ? ' <span class="new-tag">added</span>' : ""}${!l.how && l.follows ? followsLink(sh, l) : ""}</td>
+    <td class="r" data-l="Amount">${l.amount !== null ? money(l.amount, false) : `<span class="muted small">${esc(l.amount_text || "-")}</span>`}</td>
+    <td class="r muted" data-c="prev" data-l="Previous">${c.prev}</td>
+    <td class="r in" data-c="now" data-l="This month %">${inp("now", c.now)}</td>
+    <td class="r in" data-c="tot" data-l="Total %">${inp("tot", l.total)}</td>
+    <td class="r" data-c="nowAmt" data-l="This month">${c.nowAmt}</td><td class="r" data-c="td" data-l="To date">${c.td}</td>
+    ${ed ? `<td class="act"><button class="ln-menu" data-menu="${esc(id)}" data-kind="line" title="Line: edit its details, add a line or section below">&#8942;</button></td>` : ""}</tr>`;
   return `<tr class="${c.cls}" data-line="${esc(id)}"><td class="it">${esc(l.item)}</td>
     <td class="ds">${esc(l.desc) || '<span class="muted">(no description)</span>'}${l.added ? ' <span class="new-tag">added</span>' : ""}${l.unit && !/^(item|ls|l\.s\.?|lump ?sum)$/i.test(l.unit.trim()) ? ` <span class="muted small">(${esc(l.unit)})</span>` : ""}${!l.how && l.follows ? followsLink(sh, l) : ""}</td>
     <td class="r" data-l="Amount">${l.amount !== null ? money(l.amount, false) : `<span class="muted small">${esc(l.amount_text || "-")}</span>`}</td>
