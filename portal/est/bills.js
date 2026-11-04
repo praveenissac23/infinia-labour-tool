@@ -768,9 +768,12 @@ function drawFees(m) {
   const b = IPA.bill;
   const head = { sn: "SN", desc: "Description", ref: "Invoice reference", amount: "Amount (AED)" };
   m.innerHTML = `<div class="ipa-card ipa-intro"><b>Fees paid to the authorities in this bill</b> (DM, DEWA, permits ...). Type each receipt: what it was for, the invoice reference and the amount.
-      Last month's lines are kept in the file but not printed; the sub-total counts this bill's lines only.</div>` +
-    b.fees.map((t, ti) => `<div class="ipa-card"><h3>${esc(t.sheet)}${t.hidden ? ` <span class="muted small">- ${t.hidden} earlier line${t.hidden === 1 ? "" : "s"} kept hidden</span>` : ""}</h3>
+      What was claimed in earlier bills is shown above it (grey, not changed here) so you can see what is claimed and what is not; the sub-total counts this bill's lines.</div>` +
+    b.fees.map((t, ti) => `<div class="ipa-card"><h3>${esc(t.sheet)}${(t.earlier || []).length ? ` <span class="muted small">- claimed in earlier bills: ${money(t.earlier_total, false)}</span>` : ""}</h3>
       <div class="ipa-tw"><table class="ipa-pay"><thead><tr>${feeCols(t).map(c => `<th class="${c === "amount" ? "r" : ""}" style="${c === "sn" ? "width:60px" : ""}">${head[c] || c}</th>`).join("")}<th style="width:40px"></th></tr></thead><tbody>
+      ${(t.earlier || []).map(e => e.head ? `<tr class="hd old"><td colspan="${t.cols.length + 1}">${esc(e.desc ?? "")} <span class="muted small">earlier bill</span></td></tr>`
+          : `<tr class="old">${feeCols(t).map(c => `<td class="${c === "amount" ? "r" : ""}">${c === "amount" ? (e.amount ? money(e.amount, false) : "") : esc(e[c] ?? "")}</td>`).join("")}<td></td></tr>`).join("")}
+      ${(t.earlier || []).length ? `<tr class="tot old"><td colspan="${t.cols.length - 1}">Claimed in earlier bills</td><td class="r">${money(t.earlier_total, false)}</td><td></td></tr>` : ""}
       ${t.rows.map(r => r.head ? `<tr class="hd"><td colspan="${t.cols.length + 1}"><input class="ipa-pin" data-sh="${esc(t.sheet)}" data-pk="${r.desc.key}" data-c="desc" value="${esc(r.desc.value ?? "")}" style="width:200px;font-weight:700"></td></tr>` :
         `<tr>${feeCols(t).map(c => { const x = r[c]; if (!x) return "<td></td>";
           const at = `data-sh="${esc(t.sheet)}" data-pk="${x.key}" data-c="${c}"`;

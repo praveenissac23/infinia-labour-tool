@@ -773,3 +773,7 @@ table.t.boq td { overflow-wrap: anywhere; }
 }
 /* the ticked bar stays in sight at the bottom of the window while lines are ticked */
 .boq-pickbar.on { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 50; margin: 0; box-shadow: 0 8px 24px rgba(0,0,0,.14); background: #fff; }
+/* Authority fees: lines claimed in earlier bills, shown read only above this bill's lines */
+.ipa-pay tr.old td { color: #6B7178; background: #FAF9F7; padding: 6px 8px; font-size: 12.5px; }
+.ipa-pay tr.hd.old td { font-weight: 700; color: #4A4F55; background: #F3F0EC; }
+.ipa-pay tr.tot.old td { border-top: 1px solid #C9CDD2; font-weight: 700; color: #4A4F55; }

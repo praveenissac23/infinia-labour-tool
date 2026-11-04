@@ -561,9 +561,16 @@ def _fees(model, values, inputs):
         vals = values.get(sh, {})
         inp = inputs.get(sh, {})
         hid = set(s.get("hidden_rows") or []) | BE.hidden_extra(inputs, sh)
-        rows = []
+        rows, earlier = [], []
         for r in range(t["head_row"] + 1, t["total_row"]):
             if r in hid:
+                # an earlier bill's line: the consultant's sheet keeps it hidden (not printed again) - shown on screen, read only
+                ev = {k: vals.get(f"{r},{c}") for k, c in cols.items()}
+                if any(v not in (None, "") for v in ev.values()):
+                    d = ev.get("desc")
+                    ev["head"] = bool(isinstance(d, str) and re.match(r"^\s*(ipa|bill|interim|payment (application|certificate)|this bill)\b", d, re.I)) and ev.get("amount") in (None, "", 0)
+                    ev["amount"] = ev["amount"] if isinstance(ev.get("amount"), (int, float)) else None
+                    earlier.append(ev)
                 continue
             row = {"r": r}
             for k, c in cols.items():
@@ -579,10 +586,17 @@ def _fees(model, values, inputs):
         # the lines of this bill: from its heading ("IPA 10") on; the spacer rows above are left alone
         last_head = max((i for i, x in enumerate(rows) if x["head"]), default=None)
         if last_head is not None:
+            for x in rows[:last_head]:          # lines of earlier bills above this bill's heading: also shown, read only
+                ev = {k: x[k]["value"] for k in cols}
+                if any(v not in (None, "") for v in ev.values()):
+                    ev["head"] = x["head"]
+                    ev["amount"] = ev["amount"] if isinstance(ev.get("amount"), (int, float)) else None
+                    earlier.append(ev)
             rows = rows[last_head:]
         total = vals.get(f"{t['total_row']},{cols['amount']}")
         out.append({"sheet": sh, "cols": list(cols.keys()), "rows": rows, "total": total if isinstance(total, (int, float)) else None,
-                    "total_row": t["total_row"], "hidden": len([r for r in range(t["head_row"] + 1, t["total_row"]) if r in hid])})
+                    "total_row": t["total_row"], "hidden": len([r for r in range(t["head_row"] + 1, t["total_row"]) if r in hid]),
+                    "earlier": earlier, "earlier_total": round(sum(x["amount"] or 0 for x in earlier if not x["head"]), 2)})
     return out
 
 
