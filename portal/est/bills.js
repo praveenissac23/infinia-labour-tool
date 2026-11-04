@@ -432,7 +432,10 @@ function workSection(t, i) {
     const x = all[k];
     if (x.hd) {
       let n = 0, j = k + 1; while (j < all.length && !all[j].hd) { n++; j++; }
-      if (n === 1 && !x.hd.added) { const l = all[k + 1].l; rows.push({ r: x.r, h: lineRow(t.sheet, l, ed, x.hd) }); k++; continue; }
+      // not for a cost proposal / variation order: its heading is only a number ("COST PROPOSAL - 01"), the line says what it is
+      const generic = /\b(cost\s*proposal|variation|v\.?\s*o\.?\b|change\s*order|c\.?\s*p\.?\s*-?\s*\d|addendum|additional\s+work|extra\s+work)/i.test(x.hd.desc || "");
+      const lettered = n === 1 && /^[A-Za-z][.)]?$/.test(String(all[k + 1].l.item || "").trim());
+      if (n === 1 && !x.hd.added && !generic && !lettered) { const l = all[k + 1].l; rows.push({ r: x.r, h: lineRow(t.sheet, l, ed, x.hd) }); k++; continue; }
       rows.push({ r: x.r, h: headRow(t.sheet, x.hd, ed) });
     } else rows.push({ r: x.r, h: lineRow(t.sheet, x.l, ed) });
   }
