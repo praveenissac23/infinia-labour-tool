@@ -56,8 +56,7 @@ const visible = p => p.evaluate(() => [...document.querySelectorAll('#screen-zoh
   // Suppliers / October / attention
   await p.click('#zh-tabs .zh-tab >> text=Suppliers'); await p.waitForTimeout(1500);
   ck('suppliers pane loads the list', (await p.locator('#zh-sup-body tr').count()) >= 1 && /linked/.test(await p.locator('#zh-sup-n').textContent()));
-  await p.click('#zh-tabs .zh-tab >> text=October check'); await p.waitForTimeout(300);
-  ck('October check pane', await p.locator('#zh-oct-btn').isVisible());
+  ck('no October check (no longer needed, 4 Nov 2026)', !(await p.locator('#zh-tabs .zh-tab >> text=October check').count()) && !(await p.locator('#zh-oct-btn').count()));
   await p.click('#zh-tabs .zh-tab >> text=Needs attention'); await p.waitForTimeout(300);
   ck('needs attention says when nothing is wrong', /Nothing needs attention|approved but not in Zoho|without the supplier/.test(await p.locator('[data-pane=attention]').textContent()));
   // empty ids never sent

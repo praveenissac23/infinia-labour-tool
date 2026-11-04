@@ -1369,31 +1369,27 @@ window.HELP_AUTO = [
     "el": "button[onclick=\"zhPane('attention')\"]"
    },
    {
-    "say": "6. October check.",
-    "el": "button[onclick=\"zhPane('october')\"]"
-   },
-   {
-    "say": "7. Suppliers.",
+    "say": "6. Suppliers.",
     "el": "button[onclick=\"zhPane('suppliers')\"]"
    },
    {
-    "say": "8. Sent to Zoho.",
+    "say": "7. Sent to Zoho.",
     "el": "button[onclick=\"zhPane('sent')\"]"
    },
    {
-    "say": "9. Connect Zoho.",
+    "say": "8. Connect Zoho.",
     "el": "button[onclick=\"zhConnect()\"]"
    },
    {
-    "say": "10. Preview: opens it on screen to read or print.",
+    "say": "9. Preview: opens it on screen to read or print.",
     "el": "button[onclick=\"zhExport('view')\"]"
    },
    {
-    "say": "11. Export PDF: downloads it as a PDF.",
+    "say": "10. Export PDF: downloads it as a PDF.",
     "el": "button[onclick=\"zhExport('pdf')\"]"
    },
    {
-    "say": "12. Export Excel: downloads it as an Excel sheet.",
+    "say": "11. Export Excel: downloads it as an Excel sheet.",
     "el": "button[onclick=\"zhExport('excel')\"]"
    }
   ]

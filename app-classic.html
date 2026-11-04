@@ -3896,11 +3896,6 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="zh-pane" data-pane="lpo"><div id="zh-pos"></div></div>
             <div class="zh-pane" data-pane="loans"><div id="zh-loans"></div></div>
             <div class="zh-pane" data-pane="attention"><div id="zh-pending"></div><div id="zh-todo"></div><div id="zh-attn-none"></div></div>
-            <div class="zh-pane" data-pane="october">
-              <div class="zh-intro"><b>October check</b> - lines from 1 to 14 Oct that were typed into Zoho by hand before the portal took over, so they are never sent twice.
-                <button type="button" class="btn btn-primary btn-sm" id="zh-oct-btn" onclick="zhOct()" style="margin-left:6px;">Check against Zoho</button></div>
-              <div id="zh-oct"></div>
-            </div>
             <div class="zh-pane" data-pane="sent">
               <div class="zh-intro"><b>Sent to Zoho</b> - every line the portal put into Zoho, and where it went: <b>from</b> which account <b>to</b> which account, with project, supplier and the Zoho number. <b>Check</b> compares with Zoho as it is now. <b>Reverse</b> deletes it in Zoho and puts the line back to waiting, to correct and send again.</div>
               <div class="zs-filters">
@@ -19808,7 +19803,7 @@ try { ZH_PANE = localStorage.getItem("infinia_zh_pane"); } catch (e) {}
 function zhTabsSkeleton() {
   const el = document.getElementById("zh-tabs"); if (!el || el.children.length) return;
   const T = [["petty", "Petty cash"], ["bank", "Bank"], ["lpo", "LPOs"], ["loans", "Staff loans"], ["attention", "Needs attention"], ["suppliers", "Suppliers"], ["sent", "Sent to Zoho"]];
-  const on = ZH_PANE || "petty";
+  const on = T.some(t => t[0] === ZH_PANE) ? ZH_PANE : "petty";       // a tab remembered from before that is no longer there (October check): Petty cash
   el.innerHTML = T.map(([k, lab]) => `<button type="button" class="zh-tab ${k === on ? "on" : ""}${k === "sent" ? " zh-tab-end" : ""}" onclick="zhPane('${k}')">${lab}${["october", "suppliers", "sent"].includes(k) ? "" : `<span class="zh-n zero">·</span>`}</button>`).join("");
   document.querySelectorAll("#screen-zoho .zh-pane").forEach(p => p.style.display = p.dataset.pane === on ? "block" : "none");
   // the connection line as it was last time, so it does not drop in late
