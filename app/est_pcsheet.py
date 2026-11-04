@@ -928,13 +928,27 @@ def show_int_qty(pc, want=None):
 
 
 def render_pdf(doc):
+    """The certificate PDF, with no page that carries only a few run-over lines: built at full size; if any page
+    that is not started on purpose (a new section) holds less than ~4 lines, it is built again a touch tighter
+    (96%, 92%, 88%) until those lines fit on the page before - paper is not wasted on a lone line."""
+    best = None
+    for s_ in (1.0, 0.96, 0.92, 0.88):
+        buf, sparse, pages = _render_pdf(doc, s_)
+        if not sparse:
+            return buf
+        if best is None or (sparse, pages) < (best[1], best[2]):
+            best = (buf, sparse, pages)
+    return best[0]
+
+
+def _render_pdf(doc, fit=1.0):
     HIDE = doc.get("hide") or {}
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_RIGHT
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
-    from reportlab.platypus import (BaseDocTemplate, Frame, KeepTogether, NextPageTemplate, PageBreak, PageTemplate, Paragraph,
+    from reportlab.platypus import (BaseDocTemplate, CondPageBreak, Frame, KeepTogether, NextPageTemplate, PageBreak, PageTemplate, Paragraph,
                                     Spacer, Table, TableStyle)
     from xml.sax.saxutils import escape as X
     import export_web
@@ -948,7 +962,9 @@ def render_pdf(doc):
     stb = ParagraphStyle("bb", parent=st, fontName="Helvetica-Bold")
     sts = ParagraphStyle("s", parent=st, fontSize=6.8, leading=8.2)
     str_ = ParagraphStyle("r", parent=st, alignment=TA_RIGHT)
-    cap_st = ParagraphStyle("cap", parent=stb, keepWithNext=1, fontSize=8.4, leading=10.5)
+    # a table's caption: no keep-with-next (that moved a whole table to the next page and left the page before half empty) -
+    # the caption only goes over when less than ~5 lines are left under it; the table itself runs on across the page
+    cap_st = ParagraphStyle("cap", parent=stb, fontSize=8.4, leading=10.5)
     P = lambda t, s=st: Paragraph(X(str(t or "")).replace("\n", "<br/>"), s)
     buf = io.BytesIO()
     W, H = A4
@@ -976,12 +992,39 @@ def render_pdf(doc):
         c.drawRightString(pw - M, 6.5 * mm, f"Page {c.getPageNumber()}")
         c.restoreState()
     top = 22 * mm
-    d = BaseDocTemplate(buf, pagesize=A4, leftMargin=M, rightMargin=M, topMargin=top, bottomMargin=14 * mm,
-                        title=f"{doc['ref']}", author="Infinia Contracting LLC")
+    F = fit
+
+    class _Doc(BaseDocTemplate):
+        """Notes how much of each page is used, and whether the page was started on purpose (a page break)."""
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.used, self.forced, self._next = {}, {}, True
+
+        def handle_pageBegin(self):
+            super().handle_pageBegin()
+            self.forced[self.page] = self._next
+            self._next = False
+
+        def afterFlowable(self, f):
+            if isinstance(f, PageBreak):
+                self._next = True
+                return
+            fr = getattr(self, "frame", None)
+            if fr is None:
+                return
+            u = (fr._y1 + fr._height - fr._y) * F
+            self.used[self.page] = max(self.used.get(self.page, 0), u)
+
+    def page_on(c, d_):
+        deco(c, d_)
+        if F != 1.0:
+            c.scale(F, F)                 # the content a touch smaller - the header and footer stay as they are
+    d = _Doc(buf, pagesize=A4, leftMargin=M, rightMargin=M, topMargin=top, bottomMargin=14 * mm,
+             title=f"{doc['ref']}", author="Infinia Contracting LLC")
     LW, LH = landscape(A4)
-    d.addPageTemplates([PageTemplate(id="P", frames=[Frame(M, 14 * mm, W - 2 * M, H - top - 14 * mm, id="fp", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)], onPage=deco, pagesize=A4),
-                        PageTemplate(id="L", frames=[Frame(M, 14 * mm, LW - 2 * M, LH - top - 14 * mm, id="fl", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)], onPage=deco, pagesize=landscape(A4))])
-    tw = W - 2 * M
+    d.addPageTemplates([PageTemplate(id="P", frames=[Frame(M / F, 14 * mm / F, (W - 2 * M) / F, (H - top - 14 * mm) / F, id="fp", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)], onPage=page_on, pagesize=A4),
+                        PageTemplate(id="L", frames=[Frame(M / F, 14 * mm / F, (LW - 2 * M) / F, (LH - top - 14 * mm) / F, id="fl", leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)], onPage=page_on, pagesize=landscape(A4))])
+    tw = (W - 2 * M) / F
     el = []
     title = doc["title"] + ("" if doc["kind"] == "Interim" else f" ({doc['kind'].upper()})")
     el.append(Paragraph(f"<b>{X(title)}</b>", ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=13, alignment=1, spaceAfter=5)))
@@ -1071,7 +1114,7 @@ def render_pdf(doc):
     # Appendix A
     if doc["bills"]:
         el += [NextPageTemplate("L"), PageBreak()]
-        lw = LW - 2 * M
+        lw = (LW - 2 * M) / F
         el.append(Paragraph("<b>Appendix - A &nbsp; Value of Work done &amp; Variations</b>", ParagraphStyle("h", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4)))
         if doc["changed_note"]:
             el.append(Paragraph(f'<font backColor="#FDF1C7">&nbsp;&nbsp;&nbsp;</font>&nbsp; {X(doc["changed_note"])}',
@@ -1093,7 +1136,7 @@ def render_pdf(doc):
             sm, sst, sw = _drop_cols(sm, sst, [14 * mm, lw - 14 * mm - 7 * 30 * mm] + [30 * mm] * 7, HIDE.get("S", []))
             t = Table(sm, colWidths=sw, repeatRows=1)
             t.setStyle(TableStyle(sst))
-            el += [Paragraph("<b>Summary</b>", cap_st), t, Spacer(1, 4 * mm)]
+            el += [CondPageBreak(24 * mm), Paragraph("<b>Summary</b>", cap_st), t, Spacer(1, 4 * mm)]
         cols = ["No", "Description", "Type", "Int. Qty", "Unit", "Contract amt", "Rate", "Measured", "Area/Qty", "Deduction", "% done",
                 "Previous", "This PC", "Certified to date", "Remarks"]
         # columns left off (Int. Qty and Contract amt by default once approved - the copy sent to the subcontractor)
@@ -1131,7 +1174,7 @@ def render_pdf(doc):
             t = Table(data, colWidths=widths, repeatRows=1)
             t.setStyle(TableStyle(sty))
             cap = (f"{b['bill']} - " if b["bill"] else "") + (b["title"] or ("Contract works" if not b["var"] else ""))
-            el += [Paragraph(f"<b>{X(cap)}</b>", cap_st), t, Spacer(1, 4 * mm)]
+            el += [CondPageBreak(24 * mm), Paragraph(f"<b>{X(cap)}</b>", cap_st), t, Spacer(1, 4 * mm)]
         tot = sum(b["cum"] for b in doc["bills"])
         el.append(Paragraph(f"<b>Total to date carried over to the Certificate page: AED {_m(tot, False)}</b>", stb))
         el.append(Spacer(1, 6 * mm))
@@ -1139,7 +1182,7 @@ def render_pdf(doc):
     else:
         el += [PageBreak()]
     # Appendix B
-    el.append(Paragraph("<b>Appendix - B &nbsp; Previous Payments</b>", ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4, keepWithNext=1)))
+    el += [CondPageBreak(24 * mm), Paragraph("<b>Appendix - B &nbsp; Previous Payments</b>", ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4))]
     hb = [["Sr", "Payment Certificate No.", "Period ending", "Certified on", "Certified (AED)", "Paid (AED)", "VAT (AED)", "Retention (AED)"]]
     for i, h in enumerate(doc["hist"], 1):
         hb.append([str(i), h["name"], h["period"], h["cert"], _m(h["amount"]), _m(h["paid"]), _m(h["vat"]), _m(h["ret"])])
@@ -1154,7 +1197,7 @@ def render_pdf(doc):
     el += [t, Spacer(1, 6 * mm)]
     # Appendix C
     if doc["deds"]:
-        el.append(Paragraph("<b>Appendix - C &nbsp; Deductions</b>", ParagraphStyle("h3", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4, keepWithNext=1)))
+        el += [CondPageBreak(24 * mm), Paragraph("<b>Appendix - C &nbsp; Deductions</b>", ParagraphStyle("h3", fontName="Helvetica-Bold", fontSize=10, spaceAfter=4))]
         for cat in DED_CATS:
             ds = [x for x in doc["deds"] if x["cat"] == cat]
             if not ds:
@@ -1197,7 +1240,9 @@ def render_pdf(doc):
         el.append(KeepTogether([hd, t]))
     d.build(el)
     buf.seek(0)
-    return buf
+    # a page that only carries run-over lines (not started on purpose) and holds less than ~4 lines
+    sparse = sum(1 for pg, u in d.used.items() if not d.forced.get(pg) and u < 30 * mm)
+    return buf, sparse, d.page
 
 
 # -------------------- preview (HTML) --------------------
@@ -1327,9 +1372,10 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
   .hd>tbody>tr>td,.hd>tr>td{{display:block;width:auto!important}} .hd>tbody>tr>td+td,.hd>tr>td+td{{border-top:1px solid #E3E5E8}} .hd th{{width:40%;white-space:normal}} .hd td{{overflow-wrap:anywhere}}
   .ctr th{{white-space:normal}} .kvt{{display:block;overflow-x:auto}} .ce{{table-layout:auto}} .ce col{{width:auto!important}}}}
 body{{overflow-x:hidden}} .pg{{overflow-x:auto}}
+@media (min-width:701px){{.t th{{white-space:normal;vertical-align:bottom;line-height:1.25}} .t td.d{{min-width:160px}} .t td.s{{min-width:70px}} .pg.wide .tw{{overflow-x:visible}}}}
 .t .gone{{display:none}} body.cedit .t .gone{{display:table-cell;background:repeating-linear-gradient(135deg,#F7F7F7 0 6px,#F0F0F0 6px 12px)!important;color:#B0B4B8!important}}
 .t th .tk{{display:none}} body.cedit .t th .tk{{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-right:5px;vertical-align:-2px;border-radius:3px;border:1.5px solid #C0392B;background:#C0392B;color:#fff;font-size:9px;cursor:pointer}}
-body.cedit .t th.gone .tk{{background:#fff;border-color:#B0B4B8;color:transparent}} body.cedit .t th{{cursor:pointer}}
+body.cedit .t th.gone .tk{{background:#fff;border-color:#B0B4B8;color:transparent}} body.cedit .t th{{cursor:pointer;padding-left:3px;padding-right:3px}}
 .cnote{{display:none;position:sticky;top:44px;z-index:5;background:#FFF8E6;border:1px solid #F0D58A;color:#6B5A1E;border-radius:8px;padding:8px 12px;margin:8px auto;max-width:1100px;font-size:13px}} body.cedit .cnote{{display:block}}
 @media print{{.cnote,.t th .tk{{display:none!important}}}}
 </style></head><body><div class="bar"><b>{e(doc['ref'])}</b>{iq_btn}<button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><button onclick="shr()">Share</button></div>
