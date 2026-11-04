@@ -375,6 +375,10 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #lpo-cx-modal .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; } #lpo-cx-modal .chips button { border: 1px solid #E2C9C5; background: #FDF6F5; border-radius: 14px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; }
   /* purchasing (31 Oct 2026): LPO deliveries, petty cash arrivals, the supplier's bill */
   /* Order tracker - the app's own card, chips, dropdowns, buttons and table headings; colour only for the step */
+  #ot-table th.ot-srt { cursor: pointer; user-select: none; }
+  #ot-table th.ot-srt:hover { color: #2B2622; }
+  #ot-table th .ot-ar { font-size: .8em; margin-left: 4px; color: #C0392B; }
+  #ot-table thead tr.ot-sortline td { font-size: 11.5px; color: #888; font-weight: 400; padding: 3px 10px; background: transparent; border: 0; text-transform: none; letter-spacing: 0; }
   .ot-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
   .ot-head h2 { margin-bottom: 4px; } .ot-head p { font-size: 12px; color: #888; margin: 0; }
   .ot-sum { display: flex; gap: 8px; margin: 14px 0 4px; flex-wrap: wrap; }
@@ -13746,6 +13750,10 @@ function lprParams() {
        + `&status=${document.getElementById("lpr-show").value}`;
 }
 
+// Edit straight from the register: the LPO opens in the purchase form, as "Change quantity / rate" does on the tracker
+function lprEdit(id) {
+  xlGo("store", "purchasing", "purchase", () => xlOn("purchase") && typeof editLpo === "function" && (lpoRegister || []).length, () => editLpo(id));
+}
 function lprDrill(group, label) {
   const box = document.getElementById({ supplier: "lpr-supplier", site: "lpr-site", material: "lpr-material" }[group]);
   if (!box) return;
@@ -13801,7 +13809,7 @@ async function loadLpoReport() {
             ? ` <span class="pu-tag pu-st-delivered" title="Supplier's bill ${escapeAttr(row.bill_no || "")} checked against the LPO and DN">bill checked</span>`
             : (row.bill_no ? ` <span class="pu-tag pu-st-part" title="Bill ${escapeAttr(row.bill_no)} entered, not ticked checked yet">bill not checked</span>` : "")}</div>` : ""}</td>`);
         cells.push(`<td style="text-align:left;">${row.date ? dmy(row.date) : "-"}</td>`);
-        cells.push(`<td style="text-align:left;">${row.supplier ? supplierLink(row.supplier) : "-"}</td>`);
+        cells.push(`<td style="text-align:left;">${row.supplier ? escapeHtml(row.supplier) : "-"}</td>`);
         cells.push(`<td style="text-align:left;">${row.site || "-"}</td>`);
       } else {
         // A supplier, site or material line opens its own orders.
@@ -13814,7 +13822,8 @@ async function loadLpoReport() {
       // the same order back in the form rather than raising a new one.
       if (r.group_by === "order") {
         cells.push(`<td style="text-align:right; white-space:nowrap;">${row.status === "cancelled" ? "" :
-          `<button class="btn btn-gray btn-sm lpr-dlv" title="What came against it - booking, bill, change and cancel are on the Order tracker" onclick="event.stopPropagation(); lpoDlvOpen(${row.id}, null, true)">Deliveries</button>`}</td>`);
+          `<button class="btn btn-gray btn-sm lpr-dlv" title="What came against it - booking, bill and cancel are on the Order tracker" onclick="event.stopPropagation(); lpoDlvOpen(${row.id}, null, true)">Deliveries</button>${
+            otCanDo("purchaser") ? ` <button class="btn btn-gray btn-sm lpr-edit" title="Change the LPO - quantities, rates, lines. It keeps its number; Accounts are told what changed." onclick="event.stopPropagation(); lprEdit(${row.id})">Edit</button>` : ""}`}</td>`);
       }
       // The tab is claimed in the click itself - asking for it after the
       // token fetch makes it a pop-up, which the browser blocks.
@@ -22460,6 +22469,28 @@ function workerLink(empNo, text) {
 // bill, cancel) - nothing here works a different way from the rest of the portal. The look is the app's own: card,
 // segment chips, dropdowns, buttons and table headings; colour only on the step.
 let OT = null, OT_VIEW = "", OT_STEP = null, OT_TIDY = false;
+// Sorted newest first (the most recently raised at the top); a heading clicked sorts by it, clicked again turns it round.
+let OT_SORT = { k: "created", dir: "desc" };
+const OT_SORTS = {
+  created: r => (r.created || r.date || "") + "|" + (r.date || ""), site: r => r.site || "", what: r => r.ref || "", supplier: r => (r.supplier || "").toLowerCase(),
+  steps: r => r.stage + (r.part ? 0.5 : 0), late: r => r.late || 0, next: r => (r.stage < 5 ? r.who || "" : "~"),
+};
+function otSortBy(k) {
+  OT_SORT = OT_SORT.k === k ? { k, dir: OT_SORT.dir === "asc" ? "desc" : "asc" } : { k, dir: ["created", "late"].includes(k) ? "desc" : "asc" };
+  otRender();
+}
+function otSorted(rows) {
+  const f = OT_SORTS[OT_SORT.k] || OT_SORTS.created, d = OT_SORT.dir === "asc" ? 1 : -1;
+  const by = (a, b) => { const x = f(a), y = f(b);
+    const plain = (u, v) => (u < v ? -1 : u > v ? 1 : 0);          // dates as written: compared as text, as the server does
+    const c = typeof x === "number" && typeof y === "number" ? x - y : OT_SORT.k === "created" ? plain(String(x), String(y)) : String(x).localeCompare(String(y), undefined, { numeric: true });
+    return c ? c * d : plain(String(b.created || b.date || ""), String(a.created || a.date || "")) || plain(String(b.date || ""), String(a.date || "")) || b.id - a.id; };
+  return [...rows].sort(by);
+}
+function otTh(k, label, style) {
+  const on = OT_SORT.k === k;
+  return `<th class="ot-srt${on ? " on" : ""}"${style ? ` style="${style}"` : ""} onclick="otSortBy('${k}')" title="Click to sort - click again to turn it round">${label}<span class="ot-ar">${on ? (OT_SORT.dir === "asc" ? "▲" : "▼") : ""}</span></th>`;
+}
 const OT_STEPS = ["Requested", "Approved", "Ordered", "Arrived", "Bill checked", "Done"];
 function otCanDo(role) {
   if (CURRENT_ROLE === "admin") return true;
@@ -22504,8 +22535,9 @@ function otRender() {
   const tidy = OT_TIDY;
   document.getElementById("ot-table").classList.toggle("tidy", tidy);
   document.getElementById("ot-cols").innerHTML = (tidy ? '<col class="c-pick">' : "") + '<col class="c-site"><col class="c-what"><col class="c-sup"><col class="c-steps"><col class="c-note"><col class="c-next">';
-  document.getElementById("ot-head").innerHTML = `<tr>${tidy ? `<th><input type="checkbox" title="Tick all shown" onclick="document.querySelectorAll('#ot-body .ot-pick').forEach(b => b.checked = this.checked); otTidyCount()"></th>` : ""}<th>Site</th><th>Item / LPO</th><th>Supplier</th><th><div class="ot-sh">${OT_STEPS.map(s => `<span>${s}</span>`).join("")}</div></th><th>Late / to come</th><th style="text-align:right;">Next</th></tr>`;
-  const rows = otShown();
+  document.getElementById("ot-head").innerHTML = `<tr>${tidy ? `<th><input type="checkbox" title="Tick all shown" onclick="document.querySelectorAll('#ot-body .ot-pick').forEach(b => b.checked = this.checked); otTidyCount()"></th>` : ""}${otTh("site", "Site")}${otTh("what", "Item / LPO")}${otTh("supplier", "Supplier")}${otTh("steps", `<div class="ot-sh">${OT_STEPS.map(s => `<span>${s}</span>`).join("")}</div>`)}${otTh("late", "Late / to come")}${otTh("next", "Next", "text-align:right;")}</tr>
+    <tr class="ot-sortline"><td colspan="${tidy ? 7 : 6}">Sorted by ${{ created: "newest raised first", site: "site", what: "LPO / request number", supplier: "supplier", steps: "step reached", late: "days late", next: "who is next" }[OT_SORT.k]}${OT_SORT.k === "created" ? "" : ` (${OT_SORT.dir === "asc" ? "A-Z / low-high" : "Z-A / high-low"})`}${OT_SORT.k !== "created" ? ` · <a href="#" onclick="event.preventDefault(); OT_SORT = { k: 'created', dir: 'desc' }; otRender()">newest first again</a>` : ""}</td></tr>`;
+  const rows = otSorted(otShown());
   const body = document.getElementById("ot-body");
   if (!rows.length) { body.innerHTML = `<tr><td colspan="${tidy ? 7 : 6}" class="empty-note">${OT_VIEW === "mine" && OT_STEP === null ? "Nothing waiting on you." : "Nothing here."}</td></tr>`; otTidyCount(); return; }
   body.innerHTML = rows.map(r => {
@@ -22525,7 +22557,7 @@ function otRender() {
     return `<tr class="ot-r" data-k="${r.key}" onclick="otSheet('${r.key}')" title="Tap for everything that can be done">
       ${tidy ? `<td class="pick" onclick="event.stopPropagation()">${r.stage < 5 ? `<input type="checkbox" class="ot-pick" value="${r.key}" onchange="otTidyCount()">` : ""}</td>` : ""}
       <td class="site">${escapeHtml(r.site || "-")}</td>
-      <td class="what"><div class="t1">${escapeHtml(r.what || "-")}</div><div class="t2">${escapeHtml(refs.join(" · "))}</div></td>
+      <td class="what"><div class="t1">${escapeHtml(r.what || "-")}</div><div class="t2">${escapeHtml(refs.join(" · "))}${r.date ? " · " + escapeHtml(dmy(r.date)) : ""}</div></td>
       <td>${sup}</td>
       <td class="st"><div class="ot-steps">${steps}</div></td>
       <td>${note}</td>

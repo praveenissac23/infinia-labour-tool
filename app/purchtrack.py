@@ -74,7 +74,8 @@ def _closed_lpo(o, p, sup, book, mr_of_line, why):
             "what": _what([l.description for l in o.lines]), "supplier": o.supplier_name or (sup.name if sup else ""),
             "contact": _clean(o.supplier_contact), "phone": _clean(o.supplier_phone), "stage": 5, "part": False,
             "to_come": "", "due": "", "late": 0, "role": "", "who": "", "action": "",
-            "date": o.order_date.isoformat() if o.order_date else "", "bill_checked": bool(o.bill_checked),
+            "date": o.order_date.isoformat() if o.order_date else "", "created": o.created_at.isoformat() if o.created_at else "",
+            "bill_checked": bool(o.bill_checked),
             "zoho": o.zoho_status or "", "rental": False, "result": why, "cancelled": True}
 
 
@@ -84,7 +85,8 @@ def _closed_mr(mr, lines, name, word):
             "site": "Store" if (mr.site or "").upper() == "STORE" else (mr.site or ""),
             "what": _what([name(l) for l in lines]), "supplier": "", "contact": "", "phone": "", "stage": 5, "part": False,
             "to_come": "", "due": "", "late": 0, "role": "", "who": "", "action": "",
-            "date": mr.requested_on.isoformat() if mr.requested_on else "", "requested_by": mr.requested_by or "",
+            "date": mr.requested_on.isoformat() if mr.requested_on else "", "created": mr.created_at.isoformat() if mr.created_at else "",
+            "requested_by": mr.requested_by or "",
             "result": why, "untouched": False,
             "lines": [{"id": l.id, "name": name(l), "qty": float(l.qty_requested or 0), "unit": l.unit or "",
                        "purpose": l.purpose or "", "status": l.status or "pending"} for l in lines]}
@@ -161,6 +163,7 @@ def build(db):
             "due": due.isoformat() if due else "", "late": _late(due, today, stage, part),
             "role": role if stage < 5 else "", "who": who.get(role, "") if stage < 5 else "", "action": act if stage < 5 else "",
             "date": o.order_date.isoformat() if o.order_date else "",
+            "created": o.created_at.isoformat() if o.created_at else "",
             "bill_checked": bool(o.bill_checked), "zoho": o.zoho_status or "", "rental": bool(p.get("rental")),
             "result": result, "part_why": (o.part_why or "") if (part or stage == 2) else "", "part_note": (o.part_note or "") if (part or stage == 2) else "",
         })
@@ -205,13 +208,15 @@ def build(db):
             "due": mr.needed_by.isoformat() if mr.needed_by else "", "late": _late(mr.needed_by, today, stage, False),
             "role": role, "who": who.get(role, ""), "action": act,
             "date": mr.requested_on.isoformat() if mr.requested_on else "",
+            "created": mr.created_at.isoformat() if mr.created_at else "",
             "requested_by": mr.requested_by or "", "no_lpo": stage == 2, "result": "",
             "untouched": mr.id not in with_lpo and all((l.status or "pending") == "pending" and not (l.qty_received or 0)
                                                         and not l.supplier_id for l in every),
             "lines": [{"id": l.id, "name": name(l), "qty": float(l.qty_requested or 0), "unit": l.unit or "",
                        "purpose": l.purpose or "", "status": l.status or "pending"} for l in lines],
         })
-    rows.sort(key=lambda r: (r["stage"] == 5, -r["late"], r["stage"], r["date"] or "", r["ref"]))
+    # the most recently raised first (4 Nov 2026) - an LPO or request made today is at the top, the oldest at the bottom
+    rows.sort(key=lambda r: (r.get("created") or r.get("date") or "", r.get("date") or "", r["id"]), reverse=True)
     counts = [sum(1 for r in rows if r["stage"] == i) for i in range(6)]
     return {"rows": rows, "counts": counts, "steps": STEPS, "people": who, "today": today.isoformat()}
 
