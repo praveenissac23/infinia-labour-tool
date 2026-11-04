@@ -629,6 +629,9 @@ def page_plan(model, s, inputs=None, values=None):
     cont_w = sum(cw[c] for c in cols) * px
     cont_h = sum(rh[r] for r in rows) * px
     aw, ah = pw - ml - mr, ph - mt - mb
+    from est_bills_engine import stamp_sheets, STAMP_PT
+    if s["name"] in stamp_sheets(model):
+        ah = min(ah, ph - mt - mf - STAMP_PT - 4)      # the rows stop above the company stamp, never under it
     if pr.get("fit") and not (pr.get("scale") and pr["scale"] != 100):
         fw = 1 if pr.get("fw") is None else pr["fw"]
         fh = 1 if pr.get("fh") is None else pr["fh"]
