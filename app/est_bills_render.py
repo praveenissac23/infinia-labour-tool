@@ -214,7 +214,7 @@ def _family(name):
     if not n:
         return ""
     fb = "'Times New Roman',serif" if SERIF.search(n) else "Calibri,sans-serif"
-    return f"font-family:'{n}',{fb}"
+    return f"font-family:'{n}',{fb} !important"
 
 
 def _style_css(st, num):
@@ -514,7 +514,8 @@ def _faces():
 
 
 SHEET_CSS = _faces() + """
-.xs{position:relative;font-family:Calibri,sans-serif;font-size:11pt;color:#000;background:#fff}
+.xs{position:relative;font-family:Calibri,sans-serif !important;font-size:11pt;color:#000;background:#fff}
+.xs *{font-family:inherit !important}
 .xt{border-collapse:collapse;table-layout:fixed}
 .xt td{padding:0 3px;overflow:hidden;white-space:nowrap;text-overflow:clip;line-height:1.15}
 .xi{position:absolute;pointer-events:none}
@@ -593,7 +594,7 @@ body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#E4E
 .pages{{padding:16px 0 30px}}
 .pg{{position:relative;background:#fff;margin:0 auto 18px;box-shadow:0 2px 12px rgba(0,0,0,.12);overflow:hidden;box-sizing:border-box}}
 .pz{{position:absolute}}
-.hf{{position:absolute;font:9pt Arial,Helvetica,sans-serif;color:#000;white-space:nowrap}}
+.hf{{position:absolute;font:9pt Arial,Helvetica,sans-serif;font-family:Arial,Helvetica,sans-serif !important;color:#000;white-space:nowrap}}
 .stp{{position:absolute;pointer-events:none}}
 .pno{{position:absolute;right:8px;bottom:4px;font:10px Arial;color:#aaa}}
 {SHEET_CSS}
