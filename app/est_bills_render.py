@@ -177,7 +177,7 @@ def rowpx(h):
     return int(round((h if h else 15) * 96 / 72))
 
 
-def layout(s, area=None, shown=None, hide=None):
+def layout(s, area=None, shown=None, hide=None, grow=None):
     """Visible columns and rows of the area with their pixel sizes, and the merged blocks. shown: rows that are
     hidden in the format but filled in this month (a spare payments row) - they show; hide: rows this bill hides."""
     r1, c1, r2, c2 = area or s["print_area"]
@@ -189,6 +189,9 @@ def layout(s, area=None, shown=None, hide=None):
     rh = {r: rowpx(s["rowh"].get(str(r), s["rowh"].get(r)) or drh) for r in rows}
     if any(rh[r] == 0 for r in rows):
         rows = [r for r in rows if rh[r] > 0]
+    for r, g in (grow or {}).items():                    # a row made taller so its wrapped text shows whole
+        if r in rh and g > rh[r]:
+            rh[r] = g
     merges = {}
     covered = set()
     for m in s.get("merges", []):
@@ -267,16 +270,81 @@ def editable(model, sheet, k, inputs):
     return True
 
 
-def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, rows_only=None, img_rows=None, stamp="below"):
+def _measure_font(st):
+    """The look-alike font a cell's text is measured (and drawn in the PDF) with."""
+    b, i = st.get("b"), st.get("i")
+    n = (st.get("font") or "Calibri").lower()
+    fam = "Carlito" if "calibri" in n or not n.strip() else ("Caladea" if "cambria" in n else ("LiberationSerif" if SERIF.search(n) else "LiberationSans"))
+    if _pdf_fonts():
+        return f"{fam}-" + ("BoldItalic" if b and i else "Bold" if b else "Italic" if i else "Regular")
+    if fam in ("Caladea", "LiberationSerif"):
+        return "Times-BoldItalic" if b and i else ("Times-Bold" if b else ("Times-Italic" if i else "Times-Roman"))
+    return "Helvetica-BoldOblique" if b and i else ("Helvetica-Bold" if b else ("Helvetica-Oblique" if i else "Helvetica"))
+
+
+def row_fit(model, s, values, inputs=None):
+    """Rows the printed bill makes taller so every wrapped description shows whole: the consultant's wording is never
+    shrunk, cut off or changed - only the row is given the height its text needs (as Excel's AutoFit does). A merged
+    block that needs more room gets it on its last row. {row: height px}."""
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    styles = model["styles"]
+    vals = values.get(s["name"], {}) if values else {}
+    inp = (inputs or {}).get(s["name"], {})
+    cols, rows, cw, rh, merges, covered = layout(s, None, shown_rows(model, s["name"], inputs), hidden_extra(inputs, s["name"]))
+    colset, need = set(cols), {}
+    for k, cell in s["cells"].items():
+        st = styles[cell.get("s", 0)] if styles else {}
+        if not st.get("wrap"):
+            continue
+        r, c = (int(x) for x in k.split(","))
+        if r not in rh or c not in colset or (r, c) in covered:
+            continue
+        v = vals.get(k) if k in vals else (inp.get(k) if k in inp else cell.get("v"))
+        if v is None or (isinstance(v, (int, float)) and not isinstance(v, bool)):
+            continue
+        text = fmt(v, st.get("nf", "General"))
+        if isinstance(v, str) and "f" in cell:
+            text = tidy_text(text)
+        if not text.strip():
+            continue
+        mr2, mc2 = merges.get((r, c), (r, c))
+        span = [rr for rr in rows if r <= rr <= mr2]
+        wpx = sum(cw[cc] for cc in cols if c <= cc <= mc2) - 6 - (st.get("ind") or 0) * 9
+        if wpx <= 4 or not span:
+            continue
+        sz = st.get("sz") or 11
+        fn = _measure_font(st)
+        lines = len(_wrap(text, fn, sz, wpx * 0.75 - 1.5, stringWidth))
+        h = int(round((lines * sz * 1.15 + 2.5) * 4 / 3))
+        have = sum(rh[rr] for rr in span)
+        if h > have + 1:
+            last = span[-1]
+            need[last] = max(need.get(last, 0), rh[last] + h - have)
+    return need
+
+
+def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, rows_only=None, img_rows=None, stamp="below", grow=None):
     """The sheet as an HTML table at its own sizes, with its pictures. edit=True marks the cells staff can type in.
     rows_only: just these rows, in this order (one printed page: the rows repeated at the top, then the page's own);
     img_rows: the rows whose pictures belong on it."""
     styles = model["styles"]
     vals = values.get(s["name"], {})
     inp = (inputs or {}).get(s["name"], {})
-    cols, rows, cw, rh, merges, covered = layout(s, area, shown_rows(model, s["name"], inputs), hidden_extra(inputs, s["name"]))
+    cols, rows, cw, rh, merges, covered = layout(s, area, shown_rows(model, s["name"], inputs), hidden_extra(inputs, s["name"]), grow)
+    cont = {}
     if rows_only is not None:
         rows = [r for r in rows_only if r in rh]
+        # a merged block that started on the page before carries on here as a block of its own - its borders and
+        # columns drawn, its value left where it was printed
+        rset = set(rows)
+        for (mr1, mc1), (mr2, mc2) in list(merges.items()):
+            if mr1 in rset:
+                continue
+            here = [r for r in rows if mr1 < r <= mr2]
+            if here:
+                merges[(here[0], mc1)] = (mr2, mc2)
+                covered.discard((here[0], mc1))
+                cont[(here[0], mc1)] = mr1
     colx, x = {}, 0
     for c in cols:
         colx[c] = x; x += cw[c]
@@ -295,6 +363,9 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
                 continue
             k = f"{r},{c}"
             cell = s["cells"].get(k) or {}
+            if (r, c) in cont:                              # the carried-on part: the block's look, no value
+                cell = {"s": (s["cells"].get(f"{cont[(r, c)]},{c}") or {}).get("s", cell.get("s", 0))}
+                k = f"{cont[(r, c)]},{c}#"
             st = styles[cell.get("s", 0)] if styles else {}
             span = ""
             if (r, c) in merges:
@@ -335,6 +406,12 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
             if mark and k in mark:
                 cls.append(mark[k])
             body_ = f"<span>{escape(text)}</span>" if "ov" in cls else escape(text)
+            if not edit and text and st.get("wrap") and not num:
+                # wrapped text stays inside the height the consultant gave the row(s): the page then prints exactly
+                # as planned (shrunk a little to fit, as the PDF does, never pushing rows into the footer)
+                mr2 = merges[(r, c)][0] if (r, c) in merges else r
+                room = sum(rh[rr] for rr in rows if r <= rr <= mr2) - 1
+                body_ = f'<div class="cl" style="max-height:{room}px">{body_}</div>'
             h.append(f'<td{span}{attrs}{(" class=" + chr(34) + " ".join(cls) + chr(34)) if cls else ""} style="{";".join(css)}">{body_}</td>')
         h.append("</tr>")
     h.append("</table>")
@@ -442,6 +519,7 @@ SHEET_CSS = _faces() + """
 .xt td{padding:0 3px;overflow:hidden;white-space:nowrap;text-overflow:clip;line-height:1.15}
 .xi{position:absolute;pointer-events:none}
 .xt td.ov{overflow:visible}
+.xt .cl{overflow:hidden}
 .xt td.ov>span{position:relative;z-index:1}
 """
 
@@ -482,7 +560,7 @@ def preview_html(model, values, title, pdf_url, excel_url, inputs=None, embed=Fa
     PX = 96 / 72
     from est_bills_engine import stamp_sheets, STAMP_PT
     sheets = printed_sheets(model)
-    plans = [page_plan(model, sh, inputs) for sh in sheets]
+    plans = [page_plan(model, sh, inputs, values) for sh in sheets]
     total = sum(len(pl["pages"]) for pl in plans)
     stamps = stamp_sheets(model)
     out, pno = [], 0
@@ -491,7 +569,7 @@ def preview_html(model, values, title, pdf_url, excel_url, inputs=None, embed=Fa
         orient = "l" if pl["pw"] > pl["ph"] else "p"
         for prow, own in pl["pages"]:
             pno += 1
-            body, w, hgt = sheet_html(model, sh, values, inputs, rows_only=prow, img_rows=set(prow), stamp=None)
+            body, w, hgt = sheet_html(model, sh, values, inputs, rows_only=prow, img_rows=set(prow), stamp=None, grow=pl["grow"])
             hf = []
             for k, t in pl["hf"].items():
                 txt = escape(hf_text(t, pno, total, sh["name"], fname or title))
@@ -525,7 +603,8 @@ body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#E4E
 </style></head><body><div class="bar"><b>{t}</b><button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><a href="{excel_url}">Excel</a><button onclick="shr()">Share</button></div>
 <script>async function shr(){{try{{const r=await fetch("{pdf_url}");const b=await r.blob();const f=new File([b],{repr(re.sub(r'[^A-Za-z0-9]+', '_', title).strip('_') + '.pdf')},{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{t}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}
 function fit(){{var W=document.documentElement.clientWidth-24;document.querySelectorAll(".pg").forEach(function(p){{var w=parseFloat(p.style.width);p.style.zoom=w>W?(W/w).toFixed(4):"";}});}}
-addEventListener("resize",fit);addEventListener("DOMContentLoaded",fit);</script>
+function fitcells(){{document.querySelectorAll(".cl").forEach(function(d){{d.style.fontSize="";if(d.scrollHeight<=d.clientHeight+1)return;var f=parseFloat(getComputedStyle(d).fontSize),k=1;while(d.scrollHeight>d.clientHeight+1&&k>0.6){{k-=0.05;d.style.fontSize=(f*k).toFixed(2)+"px";}}}});}}
+addEventListener("resize",fit);addEventListener("DOMContentLoaded",function(){{fit();fitcells();}});if(document.fonts)document.fonts.ready.then(fitcells);</script>
 <div class="pages">{''.join(out)}</div>{"<style>.bar{display:none}</style>" if embed else ""}</body></html>"""
 
 
@@ -534,7 +613,7 @@ addEventListener("resize",fit);addEventListener("DOMContentLoaded",fit);</script
 PAPER = {9: (595.28, 841.89), 8: (841.89, 1190.55), 1: (612.0, 792.0), 5: (612.0, 1008.0), 11: (419.53, 595.28)}
 
 
-def page_plan(model, s, inputs=None):
+def page_plan(model, s, inputs=None, values=None):
     """The sheet's printed pages as Excel prints them: its paper and orientation, its scale (or fit to page),
     margins and centring, the rows repeated at the top of every page, its manual page breaks, and new pages where
     the rows run past the bottom. pages: [(rows drawn, the page's own rows)]. Sizes in points."""
@@ -543,7 +622,8 @@ def page_plan(model, s, inputs=None):
     w, h = PAPER.get(pr.get("paper") or 9, PAPER[9])
     pw, ph = (h, w) if pr.get("landscape") else (w, h)
     ml, mr, mt, mb, mh, mf = [float(x) * 72 for x in (pr.get("m") or [.7, .7, .75, .75, .3, .3])]
-    cols, rows, cw, rh, merges, covered = layout(s, None, shown_rows(model, s["name"], inputs), hidden_extra(inputs, s["name"]))
+    grow = row_fit(model, s, values, inputs) if values is not None else {}
+    cols, rows, cw, rh, merges, covered = layout(s, None, shown_rows(model, s["name"], inputs), hidden_extra(inputs, s["name"]), grow)
     px = 0.75
     cont_w = sum(cw[c] for c in cols) * px
     cont_h = sum(rh[r] for r in rows) * px
@@ -597,11 +677,11 @@ def page_plan(model, s, inputs=None):
     if own:
         pages.append((cur, own))
     cw_pt = cont_w * sc
-    x0 = ml + ((aw - cw_pt) / 2 if pr.get("hc") else 0)
-    x0 = max(ml * 0.2, min(x0, pw - mr * 0.2 - cw_pt)) if cw_pt > aw else x0
+    # every bill sits in the middle of the paper: the same margin left and right, whatever margins the format has
+    x0 = max(0.0, (pw - cw_pt) / 2)
     return {"pw": pw, "ph": ph, "ml": ml, "mr": mr, "mt": mt, "mb": mb, "mh": mh, "mf": mf, "sc": sc, "x0": x0, "y0": mt,
             "cols": cols, "cw": cw, "rh": rh, "merges": merges, "covered": covered, "pages": pages, "hf": pr.get("hf") or {},
-            "vc": pr.get("vc")}
+            "vc": pr.get("vc"), "grow": grow}
 
 
 def hf_text(t, page, pages, sheet, title):
@@ -671,7 +751,7 @@ def render_pdf(model, values, title, inputs=None, fname=""):
         except Exception:
             return (0, 0, 0)
 
-    plans = [page_plan(model, sh, inputs) for sh in printed_sheets(model)]
+    plans = [page_plan(model, sh, inputs, values) for sh in printed_sheets(model)]
     total_pages = sum(len(pl["pages"]) for pl in plans)
     pno = 0
     for s, pl in zip(printed_sheets(model), plans):
@@ -786,6 +866,13 @@ def render_pdf(model, values, title, inputs=None, fname=""):
                     if not any(bd):
                         continue
                     blk = inblock.get((r, c))
+                    if blk:                                  # a block cut by the page break is closed at the page edge
+                        here = [rr for rr in prow if blk[0] <= rr <= blk[2]]
+                        side_w = max(bd[0], bd[1]) or 1
+                        if r == here[0] and r != blk[0]:
+                            bd = list(bd); bd[2] = bd[2] or side_w; blk = (r,) + blk[1:]
+                        if r == here[-1] and r != blk[2]:
+                            bd = list(bd); bd[3] = bd[3] or side_w; blk = blk[:2] + (r, blk[3])
                     x0 = M + colx[c]; w = cw[c] * px * sc; top = rowy[r]; hgt = rh[r] * px * sc
                     for side, wd in zip(("l", "r", "t", "b"), bd):
                         if not wd:
