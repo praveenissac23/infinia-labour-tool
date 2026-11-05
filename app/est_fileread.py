@@ -383,6 +383,37 @@ def read_agreement_doc(data=None, name="", lines=None, trades=None):
         doc = load_doc(data, name)
         lines = old_lines(data, name, doc)
     old = A.read(lines or [], trades=trades or [])
+    xl_total = None
+    # an agreement / BOQ in Excel: its priced schedule read from the cells (sheets, page totals, items priced together
+    # in one lump sum - the same reader as the item schedule upload), not from the text a sheet turns into
+    if data is not None:
+        try:
+            from docread.load import sniff
+            kind = sniff(data, name)
+        except Exception:
+            kind = ""
+        if kind in ("xlsx", "xlsm", "xls"):
+            try:
+                import est_itemimport
+                xd = data
+                if xd[:4] == b"\xd0\xcf\x11\xe0":
+                    import est_bills_engine as BE
+                    xd = BE.xls_to_xlsx(xd)
+                sch = est_itemimport.read_schedule(xd)
+                if sch["items"]:
+                    old = dict(old)
+                    old["items"] = [{k: x.get(k) for k in ("bill", "bill_title", "section", "no", "description", "qty", "unit", "rate", "amount", "grp")}
+                                    for x in sch["items"]]
+                    tot = sch["contract"]
+                    if (old.get("fields") or {}).get("value") is None or "Contract value (from the schedule total)" in (old.get("found") or []):
+                        xl_total = tot          # no value written in the file: the whole schedule's total, every sheet (set below)
+                    val = (old.get("fields") or {}).get("value")
+                    old["checks"] = {"items": len(sch["items"]), "items_total": tot, "total_in_doc": None, "contract_value": val,
+                                     "match": val is not None and abs(tot - val) < 1, "sections": []}
+                    old["notes"] = [n for n in (old.get("notes") or []) if "schedule adds up" not in n] + sch["notes"] + \
+                        ["Review: " + x for x in (sch.get("review") or [])]
+            except Exception:
+                pass
     try:
         new = read_contract(doc if doc is not None else from_lines(lines or []), "agreement")
     except Exception:
@@ -409,6 +440,12 @@ def read_agreement_doc(data=None, name="", lines=None, trades=None):
             r["detail"][k] = dict(d, value=v, note=f"the agreement's figures agree on {_fmt(v)} - the other reading was {_fmt(mine)}")
         else:
             r["detail"][k] = {"value": mine, "confidence": 0.5, "status": "check", "where": d.get("where"), "note": f"the two readings differ - also read as {_fmt(v)}"}
+    if xl_total is not None:
+        # a BOQ in Excel with no contract value written in it: its value is the whole schedule (not one sheet's total
+        # the text reading may have taken for it)
+        r["fields"]["value"] = xl_total
+        r["detail"]["value"] = {"value": xl_total, "confidence": 0.9, "status": "ok", "where": None,
+                                "note": "no contract value written in the file - the total of the whole priced schedule"}
     # the schedule against the contract value as now read
     c = r.get("checks") if isinstance(r.get("checks"), dict) else {}
     items = r.get("items") or []

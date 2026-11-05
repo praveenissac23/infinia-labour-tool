@@ -124,7 +124,7 @@ def read_schedule(data: bytes):
         if ws.sheet_state != "visible":
             continue
         rows = [list(r) + [None] * 6 for r in ws.iter_rows(values_only=True)]
-        r0, c0 = ws.min_row or 1, ws.min_column or 1          # rows[i] is sheet row r0 + i; r[j] is column c0 + j
+        r0, c0 = 1, 1                                          # iter_rows always starts at A1: rows[i] is sheet row 1 + i, r[j] column 1 + j
         hi, cols = None, None
         for i, r in enumerate(rows[:40]):
             c = _header(r)
@@ -162,6 +162,14 @@ def read_schedule(data: bytes):
             top_vals = [rows[m.min_row - r0][pc - c0] for pc in pcols if 0 <= m.min_row - r0 < len(rows)]
             if not any(_s(v) for v in top_vals):
                 continue                                       # a merged cell with nothing in it prices nothing
+            # a lump sum is a figure, LS or "Included" - merged words like "N.A." / "Excluded" over lines are notes;
+            # and a row under it with a price of its own means it is not one lump sum for them all
+            if not any(_n(v) or _s(v).lower().strip(". ") in ("ls", "l.s", "lumpsum", "lump sum", "included", "incl", "inclusive")
+                       for v in top_vals):
+                continue
+            own = any(_n(rows[k - r0][pc - c0]) for k in range(m.min_row + 1, m.max_row + 1) for pc in pcols if 0 <= k - r0 < len(rows))
+            if own:
+                continue
             a, b = m.min_row, m.max_row
             for k in list(groups):                             # rate and amount merged over the same rows: one group
                 if k <= b and groups[k] >= a:
@@ -458,8 +466,10 @@ def read_schedule(data: bytes):
             if pending:
                 ls_row = (isinstance(rate_raw, str) and rate_raw.strip().upper() in ("LS", "L.S", "L.S.", "LUMPSUM", "LUMP SUM")) or \
                     unit.strip().lower() in ("ls", "l.s", "l.s.", "lumpsum", "lump sum", "item", "lot")
-                if ls_row and amt:
-                    # the rows above with no price + this one with the lump sum: one group (no merged cell to say so)
+                numbered = bool(no) or any(("no" in cols and _s(r_[cols["no"]])) for r_, _ in pending)
+                if ls_row and amt and not numbered:
+                    # the rows above with no price + this one with the lump sum: one group (no merged cell to say so) -
+                    # unless they carry item numbers: a numbered item is an item of its own
                     counts["groups"] += 1
                     g = new_group(group_title() or desc, "", amt, "", r)
                     mine.append(g)

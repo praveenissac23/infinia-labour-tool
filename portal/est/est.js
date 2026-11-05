@@ -782,7 +782,8 @@ function subForm(s, pre) {
     if (ag && ag.items.length && $("#ag-items") && $("#ag-items").checked) {
       const remeasure = /re-?measure|unit rate/i.test(v.contract_type || "");
       await PUT(`/store/est/subs/${sid}/items`, { items: ag.items.map(x => ({ bill: x.bill, bill_title: x.bill_title, section: x.section || "", no: x.no, description: x.description,
-        qty: x.qty || "", unit: x.unit || "", rate: x.rate || "", amount: x.amount, measure: remeasure && x.qty && x.rate ? "qty" : "pct" })) });
+        qty: x.qty || "", unit: x.unit || "", rate: x.grp === "in" ? "" : (x.rate || ""), amount: x.grp === "in" ? 0 : x.amount, grp: x.grp || "",
+        measure: remeasure && x.qty && x.rate && !x.grp ? "qty" : "pct" })) });
       n = ag.items.length;
     }
     await reload(); toast((edit ? "Saved" : "Subcontract added") + (n ? ` with its ${n}-line schedule` : ""));
@@ -879,7 +880,7 @@ function agreementFill(r, fname, has, out) {
       <span class="${c.match ? "ok" : "bad"}">${money(c.items_total)} ${c.match ? "= contract value &#10003;" : c.contract_value != null ? `&ne; contract value ${money(c.contract_value)}` : ""}</span> ${secs}
       ${has ? `<div class="small warn-t">This subcontract already has an item schedule - change it in Item schedule.</div>` : ""}
       <details><summary>See the lines</summary><div class="tw"><table class="t"><thead><tr><th>Bill</th><th>No</th><th>Description</th><th class="r">Qty</th><th>Unit</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>
-      ${it.map(x => `<tr><td>${esc(x.bill)}</td><td>${esc(x.no)}</td><td class="d">${esc(x.description)}</td><td class="r">${x.qty ?? ""}</td><td>${esc(x.unit)}</td><td class="r">${x.rate ? money(x.rate) : ""}</td><td class="r">${money(x.amount)}</td></tr>`).join("")}
+      ${it.map(x => `<tr class="${x.grp === "in" ? "gin" : x.grp === "head" ? "ghd" : ""}"><td>${esc(x.bill)}</td><td>${esc(x.no)}</td><td class="d">${esc(x.description)}</td><td class="r">${x.qty ?? ""}</td><td>${esc(x.unit)}</td><td class="r">${x.grp === "in" ? "" : x.rate ? money(x.rate) : ""}</td><td class="r">${x.grp === "in" ? '<span class="small muted">incl.</span>' : money(x.amount)}</td></tr>`).join("")}
       </tbody></table></div></details></div>` : ""}
     ${(r.notes || []).map(n => `<div class="small warn-t">${esc(n)}</div>`).join("")}${r.sums && r.sums.length ? prevChecks({ checks: r.sums }) : ""}</div>`;
 }
@@ -1309,7 +1310,7 @@ SECTIONS["client.boq"] = el => {
   for (const id of [...pick]) if (!all.some(x => x.id === id)) pick.delete(id);
   const tl = b.boq_tally, tb = (tl && tl.bills) || {};
   const near = (a, c) => Math.abs(a - c) < 0.015;
-  const unpricedN = all.filter(x => !x.amount).length;
+  const unpricedN = all.filter(x => !x.amount && !x.grp).length;      // the items of a lump-sum group are priced in it
   let html = tools("boq", { add: `<button class="btn btn-primary" id="boq-up" title="The estimation team's internal BOQ workbook (1.PRELIM, 2.SUBSTR ... 20. SPECIALIZED ITEMS). Only the lines are kept - the file is not stored.">Upload BOQ</button><input type="file" id="boq-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-plain" id="boq-paste">Paste from Excel</button><button class="btn btn-ghost" id="boq-add">+ Line</button>${unpricedN ? `<button class="btn btn-plain" id="boq-unpriced" title="Every line with no amount (blank, By Client, Included, N/A ...) out in one go">Remove ${unpricedN} unpriced line${unpricedN === 1 ? "" : "s"}</button>` : ""}` });
   if (!all.length) html += `<div class="empty">No BOQ yet. Press <b>Upload internal BOQ</b> and pick the internal BOQ Excel - every line comes in, grouped by trade, with what is excluded or phase 2 kept aside. ${tip("The workbook is read once and only its lines are kept; the Excel file itself is not stored. Upload a newer revision any time - the cost rates and done % you typed stay on the lines that come back.")}</div>`;
   else {
@@ -1333,8 +1334,8 @@ SECTIONS["client.boq"] = el => {
           if (sec || !many) { const S = L.filter(y => y.section === sec), so = S.every(y => y.scope) && !whole ? S[0].scope : "";
             html += `<tr class="sec ${so ? "out" : ""}"><td class="ck"><input type="checkbox" data-pksec="${esc(bl)}\u0001${esc(sec || "")}" ${S.every(y => pick.has(y.id)) ? "checked" : ""} title="Tick the whole section"></td><td colspan="5">${esc(sec || "General")}${so ? ` <span class="st b scopetag" data-scope="${esc(bl)}" data-ssec="${esc(sec)}" title="Not counted - click to change">${esc(so)}</span>` : ""}</td><td class="r">${so ? `<span class="muted">${money(S.reduce((a, y) => a + y.amount, 0))}</span>` : money(S.reduce((a, y) => a + y.counted, 0))}</td><td></td><td class="r">${money(S.reduce((a, y) => a + y.cost, 0))}</td><td></td></tr>`; }
         }
-        const amt = x.scope ? `<span class="muted" title="${esc(x.scope)} - not counted">${money(x.amount)}</span>` : money(x.amount);
-        html += `<tr class="${x.scope ? "out" : ""}${pick.has(x.id) ? " picked" : ""}"><td class="ck"><input type="checkbox" data-pk="${x.id}" ${pick.has(x.id) ? "checked" : ""}></td><td class="small">${esc(x.code)}</td><td class="rowc" data-boq="${x.id}">${esc(x.description)}${x.remark ? ` <span class="small muted">· ${esc(x.remark)}</span>` : ""}</td><td>${esc(x.unit)}</td>${["qty", "rate"].map(k => `<td class="r rowc" data-ed="${x.id}:${k}">${money(x[k])}</td>`).join("")}<td class="r">${amt}</td><td class="r rowc" data-ed="${x.id}:cost_rate">${money(x.cost_rate)}</td><td class="r">${money(x.cost)}</td><td class="r rowc" data-ed="${x.id}:done_pct">${x.done_pct ? x.done_pct + "%" : '<span class="muted">-</span>'}</td></tr>`;
+        const amt = x.grp === "in" ? `<span class="small muted" title="Priced in the group's lump sum above">incl.</span>` : x.scope ? `<span class="muted" title="${esc(x.scope)} - not counted">${money(x.amount)}</span>` : money(x.amount);
+        html += `<tr class="${x.scope ? "out" : ""}${pick.has(x.id) ? " picked" : ""}${x.grp === "in" ? " gin" : x.grp === "head" ? " ghd" : ""}"><td class="ck"><input type="checkbox" data-pk="${x.id}" ${pick.has(x.id) ? "checked" : ""}></td><td class="small">${esc(x.code)}</td><td class="rowc" data-boq="${x.id}">${esc(x.description)}${x.remark ? ` <span class="small muted">· ${esc(x.remark)}</span>` : ""}</td><td>${esc(x.unit)}</td>${["qty", "rate"].map(k => x.grp === "in" && k === "rate" ? `<td></td>` : `<td class="r rowc" data-ed="${x.id}:${k}">${money(x[k])}</td>`).join("")}<td class="r">${amt}</td>${x.grp === "in" ? `<td></td>` : `<td class="r rowc" data-ed="${x.id}:cost_rate">${money(x.cost_rate)}</td>`}<td class="r">${money(x.cost)}</td><td class="r rowc" data-ed="${x.id}:done_pct">${x.done_pct ? x.done_pct + "%" : '<span class="muted">-</span>'}</td></tr>`;
       }
     }
     const shownT = rows.reduce((a, x) => a + x.counted, 0), shownC = rows.reduce((a, x) => a + x.cost, 0);

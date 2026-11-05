@@ -465,7 +465,14 @@ def read(lines, trades=None, names=None):
     checks = {}
     if best:
         t = best[1]
-        items = [{k: r[k] for k in ("bill", "bill_title", "section", "no", "description", "qty", "unit", "rate", "amount")} for r in t["rows"]]
+        items = [dict({k: r[k] for k in ("bill", "bill_title", "section", "no", "description", "qty", "unit", "rate", "amount")}, grp=r.get("grp", ""))
+                 for r in t["rows"]]
+        for r in t["rows"]:
+            if r.get("review"):
+                notes.append("Review: " + r["review"])
+        if any(r.get("grp") == "head" for r in t["rows"]):
+            notes.append(f"{sum(1 for r in t['rows'] if r.get('grp') == 'head')} group(s) of items priced as one lump sum - each one line with "
+                         f"its lump sum, its {sum(1 for r in t['rows'] if r.get('grp') == 'in')} items listed under it and never counted.")
         checks["items"] = len(items)
         checks["items_total"] = t["sum"]
         checks["total_in_doc"] = t["total"]
@@ -583,9 +590,33 @@ def _tables(lines):
     """Every run of rows with amounts, with its sections, sub-totals and total."""
     tables, cur = [], None
     bill, bill_title, group = "", "", ""
+    # a bracket over several blocks (each item a line of its own, the lump sum on a line of its own among them):
+    # the item lines with a unit and no price wait in `pend`; the price line makes them a group; the heading lines
+    # over them name it. Item lines no price claims come in at nil, listed for review - never dropped (5 Nov 2026)
+    pend, heads_txt, open_g = [], [], None
+
+    def item_row(l, why=""):
+        cells = _cells_of(l)
+        no = cells[0] if CODE.match(cells[0]) and len(cells) > 2 else ""
+        words = [c for c in cells[1 if no else 0:] if money(c) is None and c.lower().strip(". ") not in UNITS and c.lower() not in UNITS]
+        nums = [float(c.replace(",", "")) for c in cells if re.fullmatch(r"\d+(?:\.\d+)?", c.replace(",", ""))]
+        r_ = {"no": no.rstrip("."), "description": " ".join(words).strip(), "qty": nums[0] if nums else None, "unit": _unit_of(l) or "",
+              "rate": 0, "amount": 0.0, "pct": None, "grp": "in" if not why else "", "bill": bill, "bill_title": bill_title, "section": "", "group": group}
+        if why:
+            r_["review"] = why
+        return r_
+
+    def flush(why):
+        nonlocal pend
+        for l in pend:
+            if cur is not None:
+                cur["rows"].append(item_row(l, f"'{' '.join(_cells_of(l))[:70]}' - no price and no group ({why}) - brought in at nil"))
+        pend = []
 
     def close():
-        nonlocal cur
+        nonlocal cur, open_g, heads_txt
+        flush("the table ends")
+        open_g, heads_txt = None, []
         if cur and (cur["rows"] or cur["total"] is not None):
             tables.append(cur)
         cur = None
@@ -596,6 +627,19 @@ def _tables(lines):
         mlines = [l for l in blk if _row_money(l) is not None]
         texts = [" ".join(_cells_of(l)) for l in blk]
         joined = " ".join(texts).strip()
+        if not mlines and cur is not None and all(_unit_of(l) for l in blk):
+            for l in blk:                     # item lines with a unit and no price: under the open group, or waiting for one
+                if open_g is not None:
+                    cur["rows"].append(item_row(l))
+                else:
+                    pend.append(l)
+            continue
+        if not mlines and (pend or open_g is not None):
+            flush("a heading follows")
+            open_g, heads_txt = None, []
+        if not mlines and len(joined) < 160 and not _heading_block(blk):
+            heads_txt.append(joined)          # words over the next item / group
+            heads_txt = heads_txt[-3:]
         if not mlines:
             one = joined
             if len(blk) <= 2 and len(one) < 140 and re.search(r"\b(advance|progressive|progress|retention|interim)\b.*\bpayment|\bpayment\b.*\b(advance|progress)", one, re.I):
@@ -618,6 +662,19 @@ def _tables(lines):
                 close()
                 bill, bill_title, group = "", "", ""
             continue
+        if len(mlines) == 1:
+            grp_rows = _bracket(blk, mlines[0])
+            if grp_rows:
+                # several items priced as ONE lump sum (a bracket beside them): the group's line, its items under it
+                if cur is None:
+                    cur = _new_table()
+                for row in grp_rows:
+                    row["bill"] = bill
+                    row["bill_title"] = bill_title
+                    row["section"] = ""
+                    row["group"] = group
+                    cur["rows"].append(row)
+                continue
         rows = [blk] if len(mlines) == 1 else [[l] for l in blk if _row_money(l) is not None]
         for rb in rows:
             ml = next(l for l in rb if _row_money(l) is not None)
@@ -639,6 +696,24 @@ def _tables(lines):
             if cur is None:
                 cur = _new_table()
             row = _row(rb, ml, amt)
+            if pend:
+                lsish = (row["unit"] or "").lower().strip(". ") in ("ls", "l.s", "lumpsum", "lump sum", "item", "lot", "job") or not row["description"]
+                if lsish:
+                    # the price among (or after) the item lines: they are one group, priced by it
+                    hl = [h for h in heads_txt if h]
+                    title = (hl[0] if len(hl) >= 2 and len(hl[0]) <= 80 else " - ".join(hl)) or row["description"] or "Lump sum"
+                    g = {"no": "", "description": title[:400], "qty": 1, "unit": "LS", "rate": round(amt, 2), "amount": round(amt, 2), "pct": None,
+                         "grp": "head", "bill": bill, "bill_title": bill_title, "section": "", "group": group}
+                    cur["rows"].append(g)
+                    for l in pend:
+                        cur["rows"].append(item_row(l))
+                    pend = []
+                    if row["description"]:
+                        cur["rows"].append(dict(item_row(ml), description=row["description"], no=row["no"]))
+                    open_g, heads_txt = g, []
+                    continue
+                flush("the next line has its own price")
+            open_g, heads_txt = None, []
             row["bill"] = bill or (re.match(r"^([A-Z]{1,2})[-.]?\d", row["no"]).group(1) if re.match(r"^[A-Z]{1,2}[-.]?\d", row["no"] or "") else "")
             row["bill_title"] = bill_title
             row["section"] = ""
@@ -683,6 +758,57 @@ def _heading_block(blk):
     return head >= 0.7 * len(cells)
 
 
+def _unit_of(l):
+    """The unit of a schedule line with no price of its own ("Catch Basin, CB   No"), else None."""
+    cells = _cells_of(l)
+    if len(cells) < 2 or _col_titles(l):
+        return None
+    if re.search(r"bill\s*page|collection|carried|brought\s+forward|\btotal\b", " ".join(cells), re.I):
+        return None                          # a roll-up of the pages, never an item
+    if not any(money(c) is None and not c.lower().strip(". ") in UNITS and re.search(r"[A-Za-z]{2,}", c) for c in cells):
+        return None
+    for c in cells[1:]:
+        if c.lower().strip(". ") in UNITS or c.lower() in UNITS:
+            return c
+    return None
+
+
+def _bracket(blk, ml):
+    """A block with ONE price and two or more item lines that each have a unit but no price (a bracket in the BOQ):
+    -> [group line with the lump sum, its items at nil] - else None (the block reads as one line, as before)."""
+    items = [l for l in blk if l is not ml and _unit_of(l)]
+    if len(items) < 2:
+        return None
+    amt = _row_money(ml)
+    head_lines, seen_item = [], False
+    for l in blk:
+        if l is ml or l in items:
+            seen_item = True
+            continue
+        if not seen_item and not _col_titles(l):
+            t = " ".join(_cells_of(l)).strip()
+            if t:
+                head_lines.append(t)                 # the heading(s) over the items name the group
+    mrow = _row([ml], ml, amt)                       # the priced line itself: an item of the group too when it has words
+    head = {"no": "", "description": (head_lines[0] if len(head_lines) >= 2 and len(head_lines[0]) <= 80 else " - ".join(head_lines))[:400]
+            or mrow["description"] or "Lump sum", "qty": 1, "unit": "LS", "rate": round(amt, 2), "amount": round(amt, 2), "pct": None, "grp": "head"}
+    out = [head]
+    for l in blk:
+        if l is ml:
+            if mrow["description"]:
+                out.append({"no": mrow["no"], "description": mrow["description"], "qty": None, "unit": mrow["unit"] if mrow["unit"].lower().strip(". ") not in ("ls", "l.s", "lumpsum", "lump sum") else "",
+                            "rate": 0, "amount": 0.0, "pct": None, "grp": "in"})
+            continue
+        if l in items:
+            cells = _cells_of(l)
+            no = cells[0] if CODE.match(cells[0]) and len(cells) > 2 else ""
+            words = [c for c in cells[1 if no else 0:] if money(c) is None and c.lower().strip(". ") not in UNITS and c.lower() not in UNITS]
+            nums = [float(c.replace(",", "")) for c in cells if re.fullmatch(r"\d+(?:\.\d+)?", c.replace(",", ""))]
+            out.append({"no": no.rstrip("."), "description": " ".join(words).strip(), "qty": nums[0] if nums else None, "unit": _unit_of(l), "rate": 0,
+                        "amount": 0.0, "pct": None, "grp": "in"})
+    return out
+
+
 def _new_table():
     return {"rows": [], "total": None, "subtotals": [], "pct_rows": 0}
 
@@ -698,6 +824,10 @@ def _row_money(l):
     if len(cells) < 2:
         return None
     v = money(cells[-1])
+    if v is None:
+        toks = cells[-1].split()
+        if len(toks) >= 2 and all(money(t) is not None for t in toks):
+            v = money(toks[-1])              # "5,400.00 5,400.00": rate and amount run together - the amount is the last
     if v is None:
         return None
     if len(cells) == 2 and PCT.match(cells[0]):

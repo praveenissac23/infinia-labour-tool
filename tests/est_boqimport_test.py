@@ -164,5 +164,38 @@ t = c.post("/auth/download-token", headers=H).json()["token"]
 ck("BOQ exports with the bill and remarks", c.get(f"/export/est/boq?pid={pid}&token={t}&format=xlsx").status_code == 200)
 ck("no file kept", not any(f.kind == "boq" for f in db.query(E.EstFile).filter_by(project_id=pid)) if hasattr(E.EstFile, "kind") else True)
 db.query(E.EstBoq).filter_by(project_id=pid).delete(); db.delete(db.get(E.EstProject, pid)); db.commit()
+# ---- items priced together as ONE lump sum (a bracket in the BOQ - 5 Nov 2026) ----
+def bracket_internal():
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "11.PLUMBING"
+    rows = [["11. PLUMBING WORKS"], ["S/NO.", "ITEMS", "CONS. QTY", "IC QTY", "UNIT", "RATE", "AMOUNT"],
+            [None, "Sanitary Fittings & Accessories"], [None, "Clean Out, CO", None, None, "No", None, 10800], [None, "Catch Basin, CB", None, None, "No"],
+            [None, "Floor drain, FD", None, None, "No"],
+            [None, "Hot Water Pipes"], [None, "15mm diameter", None, None, "m"], [None, None, None, None, None, None, 2500], [None, "20mm diameter", None, None, "m"],
+            [1, "Manholes", None, 5, "No", 900, 4500],
+            [2, "Electrical Works", None, 1, "LS", 135000, "N.A."], [3, "CCTV", None, 1, "LS", 8300, None],
+            [4, "Fire Alarm Works", None, None, "LS"], [5, "Builders works", None, 1, "LS", 3500, 3500],
+            [None, "TOTAL", None, None, None, None, 20800]]
+    for r_ in rows:
+        ws.append(r_)
+    ws.merge_cells("G4:G6")                                   # the bracket: the lump sum merged down its items
+    ws.merge_cells("G12:G13")                                 # a merged NOTE over lines with their own rates - not a group
+    bio = io.BytesIO(); wb.save(bio); return bio.getvalue()
+
+
+bi = B.read_internal_boq(bracket_internal(), keep_unpriced=True)
+BL = bi["lines"]
+sg = next((x for x in BL if x.get("grp") == "head" and x["description"] == "Sanitary Fittings & Accessories"), None)
+ck("internal BOQ: a merged lump sum is one group line, its items under it at nil", sg and sg["amount"] == 10800 and
+   [(x["description"], x["grp"], x["amount"]) for x in BL[BL.index(sg) + 1:BL.index(sg) + 4]] ==
+   [("Clean Out, CO", "in", 0.0), ("Catch Basin, CB", "in", 0.0), ("Floor drain, FD", "in", 0.0)], BL[:6])
+hg = next((x for x in BL if x.get("grp") == "head" and x["amount"] == 2500), None)
+ck("internal BOQ: a price on a row of its own prices the items around it", hg and hg["description"] == "Hot Water Pipes" and
+   [x["description"] for x in BL[BL.index(hg) + 1:BL.index(hg) + 3]] == ["15mm diameter", "20mm diameter"], hg)
+ck("internal BOQ: a merged note ('N.A.') is not a group - the lines stay as they are", not any(x.get("grp") and "Electrical" in x["description"] for x in BL)
+   and any(x["description"] == "Electrical Works" and x["remark"] == "N.A." for x in BL), [x for x in BL if "Elec" in x["description"]])
+ck("internal BOQ: numbered items stay items of their own", any(x["description"] == "Builders works" and x["amount"] == 3500 and not x.get("grp") for x in BL)
+   and any(x["description"] == "Fire Alarm Works" and not x.get("grp") for x in BL))
+ck("internal BOQ: the group counted once - 10,800 + 2,500 + 4,500 + 3,500 = 21,300", bi["total"] == 21300, bi["total"])
+ck("internal BOQ: a line with a rate and no amount is listed (not left out unsaid)", any(x["description"] == "CCTV" for x in BL), [x["description"] for x in BL])
 print(f"\n{len(fails)} FAILED: {fails}" if fails else "\nALL PASS")
 sys.exit(1 if fails else 0)

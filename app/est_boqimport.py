@@ -220,11 +220,36 @@ def _has_number(r, cols=None):
 def _read_sheet(ws, bill, keep_unpriced, keep_out):
     """(lines, sections [{name, scope, amount}], unpriced lines [desc], notes)."""
     hidden = {i for i, d in ws.row_dimensions.items() if d.hidden}
-    rows = [list(r) + [None] * 6 for i, r in enumerate(ws.iter_rows(values_only=True), start=1) if i not in hidden]
+    numbered = [(i, list(r) + [None] * 6) for i, r in enumerate(ws.iter_rows(values_only=True), start=1) if i not in hidden]
+    rows = [r for _, r in numbered]
+    row_no = {id(r): i for i, r in numbered}               # iter_rows starts at A1: rows keep their sheet row numbers
+    # Several items priced as ONE lump sum (a bracket beside them): the amount cell merged down their rows, the figure
+    # in the top row (5 Nov 2026) - read as one group line with the lump sum, its items under it at nil, never dropped
+    merged = [(m.min_row, m.max_row, m.min_col, m.max_col) for m in ws.merged_cells.ranges if m.max_row > m.min_row]
     notes = [f"{ws.title}: {len(hidden)} hidden row(s) left out."] if hidden else []
     ssum = _sheet_summary(rows)
     sections, section, cols, parent, mine, unpriced = [], None, None, "", [], []
     last_text = None             # the last row with words and no figures: a heading, if a header row follows
+    pend, open_g, skip_to = [], None, 0
+    heads_g = []                 # the words over the next group (a heading, the sentence under it)
+
+    def g_line(desc, amt, words, r, grp):
+        return {"bill": bill, "section": section["name"] if section else "", "code": (_s(r[0]) if grp != "head" else "")[:20], "description": desc[:500],
+                "unit": ("LS" if grp == "head" else (_s(r[cols["unit"]]) if "unit" in cols else ""))[:20],
+                "qty": 1.0 if grp == "head" else round(_n(r[cols["qty"]]) or 0.0, 4) if "qty" in cols else 0.0,
+                "rate": round(amt or 0.0, 4) if grp == "head" else 0.0, "amount": round(amt, 2) if (grp == "head" and amt) else 0.0,
+                "remark": words[:120] if grp == "head" else "", "scope": "", "_sec": section, "_raw": (amt or 0.0) if grp == "head" else 0.0, "grp": grp}
+
+    def g_title():
+        return (heads_g[0] if len(heads_g) >= 2 and len(heads_g[0]) <= 80 else " - ".join(heads_g)) or parent or "Lump sum"
+
+    def flush_pend():
+        nonlocal pend
+        for r_ in pend:                  # items with no price and no group: listed with the unpriced lines (never dropped)
+            x = g_line(_s(r_[cols["desc"]]), 0, "", r_, "")
+            x["remark"] = "no price - not in a group"
+            unpriced.append(x)
+        pend = []
 
     def new_section(name):
         nonlocal section
@@ -264,8 +289,51 @@ def _read_sheet(ws, bill, keep_unpriced, keep_out):
             continue
         if cols is None:
             continue
+        xr = row_no.get(id(r), 0)
+        if xr and xr <= skip_to:
+            continue
+        acol, rcol = cols["amount"] + 1, (cols["rate"] + 1 if "rate" in cols else None)
+        mg = next((m for m in merged if m[0] == xr and m[2] <= acol <= m[3]), None)
+        top = r[cols["amount"]] if mg else None
+        if mg:
+            # a merged AMOUNT is a group's lump sum only when it is a figure and no row under it has a price of its own -
+            # merged words ("N.A." over lines with their own rates, "Included in Item 21") are notes: rows read one by one
+            inside = [rr for rr in rows if mg[0] < row_no.get(id(rr), 0) <= mg[1]]
+            own = any(("rate" in cols and _n(rr[cols["rate"]])) or _n(rr[cols["amount"]]) for rr in inside)
+            if not (_n(top) and _n(top) > 0) or own:
+                mg = None
+        if mg:
+            # the bracket: every row of the merged price cell
+            if section is None:
+                new_section("")
+            flush_pend()
+            in_rows = [rr for rr in rows if mg[0] <= row_no.get(id(rr), 0) <= mg[1] and _s(rr[cols["desc"]])]
+            amt_g = _n(top)
+            words_g = ""
+            t0 = in_rows[0] if in_rows else None
+            titled = t0 is not None and len(in_rows) > 1 and not ("qty" in cols and _n(t0[cols["qty"]])) and not ("unit" in cols and _s(t0[cols["unit"]]))
+            g = g_line(_s(t0[cols["desc"]]) if titled else g_title(), amt_g, words_g, r, "head")
+            (mine if amt_g else unpriced).append(g)
+            for rr in in_rows[1 if titled else 0:]:
+                (mine if amt_g else unpriced).append(g_line(_s(rr[cols["desc"]]), 0, "", rr, "in"))
+            skip_to, parent, heads_g, open_g, last_text = mg[1], "", [], None, None
+            continue
         desc = _s(r[cols["desc"]])
+        if not desc and pend and (_n(r[cols["amount"]]) or (_s(r[cols["amount"]]) and _n(r[cols["amount"]]) is None and _s(r[cols["amount"]]) not in ("-", "--", "0"))):
+            # a price on a row of its own among items with none: those items, priced together (a bracket, no merged cell)
+            if section is None:
+                new_section("")
+            a_ = _n(r[cols["amount"]])
+            g = g_line(g_title(), a_, "" if a_ is not None else _s(r[cols["amount"]]), r, "head")
+            (mine if a_ else unpriced).append(g)
+            for r_ in pend:
+                (mine if a_ else unpriced).append(g_line(_s(r_[cols["desc"]]), 0, "", r_, "in"))
+            pend, open_g, heads_g, parent = [], (g if a_ else None), [], ""
+            continue
         if not desc or re.match(r"^(sub ?total|total)\b", desc, re.I) or re.search(r"\btotal$", desc, re.I) or desc.upper().startswith("TOTAL"):
+            if pend:
+                flush_pend()
+            open_g = None
             if desc and section is not None and re.match(r"^total$", desc, re.I) and not section["scope"]:
                 w = " ".join(_s(x) for x in r[cols["desc"] + 1:] if _n(x) is None and _s(x))
                 mo = OUT_WORDS.search(w)
@@ -284,9 +352,54 @@ def _read_sheet(ws, bill, keep_unpriced, keep_out):
         if words in ("-", "--", "0"):
             words = ""
         if not amt and not words:
-            if not (qty or rate) and len(desc) > 6:
+            if not (qty or rate or unit) and len(desc) > 6:
                 parent = desc
+                if pend:
+                    flush_pend()
+                open_g = None
+                heads_g = (heads_g + [desc])[-2:]
+            elif unit and not qty and not rate:
+                # an item with only its unit: one of several priced together, waiting for the price - under the group
+                # already open, or brought in as unpriced (never dropped). It still names a short line under it
+                # ("Bicycle Parkings" over "Others"), as before.
+                if len(desc) > 6:
+                    parent = desc
+                if section is None:
+                    new_section("")
+                if open_g is not None:
+                    mine.append(g_line(desc, 0, "", r, "in"))
+                else:
+                    pend.append(r)
+            elif qty or rate:
+                # a take-off line with a quantity / rate and no amount: listed with the unpriced lines (was left out unsaid)
+                if section is None:
+                    new_section("")
+                if pend:
+                    flush_pend()
+                open_g = None
+                x = g_line(desc, 0, "", r, "")
+                x["rate"], x["remark"] = round(rate or 0.0, 4), "no amount"
+                unpriced.append(x)
             continue
+        if pend:
+            lsish = unit.strip().lower() in ("ls", "l.s", "l.s.", "lumpsum", "lump sum", "item", "lot", "job") or \
+                ("rate" in cols and _s(r[cols["rate"]]).upper() in ("LS", "L.S", "L.S.", "LUMPSUM", "LUMP SUM"))
+            # a numbered item is an item of its own: the rows above join it as one group only when neither it nor
+            # they carry an item number (the Sanitary fittings bracket: "Clean Out, CO" ... no numbers)
+            numbered = bool(first) or any(_s(r_[0]) for r_ in pend)
+            if lsish and amt and not numbered:
+                if section is None:
+                    new_section("")
+                g = g_line(g_title(), amt, words, r, "head")
+                mine.append(g)
+                for r_ in pend:
+                    mine.append(g_line(_s(r_[cols["desc"]]), 0, "", r_, "in"))
+                mine.append(g_line(desc, 0, "", r, "in"))
+                pend, open_g, heads_g, parent = [], g, [], ""
+                continue
+            flush_pend()
+        open_g = None
+        heads_g = []
         if re.fullmatch(r"(others?|ohp)", desc, re.I) and not amt:
             continue
         if _n(unit) is not None:
@@ -308,11 +421,13 @@ def _read_sheet(ws, bill, keep_unpriced, keep_out):
             new_section("")
         line = {"bill": bill, "section": section["name"], "code": first[:20], "description": desc[:500], "unit": unit[:20],
                 "qty": round(qty or 0.0, 4), "rate": round(rate or 0.0, 4), "amount": round(amt, 2) if amt else 0.0,
-                "remark": words[:120], "scope": "", "_sec": section, "_raw": amt or 0.0}
+                "remark": words[:120], "scope": "", "_sec": section, "_raw": amt or 0.0, "grp": ""}
         if not amt:
             unpriced.append(line)
             continue
         mine.append(line)
+    if pend:
+        flush_pend()
     # the sheet's own summary: one letter per section, in order
     if ssum and len(ssum) == len([s for s in sections if s["name"]]):
         for s, (_l, a, w) in zip([s for s in sections if s["name"]], ssum):

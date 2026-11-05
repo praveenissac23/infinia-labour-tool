@@ -121,14 +121,32 @@ def bracket_book():
             [None, "15mm diameter", "m"], [None, None, None, None, 0, "Included"], [None, "20mm diameter", "m"],
             [None, "Manholes", 5, "No", 900, 4500],
             [None, "Pump base", "No"],
-            ["TO COLLECTION", None, None, None, None, 15300], [], [None, "COLLECTION"], [None, "PLUMBING BILL PAGE 1/1", "Item", 1, 15300, 15300],
-            ["TOTAL CARRIED TO COLLECTION", None, None, None, None, 15300]]
+            [None, "Booster pump", 1, "No", 2000, "N.A."], [None, "Transfer pump", 1, "No", 1500, None],
+            ["TO COLLECTION", None, None, None, None, 18800], [], [None, "COLLECTION"], [None, "PLUMBING BILL PAGE 1/1", "Item", 1, 18800, 18800],
+            ["TOTAL CARRIED TO COLLECTION", None, None, None, None, 18800]]
     for r_ in rows:
         ws.append(r_)
     ws.merge_cells("E6:E8"); ws.merge_cells("F6:F8")           # the bracket's price: merged down its rows, the figure in the top row
+    ws.merge_cells("F16:F17")                                  # a merged NOTE over lines with rates of their own - not a group
     bio = io.BytesIO(); wb.save(bio); return bio.getvalue()
 
 
+def bracket_book_low():
+    """The same BOQ starting lower on the sheet (rows 1-3 and column A empty): the groups must still be found."""
+    wb = openpyxl.load_workbook(io.BytesIO(bracket_book())); ws = wb.active
+    ws.insert_rows(1, 3); ws.insert_cols(1)
+    for m in list(ws.merged_cells.ranges):
+        ws.unmerge_cells(str(m))
+    ws.merge_cells("F9:F11"); ws.merge_cells("G9:G11")
+    ws["A4"] = None
+    bio = io.BytesIO(); wb.save(bio); return bio.getvalue()
+
+
+lo = I.read_schedule(bracket_book_low())
+lsan = next((x for x in lo["items"] if x["grp"] == "head" and x["description"].startswith("Sanitary")), None)
+ck("a BOQ starting lower on the sheet: the merged price still found its rows", lsan and lsan["amount"] == 10800 and
+   [x["description"] for x in lo["items"][lo["items"].index(lsan) + 1:lo["items"].index(lsan) + 4]] == ["Clean Out, CO", "Catch Basin, CB", "Floor drain, FD"],
+   [(x["grp"], x["description"]) for x in lo["items"][:8]])
 g = I.read_schedule(bracket_book())
 G = g["items"]
 san = next(x for x in G if x["grp"] == "head" and x["description"].startswith("Sanitary"))
@@ -141,9 +159,11 @@ hw = next(x for x in G if x["grp"] == "head" and x["description"] == "Hot Water 
 ck("no merged cell: the price row inside the run ('Included') makes the group", hw["words"] == "Included" and
    [x["description"] for x in G[G.index(hw) + 1:G.index(hw) + 3]] == ["15mm diameter", "20mm diameter"], G[G.index(hw):G.index(hw) + 3])
 ck("a row priced on its own stays its own line", any(x["description"] == "Manholes" and x["grp"] == "" and x["amount"] == 4500 for x in G))
+ck("a merged NOTE ('N.A.') over lines with their own rates is not a group", not any(x["grp"] and "pump" in x["description"].lower() for x in G)
+   and any(x["description"] == "Transfer pump" and x["amount"] == 1500 for x in G), [(x["grp"], x["description"], x["amount"]) for x in G if "pump" in x["description"].lower()])
 ck("a row with no price and no group comes in at nil and is listed for review", any(x["description"] == "Pump base" and x["amount"] == 0 for x in G)
    and len(g["review"]) == 1 and "Pump base" in g["review"][0] and "row 15" in g["review"][0], g["review"])
-ck("the group counted once: lines = page total = 15,300", g["contract"] == 15300 and g["sheets"][0]["check"]["contract"]["ok"], g["sheets"][0])
+ck("the group counted once: lines = page total = 18,800 (10,800 + 4,500 + 2,000 + 1,500)", g["contract"] == 18800 and g["sheets"][0]["check"]["contract"]["ok"], g["sheets"][0])
 rw = g["sheets"][0]["rows"]
 ck("every description row of the file accounted for", rw["rows"] == rw["accounted"] and rw["review"] == 1, rw)
 for s_ in (sid, sid2):

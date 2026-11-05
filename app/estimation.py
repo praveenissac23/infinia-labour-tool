@@ -295,11 +295,15 @@ class EstBoq(Base):
     amount = Column(Float, nullable=True)       # the amount as the internal BOQ gives it (lump sums, words); empty = qty x rate
     remark = Column(String, default="")         # "Included above", "By Client" ...
     scope = Column(String, default="")          # "" in the awarded scope; else why not (Excluded, Phase 02 ...) - not counted
+    grp = Column(String, default="")            # items priced as ONE lump sum: "head" = the group's line (the money), "in" = an item of it (5 Nov 2026)
     locals().update(_audit())
 
 
 def boq_amount(b):
-    """A BOQ line's amount: the figure the internal BOQ gave, else qty x rate."""
+    """A BOQ line's amount: the figure the internal BOQ gave, else qty x rate. An item of a group priced as one lump sum:
+    nothing - its money is the group's line."""
+    if (getattr(b, "grp", "") or "") == "in":
+        return 0.0
     return r2(b.amount) if b.amount is not None else r2((b.qty or 0) * (b.rate or 0))
 
 
@@ -308,6 +312,8 @@ def boq_counted(b):
 
 
 def boq_cost(b):
+    if (getattr(b, "grp", "") or "") == "in":
+        return 0.0                      # an item of a lump-sum group: its cost is budgeted on the group's line
     return 0.0 if (b.scope or "") else r2((b.qty or 0) * (b.cost_rate or 0))
 
 
@@ -747,7 +753,7 @@ KINDS = {
                                                 "status": S, "sub_id": I, "notes": S, "contract_id": I, "cancel_note": S, "cancelled_on": D, "prev_status": S, "ref_typed": B}),
     "contracts": (EstContract, "project_id", {"name": S, "ref": S, "value": F, "adv_pct": F, "ret_pct": F, "vat_pct": F, "sort": I, "notes": S}),
     "boq": (EstBoq, "project_id", {"section": S, "code": S, "description": S, "unit": S, "qty": F, "rate": F, "cost_rate": F,
-                                   "done_pct": F, "sort": I, "bill": S, "remark": S, "scope": S}),
+                                   "done_pct": F, "sort": I, "bill": S, "remark": S, "scope": S, "grp": S}),
     "logs": (EstLog, "project_id", {"kind": S, "seq": I, "group": S, "title": S, "party": S, "discipline": S, "ref": S, "rev": S,
                                     "sent": D, "due": D, "replied": D, "status": S, "note": S, "sort": I, "item_no": S, "spec": S, "supplier": S}),
     "finals": (EstFinal, "project_id", {"section": S, "item": S, "sc": S, "rt": S, "sd": S, "ma": S, "aa": S, "st": S,
@@ -2416,8 +2422,10 @@ def _boq_take(db, p, r, save, mode, user, fname):
         cr, dp = keep.pop(_boq_key(x["code"], x["description"]), (0.0, 0.0))
         kept += 1 if (cr or dp) else 0
         db.add(EstBoq(project_id=pid, bill=x["bill"][:120], section=x["section"][:200], code=x["code"][:40], description=x["description"][:1000],
-                      unit=x["unit"][:20], qty=x["qty"], rate=x["rate"], amount=r2(x["amount"]), remark=x["remark"][:200],
-                      scope=x["scope"][:60], cost_rate=cr, done_pct=dp, sort=base + i, created_by=user.id))
+                      unit=x["unit"][:20], qty=x["qty"], rate=0.0 if x.get("grp") == "in" else x["rate"],
+                      amount=0.0 if x.get("grp") == "in" else r2(x["amount"]), remark=x["remark"][:200],
+                      scope=x["scope"][:60], cost_rate=0.0 if x.get("grp") == "in" else cr, done_pct=dp, sort=base + i, grp=x.get("grp") or "",
+                      created_by=user.id))
     if r.get("summary_sheet") and r.get("summary_sheet") != "document":
         # what the workbook itself says each bill is worth: the BOQ screen tallies against it after any change
         p.boq_tally = json.dumps({"file": fname, "sheet": r["summary_sheet"], "total": r.get("summary_total"), "mode": mode,
@@ -2434,7 +2442,7 @@ def boq_delete(pid: int, data: dict = Body(...), db: Session = Depends(get_db), 
     _project(db, pid)
     q = db.query(EstBoq).filter(EstBoq.project_id == pid)
     if data.get("unpriced"):
-        rows = [b for b in q.all() if not boq_amount(b)]
+        rows = [b for b in q.all() if not boq_amount(b) and not (b.grp or "")]     # a group's items are priced in the group
     else:
         ids = {int(i) for i in (data.get("ids") or []) if str(i).isdigit()}
         if not ids:

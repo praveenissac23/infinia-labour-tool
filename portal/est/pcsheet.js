@@ -389,12 +389,13 @@ async function importItemsDoc(sid, file, after) {
   let bill = null;
   const rows = r.items.map(x => { let hh = ""; const b = (x.bill || "") + (x.bill_title ? " " + x.bill_title : "");
     if (b !== bill) { bill = b; if (b.trim()) hh += `<tr class="sec"><td colspan="6">${esc(b)}</td></tr>`; }
-    return hh + `<tr><td class="small">${esc(x.no)}</td><td>${esc(x.description)}</td><td class="r">${x.qty ?? ""}</td><td>${esc(x.unit)}</td><td class="r">${x.rate ? money(x.rate) : ""}</td><td class="r">${money(x.amount)}</td></tr>`; }).join("");
+    return hh + `<tr class="${x.grp === "in" ? "gin" : x.grp === "head" ? "ghd" : ""}"><td class="small">${esc(x.no)}</td><td class="d">${esc(x.description)}</td><td class="r">${x.qty ?? ""}</td><td>${esc(x.unit)}</td><td class="r">${x.grp === "in" ? "" : x.rate ? money(x.rate) : ""}</td><td class="r">${x.grp === "in" ? '<span class="small muted">incl.</span>' : money(x.amount)}</td></tr>`; }).join("");
   const secs = (c.sections || []).map(x => `<span class="st ${x.ok ? "g" : "r"}">${esc(x.bill)} ${money(x.total, false)}${x.ok ? "" : " - agreement says " + money(x.in_doc, false)}</span>`).join(" ");
   modal(`Item schedule - ${file.name}`, [], async () => {
     const mode = ($("input[name=itmode]:checked") || {}).value || "replace";
     const keep = mode === "add" ? have.items : [];
-    const add = r.items.map(x => ({ bill: x.bill, bill_title: x.bill_title, section: x.section || "", no: x.no, description: x.description, qty: x.qty || "", unit: x.unit || "", rate: x.rate || "", amount: x.amount, measure: "pct" }));
+    const add = r.items.map(x => ({ bill: x.bill, bill_title: x.bill_title, section: x.section || "", no: x.no, description: x.description, qty: x.qty || "", unit: x.unit || "",
+      rate: x.grp === "in" ? "" : (x.rate || ""), amount: x.grp === "in" ? 0 : x.amount, measure: "pct", grp: x.grp || "" }));
     await PUT(`/store/est/subs/${sid}/items`, { items: keep.concat(add) });
     toast(`${add.length} lines ${mode === "replace" ? "in" : "added"} - ${money(total, false)}`);
     if (after) await after(); else scheduleEditor(sid);
