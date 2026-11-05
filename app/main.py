@@ -2840,9 +2840,18 @@ def _with_day_sites(db, rows):
     return out
 
 
+def _only_emps(emp_nos, daily_rows, summaries):
+    """The Report Builder's ticked employees (5 Nov 2026): the report - its rows, totals and every export - is made
+    of these workers only. Empty = everyone."""
+    keep = {x.strip() for x in (emp_nos or "").split(",") if x.strip()}
+    if not keep:
+        return daily_rows, summaries
+    return [r for r in daily_rows if str(r.emp_no) in keep], [x for x in summaries if str(x.emp_no) in keep]
+
+
 @app.get("/reports/custom")
 def custom_report(month_year: str, data_source: str = "daily", dimensions: str = "", measures: str = "",
-                   date_from: str = None, date_to: str = None, company: str = "",
+                   date_from: str = None, date_to: str = None, company: str = "", emp_nos: str = "",
                    db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
     """
     The Report Builder's own aggregation engine (reports.build_custom_report,
@@ -2871,6 +2880,7 @@ def custom_report(month_year: str, data_source: str = "daily", dimensions: str =
         keep = {n for n, c in company_by_emp.items() if c == company}
         daily_rows = [r for r in daily_rows if r.emp_no in keep]
         summaries2 = [s for s in summaries2 if s.emp_no in keep]
+    daily_rows, summaries2 = _only_emps(emp_nos, daily_rows, summaries2)
     result = rp.build_custom_report(source, dims, meas, filters, daily_rows, summaries2, company_by_emp)
     return {"title": result.title + (f" - {company}" if company else ""), "note": result.note,
             "columns": [{"key": k, "label": label} for k, label in result.columns],
@@ -2953,7 +2963,7 @@ def save_monthly_note(month_year: str, payload: dict = Body(...), db: Session = 
 def export_custom_report(month_year: str, token: str, data_source: str = "daily",
                           dimensions: str = "", measures: str = "",
                           date_from: str = None, date_to: str = None, format: str = "excel",
-                          company: str = "", monthly: str = "", db: Session = Depends(get_db)):
+                          company: str = "", monthly: str = "", emp_nos: str = "", db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     dims = [d for d in dimensions.split(",") if d]
     meas = [m for m in measures.split(",") if m]
@@ -2965,9 +2975,10 @@ def export_custom_report(month_year: str, token: str, data_source: str = "daily"
         keep = {n for n, c in company_by_emp.items() if c == company}
         daily_rows = [r for r in daily_rows if r.emp_no in keep]
         summaries2 = [s for s in summaries2 if s.emp_no in keep]
+    daily_rows, summaries2 = _only_emps(emp_nos, daily_rows, summaries2)
     result = rp.build_custom_report(source, dims, meas, filters, daily_rows, summaries2, company_by_emp)
     result_dict = {"columns": [{"key": k, "label": label} for k, label in result.columns],
-                    "rows": result.rows, "totals": result.totals}
+                    "rows": [{k: v for k, v in r.items() if k != "_emps"} for r in result.rows], "totals": result.totals}
     if not result.columns:
         raise HTTPException(status_code=400, detail="No columns selected.")
 
@@ -3025,7 +3036,7 @@ def export_custom_report(month_year: str, token: str, data_source: str = "daily"
 def view_custom_report(month_year: str, token: str, data_source: str = "daily",
                         dimensions: str = "", measures: str = "",
                         date_from: str = None, date_to: str = None,
-                        company: str = "", monthly: str = "",
+                        company: str = "", monthly: str = "", emp_nos: str = "",
                         db: Session = Depends(get_db)):
     """The Report Builder's own table as the sheet that prints."""
     user = auth.get_download_user_from_token(token, db)
@@ -3033,12 +3044,12 @@ def view_custom_report(month_year: str, token: str, data_source: str = "daily",
     d = export_custom_report(month_year=month_year, token=token, data_source=data_source,
                               dimensions=dimensions, measures=measures,
                               date_from=date_from, date_to=date_to, format="rows",
-                              company=company, monthly=monthly, db=db)
+                              company=company, monthly=monthly, emp_nos=emp_nos, db=db)
     extra = (f"&data_source={quote(data_source, safe='')}"
              f"&dimensions={quote(dimensions, safe='')}"
              f"&measures={quote(measures, safe='')}")
     for k, v in (("date_from", date_from), ("date_to", date_to),
-                 ("company", company), ("monthly", monthly)):
+                 ("company", company), ("monthly", monthly), ("emp_nos", emp_nos)):
         if v:
             extra += f"&{k}={quote(str(v), safe='')}"
     url = f"/export/{quote(month_year, safe='')}/custom-report?token={t}{extra}"

@@ -1675,6 +1675,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #report-preview-card table { width: 100%; }
   #report-preview-card th.auto-num, #report-preview-card td.auto-num { width: 1%; }
   #report-preview-card th:first-child, #report-preview-card td:first-child { width: 1%; }
+  #report-preview-card th.rp-cb, #report-preview-card td.rp-cb { width: 34px; padding-left: 12px; padding-right: 4px; }
+  #report-preview-card tr.rp-on td { background: #FDF2F0; }
+  .rp-pick { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .rp-chip { background: #F1F2F4; color: #44546F; border-radius: 999px; padding: 3px 10px; font-weight: 600; }
+  .rp-chip.on { background: #C0392B; color: #fff; }
+  .rp-hint { color: #8A8F94; }
   #report-preview-card th, #report-preview-card td { padding-left: 14px; padding-right: 14px; white-space: nowrap; }
   #report-preview-card td.col-notes, #report-preview-card th.col-notes { white-space: normal; }
   /* A heading folds onto two lines rather than holding a column of
@@ -2617,7 +2623,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           </div>
 
           <div class="card" id="report-preview-card">
-            <h2>Preview</h2>
+            <h2 style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">Preview
+              <span id="rp-pick" class="rp-pick"></span></h2>
             <p id="report-note" style="font-size:12px; color:#888; margin:0 0 10px;"></p>
             <div class="grid-wrap" style="max-height: 55vh;">
               <table>
@@ -7446,6 +7453,43 @@ function colDragEnd() {
   document.querySelectorAll("#report-head-row th").forEach(th => th.style.borderLeft = "");
 }
 
+// ---- Ticked employees (5 Nov 2026) --------------------------------------
+// Tick rows in the preview, then "Show only ticked": the report - rows, totals, Preview, PDF and Excel - is made of
+// those employees only. A grouped row (by site, by engineer ...) ticks every employee in it.
+let reportPick = new Set();
+let reportOnlyPicked = false;
+function rpRowEmps(r) { return r._emps || []; }
+function rpRowOn(r) { const e = rpRowEmps(r); return e.length > 0 && e.every(x => reportPick.has(x)); }
+function rpToggleRow(i, on) {
+  const r = (rpShownRows || [])[i]; if (!r) return;
+  rpRowEmps(r).forEach(x => on ? reportPick.add(x) : reportPick.delete(x));
+  renderReportPreview();
+}
+function rpToggleAll(on) {
+  (rpShownRows || []).forEach(r => rpRowEmps(r).forEach(x => on ? reportPick.add(x) : reportPick.delete(x)));
+  renderReportPreview();
+}
+function rpOnly(on) {
+  if (on && !reportPick.size) { showStatus(monthlyStatus(), "warn", "Tick the employees to report on first."); return; }
+  reportOnlyPicked = !!on; loadReports();
+}
+function rpClear() { reportPick = new Set(); reportOnlyPicked = false; loadReports(); }
+function rpEmpParam() { return !monthlyMode && reportOnlyPicked && reportPick.size ? `&emp_nos=${encodeURIComponent([...reportPick].join(","))}` : ""; }
+function rpDrawChip() {
+  const el = document.getElementById("rp-pick"); if (!el) return;
+  if (monthlyMode) { el.innerHTML = ""; return; }
+  const n = reportPick.size;
+  el.innerHTML = reportOnlyPicked
+    ? `<span class="rp-chip on">Only ${n} ticked employee${n === 1 ? "" : "s"}</span>
+       <button class="btn btn-gray btn-sm" onclick="rpOnly(false)">Show all</button>
+       <button class="btn btn-gray btn-sm" onclick="rpClear()">Clear ticks</button>`
+    : n ? `<span class="rp-chip">${n} employee${n === 1 ? "" : "s"} ticked</span>
+       <button class="btn btn-primary btn-sm" onclick="rpOnly(true)">Show only ticked</button>
+       <button class="btn btn-gray btn-sm" onclick="rpClear()">Clear ticks</button>`
+    : `<span class="rp-hint">Tick employees below to report on them only</span>`;
+}
+let rpShownRows = [];
+
 function sortReportBy(key) {
   if (reportSortKey === key) { reportSortDir *= -1; } else { reportSortKey = key; reportSortDir = 1; }
   renderReportPreview();
@@ -7471,7 +7515,9 @@ function renderReportPreview() {
   // text columns side by side left the numbers no room. The ordinary
   // builder is untouched: every column it offers still shows as picked.
   const shown = monthlyMode ? result.columns.filter(c => c.key !== "adjustments") : result.columns;
-  headRow.innerHTML = shown.map(c => {
+  rpDrawChip();
+  const canPick = !monthlyMode && (result.rows || []).some(r => rpRowEmps(r).length);   // the monthly report stays everyone
+  headRow.innerHTML = (canPick ? `<th class="rp-cb" title="Tick every row shown"><input type="checkbox" onclick="event.stopPropagation()" onchange="rpToggleAll(this.checked)" ${result.rows.length && result.rows.every(rpRowOn) ? "checked" : ""}></th>` : "") + shown.map(c => {
     const arrow = c.key === reportSortKey ? (reportSortDir === 1 ? " \u25B2" : " \u25BC") : "";
     return `<th class="sortable" draggable="true" data-key="${c.key}"
                 ondragstart="colDragStart(event, '${c.key}')"
@@ -7486,7 +7532,7 @@ function renderReportPreview() {
     : "");
 
   if (!result.rows.length) {
-    body.innerHTML = `<tr><td colspan="${result.columns.length}" class="empty-note">No data for this cycle/range yet.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="${result.columns.length + 1}" class="empty-note">No data for this cycle/range yet.</td></tr>`;
     totalRow.innerHTML = "";
     return;
   }
@@ -7514,8 +7560,10 @@ function renderReportPreview() {
         oninput="this.style.height='auto'; this.style.height=this.scrollHeight+'px'"
         placeholder="${lines.length ? "add a note" : "-"}">${escapeHtml(monthlyNotes[empNo] || "")}</textarea></td>`;
   };
-  body.innerHTML = rows.map(r => `
-    <tr>${shown.map(c => `<td class="col-${c.key}">${reportFormatValue(c.key, r[c.key])}</td>`).join("")}${noteCell(r)}</tr>
+  rpShownRows = rows;
+  body.innerHTML = rows.map((r, i) => `
+    <tr class="${canPick && rpRowOn(r) ? "rp-on" : ""}">${canPick ? `<td class="rp-cb"><input type="checkbox" ${rpRowOn(r) ? "checked" : ""} ${rpRowEmps(r).length ? "" : "disabled"}
+      title="${rpRowEmps(r).length > 1 ? `Ticks the ${rpRowEmps(r).length} employees in this row` : "Tick to report on this employee"}" onchange="rpToggleRow(${i}, this.checked)"></td>` : ""}${shown.map(c => `<td class="col-${c.key}">${reportFormatValue(c.key, r[c.key])}</td>`).join("")}${noteCell(r)}</tr>
   `).join("");
   if (monthlyMode) {
     // Boxes open to fit whatever was saved, so a two-line note is read
@@ -7523,7 +7571,7 @@ function renderReportPreview() {
     body.querySelectorAll(".note-cell").forEach(t => { t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; });
   }
 
-  totalRow.innerHTML = shown.map((c, i) => {
+  totalRow.innerHTML = (canPick ? "<td></td>" : "") + shown.map((c, i) => {
     if (i === 0) return `<td>TOTAL</td>`;
     const v = result.totals[c.key];
     if (v === undefined) return `<td></td>`;
@@ -7558,6 +7606,7 @@ function exportReportTable(fmt) {
   let url = `${API}/export/${encodeURIComponent(cycle)}/${path}?token=${encodeURIComponent(cachedDownloadToken)}&data_source=${reportSource}&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}`;
   if (fmt !== "view") url += `&format=${fmt}`;
   if (company) url += `&company=${encodeURIComponent(company)}`;
+  url += rpEmpParam();
   // The monthly report prints under its own title, with the notes.
   if (monthlyMode && (fmt === "pdf" || fmt === "view")) url += "&monthly=1";
   let periodText = cycleLabel(cycle);
@@ -7808,6 +7857,7 @@ async function loadReports() {
   const company = (document.getElementById("report-company") || {}).value || "";
   let url = `/reports/custom?month_year=${encodeURIComponent(cycle)}&data_source=${reportSource}&dimensions=${encodeURIComponent(dims.join(","))}&measures=${encodeURIComponent(measures.join(","))}`;
   if (company) url += `&company=${encodeURIComponent(company)}`;
+  url += rpEmpParam();
   if (dateFrom) url += `&date_from=${dateFrom}`;
   if (dateTo) url += `&date_to=${dateTo}`;
 

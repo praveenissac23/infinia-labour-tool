@@ -1028,6 +1028,7 @@ def build_custom_report(data_source, dimensions, measures, filters, daily_rows, 
                 row[m] = ", ".join(uniq) or "-"
             else:
                 row[m] = round(g.get(m, 0), 2)
+        row["_emps"] = sorted(str(e) for e in g["emp_nos"] if e)    # who the row is made of - for ticking on screen
         out.append(row)
 
     if dimensions:
