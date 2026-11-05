@@ -1,21 +1,18 @@
 {
- "file": "RAIDA_R2_ae5548_BOQ_MEP_VE207.xlsx",
- "total": 560700.0,
+ "file": "RAIDA_R2_ae5548_BOQ_MEP_VE207.xlsx (corrected, spare parts 8,100 priced)",
+ "total": 568800.0,
  "notes": [
-  "MEP_BOQ_HVAC: 'HVAC BILL PAGE 6/6' says 8,100.00 but page 6 adds up to 0.00 - it repeats page 5's total, so the sheet's collection counts that page twice",
-  "MEP_BOQ_HVAC: lines add up to 234,900.00, the sheet's total row says 243,000.00 (contract)",
   "MEP_BOQ_ELECTRICAL: the collection is numbered '/10' but has 9 pages",
   "MEP_BOQ_PLUMBING: '15mm diameter, bib tap' has 6 x 315.00 but no amount in the BOQ - brought in at nil, as the page total has it",
-  "MEP_BOQ_PLUMBING: 'PLUMBING BILL PAGE 8/9' is listed twice in the collection (the last one should be the next page)",
-  "MEP_BOQ_SUMMARY: 'TOTAL HVAC SYSTEMS' says 243,000.00, the lines of MEP_BOQ_HVAC add up to 234,900.00 (difference 8,100.00)"
+  "MEP_BOQ_PLUMBING: 'PLUMBING BILL PAGE 8/9' is listed twice in the collection (the last one should be the next page)"
  ],
  "sheets": [
   {
    "sheet": "MEP_BOQ_HVAC",
    "bill": "HVAC",
    "title": "HVAC Systems",
-   "lines": 6,
-   "contract": 234900.0
+   "lines": 7,
+   "contract": 243000.0
   },
   {
    "sheet": "MEP_BOQ_ELECTRICAL",
@@ -104,6 +101,19 @@
    "section": "P) Techincal Shop drawings",
    "no": "",
    "description": "Contractor shall provide full details shop drawings and to coordinated with all other disciplines and latest ID drawings complete with full duct sizing, supports, insulation, machines to scale, dimensions leveles and any coordination sections required by consultant for proper coordination. ( Client has all rights to give this scope to any third party in case the contractor fail to do the proper technical work) NOTE: Client/Consultant has all rights to deduct this scope from the contractor with the amount specified by the consultant incase the contractor fail for submit proper documents for shop drawings, coordination drawings and builders work without any objection from the contractor for the specified fees or the third party that will do this scope.",
+   "words": "",
+   "qty": 1.0,
+   "unit": "Item",
+   "rate": 8100.0,
+   "amount": 8100.0,
+   "measure": "pct"
+  },
+  {
+   "bill": "HVAC",
+   "bill_title": "HVAC Systems",
+   "section": "R) Sundries",
+   "no": "",
+   "description": "Spare parts and Extra stock for all Mechanical equipment/system recommended maintenance operation after the end of defect liability period in accordance with Specification",
    "words": "",
    "qty": 1.0,
    "unit": "Item",

@@ -4,12 +4,11 @@ The schedule went in on 26 Oct with the old reader: the summary sheet ("Complete
 rows ("TOTAL HVAC SYSTEMS", "HVAC BILL PAGE 1/6" ...) came in as work lines, every trade line was in twice, and the
 plumbing quantities were misread - 131 lines adding up to 3,774,780 against a subcontract of 568,800.
 
-The schedule is replaced by the 49 lines of RAIDA_R2_ae5548_BOQ_MEP_VE207.xlsx read by the new reader (in
-sub_914_raida_mep.json beside this script - the Excel is not needed on the server): HVAC 234,900, Electrical 172,800,
-Plumbing 153,000 = 560,700, every bill page equal to its own subtotal. PC 02 (at site) keeps the 20% typed on the
-shop-drawings line (1,620.00); PC 01 (advance) has no work on it. The subcontract value (568,800) is NOT changed: the
-BOQ's own collection counts HVAC page 5 twice (6/6 = 8,100), so the file's 568,800 is 8,100 over its lines - that is
-for the contracts team to settle with the subcontractor. Run twice = the same result.
+The schedule is replaced by the 50 lines of the corrected RAIDA_R2_ae5548_BOQ_MEP_VE207.xlsx (Anoop, 5 Nov - page 6
+now prices "Spare parts and Extra stock for all Mechanical equipment" 8,100) read by the new reader (in
+sub_914_raida_mep.json beside this script): HVAC 243,000, Electrical 172,800, Plumbing 153,000 = 568,800 = the
+subcontract value, every bill page equal to its own subtotal. Work typed on a line that comes back is carried over.
+Run twice = the same result (re-running after the first 49-line load just swaps in the 50 lines).
 
     cd ~/infinia-labour-tool && venv/bin/python deploy/sub_914_raida_2026_11_05.py            (dry run - shows it)
     cd ~/infinia-labour-tool && venv/bin/python deploy/sub_914_raida_2026_11_05.py --apply    (writes it)
@@ -67,7 +66,7 @@ def main():
         print(f"In:   {len(r['lines'])} lines from {r['file']}, {r['total']:,.2f}")
         for s in r["sheets"]:
             print(f"      {s['bill']:<12}{s['lines']:>4} lines {s['contract']:>14,.2f}")
-        print(f"      value - lines = {sub.value - r['total']:,.2f}  (the BOQ's HVAC collection counts page 5 twice)\n")
+        print(f"      value - lines = {sub.value - r['total']:,.2f}\n")
         for p in pcs:
             if (p.paid_on or (p.status or "") == "Paid") and any(l.pc_id == p.id for l in work):
                 sys.exit(f"PC {p.seq:02d} is paid and has work on its lines - nothing done.")
@@ -104,7 +103,7 @@ def main():
         S.refresh_sub(db, sub.id)
         db.commit()
         tot = sum(i.amount or 0 for x, i in made)
-        print(f"\nDone: {len(made)} lines, {tot:,.2f}. Open the subcontract to see the schedule and PC 02.")
+        print(f"\nDone: {len(made)} lines, {tot:,.2f}. Open the subcontract to see the schedule.")
     finally:
         db.close()
 
