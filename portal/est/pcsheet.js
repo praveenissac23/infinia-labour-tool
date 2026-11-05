@@ -83,23 +83,30 @@ async function scheduleEditor(sid) {
 // checked against its own total row, then saved - and opened in the editor for any change.
 async function importItems(sid, file, after) {
   if (/\.(pdf|docx|jpe?g|png)$/i.test(file.name)) return importItemsDoc(sid, file, after);
-  const send = async (save, mode) => { const fd = new FormData(); await addFile(fd, file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace"); return api(`/store/est/subs/${sid}/items/import`, { method: "POST", body: fd }); };
+  const send = async (save, mode, force) => { const fd = new FormData(); await addFile(fd, file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace"); if (force) fd.append("force", "1"); return api(`/store/est/subs/${sid}/items/import`, { method: "POST", body: fd }); };
   let r; try { toast("Reading " + file.name + " ..."); r = await send(false); } catch (e) { return fail(e); }
   const ok = c => c ? (c.ok ? `<span class="st g">= sheet total</span>` : `<span class="st r">sheet says ${money(c.sheet, false)}</span>`) : `<span class="small muted">no total row</span>`;
   const ML = { pct: "% done", size: "size", qty: "quantity" };
   let bill = null;
-  const rowsHtml = r.items.map(x => { let h = ""; const b = (x.bill || "") + (x.bill_title ? " " + x.bill_title : "");
+  const rowsHtml = r.items.map(x => { let h = ""; const b = x.bill_title && x.bill_title.toUpperCase().startsWith((x.bill || "").toUpperCase()) ? x.bill_title : (x.bill || "") + (x.bill_title ? " " + x.bill_title : "");
     if (b !== bill) { bill = b; if (b.trim()) h += `<tr class="sec"><td colspan="8">${esc(b)}</td></tr>`; }
     return h + `<tr class="${x.rate_missing ? "warnrow" : ""}"><td class="small">${esc(x.no)}</td><td>${x.section ? `<span class="small muted">${esc(x.section)} · </span>` : ""}${esc(x.description)}${x.words ? ` <span class="small muted">· ${esc(x.words)}</span>` : ""}</td><td class="r">${x.qty ? money(x.qty) : ""}</td><td>${esc(x.unit)}</td><td class="r">${x.rate ? money(x.rate) : (x.rate_missing ? '<span class="st r">no rate</span>' : "")}</td><td class="r">${money(x.amount)}</td><td class="small">${ML[x.measure]}</td><td class="r small muted">${x.certified !== null ? money(x.certified) : ""}</td></tr>`; }).join("");
   modal(`Item schedule - ${file.name}`, [], async () => {
     const mode = ($("input[name=itmode]:checked") || {}).value || "replace";
-    const x = await send(true, mode); toast(`${x.saved} lines ${mode === "replace" ? "in" : "added"} - ${money(r.contract, false)}`);
+    const diff = mode === "add" ? r.value_diff_add : r.value_diff;
+    if (diff && Math.abs(diff) >= 0.5 && !($("#it-force") || {}).checked) throw new Error(`The schedule would not equal the subcontract value (difference ${money(diff, false)}). Check the notes - tick "bring in anyway" only if the lines are right.`);
+    if (mode === "add" && r.already_in >= Math.max(3, Math.floor(r.lines / 2))) throw new Error(`${r.already_in} of these lines are already in the schedule - adding them would count them twice. Replace instead.`);
+    const x = await send(true, mode, ($("#it-force") || {}).checked); toast(`${x.saved} lines ${mode === "replace" ? "in" : "added"} - ${money(r.contract, false)}`);
     if (after) await after(); else scheduleEditor(sid);
   }, {
     wide: true, save: `Bring in ${r.lines} lines`,
     top: `<div class="strip"><div class="fig"><div class="l">Lines</div><div class="v">${r.lines}</div></div><div class="fig green"><div class="l">Contract lines</div><div class="v">${money(r.contract, false)}</div>${r.value ? `<div class="s">${Math.abs(r.contract - r.value) < 0.01 ? '<span class="st g">= subcontract value</span>' : `subcontract value ${money(r.value, false)}`}</div>` : ""}</div>${r.certified ? `<div class="fig"><div class="l">Certified to date in this file ${tip("Read from the certificate's Certified Amount column - shown here to prove every line was read right. Only the schedule is brought in.")}</div><div class="v">${money(r.certified, false)}</div></div>` : ""}<div class="fig"><div class="l">Checked</div><div class="v">${r.all_checked ? '<span class="st g">every sheet = its total</span>' : '<span class="st a">see notes</span>'}</div></div></div>
       <div class="tw" style="margin:8px 0"><table class="t"><thead><tr><th>Sheet</th><th>Bill</th><th class="r">Lines</th><th class="r">Contract</th><th></th><th class="r">Certified</th><th></th></tr></thead><tbody>${r.sheets.map(x => `<tr><td>${esc(x.sheet)}</td><td>${esc((x.bill + " " + x.title).trim())}</td><td class="r">${x.lines}</td><td class="r">${money(x.contract)}</td><td>${x.check.contract ? ok(x.check.contract) : ""}</td><td class="r">${x.certified ? money(x.certified) : ""}</td><td>${x.check.certified ? ok(x.check.certified) : (x.check.contract ? "" : ok(null))}</td></tr>`).join("")}</tbody></table></div>
       ${r.notes.length ? `<div class="warn" style="margin:0 0 8px">${r.notes.map(esc).join("<br>")}</div>` : ""}
+      ${r.value && r.value_diff !== null && Math.abs(r.value_diff) >= 0.5 ? `<div class="warn bad" style="margin:0 0 8px"><b>The lines add up to ${money(r.contract, false)} - the subcontract value is ${money(r.value, false)} (difference ${money(r.value_diff, false)}).</b>
+        Nothing is saved until this is settled: correct the file or the subcontract value, or bring them in knowing the difference.
+        <label class="chk" style="display:flex;gap:8px;margin-top:6px"><input type="checkbox" id="it-force"><span>The lines are right - bring them in anyway</span></label></div>` : ""}
+      ${r.already_in ? `<div class="warn" style="margin:0 0 8px">${r.already_in} of these lines are already in this schedule - <b>Replace</b> the schedule rather than adding them again.</div>` : ""}
       ${r.existing ? `<div class="warn" style="margin:0 0 8px">This subcontract already has ${r.existing} schedule line(s)${r.used ? `, ${r.used} of them on certificates` : ""}.
         <label class="chk" style="display:flex;gap:8px;margin-top:6px"><input type="radio" name="itmode" value="replace" ${r.used ? "disabled" : "checked"}><span><b>Replace them</b>${r.used ? " - not possible, lines are on certificates" : ""}</span></label>
         <label class="chk" style="display:flex;gap:8px;margin-top:4px"><input type="radio" name="itmode" value="add" ${r.used ? "checked" : ""}><span><b>Add</b> these lines after them</span></label></div>` : ""}
@@ -171,12 +178,29 @@ async function pcSheet(pcid) {
     // a % that matters moves the amount, and that is compared below
     return ["qty", "claimed_qty", "w", "h", "deduct"].some(k => Math.abs(g(a, k) - g(b, k)) > 1e-9) || String(a.remark || "").trim() !== String(b.remark || "").trim()
       || Math.abs(lineAmt(it, S.lines[it.id]) - (b.amount || 0)) > 0.004; };
+  // Roll-ups (5 Nov 2026): line -> section -> bill (trade) -> all bills. Every level is the sum of its own lines only
+  // (never of another subtotal), worked out live from the lines; % = to date / contract, weighted, not an average.
+  const roll = ids => { let c = 0, pv = 0, td = 0; ids.forEach(id => { const it = d.items.find(x => x.id === id); if (!it) return;
+    c += it.amount || 0; pv += d.prev[id] ? d.prev[id].amount || 0 : 0; td += lineAmt(it, S.lines[id]); });
+    return { c: r2(c), pv: r2(pv), th: r2(td - pv), td: r2(td), pct: c ? td / c * 100 : 0, bal: r2(c - td), over: td > c + 0.005 }; };
+  const rollCells = R => ({ c: money(R.c), pct: `${R.c ? (Math.round(R.pct * 100) / 100).toFixed(2) : "0.00"}%`, pv: money(R.pv), th: money(R.th), td: money(R.td, false),
+    bal: R.over ? `<span class="st r" title="Done to date is more than the contract amount">over by ${money(-R.bal, false)}</span>` : `<span class="small muted">balance</span> ${money(R.bal, false)}` });
+  const rollRow = (ids, label, cls, n, meas) => { const R = roll(ids), C = rollCells(R);
+    return `<tr class="${cls}${R.over ? " over" : ""}" data-roll="${ids.join(",")}"><td></td><td class="d"><b>${esc(label)}</b></td><td></td><td></td><td class="r" data-rk="c"><b>${C.c}</b></td>${meas ? "<td></td>" : ""}<td class="r" data-rk="pct">${C.pct}</td><td></td>
+      <td class="r muted" data-rk="pv">${C.pv}</td><td class="r" data-rk="th">${C.th}</td><td class="r" data-rk="td"><b>${C.td}</b></td><td class="r small" data-rk="bal">${C.bal}</td></tr>`; };
+  const summaryCard = bills => { if (bills.length < 2) return "";
+    const all = d.items.map(it => it.id), row = (ids, label, cls) => { const R = roll(ids), C = rollCells(R);
+      return `<tr class="${cls || ""}${R.over ? " over" : ""}" data-roll="${ids.join(",")}"><td>${label}</td><td class="r" data-rk="c">${C.c}</td><td class="r muted" data-rk="pv">${C.pv}</td><td class="r" data-rk="th">${C.th}</td><td class="r" data-rk="td"><b>${C.td}</b></td><td class="r" data-rk="pct">${C.pct}</td><td class="r" data-rk="bal">${C.bal}</td></tr>`; };
+    return `<div class="card"><h3>Summary ${tip("Each bill's figures are the sum of its own lines; the grand total is the sum of the bills. % done = to date / contract.")}</h3><div class="tw"><table class="t rollsum">
+      <thead><tr><th>Bill</th><th class="r">Contract</th><th class="r">Previous</th><th class="r">This PC</th><th class="r">To date</th><th class="r">% done</th><th class="r">Balance</th></tr></thead>
+      <tbody>${bills.map(b => row(b.items.map(it => it.id), esc(b.title))).join("")}${row(all, "<b>Grand total</b>", "gt")}</tbody></table></div></div>`; };
   const draw = () => {
     const F = figures(), p = d.pc;
-    const bills = []; d.items.forEach(it => { const key = it.is_var ? "VAR" : it.bill; if (!bills.length || bills[bills.length - 1].key !== key) bills.push({ key, title: it.is_var ? "Variations / additional scope" : ((it.bill ? it.bill + " - " : "") + (it.bill_title || "Contract works")), items: [] }); bills[bills.length - 1].items.push(it); });
+    const bills = []; d.items.forEach(it => { const key = it.is_var ? "VAR" : it.bill; if (!bills.length || bills[bills.length - 1].key !== key) bills.push({ key, title: it.is_var ? "Variations / additional scope" : ((it.bill && !(it.bill_title || "").toUpperCase().startsWith(it.bill.toUpperCase()) ? it.bill + " - " : "") + (it.bill_title || "Contract works")), items: [] }); bills[bills.length - 1].items.push(it); });
     const lineRow = it => { const l = S.lines[it.id], pv = d.prev[it.id] ? d.prev[it.id].amount : 0, a = lineAmt(it, l), m = it.measure;
       const inp = (k, w, ph = "") => `<input class="n" data-l="${it.id}" data-k="${k}" value="${l[k] || ""}" style="${w === "fill" ? "width:100%" : `width:${w}px`}" placeholder="${ph}" ${locked ? "disabled" : ""}>`;
-      return `<tr data-row="${it.id}" class="${moved(it) ? "mv" : ""}" title="${moved(it) ? "Changed since the last certificate - claimed this time" : ""}"><td>${esc(it.no)}</td><td class="d">${esc(it.description)}${it.ref ? `<div class="small muted">${esc(it.ref)}</div>` : ""}</td><td class="r nowrap">${it.qty ? it.qty : ""} ${esc(it.unit)}</td><td class="r">${it.rate ? money(it.rate) : ""}</td><td class="r">${money(it.amount)}</td>
+      const ov = it.amount > 0 && a > it.amount + 0.005;
+      return `<tr data-row="${it.id}" class="${moved(it) ? "mv" : ""}${ov ? " over" : ""}" title="${ov ? "Done to date is more than the contract amount of this line" : moved(it) ? "Changed since the last certificate - claimed this time" : ""}"><td>${esc(it.no)}</td><td class="d">${esc(it.description)}${it.ref ? `<div class="small muted">${esc(it.ref)}</div>` : ""}</td><td class="r nowrap">${it.qty ? it.qty : ""} ${esc(it.unit)}</td><td class="r">${it.rate ? money(it.rate) : ""}</td><td class="r">${money(it.amount)}</td>
         ${B.meas ? `<td class="nowrap">${m === "size" ? inp("w", 50, "W") + " x " + inp("h", 50, "H") : m === "qty" ? `<span class="small muted">claimed</span> ${inp("claimed_qty", 62)}` : ""}</td>` : ""}
         <td class="nowrap">${m === "qty" ? inp("qty", 62, "qty") + ` <span class="small muted">${esc(it.unit)}</span> ` + `<span title="Optional: a stage % of the measured quantity (e.g. 70% = first coat done). Empty = 100%.">${inp("pct", 44, "100")}<span class="small muted">%</span></span>` : `<span class="pctin">${inp("pct", "fill", "0")}<span class="small muted">%</span></span>`}</td>
         <td>${inp("deduct", "fill", "0.00")}</td><td class="r muted">${money(pv)}</td><td class="r" data-this="${it.id}">${money(r2(a - pv))}</td><td class="r"><b data-amt="${it.id}">${money(a, false)}</b></td>
@@ -192,7 +216,13 @@ async function pcSheet(pcid) {
       const n = cols.length;
       return `<div class="tw"><table class="t sl" style="min-width:${minw}px"><colgroup>${cols.map(w => w ? `<col style="width:${w}px">` : "<col>").join("")}</colgroup>
         <thead><tr><th>No</th><th>Description</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Contract amount</th>${B.meas ? "<th>Measured</th>" : ""}<th>Done to date</th><th>Deduction</th><th class="r">Previous</th><th class="r">This PC</th><th class="r">To date</th><th>Remark</th></tr></thead>
-        <tbody>${(() => { let sec = null; return b.items.map(it => { let x = ""; if (it.section && it.section !== sec) { sec = it.section; x = `<tr class="sec"><td></td><td colspan="${n - 1}">${esc(sec)}</td></tr>`; } return x + lineRow(it); }).join(""); })()}</tbody></table></div>`;
+        <tbody>${(() => {
+          // lines under their section heading; a section of more than one line closes with its own subtotal
+          const groups = []; b.items.forEach(it => { const k = it.section || ""; if (!groups.length || groups[groups.length - 1].k !== k) groups.push({ k, items: [] }); groups[groups.length - 1].items.push(it); });
+          return groups.map(g => (g.k ? `<tr class="sec"><td></td><td colspan="${n - 1}">${esc(g.k)}</td></tr>` : "") + g.items.map(lineRow).join("")
+            + (g.k && g.items.length > 1 && groups.length > 1 ? rollRow(g.items.map(it => it.id), "Total - " + g.k, "rsub", n, B.meas) : "")).join("")
+            + rollRow(b.items.map(it => it.id), "Total - " + b.title, "rtot", n, B.meas);
+        })()}</tbody></table></div>`;
     };
     $("#b-body").innerHTML = `
       <div class="sheet">
@@ -209,6 +239,7 @@ async function pcSheet(pcid) {
             <div id="invl">${S.f.inv_lines.map((x, i) => `<div class="il"><input data-il="${i}" data-k="d" value="${esc(x.d)}" placeholder="Description"><input class="money" data-il="${i}" data-k="a" value="${x.a || ""}" placeholder="Amount"><button class="btn btn-plain btn-sm" data-ildel="${i}">&times;</button></div>`).join("")}</div>
             <button class="btn btn-ghost btn-sm" id="il-add">+ Bill line</button></details>
         </div>
+        ${d.items.length ? summaryCard(bills) : ""}
         ${d.items.length ? bills.map((b, bi) => `<div class="card"><h3>${esc(b.title)}<span class="spacer"></span><span class="small muted">to date <b data-bill="${bi}">${money(sumBill(b), false)}</b></span></h3>
           ${billTable(b)}</div>`).join("")
         : `<div class="card"><h3>Work done to date</h3><div class="muted small" style="margin-bottom:8px">No item schedule on this subcontract - type the totals, or <a href="#" id="sh-sched">set up the item schedule</a> to certify line by line.</div><div class="frm f4">
@@ -245,9 +276,12 @@ async function pcSheet(pcid) {
     const B = $("#b-body"), F = figures();
     d.items.forEach(it => { const a = lineAmt(it, S.lines[it.id]), pv = d.prev[it.id] ? d.prev[it.id].amount : 0;
       const x = $(`[data-amt="${it.id}"]`, B); if (x) x.textContent = money(a, false);
-      const tr = $(`tr[data-row="${it.id}"]`, B); if (tr) { const m = moved(it); tr.classList.toggle("mv", m); tr.title = m ? "Changed since the last certificate - claimed this time" : ""; } const t = $(`[data-this="${it.id}"]`, B); if (t) t.innerHTML = money(r2(a - pv)); });
+      const tr = $(`tr[data-row="${it.id}"]`, B); if (tr) { const m = moved(it), ov = it.amount > 0 && a > it.amount + 0.005; tr.classList.toggle("mv", m); tr.classList.toggle("over", ov);
+        tr.title = ov ? "Done to date is more than the contract amount of this line" : m ? "Changed since the last certificate - claimed this time" : ""; } const t = $(`[data-this="${it.id}"]`, B); if (t) t.innerHTML = money(r2(a - pv)); });
     const bills = []; d.items.forEach(it => { const key = it.is_var ? "VAR" : it.bill; if (!bills.length || bills[bills.length - 1].key !== key) bills.push({ key, items: [] }); bills[bills.length - 1].items.push(it); });
     bills.forEach((b, bi) => { const x = $(`[data-bill="${bi}"]`, B); if (x) x.textContent = money(r2(b.items.reduce((q, it) => q + lineAmt(it, S.lines[it.id]), 0)), false); });
+    $$("[data-roll]", B).forEach(tr => { const R = roll(tr.dataset.roll.split(",").map(Number)), C = rollCells(R); tr.classList.toggle("over", R.over);
+      $$("[data-rk]", tr).forEach(td => { const k = td.dataset.rk; td.innerHTML = (k === "c" || k === "td") && tr.closest("table.sl") ? `<b>${C[k]}</b>` : (k === "td" ? `<b>${C[k]}</b>` : C[k]); }); });
     S.deds.forEach((x, i) => { const auto = num(x.qty) && num(x.rate); const inp = $(`[data-d="${i}"][data-k="amount"]`, B); if (inp) { inp.disabled = !!auto; if (auto) inp.value = r2(num(x.qty) * num(x.rate)); } });
     const dt_ = $("#dedtot", B); if (dt_) dt_.textContent = money(F.other, false);
     const ar = $('[data-f="adv_rec_cum"]', B); if (ar && S.f.adv_auto) ar.value = F.advRec;

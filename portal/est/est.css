@@ -167,6 +167,7 @@ table.t td.neg { color: var(--red); }
 .chk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .chk input { width: auto; height: auto; }
 .warn { background: var(--amber-bg); color: var(--amber); border-radius: 7px; padding: 7px 10px; font-size: 12px; margin-top: 8px; }
+.warn.bad { background: #FDEDEC; color: #A93226; }
 
 /* toast */
 .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 9px 16px; border-radius: 8px; z-index: 200;
@@ -777,3 +778,8 @@ table.t.boq td { overflow-wrap: anywhere; }
 .ipa-pay tr.old td { color: #6B7178; background: #FAF9F7; padding: 6px 8px; font-size: 12.5px; }
 .ipa-pay tr.hd.old td { font-weight: 700; color: #4A4F55; background: #F3F0EC; }
 .ipa-pay tr.tot.old td { border-top: 1px solid #C9CDD2; font-weight: 700; color: #4A4F55; }
+/* certificate roll-ups: section subtotal, bill total, summary (5 Nov 2026) */
+table.sl tr.rsub td { background: #FAF7F5; border-top: 1px solid #E8E1DC; font-size: 12px; }
+table.sl tr.rtot td { background: #F3ECE8; border-top: 2px solid #D9CBC3; }
+table.sl tr.over td, table.rollsum tr.over td { background: #FDEDEC !important; }
+table.rollsum tr.gt td { border-top: 2px solid #D9CBC3; background: #F3ECE8; }

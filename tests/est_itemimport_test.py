@@ -94,7 +94,8 @@ it0 = items["items"][0]["id"]
 c.put(f"/store/est/subpcs/{pc}/sheet", json={"lines": [{"item_id": it0, "pct": 45}]}, headers=H)
 x = up(mep_book(), save=1, mode="replace")
 ck("replace refused once lines are on a certificate", x.status_code == 400 and "certificates" in x.text)
-ck("add still works", up(mep_book(), save=1, mode="add").status_code == 200)
+x = up(mep_book(), save=1, mode="add")
+ck("adding the same lines again is refused - they would be counted twice (914 Al Raida)", x.status_code == 400 and "twice" in x.text, x.text[:200])
 ck("not a workbook is refused", up(b"nope").status_code == 400)
 # 911: quantity x rate x stage %  (1,023.14 m2 x 16.00 x 70% = 11,459.17)
 sid2 = c.post("/store/est/subs", json={"project_id": p.id, "name": "NAIF TEST", "scope": "Paint", "value": 0}, headers=H).json()["id"]

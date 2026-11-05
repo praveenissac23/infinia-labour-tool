@@ -316,7 +316,13 @@ def paste_items(sid: int, data: dict = Body(...), db: Session = Depends(get_db),
         raise HTTPException(400, "Nothing to add - copy the lines from Excel (item, description, qty, unit, rate, amount) and paste them here.")
     measure = data.get("measure") if data.get("measure") in MEASURES else "pct"
     is_var = bool(data.get("is_var"))
-    base = max([i.sort or 0 for i in db.query(EstSubItem).filter(EstSubItem.sub_id == sid).all()] or [0])
+    have_ = db.query(EstSubItem).filter(EstSubItem.sub_id == sid).all()
+    key = lambda d, a: (re.sub(r"\s+", " ", (d or "").strip().lower())[:200], round(a or 0, 2))
+    hk = {key(i.description, i.amount) for i in have_}
+    twice = sum(1 for x in rows if key(x["description"], x["amount"]) in hk)
+    if twice >= max(3, len(rows) // 2):
+        raise HTTPException(400, f"{twice} of these {len(rows)} lines are already in the schedule - pasting them again would count them twice.")
+    base = max([i.sort or 0 for i in have_] or [0])
     for n, x in enumerate(rows):
         it = EstSubItem(sub_id=sid, sort=base + n + 1, bill=str(data.get("bill") or "")[:20], bill_title=str(data.get("bill_title") or "")[:120],
                         measure=measure, is_var=is_var, var_ref=str(data.get("var_ref") or "")[:60], created_by=user.id, **x)
@@ -330,7 +336,7 @@ def paste_items(sid: int, data: dict = Body(...), db: Session = Depends(get_db),
 
 @router.post("/store/est/subs/{sid}/items/import")
 async def import_items(sid: int, file: UploadFile = File(None), save: int = Form(0), mode: str = Form("replace"),
-                       upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""),
+                       upload_id: str = Form(""), parts: int = Form(0), filename: str = Form(""), force: int = Form(0),
                        db: Session = Depends(get_db), user: models.User = VIEW):
     """The item schedule out of an Excel workbook - the agreement BOQ or any payment certificate
     (Appendix A / Bill sheets). Read in memory, never stored. The first call shows every line and
@@ -351,6 +357,14 @@ async def import_items(sid: int, file: UploadFile = File(None), save: int = Form
     have = db.query(EstSubItem).filter(EstSubItem.sub_id == sid).order_by(EstSubItem.sort, EstSubItem.id).all()
     used = {x[0] for x in db.query(EstPCLine.item_id).filter(EstPCLine.item_id.in_([i.id for i in have] or [-1])).all()}
     out = {k: r[k] for k in ("sheets", "notes", "contract", "certified", "all_checked")}
+    # the lines are checked before anything is saved: against the subcontract value, and against the lines already in
+    # (914 Al Raida went in twice - every line counted two times)
+    key = lambda d, a: (re.sub(r"\s+", " ", (d or "").strip().lower())[:200], round(a or 0, 2))
+    have_keys = {key(i.description, i.amount) for i in have if not i.is_var}
+    out["already_in"] = sum(1 for x in r["items"] if key(x["description"], x["amount"]) in have_keys)
+    have_total = sum(i.amount or 0 for i in have if not i.is_var)
+    out["value_diff"] = r2(r["contract"] - (s.value or 0)) if s.value else None             # replacing the schedule
+    out["value_diff_add"] = r2(have_total + r["contract"] - (s.value or 0)) if s.value else None   # adding to it
     out.update({"lines": len(r["items"]), "existing": len(have), "used": len(used), "value": r2(s.value or 0), "file": fname,
                 "items": [{k: x[k] for k in ("bill", "bill_title", "section", "no", "description", "qty", "unit", "rate", "amount", "measure",
                                             "words", "done_pct", "done_qty", "certified", "rate_missing")} for x in r["items"]]})
@@ -358,6 +372,14 @@ async def import_items(sid: int, file: UploadFile = File(None), save: int = Form
         return out
     if mode not in ("replace", "add"):
         raise HTTPException(400, "Replace or add?")
+    if mode == "add" and r["items"] and out["already_in"] >= max(3, len(r["items"]) // 2):
+        raise HTTPException(400, f"{out['already_in']} of these {len(r['items'])} lines are already in the schedule - adding them would count "
+                                 "them twice. Replace the schedule instead, or add only the new lines.")
+    diff = out["value_diff_add"] if mode == "add" else out["value_diff"]
+    if diff and abs(diff) >= 0.5 and not force:
+        tot = r["contract"] + (have_total if mode == "add" else 0)
+        raise HTTPException(400, f"The schedule would add up to {tot:,.2f}, the subcontract value is {s.value:,.2f} "
+                                 f"(difference {diff:,.2f}). Check the notes, then tick 'bring in anyway' if the lines are right.")
     if mode == "replace" and have:
         if used:
             raise HTTPException(400, f"{len(used)} line(s) of the present schedule are already on certificates - they can't be replaced. "

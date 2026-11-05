@@ -99,12 +99,27 @@ def _header(row):
 
 
 LETTERED = re.compile(r"^\(?([a-z]|[ivx]{1,5})[.)]\s+", re.I)
+# A priced BOQ in bill pages (914 Al Raida MEP): each page ends "TO COLLECTION" / "TOTAL CARRIED TO COLLECTION" with
+# its own subtotal, the sheet ends with a COLLECTION of "HVAC BILL PAGE 1/6 ... 6/6", and a summary sheet carries the
+# trade totals. Those are roll-ups of the lines - never lines themselves; they are used only to check the lines.
+PAGE_TOTAL = re.compile(r"^(total\s+)?(carried\s+)?to\s+collection\b|^carried\s+(forward|over)\b|^page\s+total\b", re.I)
+BILL_PAGE = re.compile(r"\bbill\s*page\s*\d+\s*/\s*\d+", re.I)
+COLLECTION_HEAD = re.compile(r"^(collection|summary|general summary|collection sheet|bill summary|grand summary)$", re.I)
+UNIT_WORDS = {"ls", "l.s", "l.s.", "lumpsum", "lump sum", "no", "no.", "nos", "nos.", "item", "items", "set", "sets", "m", "lm", "rm",
+              "m2", "sqm", "sq.m", "m3", "cum", "kg", "ton", "pair", "lot", "unit", "units"}
+SIZE_LINE = re.compile(r"^\d+(\.\d+)?\s*mm\b", re.I)
+
+
+def _bill_from_sheet(title):
+    """A trade sheet's own short name for its bill: "MEP_BOQ_HVAC" -> HVAC, "MEP_BOQ_ELECTRICAL" -> ELECTRICAL."""
+    toks = [t for t in re.split(r"[\s_\-.]+", title or "") if t and t.upper() not in ("MEP", "BOQ", "BILL", "SHEET", "NO", "OF", "DIVISION", "DIV", "SECTION") and not t.isdigit()]
+    return " ".join(toks).upper()[:20]
 WORDS_ZERO = ("-", "--", "0", "nil")
 
 
 def read_schedule(data: bytes):
     wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
-    items, sheets, notes = [], [], []
+    items, sheets, notes, summaries = [], [], [], []
     for ws in wb.worksheets:
         if ws.sheet_state != "visible":
             continue
@@ -139,10 +154,45 @@ def read_schedule(data: bytes):
         NUMBERED = re.compile(r"^\(?\d{1,2}\s*[.)]\s+")
         total_row = None
         is_qty = "cert_qty" in cols
+        amt_of = lambda r: _n(r[cols["amount"]]) if "amount" in cols else None
+        label_of = lambda r: " ".join(x for x in (_s(r[cols["no"]]) if "no" in cols else "", _s(r[cols["desc"]])) if x)
+        # a sheet in bill pages: its page subtotals, and the roll-ups after its COLLECTION heading
+        has_pages = any(PAGE_TOTAL.match(label_of(r)) for r in rows[hi + 1:])
+        pages, rollups, pstart, in_coll = [], [], 0, False
+        intro, group = "", ""
         for r in rows[hi + 1:]:
             no = _s(r[cols["no"]]) if "no" in cols else ""
             desc = _s(r[cols["desc"]])
             rowtext = " ".join(_s(x) for x in r[:12]).lower()
+            label = label_of(r)
+            if BILL_PAGE.search(label):                         # "HVAC BILL PAGE 3/6": a page's subtotal brought to the collection
+                rollups.append((label, amt_of(r) or 0.0))
+                continue
+            if PAGE_TOTAL.match(label) and in_coll:             # the sheet's own total, under its collection
+                if amt_of(r):
+                    total_row = r
+                continue
+            if PAGE_TOTAL.match(label):                         # the page ends: its lines must add up to its subtotal
+                v = amt_of(r)
+                if v is not None:
+                    pages.append({"label": label, "sheet": round(v, 2), "lines": mine[pstart:]})
+                    total_row = r
+                pstart = len(mine)
+                continue
+            if desc and COLLECTION_HEAD.match(desc) and amt_of(r) is None:
+                in_coll = True                                  # from here the sheet only adds up what is above
+                continue
+            if in_coll:
+                v = amt_of(r)
+                if v is not None or (desc and "rate" in cols and _n(r[cols["rate"]])):
+                    rollups.append((label, v or 0.0))
+                    if re.match(r"^\s*(grand\s+)?total\b", label, re.I) and v:
+                        total_row = r
+                continue
+            if desc and re.match(r"^\s*(sub\s*-?\s*|grand\s+)?total\b", desc, re.I) and not no and has_pages:
+                if amt_of(r):
+                    total_row = r                               # "TOTAL HVAC SYSTEMS  Item 1 243,000": a total, rate or not
+                continue
             # a total row - not an item that only has the word in it ("Total station survey", with its no. / unit / qty)
             itemish = bool(no) or ("unit" in cols and _s(r[cols["unit"]])) or ("qty" in cols and _n(r[cols["qty"]]))
             starts_total = re.match(r"^\s*(sub\s*-?\s*|grand\s+)?total\b", desc, re.I)
@@ -155,10 +205,15 @@ def read_schedule(data: bytes):
                 continue
             if re.match(r"^(m/?s\.?\s*)?(sub ?-?contractor|contractor)\s*:|^date\s*:", rowtext.strip()):
                 break                                   # the signature block
-            if not desc and total_row is None and mine and any(_n(r[cols[k]]) for k in ("amount", "cert_amt") if k in cols) \
+            if not desc and not has_pages and total_row is None and mine and any(_n(r[cols[k]]) for k in ("amount", "cert_amt") if k in cols) \
                     and not any(_s(r[cols[k]]) for k in ("no", "unit", "rate", "qty") if k in cols):
                 total_row = r                           # a total with no words beside it (911)
                 continue
+            if not desc and has_pages and amt_of(r):
+                # a lump sum written on a row of its own under the lines it prices (914: "LS 4,500" under the cable
+                # tray sizes) - it is that group's line, named by the group and the sentence that introduces it
+                desc = (intro if len(intro) <= 200 else intro[:197].rsplit(" ", 1)[0] + "...") or group or section or "Lump sum"
+                no = ""
             if not desc:
                 continue
             qty = _n(r[cols["qty"]]) if "qty" in cols else None
@@ -167,6 +222,18 @@ def read_schedule(data: bytes):
             rate = _n(rate_raw)
             amt_raw = r[cols["amount"]] if "amount" in cols else None
             amt = _n(amt_raw)
+            qty_txt = _s(r[cols["qty"]]).lower() if "qty" in cols else ""
+            if qty is None and qty_txt in UNIT_WORDS and (not unit or _n(unit) is not None):
+                # the unit typed in the QTY column (914 plumbing: "No | 5 | 4,500"): the figure beside it is the quantity
+                if _n(unit) is not None:                # ... and the quantity in the UNIT column ("3 | no.")
+                    qty = _n(unit)
+                unit = _s(r[cols["qty"]])
+                if unit.lower().startswith("l") and amt:
+                    rate_raw, rate, qty = "LS", amt, 1.0
+                elif amt and rate and qty is None:
+                    qty, rate = rate, round(amt / rate, 4)
+                elif rate and qty is None:
+                    qty, rate = rate, None
             words = "" if amt is not None or amt_raw is None else _s(amt_raw)
             if words.lower() in WORDS_ZERO:
                 words = ""
@@ -180,12 +247,22 @@ def read_schedule(data: bytes):
                     head = f"{no} {desc}".strip() if no and len(no) <= 3 else desc
                     if NUMBERED.match(desc) and len(desc) <= 60:
                         section, parent = head, ""             # "10) TELEPHONE SYSTEM:", "17) Any Other Items"
+                        intro = group = ""
                     elif desc.upper() == desc and len(desc) < 120:
                         top = section = head                   # "9 ELECTRICAL WORKS", "BOOSTER SET"
                         parent = ""
+                        intro = group = ""
+                    elif no and len(no) <= 4 and len(desc) <= 80:
+                        section, parent, intro, group = head, "", "", ""   # "A) Watse, Soil & Vent Pipes"
                     else:
                         parent = desc
+                        if len(desc) >= 40:
+                            intro = desc                       # "Supply, install and connect hot dip galvanized cable trays ..."
+                        elif desc.strip(" :.").lower() not in ("generally", "general", "note", "notes"):
+                            group, intro = desc, ""            # "Storm Water Drainage"
                 else:
+                    if len(desc) >= 40:
+                        intro = desc                           # "Supply, Install, test ... PRV station" (qty 0, no price)
                     skipped += 1
                 continue
             if NUMBERED.match(desc) and section != top:
@@ -196,6 +273,11 @@ def read_schedule(data: bytes):
             elif not LETTERED.match(desc):
                 parent = ""
             ls = isinstance(rate_raw, str) and rate_raw.strip().upper() in ("LS", "L.S", "L.S.", "LUMPSUM", "LUMP SUM")
+            if ls and amt:
+                qty, rate, unit = (qty or 1.0), (rate or amt), (unit or "LS")
+            if SIZE_LINE.match(desc) and intro and not LETTERED.match(desc):
+                # "75mm diameter" alone says nothing - it is a size of the pipes the sentence above describes
+                desc = f"{intro if len(intro) <= 110 else intro[:107].rsplit(' ', 1)[0] + '...'} - {desc}"
             measure = "qty" if (is_qty and (rate or qty) and not ls and not amt) else "pct"
             amount = round(amt, 2) if amt else (round((qty or 0) * (rate or 0), 2) if (qty and rate) else 0.0)
             done_pct = None
@@ -204,8 +286,9 @@ def read_schedule(data: bytes):
                     done_pct = round(as_pct(pct), 4)
                 elif cert_amt is not None and amount:
                     done_pct = round(100 * cert_amt / amount, 4)
-            mine.append({"bill": bill, "bill_title": title[:120], "section": section[:200], "no": no[:20], "description": desc[:2000],
-                         "qty": round(qty or 0, 4) if not (isinstance(r[cols["qty"]], str) if "qty" in cols else False) else 0.0,
+            mine.append({"_calc": amt is None and bool(qty and rate) and "amount" in cols and has_pages,
+                         "bill": bill, "bill_title": title[:120], "section": section[:200], "no": no[:20], "description": desc[:2000],
+                         "qty": round(qty or 0, 4),
                          "unit": ("LS" if ls and not unit else unit)[:20], "rate": round(rate or 0, 4), "amount": amount,
                          "measure": measure, "words": words[:60], "remark": remark[:200],
                          "done_pct": done_pct, "done_qty": round(cert_qty, 4) if (measure == "qty" and cert_qty is not None) else None,
@@ -213,8 +296,56 @@ def read_schedule(data: bytes):
                          "certified": round(cert_amt, 2) if cert_amt is not None else None,
                          "stage_pct": round(as_pct(pct), 4) if (measure == "qty" and pct) else None,
                          "rate_missing": bool(qty) and not rate and not amt and not words})
+        if pstart < len(mine) and pages:
+            pages.append({"label": "after the last page", "sheet": None, "lines": mine[pstart:]})
+        # each page: its lines must make its own subtotal. A quantity x rate the BOQ left without an amount is not in
+        # the page total (914: "bib tap 6 x 315", no amount) - it comes in at nil, said so.
+        for pg in pages:
+            if pg["sheet"] is None:
+                continue
+            got = round(sum(x["amount"] for x in pg["lines"]), 2)
+            if abs(got - pg["sheet"]) < 0.01:
+                continue
+            calc = [x for x in pg["lines"] if x.get("_calc")]
+            if calc and abs(round(got - sum(x["amount"] for x in calc), 2) - pg["sheet"]) < 0.01:
+                for x in calc:
+                    notes.append(f"{ws.title}: '{x['description'][:50]}' has {x['qty']:g} x {x['rate']:,.2f} but no amount in the BOQ - "
+                                 f"brought in at nil, as the page total has it")
+                    x["amount"], x["words"] = 0.0, "not priced"
+                continue
+            notes.append(f"{ws.title}: the page ending '{pg['label']}' says {pg['sheet']:,.2f}, its lines add up to {got:,.2f}")
+        for x in mine:
+            x.pop("_calc", None)
+        page_sums = [round(sum(x["amount"] for x in pg["lines"]), 2) for pg in pages if pg["sheet"] is not None]
+        # the sheet's COLLECTION: "BILL PAGE k/n" must be page k's own total - a page counted twice or left out is said
+        bp = [(lab, v) for lab, v in rollups if BILL_PAGE.search(lab)]
+        if bp and mine:
+            for k, (lab, v) in enumerate(bp):
+                own = page_sums[k] if k < len(page_sums) else None
+                if own is None:
+                    notes.append(f"{ws.title}: '{lab}' ({v:,.2f}) has no page of its own in the sheet")
+                elif abs(round(v, 2) - own) >= 0.01:
+                    twice = [j + 1 for j, q in enumerate(page_sums) if j != k and abs(q - round(v, 2)) < 0.01]
+                    notes.append(f"{ws.title}: '{lab}' says {v:,.2f} but page {k + 1} adds up to {own:,.2f}"
+                                 + (f" - it repeats page {twice[0]}'s total, so the sheet's collection counts that page twice" if twice else ""))
+            if len(bp) < len(page_sums):
+                notes.append(f"{ws.title}: the collection lists {len(bp)} pages, the sheet has {len(page_sums)}")
+            nums = [re.search(r"(\d+)\s*/\s*(\d+)", lab) for lab, _ in bp]
+            if any(m and int(m.group(2)) != len(bp) for m in nums):
+                notes.append(f"{ws.title}: the collection is numbered '/{nums[0].group(2)}' but has {len(bp)} pages")
+            seen = {}
+            for lab, _ in bp:
+                key = re.sub(r"\s+", " ", lab.upper())
+                if key in seen:
+                    notes.append(f"{ws.title}: '{lab}' is listed twice in the collection (the last one should be the next page)")
+                seen[key] = 1
         if not mine:
+            if rollups:
+                summaries.append((ws.title, rollups))
             continue
+        if not bill and has_pages:
+            for x in mine:
+                x["_sheet"] = ws.title                  # one bill per trade sheet - named once all sheets are read
         contract = round(sum(x["amount"] for x in mine), 2)
         certified = round(sum(x["certified"] or 0 for x in mine), 2)
         chk = {}
@@ -246,6 +377,37 @@ def read_schedule(data: bytes):
         sheets.append({"sheet": ws.title, "bill": bill, "title": title, "lines": len(mine), "contract": contract, "certified": certified,
                        "check": {k: {"sheet": v, "ok": ok} for k, (v, ok) in chk.items()}, "unpriced": skipped})
         items += mine
+    # a BOQ of several trade sheets in bill pages (MEP_BOQ_HVAC / _ELECTRICAL / _PLUMBING): each sheet is its own bill
+    paged = [sh for sh in sheets if any(x.get("_sheet") == sh["sheet"] for x in items)]
+    if len(paged) > 1:
+        for sh in paged:
+            sh["bill"] = _bill_from_sheet(sh["sheet"]) or sh["sheet"][:20]
+            for x in items:
+                if x.get("_sheet") == sh["sheet"]:
+                    x["bill"] = sh["bill"]
+    for x in items:
+        x.pop("_sheet", None)
+    # the summary sheet ("TOTAL HVAC SYSTEMS 243,000"): each trade's figure there against its own sheet's lines
+    for sname, rows_ in summaries:
+        for lab, v in rows_:
+            if re.search(r"grand|carried|all\b", lab, re.I) and not re.search(r"system|works", lab, re.I):
+                continue
+            words = set(re.findall(r"[a-z]{4,}", lab.lower().replace("systems", " ").replace("total", " ")))
+            hit = next((sh for sh in sheets if words & set(re.findall(r"[a-z]{4,}", sh["sheet"].lower()))), None)
+            if not hit:
+                continue
+            title_ = re.sub(r"^\s*total\s+", "", lab, flags=re.I).strip()
+            title_ = re.sub(r"(?i)(electrical|plumbing|hvac)(systems)", r"\1 \2", title_)
+            for x in items:
+                if x["bill"] == hit["bill"] and not x["bill_title"]:
+                    x["bill_title"] = title_.title().replace("Hvac", "HVAC")[:120]
+            hit["title"] = hit["title"] or title_.title().replace("Hvac", "HVAC")
+            if abs(round(v, 2) - hit["contract"]) >= 0.01:
+                notes.append(f"{sname}: '{lab}' says {v:,.2f}, the lines of {hit['sheet']} add up to {hit['contract']:,.2f} "
+                             f"(difference {v - hit['contract']:,.2f})")
+                hit["check"]["summary"] = {"sheet": round(v, 2), "ok": False}
+            else:
+                hit["check"]["summary"] = {"sheet": round(v, 2), "ok": True}
     if not items:
         raise ValueError("No schedule lines found. Upload the agreement BOQ or a payment certificate with its Appendix / Bill sheets "
                          "(a heading row with Description and Amount or Rate).")
