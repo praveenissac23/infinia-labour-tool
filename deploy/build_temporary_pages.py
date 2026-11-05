@@ -1412,7 +1412,10 @@ def build():
              'var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}'
              'Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})])'
              '.catch(function(){}).then(function(){location.reload()})}).catch(function(){})}catch(e){}})();</script>') % build
-    page = page.replace("</head>", check + "</head>", 1)
+    # Save-as window for every download + WhatsApp app / Web on every share (portal/help/savepick.js). In the
+    # head and not deferred, so it is in place before any page code checks what the browser can share.
+    sp = f'<script src="/portal/help/savepick.js?v={_v("portal/help/savepick.js")}"></script>'
+    page = page.replace("</head>", check + sp + "</head>", 1)
     with open(APP_OUT, "w", encoding="utf-8") as f:
         f.write(page)
     # Squeezed for the browser (a quarter smaller to fetch and to read on a
@@ -1494,6 +1497,7 @@ def brand_hand_written(menu_rights=None):
                  f'<script src="/portal/help/docread.js?v={_v("portal/help/docread.js")}" defer></script>'
                  f'<script src="/portal/help/fab.js?v={_v("portal/help/fab.js")}" defer></script>'
                  f'<script src="/portal/help/offline.js?v={_v("portal/help/offline.js")}" defer></script>'
+                 f'<script src="/portal/help/savepick.js?v={_v("portal/help/savepick.js")}"></script>'
                  '<!--/help-tips-->')
         if "<!--help-tips-->" in new:
             new = re.sub(r"<!--help-tips-->.*?<!--/help-tips-->", lambda _: block, new, count=1, flags=re.S)

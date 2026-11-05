@@ -379,6 +379,17 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #ot-table .ot-lpo { font-weight: 700; font-size: 13.5px; color: #8E2A20; margin-bottom: 3px; letter-spacing: .2px; }
   #ot-table .ot-lpo span { font-weight: 400; font-size: 11.5px; color: #8A8F94; margin-left: 8px; letter-spacing: 0; }
   #ot-table mark.ot-hl { background: #FFE58F; color: inherit; padding: 0 1px; border-radius: 2px; }
+  #ot-table a.ot-peek { color: inherit; text-decoration: underline dotted 1px; text-underline-offset: 3px; cursor: zoom-in; }
+  #ot-table a.ot-peek:hover { color: #C0392B; text-decoration-style: solid; }
+  #ot-peek { position: fixed; inset: 0; z-index: 900; background: rgba(23,26,31,.22); display: none; align-items: center; justify-content: flex-end; padding: 18px; }
+  #ot-peek.on { display: flex; }
+  #ot-peek .otp-box { width: min(880px, 100%); height: 100%; background: #fff; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.28); display: flex; flex-direction: column; overflow: hidden; }
+  #ot-peek .otp-hd { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border-bottom: 1px solid #ECEEF0; }
+  #ot-peek .otp-hd b { font-size: 15px; color: #8E2A20; }
+  #ot-peek .otp-hd #otp-sub { color: #6B7075; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #ot-peek .otp-x { border: 0; background: none; font-size: 24px; line-height: 1; color: #6B7075; cursor: pointer; padding: 2px 6px; }
+  #ot-peek iframe { flex: 1; border: 0; width: 100%; background: #F6F7F8; }
+  @media (max-width: 700px) { #ot-peek { padding: 0; } #ot-peek .otp-box { border-radius: 0; } }
   #ot-table th.ot-srt:hover { color: #2B2622; }
   #ot-table th .ot-ar { font-size: .8em; margin-left: 4px; color: #C0392B; }
   #ot-table thead tr.ot-sortline td { font-size: 11.5px; color: #888; font-weight: 400; padding: 3px 10px; background: transparent; border: 0; text-transform: none; letter-spacing: 0; }
@@ -22615,6 +22626,8 @@ function otRender() {
     const re = new RegExp("(" + escapeHtml(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig"); return e.replace(re, '<mark class="ot-hl">$1</mark>'); };
   const sl = document.querySelector("#ot-head tr.ot-sortline td");
   if (sl && q) sl.innerHTML = `<b>${rows.length}</b> result${rows.length === 1 ? "" : "s"} for "${escapeHtml(q)}" - LPO number first, then the materials · ` + sl.innerHTML;
+  // the LPO number opens the order itself in a window over the tracker (5 Nov 2026)
+  const peek = (r, inner) => r.kind === "lpo" && r.id ? `<a href="#" class="ot-peek" onclick="event.preventDefault(); event.stopPropagation(); otPeek('${r.key}')" title="Look at this LPO">${inner}</a>` : inner;
   body.innerHTML = rows.map(r => {
     const steps = OT_STEPS.map((s, i) => {
       if (r.cancelled) return i === 5 ? `<span class="x">Closed</span>` : `<span>&nbsp;</span>`;
@@ -22632,8 +22645,8 @@ function otRender() {
     return `<tr class="ot-r" data-k="${r.key}" onclick="otSheet('${r.key}')" title="Tap for everything that can be done">
       ${tidy ? `<td class="pick" onclick="event.stopPropagation()">${r.stage < 5 ? `<input type="checkbox" class="ot-pick" value="${r.key}" onchange="otTidyCount()">` : ""}</td>` : ""}
       <td class="site">${escapeHtml(r.site || "-")}</td>
-      <td class="what">${q ? `<div class="ot-lpo">${hl(r.ref)}${r.date ? `<span>${escapeHtml(dmy(r.date))}</span>` : ""}</div><div class="t1">${hl(r.what || "-")}</div><div class="t2">${hl(refs.slice(1).join(" · ") || (r.kind === "lpo" ? "" : r.requested_by || ""))}</div>`
-        : `<div class="t1">${escapeHtml(r.what || "-")}</div><div class="t2">${escapeHtml(refs.join(" · "))}${r.date ? " · " + escapeHtml(dmy(r.date)) : ""}</div>`}</td>
+      <td class="what">${q ? `<div class="ot-lpo">${peek(r, hl(r.ref))}${r.date ? `<span>${escapeHtml(dmy(r.date))}</span>` : ""}</div><div class="t1">${hl(r.what || "-")}</div><div class="t2">${hl(refs.slice(1).join(" · ") || (r.kind === "lpo" ? "" : r.requested_by || ""))}</div>`
+        : `<div class="t1">${escapeHtml(r.what || "-")}</div><div class="t2">${r.kind === "lpo" ? peek(r, escapeHtml(r.ref)) + (refs.length > 1 ? " · " + escapeHtml(refs.slice(1).join(" · ")) : "") : escapeHtml(refs.join(" · "))}${r.date ? " · " + escapeHtml(dmy(r.date)) : ""}</div>`}</td>
       <td>${sup}</td>
       <td class="st"><div class="ot-steps">${steps}</div></td>
       <td>${note}</td>
@@ -22643,6 +22656,30 @@ function otRender() {
   otTidyCount();
 }
 function otRow(k) { return (OT && OT.rows || []).find(r => r.key === k); }
+// A look at the LPO without leaving the tracker: the order in a window over the list, which stays in view behind it.
+// Open in full / Close (or Esc, or a tap outside).
+async function otPeek(k) {
+  const r = otRow(k); if (!r || !r.id) return;
+  let ov = document.getElementById("ot-peek");
+  if (!ov) {
+    ov = document.createElement("div"); ov.id = "ot-peek";
+    ov.innerHTML = `<div class="otp-box" role="dialog" aria-label="LPO"><div class="otp-hd"><b id="otp-title"></b><span id="otp-sub"></span><span style="flex:1"></span><button type="button" class="btn btn-gray" id="otp-full">Open in full</button><button type="button" class="otp-x" id="otp-x" title="Close (Esc)">&times;</button></div><iframe id="otp-frame" title="LPO"></iframe></div>`;
+    document.body.appendChild(ov);
+    const shut = () => { ov.classList.remove("on"); document.getElementById("otp-frame").src = "about:blank"; };
+    ov.addEventListener("click", e => { if (e.target === ov) shut(); });
+    document.getElementById("otp-x").onclick = shut;
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && ov.classList.contains("on")) shut(); });
+  }
+  document.getElementById("otp-title").textContent = r.ref || "LPO";
+  document.getElementById("otp-sub").textContent = [r.supplier, r.site].filter(Boolean).join(" · ");
+  document.getElementById("otp-full").onclick = () => openLpo(r.id);
+  ov.classList.add("on");
+  const fr = document.getElementById("otp-frame");
+  fr.src = "about:blank";
+  if (!cachedDownloadToken) { try { await refreshDownloadToken(); } catch (e) {} }
+  if (!cachedDownloadToken) { showStatus("ot-status", "err", "Could not open it - check the connection."); ov.classList.remove("on"); return; }
+  fr.src = `${API}/export/purchase/${r.id}/view?token=${encodeURIComponent(cachedDownloadToken)}`;
+}
 function otAfter(msg) { if (msg) showStatus("ot-status", "ok", msg); otLoad(); }
 // reload once a form opened from here is closed - whatever was done there shows straight away
 function otWhenClosed(test) {

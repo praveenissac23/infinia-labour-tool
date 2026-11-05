@@ -338,6 +338,18 @@ def _freeze_version():
 _FREEZE_V = _freeze_version()
 
 
+def _savepick_version():
+    import hashlib
+    try:
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "portal", "help", "savepick.js"), "rb") as f:
+            return hashlib.sha1(f.read()).hexdigest()[:10]
+    except OSError:
+        return "0"
+
+
+_SAVEPICK_V = _savepick_version()
+
+
 # Anything saved (any POST / PUT / PATCH / DELETE) moves this on, so answers kept for a few seconds - the bell -
 # are never older than the last change.
 _WRITE_GEN = [0]
@@ -391,6 +403,14 @@ async def never_cache_api(request, call_next):
             if b"<table" in body and b"freeze.js" not in body:
                 i = body.rfind(b"</body>")
                 body = body[:i] + tag + body[i:] if i >= 0 else body + tag
+            # every download asks where to save it; every share offers WhatsApp app / Web (portal/help/savepick.js).
+            # First thing in the page, so the page's own share check already sees it.
+            if b"savepick.js" not in body:
+                sp = f'<script src="/portal/help/savepick.js?v={_SAVEPICK_V}"></script>'.encode()
+                low = body[:4000].lower()
+                j = low.find(b"<head")
+                j = low.find(b">", j) + 1 if j >= 0 else 0
+                body = body[:j] + sp + body[j:]
             out = _gz.compress(body) if zipped else body
             headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
             response = HTMLResponse(content=out, status_code=response.status_code, headers=headers)
