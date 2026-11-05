@@ -42,7 +42,7 @@ def _num(t):
     return -v if neg else v
 
 
-SPLITHEAD = re.compile(r"\s(?=(?:amount|qty|quantity|quantities|uom|u/m|particulars|details|remarks|value)\b)|(?<!total)\s(?=total\b)"
+SPLITHEAD = re.compile(r"(?<!total)(?<!contract)\s(?=(?:amount|value)\b)|\s(?=(?:qty|quantity|quantities|uom|u/m|particulars|details|remarks)\b)|(?<!total)\s(?=total\b)"
                        r"|(?<!unit)(?<!total)\s(?=(?:rate|price)\b)|\s(?=unit\s+(?:rate|price)\b)|\s(?=unit\b(?!\s*(?:rate|price)))|(?<!item)(?<!work)(?<!of)\s(?=description\b)", re.I)
 
 
@@ -183,7 +183,7 @@ def _same_rows(pl):
     out = []
     for l in pl:
         o = out[-1] if out else None
-        if o is not None and abs(l["y"] - o["y"]) <= 5:
+        if o is not None and abs(l["y"] - o["y"]) <= 0.42 * max(l.get("h") or 10.0, o.get("h") or 10.0):
             a, b = _cells(o), _cells(l)
             if not any(x < xe2 and x2 < xe for x, xe, _ in a for x2, xe2, _ in b):
                 cs = sorted(a + b)
@@ -220,7 +220,8 @@ def _brackets(s):
             return True                                # the lump sum on a line of its own
         # on an item's own line: the lump sum printed half-way down a run of items with a unit and no price of their
         # own (the merge runs on below the last item, so it can fall on the last one) - never an item priced by quantity
-        lump = (rate is not None and isinstance(r[rate], str)) or not any(isinstance(r[c], (int, float)) and r[c] > 0 for c in uq)
+        lump = (rate is not None and (ls_word(r[rate]) or (isinstance(r[rate], str) and r[rate].strip().lower().strip(".") in FIGW))) \
+            or not any(isinstance(r[c], (int, float)) and r[c] > 0 for c in uq) and not any(re.match(r"^\s*\(?[\d,]*\.?\d*[1-9]", r[c]) for c in uq if isinstance(r[c], str))
         return bool(r[di]) and lump and k > 0 and unit_only(rows[k - 1])
 
     # an item's figures on a line of their own just under its words ("Item 1 8,100.00 8,100.00"): one row, as in the Excel
@@ -232,7 +233,18 @@ def _brackets(s):
             r[:] = [None] * len(r)
     rows[:] = [r for r in rows if any(v not in (None, "") for v in r)]
     merges, drop, used, k = [], set(), set(), 0
-    pv = lambda r: tuple(r[c] for c in price)
+    def money_(v):
+        if isinstance(v, (int, float)):
+            return float(v) or None
+        if isinstance(v, str):
+            return _num(re.sub(r"(?i)\b(aed|dhs?)\b\.?", "", v).strip()) or None
+        return None
+    def pv(r):
+        """The money printed ("AED 44,400.00", an "LS" beside it or not) - or, with no money, the word ("Included")."""
+        m = tuple(m for m in (money_(r[c]) for c in price) if m)
+        if m:
+            return m
+        return tuple(str(r[c]).strip().lower().strip(".") for c in price if isinstance(r[c], str) and not ls_word(r[c]) and r[c].strip())
     while k < len(rows):
         if not carrier(k):
             k += 1
@@ -244,10 +256,12 @@ def _brackets(s):
             """The same lump sum printed again where the bracket runs over a page (at the foot of one page, on the next):
             right next to its items - or, past other words, only when it is a sum of money ("Included" is too common)."""
             o = rows[j]
-            return j != k and has(o, price) and pv(o) == key and (near or any(isinstance(v, (int, float)) and v > 0 for v in key)) \
+            return j != k and key and has(o, price) and pv(o) == key and (near or any(isinstance(v, (int, float)) and v > 0 for v in key)) \
                 and not total.search(str(o[di] or "")) and (
                 not o[di] or (rate is not None and isinstance(o[rate], str)) or not any(isinstance(o[c], (int, float)) and o[c] > 0 for c in uq))
-        member = lambda j, near=True: j not in used and (unit_only(rows[j]) or again(j, near))
+        # "LS" alone on a line (the merged rate cell printed again at the foot of a page): part of the bracket
+        bare_ls = lambda j: not rows[j][di] and not code(rows[j]) and not has(rows[j], uq) and ls_only(rows[j])
+        member = lambda j, near=True: j not in used and (unit_only(rows[j]) or again(j, near) or bare_ls(j))
         a = k
         while a - 1 >= 0 and member(a - 1):
             a -= 1
@@ -276,7 +290,7 @@ def _brackets(s):
             b = j
         dups = [j for j in range(a, b + 1) if again(j)]
         dups = [j for j in dups if again(j, False) or any(abs(j - m) == 1 and not plain(rows[m]) for m in range(a, b + 1))]
-        gone = {j for j in [k] + dups if not rows[j][di] and not code(rows[j]) and not has(rows[j], uq)}
+        gone = {j for j in [k] + dups + [j for j in range(a, b + 1) if bare_ls(j)] if not rows[j][di] and not code(rows[j]) and not has(rows[j], uq)}
         run = [j for j in range(a, b + 1) if j not in gone]
         if not run:
             k += 1
@@ -337,7 +351,17 @@ def to_workbook(lines):
             continue
         sig = _sig(cols)
         if cur is None or len(sig) != len(last_sig) or cur.get("ended") or cur.get("closed"):
-            cur = {"cols": cols, "di": di, "rows": [], "name": "", "ended": False, "coll": False}
+            carry_ = []
+            if cur is not None and len(sig) == len(last_sig):
+                # headings at the foot of the page before ("BILL NO. 3 - LANDSCAPING") open the next bill: they go with it
+                while cur["rows"] and not any(v not in (None, "") for k_, v in enumerate(cur["rows"][-1]) if k_ != cur["di"] and k_ > 0) \
+                        and not re.search(r"\btotal\b|carried|collection|summary", str(cur["rows"][-1][cur["di"]] or ""), re.I):
+                    carry_.insert(0, cur["rows"].pop())
+            cur = {"cols": cols, "di": di, "rows": carry_, "name": "", "ended": False, "coll": False}
+            for r_ in carry_:
+                w_ = str(r_[di] or "")
+                if w_.isupper() and len(w_) <= 40:
+                    cur["first_caps"] = cur.get("first_caps") or w_
             sheets.append(cur)
         last_sig = sig
         cols, di = cur["cols"], cur["di"]
@@ -419,11 +443,13 @@ def to_workbook(lines):
             # the line before ran to the edge of the column (the words wrapped) and the next is close under it
             # the words wrapped: the next line's first word would not have fitted at the end of this one
             fw = (it["words"].split() or [""])[0]
-            wrapped = last and last["we"] + it.get("cw", 5.0) * (len(fw) + 1) > wmax - 1
+            edge = max(wmax, (right[0]["x"] - 4) if right else wmax)      # the description column's right edge
+            wrapped = last and last["we"] + it.get("cw", 5.0) * (len(fw) + 1) > min(edge, max(wmax, last["we"]) + 0.6 * (edge - wmax)) - 1
             caps = lambda t: bool(re.search(r"[A-Z]", t)) and not re.search(r"[a-z]", t)
             heading = last and caps(last["words"]) and not caps(it["words"])     # "LIGHT FITTINGS ..." over "Supply, Install ..."
             numf = lambda f: f
-            if last and not it["code"] and not heading and (gap <= 1.12 * it["h"] or (wrapped and gap <= 1.45 * it["h"])) \
+            tot_ = lambda t: re.match(r"^(total\b|sub\s*-?\s*total|carried|brought|b\s*/\s*f|c\s*/\s*f|page\s+total|collection\b|bill\s+total|grand\s+total)", t or "", re.I)
+            if last and not it["code"] and not heading and not tot_(it["words"]) and not tot_(last["words"]) and ((gap <= 1.12 * it["h"] and (wrapped or not it["figs"])) or (wrapped and gap <= 1.45 * it["h"])) \
                     and (not numf(it["figs"]) or not numf(last["figs"])) and last["words"]:
                 last["words"] += " " + it["words"]
                 last["y1"] = it["y"]
@@ -543,7 +569,20 @@ def column_lines(doc, data=None):
                     for o in (pg.lines or []) + (pg.rects or []):
                         if (o["bottom"] - o["top"]) > 8 and abs(o["x1"] - o["x0"]) < 1.5:
                             vr.append(((o["x0"] + o["x1"]) / 2, o["top"], o["bottom"]))
-                    fine[n] = ([Word(text=w["text"], x0=w["x0"], x1=w["x1"], y0=w["top"], y1=w["bottom"]) for w in ws_], vr)
+                    wl_ = []
+                    for w in ws_:
+                        m_ = re.fullmatch(r"(\(?[\d,]*\.?\d+\)?)([A-Za-z][A-Za-z0-9/.²³]*)", w["text"])
+                        if m_ and not re.fullmatch(r"\d+(mm|cm|m|kg|kw|w|v|a|l|mm2|m2|m3|x\d.*)", w["text"], re.I):
+                            # a quantity and its unit printed touching ("52Set", "1514lm"): two words
+                            cw = (w["x1"] - w["x0"]) / max(1, len(w["text"]))
+                            xm = w["x0"] + cw * len(m_.group(1))
+                            w1 = Word(text=m_.group(1), x0=w["x0"], x1=xm, y0=w["top"], y1=w["bottom"])
+                            w2 = Word(text=m_.group(2), x0=xm + 0.01, x1=w["x1"], y0=w["top"], y1=w["bottom"])
+                            w2.glue = True                     # back together if both halves land in one column
+                            wl_ += [w1, w2]
+                        else:
+                            wl_.append(Word(text=w["text"], x0=w["x0"], x1=w["x1"], y0=w["top"], y1=w["bottom"]))
+                    fine[n] = (wl_, vr)
         except Exception:
             fine = {}
     regs = list(getattr(doc, "regions", []) or [])
@@ -631,7 +670,7 @@ def column_lines(doc, data=None):
             out.append({"p": reg.page, "y": hbot, "h": 10.0, "hdr": True, "c": [c["label"] for c in cols],
                         "x": [c["x"] for c in cols], "xe": [c["xe"] for c in cols]})
         else:
-            out.append({"p": reg.page, "y": (data[0]["y"] - 1) if data else 0, "h": 10.0, "hdr": True, "c": [c["label"] for c in cols],
+            out.append({"p": reg.page, "y": (data[0]["y"] - 30) if data else 0, "h": 10.0, "hdr": True, "c": [c["label"] for c in cols],
                         "x": [c["x"] for c in cols], "xe": [c["xe"] for c in cols]})
         for r in data:
             # phrases: words a space apart; words of a heading running on past its column stay in it
@@ -650,6 +689,9 @@ def column_lines(doc, data=None):
                         not any(NUM.match(w.text.replace(",", "")) or w.text.lower().strip(".") in UNITW for w in p_[1:]):
                     cells.setdefault(k0, []).append(p_)          # the words run over the next columns (an empty cell)
                     continue
+                if k0 > di and len(p_) == 2 and NUM.match(p_[0].text.replace(",", "")) and p_[1].text.lower().strip(".") in UNITW:
+                    cells.setdefault(k0, []).append(p_)          # "57 Pair": a quantity written with its unit, one cell
+                    continue
                 for w in p_:
                     num = NUM.match(w.text.strip()) is not None or re.fullmatch(r"\(?[\d,]+\.\d+\)?", w.text.strip()) is not None
                     k = col_at((w.x1 - 0.5) if num else (w.x0 + 0.5))
@@ -658,7 +700,10 @@ def column_lines(doc, data=None):
             for k in sorted(cells):
                 ws2 = [w for grp in cells[k] for w in grp]
                 ws2.sort(key=lambda w: w.x0)
-                t = " ".join(w.text for w in ws2).strip()
+                t = ""
+                for w in ws2:
+                    t += ("" if (not t or getattr(w, "glue", False)) else " ") + w.text
+                t = t.strip()
                 if not t:
                     continue
                 if k <= di:                                    # words: where they stand
@@ -720,8 +765,9 @@ def workbook_of(data, name=""):
                 return (-1,)
             alarms = sum(1 for n in r["notes"] if re.search(r" says |add up to|not the|accounted for", n))
             return (int(r["all_checked"]), -alarms)
-        m0, m1 = mark(cands[0]), mark(cands[1])
-        wb = cands[1] if (m1[0] > m0[0] or (m1[0] == m0[0] == 1 and m1[1] > m0[1])) else cands[0]
+        # the column reading is the one to trust; the browser-line reading only when the column one found nothing
+        m0 = mark(cands[0])
+        wb = cands[0] if m0 != (-1,) else cands[1]
     if wb is None:
         raise NotTable("No priced table (DESCRIPTION ... AMOUNT columns) was found in this file.")
     return wb

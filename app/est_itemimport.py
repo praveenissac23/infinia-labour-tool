@@ -260,12 +260,17 @@ def find_table(ws, rows):
             break
     if best is None:
         return None, None
-    _, hi, roles, _ = best
+    _, hi, roles, top_i = best
     cols = {}
+    lab = lambda j: " ".join(_hk(rows[x][j]) for x in range(top_i, hi + 1) if j < len(rows[x]))
     for k, cs in roles.items():
         if k in ("skip", "rate_part"):
             continue
         cols[k] = cs[0] if k not in ("amount", "rate") else cs[-1] if k == "rate" else cs[0]
+        if k == "amount" and len(cs) > 1:
+            # "Total" under the rates and "Total Amount" after it: the one that says amount / value
+            named = [j for j in cs if re.search(r"\b(amount|value)\b", lab(j))]
+            cols[k] = named[0] if named else cs[-1]
     if "price" in roles:
         for c in roles["price"]:
             if "rate" not in cols:
