@@ -50,6 +50,9 @@ class ExpiryStarted(Base):
     expires_on = Column(Date, nullable=True)
     marked_by = Column(String, default="")
     marked_at = Column(DateTime, default=datetime.utcnow)
+    # "started" = renewal in hand; "hold" = not renewing (5 Nov 2026): kept on the page, no reminders of any kind,
+    # whatever its date, until someone presses Renew now.
+    state = Column(String, default="started")
 
 
 ExpiryStarted.__table__.create(bind=engine, checkfirst=True)
@@ -62,6 +65,8 @@ def started_keys(db):
 
 def _one_started(t, i, expires_on, marks):
     m = marks.get((t, i))
+    if m and (getattr(m, "state", None) or "started") == "hold":
+        return True                                 # not renewing: silent until Renew now, the date does not matter
     return bool(m) and (m.expires_on.isoformat() if m.expires_on else None) == (expires_on or None)
 
 
@@ -145,8 +150,15 @@ def missing_people(db):
     return out
 
 
+def _held(item, marks):
+    """Marked not renewing - off every count and reminder, still on the page."""
+    ids = [i for i, _ in item["members"]] if item.get("members") else [item["id"]]
+    return any(((getattr(marks.get((item["type"], i)), "state", None) or "") == "hold") for i in ids)
+
+
 def summary(db):
-    items = _items(db)
+    marks = started_keys(db)
+    items = [i for i in _items(db) if not _held(i, marks)]
     miss = missing_people(db)
     expired = [i for i in items if i["days_left"] < 0]
     week = [i for i in items if 0 <= i["days_left"] <= 7]
@@ -229,7 +241,8 @@ def get_started(db: Session = Depends(get_db), user: models.User = M.DOCS):
         it = items.get((t, i))
         current = bool(it) and _one_started(t, i, it["expires_on"], {(t, i): m})
         if current:
-            out.append({"type": t, "id": i, "by": m.marked_by, "at": m.marked_at.isoformat() if m.marked_at else ""})
+            out.append({"type": t, "id": i, "by": m.marked_by, "at": m.marked_at.isoformat() if m.marked_at else "",
+                        "state": m.state or "started"})
     opens, seen = visa_open(db), {(r["type"], r["id"]) for r in out}
     for it in items.values():
         if it["type"] == "person" and it.get("kind") in GROUP and it["employee_id"] in opens and ("person", it["id"]) not in seen:
@@ -252,6 +265,7 @@ def set_started(payload: dict = Body(...), db: Session = Depends(get_db), user: 
         raise HTTPException(status_code=404, detail="That document is not on file.")
     members = group_members(raw, item)     # visa, labour card and EID go together
     on = payload.get("on", True)
+    state = "hold" if payload.get("state") == "hold" else "started"
     what = GROUP_LABEL if len(members) > 1 else item["what"]
     for it in members:
         row = db.query(ExpiryStarted).filter(ExpiryStarted.doc_type == t, ExpiryStarted.doc_id == it["id"]).first()
@@ -261,9 +275,10 @@ def set_started(payload: dict = Body(...), db: Session = Depends(get_db), user: 
             row.expires_on = M._as_date(it["expires_on"])
             row.marked_by = user.full_name or user.username
             row.marked_at = datetime.utcnow()
+            row.state = state
         elif row:
             db.delete(row)
-    M.log_action(db, user.id, "expiry_started" if on else "expiry_started_off",
+    M.log_action(db, user.id, ("expiry_not_renewing" if state == "hold" else "expiry_started") if on else "expiry_started_off",
                  f"{item['who']}: {what}" + (f" {item['expires_on']}" if on else ""))
     db.commit()
     return {"ok": True, "on": bool(payload.get("on", True))}

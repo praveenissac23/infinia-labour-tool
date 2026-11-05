@@ -1657,6 +1657,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .exp-mini { margin-top: 4px; }
   .exp-mini .exp-start-btn { padding: 2px 7px; font-size: 10.5px; line-height: 1.3; }
   .exp-start-btn.on { background: #E6F4EA; border-color: #9CD3AE; color: #1E7A3A; }
+  .exp-hold-btn, .exp-renew-btn { white-space: nowrap; }
+  .exp-mini .exp-hold-btn, .exp-mini .exp-renew-btn { padding: 2px 7px; font-size: 10.5px; line-height: 1.3; }
+  .exp-renew-btn { background: #FFF; border-color: #C0392B; color: #C0392B; }
+  tr.exp-hold > td { background: #F4F5F6 !important; color: #8A8F94; }
+  tr.exp-hold > td b { color: #6B7075; }
+  tr.exp-hold > td.hr-d { color: #8A8F94 !important; background: #F4F5F6 !important; }
+  .exp-hold-word { font-weight: 700; color: #6B7075 !important; background: #E9EBED !important; }
   .exp-acts { display: inline-flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
   td.exp-act-cell { text-align: right; }
   .exp-close-btn { white-space: nowrap; }
@@ -18227,6 +18234,9 @@ async function expLoadStarted() {
   catch (e) { EXP_STARTED = {}; }
 }
 const expStarted = (type, id) => EXP_STARTED[`${type}:${id}`];
+// "Not renewing" (5 Nov 2026): the line stays on the page, greyed, with no reminders, counts or mails - until Renew now.
+const expHold = (type, id) => { const m = EXP_STARTED[`${type}:${id}`]; return !!m && m.state === "hold"; };
+const expWord = (type, id, status) => expHold(type, id) ? "Not renewing" : (HR_DOC_WORD[status] || "");
 function expStartedTag(type, id) {
   const m = expStarted(type, id);
   return m ? `<span class="exp-started" title="Renewal started by ${escapeAttr(m.by)} - reminders stopped until the new date is entered">&#10003; Started</span>` : "";
@@ -18234,9 +18244,11 @@ function expStartedTag(type, id) {
 function expStartBtn(type, id) {
   const m = expStarted(type, id);
   const close = `<button class="btn btn-gray hr-mini exp-close-btn" onclick="event.stopPropagation(); expClose('${type}', ${id})" title="Renewal done - type the new expiry date (or delete the entry if no longer needed)">Close</button>`;
+  if (m && m.state === "hold") return `<span class="exp-acts"><button class="btn btn-gray hr-mini exp-renew-btn" onclick="event.stopPropagation(); expMarkStarted('${type}', ${id}, false, 'renew')" title="Not renewing by ${escapeAttr(m.by)} - click to bring its reminders back">Renew now</button>${close}</span>`;
   if (m && m.visa) return `<span class="exp-acts"><span class="btn btn-gray hr-mini exp-start-btn on" style="cursor:default;" title="The PRO has a visa file open for him - reminders stopped until it is completed">&#10003; Started (visa file)</span>${close}</span>`;
   return `<span class="exp-acts">` + (m ? `<button class="btn btn-gray hr-mini exp-start-btn on" onclick="event.stopPropagation(); expMarkStarted('${type}', ${id}, false)" title="Started by ${escapeAttr(m.by)} - click to undo">&#10003; Started</button>`
-           : `<button class="btn btn-gray hr-mini exp-start-btn" onclick="event.stopPropagation(); expMarkStarted('${type}', ${id}, true)" title="Renewal is in hand - stop the reminders for this document">Mark started</button>`) + close + `</span>`;
+           : `<button class="btn btn-gray hr-mini exp-start-btn" onclick="event.stopPropagation(); expMarkStarted('${type}', ${id}, true)" title="Renewal is in hand - stop the reminders for this document">Mark started</button>`
+             + `<button class="btn btn-gray hr-mini exp-hold-btn" onclick="event.stopPropagation(); expMarkStarted('${type}', ${id}, true, 'hold')" title="We are not renewing this - keep it on the page, on hold, with no reminders. Renew now brings it back.">Not renewing</button>`) + close + `</span>`;
 }
 // ---- Close: renewal done - the new date goes in, or the entry is deleted ----
 async function expAfterChange() {
@@ -18281,16 +18293,19 @@ async function expClose(type, id, after) {
   });
   document.body.appendChild(ov);
 }
-async function expMarkStarted(type, id, on) {
+async function expMarkStarted(type, id, on, how) {
   try {
-    await apiCall("/employees/expiry/started", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, id, on }) });
+    await apiCall("/employees/expiry/started", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, id, on, state: how === "hold" ? "hold" : "started" }) });
     await expLoadStarted();
     if (expIsAll()) renderAllDocs();
     if (document.getElementById("hr-doc-company").style.display !== "none") renderExpiries();
     if (document.getElementById("hr-doc-people").style.display !== "none") renderDocuments();
     const box = document.getElementById(type === "person" ? "hr-doc-editing" : "hr-exp-editing");
     if (box && box.style.display !== "none" && +box.dataset.id === id) (type === "person" ? hrEditDoc : hrEditExpiry)(id);
-    expMsg("ok", on ? "Marked started - no more reminders for it until the new date is entered (visa, labour card and Emirates ID go together)." : "Reminders back on for it.");
+    expMsg("ok", how === "hold" ? "On hold - not renewing. It stays on the list with no reminders; Renew now brings it back."
+               : how === "renew" ? "Back to normal - its reminders are on again."
+               : on ? "Marked started - no more reminders for it until the new date is entered (visa, labour card and Emirates ID go together)." : "Reminders back on for it.");
+    if (typeof expRefreshCards === "function") expRefreshCards();
     if (typeof loadNotifications === "function") loadNotifications();
   } catch (e) { expMsg("err", errText(e)); }
 }
@@ -18532,10 +18547,10 @@ function expClubVisa(rows) {
   return out;
 }
 function expAllCounts() {
-  const n = x => x.days_left;
-  return { expired: HR_ALL.filter(x => x.status === "expired").length,
-           week: HR_ALL.filter(x => n(x) !== null && n(x) >= 0 && n(x) <= 7).length,
-           month: HR_ALL.filter(x => n(x) !== null && n(x) >= 8 && n(x) <= 30).length, all: HR_ALL.length };
+  const n = x => x.days_left, A = HR_ALL.filter(x => !expHold(x.src, x.id));     // not renewing is not counted
+  return { expired: A.filter(x => x.status === "expired").length,
+           week: A.filter(x => n(x) !== null && n(x) >= 0 && n(x) <= 7).length,
+           month: A.filter(x => n(x) !== null && n(x) >= 8 && n(x) <= 30).length, all: HR_ALL.length };
 }
 function renderAllDocs() {
   const wv = document.getElementById("exp-all-within").value, type = document.getElementById("exp-all-type").value;
@@ -18553,11 +18568,11 @@ function renderAllDocs() {
     const when = n === null ? "" : n < 0 ? `expired ${-n} day${n === -1 ? "" : "s"} ago` : n === 0 ? "expires today" : n <= 90 ? `in ${n} day${n === 1 ? "" : "s"}` : "";
     const tag = (t, bg, fg) => `<span style="display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:700;background:${bg};color:${fg};white-space:nowrap;">${escapeHtml(t)}</span>`;
     const pill = r.src === "person" ? (r.who === "Staff" ? tag("Staff", "#E3F0F7", "#1F5F80") : tag("Labour", "#EEE", "#555")) : tag(r.who, "#FFF3D6", "#8A6100");
-    return `<tr style="cursor:pointer;" onclick="expAllOpen('${r.src}', ${r.id})" title="Click to renew or correct">
+    return `<tr class="${expHold(r.src, r.id) ? "exp-hold" : ""}" style="cursor:pointer;" onclick="expAllOpen('${r.src}', ${r.id})" title="Click to renew or correct">
       <td>${pill}</td><td class="txt"><b>${escapeHtml(r.name)}</b>${r.code ? ` <span class="hr-nil">${escapeHtml(r.code)}</span>` : ""}</td>
       <td class="txt">${escapeHtml(r.doc)}${r.parts ? `<span class="sub" style="display:block;">${escapeHtml(r.parts)}</span>` : ""}</td><td>${escapeHtml(r.number) || '<span class="hr-nil">-</span>'}</td>
       <td class="hr-d hr-d-${r.status}">${hrDate(r.expires_on)}${when ? `<span class="sub" style="display:block;">${when}</span>` : ""}</td>
-      <td class="hr-d-${r.status === "valid" ? "" : r.status}">${HR_DOC_WORD[r.status] || ""}</td>
+      <td class="${expHold(r.src, r.id) ? "exp-hold-word" : "hr-d-" + (r.status === "valid" ? "" : r.status)}">${expWord(r.src, r.id, r.status)}</td>
       <td style="text-align:right;">${r.status === "valid" && !expStarted(r.src, r.id) ? "" : expStartBtn(r.src, r.id)}</td></tr>`;
   }).join("") || `<tr><td colspan="7" class="hr-nil" style="padding:14px;">${HR_ALL.length ? "Nothing in this range - all clear." : "Nothing on file yet."}</td></tr>`;
 }
@@ -18594,11 +18609,11 @@ function renderExpiries() {
   document.getElementById("hr-exp-body").innerHTML = rows.map(r => {
     const n = r.days_left;
     const when = n === null ? "" : n < 0 ? `expired ${-n} day${n === -1 ? "" : "s"} ago` : n === 0 ? "expires today" : n <= 90 ? `in ${n} day${n === 1 ? "" : "s"}` : "";
-    return `<tr style="cursor:pointer;" onclick="hrEditExpiry(${r.id})" title="Click to renew or correct">
+    return `<tr class="${expHold("company", r.id) ? "exp-hold" : ""}" style="cursor:pointer;" onclick="hrEditExpiry(${r.id})" title="Click to renew or correct">
       <td class="txt">${escapeHtml(r.category)}</td><td class="txt"><b>${escapeHtml(r.item)}</b></td>
       <td class="txt">${escapeHtml(r.kind)}</td><td>${escapeHtml(r.number) || '<span class="hr-nil">-</span>'}</td>
       <td class="hr-d hr-d-${r.status}">${hrDate(r.expires_on)}${when ? `<span class="sub">${when}</span>` : ""}</td>
-      <td class="hr-d-${r.status === "valid" ? "" : r.status}">${HR_DOC_WORD[r.status]}</td>
+      <td class="${expHold("company", r.id) ? "exp-hold-word" : "hr-d-" + (r.status === "valid" ? "" : r.status)}">${expWord("company", r.id, r.status)}</td>
       <td class="txt">${escapeHtml(r.notes) || '<span class="hr-nil">-</span>'}</td>
       <td class="exp-act-cell">${r.status === "valid" && !expStarted("company", r.id) ? "" : expStartBtn("company", r.id)}</td></tr>`;
   }).join("") || `<tr><td colspan="8" class="hr-nil" style="padding:14px;">${HR_EXP.rows.length ? "Nothing matches." : "Nothing on file yet - add a vehicle, the trade licence, anything that expires."}</td></tr>`;
