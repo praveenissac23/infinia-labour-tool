@@ -42,51 +42,136 @@ def _num(t):
     return -v if neg else v
 
 
-SPLITHEAD = re.compile(r"\s(?=(?:amount|qty|quantity|total)\b)|(?<!unit)\s(?=rate\b)|\s(?=unit\s+rate\b)|\s(?=unit\b(?!\s*rate))|\s(?=description\b)", re.I)
+SPLITHEAD = re.compile(r"\s(?=(?:amount|qty|quantity|quantities|uom|u/m|particulars|details|remarks|value)\b)|(?<!total)\s(?=total\b)"
+                       r"|(?<!unit)(?<!total)\s(?=(?:rate|price)\b)|\s(?=unit\s+(?:rate|price)\b)|\s(?=unit\b(?!\s*(?:rate|price)))|(?<!item)(?<!work)(?<!of)\s(?=description\b)", re.I)
+
+
+_HW = r"(?:rate|unit|amount|qty|quantity|price|total|description|uom|remarks?|value|aed)\b"
+
+
+def _unstick(c):
+    """Two headings printed touching: "(Approx.)U/M", "QtyRATE", "QtyRate"."""
+    c = re.sub(r"\)(?=[A-Za-z])", ") ", c)
+    c = re.sub(r"(?<=[a-z.])(?=[A-Z]{2,})", " ", c)
+    return re.sub(r"(?<=[a-z])(?=[A-Z][a-z]+)", lambda m: " " if re.match(_HW, c[m.start():], re.I) else "", c)
+
+
+def _headish(c):
+    """A piece of a heading row: a column heading of any wording (the same words the Excel reader knows), or a unit
+    line under one ("(AED)")."""
+    import est_itemimport as I
+    t = _unstick(c.strip())
+    if not t or len(t) > 45:
+        return False
+    if re.fullmatch(r"[\(\[]?\s*(aed|dhs?|qr|usd|%|nos?\.?)\s*[\)\]]?", t, re.I):
+        return True
+    if NUM.match(t):
+        return False
+    if I._role(I._hk(t)):
+        return True
+    parts = [p for p in SPLITHEAD.split(t) if p.strip()] or [t]
+    return all(re.fullmatch(r"est\.?|approx\.?|estimated|\(?aed\)?|of|no\.?", p.strip(), re.I) or I._role(I._hk(p)) or re.fullmatch(r"quantity|quantities|rate\s*\(?aed\)?|amount\s*\(?aed\)?|supply|install(ation)?|material|labou?r|total|fixing",
+                                                   p.strip(), re.I) for p in parts)
+
+
+def _role_of(label):
+    import est_itemimport as I
+    return I._role(I._hk(label))
 
 
 def _header_cols(hlines):
-    """Columns from the heading lines of a page: [(centre, label)] left to right. Headings printed close together
-    and taken as one piece ("UNIT RATE AMOUNT (AED)") are parted where each heading starts."""
-    cs = []
+    """Columns from the heading lines of a page, left to right: the line with the most headings gives the columns;
+    a heading on another line over one column is part of its name ("UNIT RATE" / "(AED)"), over several the name of
+    them all ("QUANTITY" over Qty | Unit), over none a column of its own. Headings printed close together and taken
+    as one piece ("UNIT RATE AMOUNT (AED)") are parted where each heading starts."""
+    pieces = []
     for l in hlines:
         for x, xe, c in _cells(l):
+            c = _unstick(c)                                  # "(Approx.)U/M", "QtyRATE": two headings printed touching
+            if l.get("hdr"):
+                pieces.append((l["y"], x, xe, c))
+                continue
             cuts = [0] + [m.end() for m in SPLITHEAD.finditer(c)] + [len(c) + 1]
             parts = [(cuts[i], c[cuts[i]:cuts[i + 1]].strip()) for i in range(len(cuts) - 1)]
             parts = [(i, t) for i, t in parts if t]
+            # a word that is no heading by itself goes with the heading after it ("Estimated" + "Qty")
+            j = 0
+            while j < len(parts) - 1:
+                if not _role_of(parts[j][1]) and not re.fullmatch(r"\(?aed\)?|quantity|quantities|rate\s*\(?aed\)?", parts[j][1], re.I):
+                    parts[j:j + 2] = [(parts[j][0], parts[j][1] + " " + parts[j + 1][1])]
+                else:
+                    j += 1
             if len(parts) > 1 and not re.search(r"work\s+description|unit\s+rate$", c, re.I) or len(parts) > 2:
                 w = (xe - x) / max(len(c), 1)
                 for i, t in parts:
-                    cs.append((x + w * (i + len(t) / 2.0), x + w * i, x + w * (i + len(t)), t, l["y"]))
+                    pieces.append((l["y"], x + w * i, x + w * (i + len(t)), t))
                 continue
-            cs.append(((x + xe) / 2.0, x, xe, c, l["y"]))
-    cs.sort()
-    cols = []
-    for ctr, x, xe, c, y in cs:
-        if cols and (min(cols[-1]["xe"], xe) - max(cols[-1]["x"], x) > 2 or abs(cols[-1]["ctr"] - ctr) < 8):   # one heading over two lines
-            cols[-1]["parts"].append((y, c))
-            cols[-1]["x"], cols[-1]["xe"] = min(cols[-1]["x"], x), max(cols[-1]["xe"], xe)
-        else:
-            cols.append({"ctr": ctr, "x": x, "xe": xe, "parts": [(y, c)]})
+            pieces.append((l["y"], x, xe, c))
+    if not pieces:
+        return []
+    ys = {}
+    for y, x, xe, c in pieces:
+        ys.setdefault(y, []).append((x, xe, c))
+    base_y = max(ys, key=lambda y: (len(ys[y]), -y))
+    cols = [{"x": x, "xe": xe, "parts": [(base_y, c)], "parents": []} for x, xe, c in sorted(ys[base_y])]
+    for y in sorted(k for k in ys if k != base_y):
+        for x, xe, c in sorted(ys[y]):
+            over = [col for col in cols if min(col["xe"], xe) - max(col["x"], x) > 2]
+            if not over:
+                near = [col for col in cols if abs((col["x"] + col["xe"]) / 2 - (x + xe) / 2) < 8]
+                over = near[:1]
+            base_role = _role_of(" ".join(t for _, t in over[0]["parts"])) if len(over) == 1 else None
+            if len(over) == 1 and base_role and _role_of(c) and _role_of(c) != base_role:
+                over[0]["parents"].append((y, c))           # "QUANTITY" printed over "UOM" only: a parent heading
+            elif len(over) == 1:
+                over[0]["parts"].append((y, c))
+                over[0]["x"], over[0]["xe"] = min(over[0]["x"], x), max(over[0]["xe"], xe)
+            elif len(over) > 1:
+                for col in over:
+                    col["parents"].append((y, c))           # "QUANTITY" over Qty | Unit
+            else:
+                cols.append({"x": x, "xe": xe, "parts": [(y, c)], "parents": []})
+    cols.sort(key=lambda c: c["x"])
     for c in cols:
-        c["label"] = " ".join(t for _, t in sorted(c["parts"]))
+        c["ctr"] = (c["x"] + c["xe"]) / 2.0
+        own = " ".join(t for _, t in sorted(c["parts"]))
+        par = " ".join(t for _, t in sorted(c["parents"]))
+        c["label"] = own
+        ro = _role_of(own)
+        # the heading over several columns names them only where their own heading needs it: "RATE (AED)" over
+        # Supply | Install | Total; "QUANTITY" over UOM | Qty says nothing more
+        if par and (ro is None or (re.fullmatch(r"total|supply|install(ation)?|material|labou?r|fixing", own.strip(), re.I)
+                                   and _role_of(par) in ("rate", "price"))):
+            c["label"] = f"{par} {own}"
+        c["role"] = _role_of(c["label"]) or ro
     return cols
 
 
+def _line_headish(l):
+    """A heading line: its pieces are headings (a word between them - "Item Ref Item Description" - is allowed)."""
+    cs = [c for c in l["c"] if c.strip()]
+    if not cs:
+        return False
+    if all(_headish(c) for c in cs):
+        return True
+    if any(NUM.match(c.strip().replace(" ", "")) for c in cs if len(c.strip()) > 2):
+        return False
+    good = sum(len(c) for c in cs if _headish(c) or any(_headish(p) for p in SPLITHEAD.split(_unstick(c)) if p.strip()))
+    return len(cs) >= 3 and good >= 0.8 * sum(len(c) for c in cs)
+
+
 def _page_header(plines):
-    """The heading lines of a page (the line with DESCRIPTION and the lines just above / below it that are headings)."""
-    hit = next((l for l in plines if any(re.search(r"description", c, re.I) for c in l["c"])
-                and any(HEADWORDS.search(c) for c in l["c"] if not re.search(r"description", c, re.I))), None)
-    if hit is None:
-        hit = next((l for l in plines if any(re.search(r"description", c, re.I) for c in l["c"])), None)
-    if hit is None:
-        return None, None
-    y0 = hit["y"]
-    hs = [l for l in plines if abs(l["y"] - y0) <= 26 and all(HEADWORDS.search(c) and len(c) < 45 for c in l["c"] if c.strip())]
-    labels = " ".join(c for l in hs for c in l["c"])
-    if not re.search(r"amount|rate|total", labels, re.I):
-        return None, None
-    return hs, max(l["y"] for l in hs)
+    """The heading lines of a page: a line whose pieces are all headings, with a description heading and a price
+    heading among it and the heading lines next to it (any wording - Description / Particulars / Scope of Work ...)."""
+    for k, l in enumerate(plines):
+        if not _line_headish(l):
+            continue
+        hs = [o for o in plines if abs(o["y"] - l["y"]) <= 26 and _line_headish(o)]
+        cols = _header_cols(hs)
+        roles = {c["role"] for c in cols}
+        if "desc" in roles and roles & {"amount", "rate", "price"} and len(cols) >= 3:
+            return hs, max(o["y"] for o in hs)
+    return None, None
 
 
 def _sig(cols):
@@ -114,18 +199,22 @@ def _brackets(s):
     first item and merge it down the run again, so the reader sees what it sees in the Excel.
     -> [(first row, last row, column)]"""
     rows, di, cols = s["rows"], s["di"], s["cols"]
-    price = [k for k, c in enumerate(cols) if k > di and re.search(r"rate|amount|price|total", c["label"], re.I)]
+    price = [k for k, c in enumerate(cols) if k > di and (c.get("role") in ("rate", "amount", "price", "cert_amt") or re.search(r"rate|amount|price|total", c["label"], re.I))]
     uq = [k for k, c in enumerate(cols) if k > di and k not in price]
     has = lambda r, ks: any(r[k] not in (None, "") for k in ks)
     code = lambda r: bool(di and r[0] not in (None, ""))
-    unit_only = lambda r: bool(r[di]) and has(r, uq) and not has(r, price)
+    # "LS" alone in the rate column of an item (the merged rate cell printed at the foot of the bracket): an item of
+    # the bracket all the same - its "LS" belongs to the bracket's line
+    ls_word = lambda v: isinstance(v, str) and v.strip().lower().strip(".") in ("ls", "l.s", "lump sum", "lumpsum", "l/s")
+    ls_only = lambda r: has(r, price) and all(r[c] in (None, "") or ls_word(r[c]) for c in price)
+    unit_only = lambda r: bool(r[di]) and has(r, uq) and (not has(r, price) or ls_only(r))
     plain = lambda r: bool(r[di]) and not code(r) and not has(r, uq) and not has(r, price)
-    rate = next((k for k in price if re.search(r"rate|price", cols[k]["label"], re.I)), None)
+    rate = next((k for k in price if cols[k].get("role") == "rate" or re.search(r"rate|price", cols[k]["label"], re.I)), None)
     total = re.compile(r"collection|carried|^\s*(sub[- ]?)?total\b|brought\s+forward", re.I)
 
     def carrier(k):
         r = rows[k]
-        if not has(r, price) or total.search(str(r[di] or "")):
+        if not has(r, price) or total.search(str(r[di] or "")) or ls_only(r):
             return False
         if not r[di] and not code(r) and not has(r, uq):
             return True                                # the lump sum on a line of its own
@@ -195,10 +284,21 @@ def _brackets(s):
         for j in dups:
             for c in price:
                 rows[j][c] = None
+        lsw = None
+        for j in run:                                  # the bracket's "LS" printed on one of its items: the bracket's
+            if j != k and ls_only(rows[j]):
+                for c in price:
+                    if ls_word(rows[j][c]):
+                        lsw = (c, rows[j][c])
+                        rows[j][c] = None
         move = [c for c in uq + price if r[c] not in (None, "") and all(rows[j][c] in (None, "") for j in run if j != k)]
         if alone:
             move = [c for c in move if c in price or not any(rows[j][c] not in (None, "") for j in run)]
         top = run[0]
+        if lsw and rows[top][lsw[0]] in (None, "") and r[lsw[0]] in (None, ""):
+            r[lsw[0]] = lsw[1]
+            if lsw[0] not in move:
+                move.append(lsw[0])
         for c in move:
             v = r[c]
             r[c] = None
@@ -232,11 +332,11 @@ def to_workbook(lines):
         if hs is None:
             continue
         cols = _header_cols(hs)
-        di = next((i for i, c in enumerate(cols) if re.search(r"description", c["label"], re.I)), None)
+        di = next((i for i, c in enumerate(cols) if c.get("role") == "desc"), None)
         if di is None or len(cols) < 3:
             continue
         sig = _sig(cols)
-        if cur is None or len(sig) != len(last_sig) or cur.get("ended"):
+        if cur is None or len(sig) != len(last_sig) or cur.get("ended") or cur.get("closed"):
             cur = {"cols": cols, "di": di, "rows": [], "name": "", "ended": False, "coll": False}
             sheets.append(cur)
         last_sig = sig
@@ -273,7 +373,7 @@ def to_workbook(lines):
             txt = " ".join(l["c"]).strip()
             if FOOT.match(txt):
                 continue
-            code, words, figs, we, notes = "", [], {}, 0, {}
+            code, words, figs, we, notes, wx = "", [], {}, 0, {}, None
             unit_left = unit_left0
             for x, xe, c in _cells(l):
                 ctr = (x + xe) / 2.0
@@ -299,8 +399,16 @@ def to_workbook(lines):
                 else:
                     words.append(c)
                     we = max(we, xe)
-            items.append({"y": l["y"], "h": l.get("h") or 10.0, "code": code, "words": " ".join(words).strip(), "figs": figs, "we": we, "notes": notes})
+                    wx = x if wx is None else min(wx, x)
+            items.append({"y": l["y"], "h": l.get("h") or 10.0, "code": code, "words": " ".join(words).strip(), "figs": figs, "we": we, "notes": notes,
+                          "cw": ((we - wx) / max(1, len(" ".join(words)))) if (words and wx is not None) else 5.0})
         wmax = max([it["we"] for it in items] or [0])
+        # "included." under "MEP works" in the amount column: the remark goes on - a word of it, not a price
+        for a_, b_ in zip(items, items[1:]):
+            if a_["notes"] and b_["y"] - a_["y"] <= 1.5 * b_["h"]:
+                for k in list(b_["figs"]):
+                    if k in a_["notes"] and _num(b_["figs"][k]) is None:
+                        b_["notes"].setdefault(k, b_["figs"].pop(k))
         # rows: words close together are one description; the figures half-way down it go with it
         rows = []
         for it in items:
@@ -309,16 +417,23 @@ def to_workbook(lines):
             last = rows[-1] if rows else None
             gap = it["y"] - last["y1"] if last else 999
             # the line before ran to the edge of the column (the words wrapped) and the next is close under it
-            wrapped = last and last["we"] >= wmax - 0.3 * (wmax - cols[di]["x"] + 40)
+            # the words wrapped: the next line's first word would not have fitted at the end of this one
+            fw = (it["words"].split() or [""])[0]
+            wrapped = last and last["we"] + it.get("cw", 5.0) * (len(fw) + 1) > wmax - 1
             caps = lambda t: bool(re.search(r"[A-Z]", t)) and not re.search(r"[a-z]", t)
             heading = last and caps(last["words"]) and not caps(it["words"])     # "LIGHT FITTINGS ..." over "Supply, Install ..."
-            if last and not it["code"] and (gap <= 1.12 * it["h"] or (wrapped and not heading and gap <= 1.4 * it["h"])) \
-                    and (not it["figs"] or not last["figs"]) and last["words"]:
+            numf = lambda f: f
+            if last and not it["code"] and not heading and (gap <= 1.12 * it["h"] or (wrapped and gap <= 1.45 * it["h"])) \
+                    and (not numf(it["figs"]) or not numf(last["figs"])) and last["words"]:
                 last["words"] += " " + it["words"]
                 last["y1"] = it["y"]
                 last["we"] = it["we"]
                 for k, v in it["figs"].items():
-                    last["figs"].setdefault(k, v)
+                    if k in last["figs"] and k in numf(it["figs"]) and k not in numf(last["figs"]):
+                        last.setdefault("notes", {}).setdefault(k, []).append(last["figs"][k])   # words beside: a remark
+                        last["figs"][k] = v
+                    else:
+                        last["figs"].setdefault(k, v)
                 continue
             rows.append({"y0": it["y"], "y1": it["y"], "code": it["code"], "words": it["words"], "figs": dict(it["figs"]), "we": it["we"]})
         for it in items:
@@ -370,6 +485,14 @@ def to_workbook(lines):
                 cur["name"] = re.sub(r"[^A-Za-z ]", " ", m.group(1)).strip().upper()
             if cur["coll"] and re.search(r"^(total\s+)?carried\s+to\s+collection|^total\b", w, re.I) and not re.search(r"systems?$", w, re.I):
                 cur["ended"] = True                            # the sheet's collection closed: the next pages are the next sheet
+            # a bill's own closing total ("Total of Painting", "TOTAL CARRIED TO SUMMARY", "Bill total") as the last line
+            # before a new page with its headings: the next page starts the next bill (the next sheet of the workbook)
+            cur["closed"] = bool(re.search(r"^(sub\s*-?\s*)?total\b(?!\s+carried\s+(forward|over|to\s+collection))|\bbill\s+total\b|carried\s+to\s+(the\s+)?(summary|main)",
+                                           w, re.I)) and not re.search(r"carried\s+(forward|over)|to\s+collection|c\s*/\s*f", w, re.I) \
+                and any(v not in (None, "") for k_, v in enumerate(out) if k_ > di)
+            if not cur["name"] and w and w.isupper() and len(w) <= 40 and not any(v not in (None, "") for k_, v in enumerate(out) if k_ > di) \
+                    and not re.search(r"bill\s+of\s+quantities|summary|collection", w, re.I):
+                cur["first_caps"] = cur.get("first_caps") or w
     if not any(s["rows"] for s in sheets):
         return None
     for s in sheets:
@@ -380,7 +503,8 @@ def to_workbook(lines):
     for n, s in enumerate(sheets, 1):
         if not s["rows"]:
             continue
-        name = s["name"] or ("SUMMARY" if s["coll"] and not any(re.search(r"bill\s*page", str(r[s["di"]] or ""), re.I) for r in s["rows"]) else f"Sheet {n}")
+        name = s["name"] or re.sub(r"[^A-Za-z0-9 &]", " ", s.get("first_caps") or "").strip()[:28] or \
+            ("SUMMARY" if s["coll"] and not any(re.search(r"bill\s*page", str(r[s["di"]] or ""), re.I) for r in s["rows"]) else f"Sheet {n}")
         name = name[:28]
         while name in used:
             name += "_"
@@ -394,6 +518,159 @@ def to_workbook(lines):
     bio = io.BytesIO()
     wb.save(bio)
     return bio.getvalue()
+
+
+def column_lines(doc, data=None):
+    """The pages read on the server (every word with its box, typed or recognised from a scan) put into the table's
+    own columns (5 Nov 2026): the column headings give the columns; the line between two columns is drawn where the
+    figures under them leave a clear channel (or on the table's own vertical rule); every word goes to the column it
+    starts in (a figure: where it ends - figures stand to the right). A page that does not repeat the headings keeps
+    the columns of the page before. -> lines as to_workbook reads them, or None when no table heading is found."""
+    out, cols_prev = [], None
+    from docread.model import Word
+    fine = {}
+    if data is not None and data[:4] == b"%PDF":
+        # the words again, split finer than the reader's lines: figures in narrow columns printed almost touching
+        # ("235.46Nos", "2456.472,328,733.56") come apart
+        try:
+            import pdfplumber
+            with pdfplumber.open(io.BytesIO(data)) as pdf:
+                for n, pg in enumerate(pdf.pages, 1):
+                    ws_ = pg.extract_words(x_tolerance=1.0, y_tolerance=2.0, keep_blank_chars=False, use_text_flow=False)
+                    if len(ws_) < 3:
+                        continue
+                    vr = []                                    # the table's vertical rules (cell borders), if drawn
+                    for o in (pg.lines or []) + (pg.rects or []):
+                        if (o["bottom"] - o["top"]) > 8 and abs(o["x1"] - o["x0"]) < 1.5:
+                            vr.append(((o["x0"] + o["x1"]) / 2, o["top"], o["bottom"]))
+                    fine[n] = ([Word(text=w["text"], x0=w["x0"], x1=w["x1"], y0=w["top"], y1=w["bottom"]) for w in ws_], vr)
+        except Exception:
+            fine = {}
+    regs = list(getattr(doc, "regions", []) or [])
+    for reg in regs:
+        rows = []
+        if reg.page in fine:
+            wl, vr_ = fine[reg.page]
+            reg = type("R", (), {"page": reg.page, "vrules": vr_ or getattr(reg, "vrules", []), "rows": []})()
+            lines_ = []
+            for w in sorted(wl, key=lambda w: ((w.y0 + w.y1) / 2, w.x0)):
+                cy, h = (w.y0 + w.y1) / 2, max(1.0, w.y1 - w.y0)
+                ln = next((L for L in lines_[-4:] if abs(L["cy"] - cy) <= 0.45 * max(h, L["h"])), None)
+                if ln is None:
+                    lines_.append({"cy": cy, "h": h, "w": [w]})
+                else:
+                    ln["w"].append(w)
+            for L in lines_:
+                ws_ = sorted(L["w"], key=lambda w: w.x0)
+                cells, cur = [], None
+                for w in ws_:
+                    if cur is not None and w.x0 - cur[1] < 0.45 * L["h"]:
+                        cur[1], cur[2] = w.x1, cur[2] + " " + w.text
+                    else:
+                        cur = [w.x0, w.x1, w.text]
+                        cells.append(cur)
+                hs = sorted(w.y1 - w.y0 for w in ws_)
+                rows.append({"y": round(L["cy"], 1), "h": hs[len(hs) // 2], "w": ws_, "cells": [tuple(c) for c in cells]})
+        for row in reg.rows:
+            ws_ = [w for c in row.cells for w in (c.words or []) if w.text.strip()]
+            if not ws_:
+                ws_ = []
+                for c in row.cells:
+                    if c.text.strip():
+                        ws_.append(Word(text=c.text, x0=c.x0, x1=c.x1, y0=c.y0, y1=c.y1))
+            if ws_:
+                ws_.sort(key=lambda w: w.x0)
+                hs = sorted(w.y1 - w.y0 for w in ws_)
+                rows.append({"y": round(sum((w.y0 + w.y1) / 2 for w in ws_) / len(ws_), 1), "h": hs[len(hs) // 2], "w": ws_,
+                             "cells": [(c.x0, c.x1, c.text.strip()) for c in row.cells if c.text.strip()]})
+        if not rows:
+            continue
+        rows.sort(key=lambda r: r["y"])
+        tl = [{"p": reg.page, "y": r["y"], "h": r["h"], "c": [t for _, _, t in r["cells"]], "x": [a for a, _, _ in r["cells"]],
+               "xe": [b for _, b, _ in r["cells"]]} for r in rows]
+        hs_, hbot = _page_header(tl)
+        if hs_ is not None:
+            cols = _header_cols(hs_)
+            htop = min(l["y"] for l in hs_)
+        elif cols_prev is not None:
+            cols, htop, hbot = cols_prev, None, None
+        else:
+            continue
+        data = [r for r in rows if hbot is None or r["y"] > hbot + 0.5]
+        # the line between two columns: the clearest channel near the gap between their headings (or the page's rule)
+        vr = sorted({round(x) for x, y0, y1 in (getattr(reg, "vrules", None) or [])})
+        bounds = []
+        for i in range(len(cols) - 1):
+            a, b = cols[i], cols[i + 1]
+            lo = a["xe"] - 0.35 * (a["xe"] - a["x"]) if i else a["xe"] - 0.2 * (a["xe"] - a["x"])
+            hi = b["x"] + 0.35 * (b["xe"] - b["x"])
+            if hi <= lo:
+                lo, hi = min(a["xe"], b["x"]) - 2, max(a["xe"], b["x"]) + 2
+            rule = [x for x in vr if lo - 6 <= x <= hi + 6]
+            if rule:
+                bounds.append(min(rule, key=lambda x: abs(x - (a["xe"] + b["x"]) / 2)))
+                continue
+            best, bx = None, (lo + hi) / 2
+            x = lo
+            while x <= hi:
+                occ = sum(1 for r in data for w in r["w"] if w.x0 < x < w.x1)
+                d = abs(x - (a["xe"] + b["x"]) / 2)
+                if best is None or occ < best[0] or (occ == best[0] and d < best[1]):
+                    best, bx = (occ, d), x
+                x += 0.5
+            bounds.append(bx)
+        cols_prev = cols
+
+        def col_at(x):
+            k = 0
+            while k < len(bounds) and x >= bounds[k]:
+                k += 1
+            return k
+        di = next((i for i, c in enumerate(cols) if c.get("role") == "desc"), 0)
+        if hs_ is not None:
+            out.append({"p": reg.page, "y": hbot, "h": 10.0, "hdr": True, "c": [c["label"] for c in cols],
+                        "x": [c["x"] for c in cols], "xe": [c["xe"] for c in cols]})
+        else:
+            out.append({"p": reg.page, "y": (data[0]["y"] - 1) if data else 0, "h": 10.0, "hdr": True, "c": [c["label"] for c in cols],
+                        "x": [c["x"] for c in cols], "xe": [c["xe"] for c in cols]})
+        for r in data:
+            # phrases: words a space apart; words of a heading running on past its column stay in it
+            ph, cur = [], None
+            for w in r["w"]:
+                if cur is not None and w.x0 - cur[-1].x1 < 0.45 * max(r["h"], 4):
+                    cur.append(w)
+                else:
+                    cur = [w]
+                    ph.append(cur)
+            cells = {}
+            for p_ in ph:
+                k0 = col_at(p_[0].x0 + 0.5)
+                txt = " ".join(w.text for w in p_)
+                if k0 <= di and not NUM.match(p_[0].text.replace(",", "")) and col_at(p_[-1].x1 - 0.5) > di and \
+                        not any(NUM.match(w.text.replace(",", "")) or w.text.lower().strip(".") in UNITW for w in p_[1:]):
+                    cells.setdefault(k0, []).append(p_)          # the words run over the next columns (an empty cell)
+                    continue
+                for w in p_:
+                    num = NUM.match(w.text.strip()) is not None or re.fullmatch(r"\(?[\d,]+\.\d+\)?", w.text.strip()) is not None
+                    k = col_at((w.x1 - 0.5) if num else (w.x0 + 0.5))
+                    cells.setdefault(k, []).append([w])
+            line = {"p": reg.page, "y": r["y"], "h": r["h"], "c": [], "x": [], "xe": []}
+            for k in sorted(cells):
+                ws2 = [w for grp in cells[k] for w in grp]
+                ws2.sort(key=lambda w: w.x0)
+                t = " ".join(w.text for w in ws2).strip()
+                if not t:
+                    continue
+                if k <= di:                                    # words: where they stand
+                    x0, x1 = ws2[0].x0, ws2[-1].x1
+                else:                                          # figures: exactly under their heading
+                    x0, x1 = cols[k]["x"], cols[k]["xe"]
+                line["c"].append(t)
+                line["x"].append(x0)
+                line["xe"].append(x1)
+            if line["c"]:
+                out.append(line)
+    return out if out else None
 
 
 class NotTable(Exception):
@@ -413,10 +690,38 @@ def workbook_of(data, name=""):
         return None
     try:
         doc = F.load_doc(data, name)
-        lines = F.old_lines(data, name, doc)
     except F.Unavailable as e:
         raise NotTable(str(e))
-    wb = to_workbook(lines)
+    # two readings of the page: the words put into the table's own columns, and the lines as the browser gives
+    # them - the one whose figures tie out (every page / bill = its own total, nothing left for review) is taken
+    cands = []
+    try:
+        cl = column_lines(doc, data)
+        if cl:
+            cands.append(to_workbook(cl))
+    except Exception:
+        pass
+    try:
+        cands.append(to_workbook(F.old_lines(data, name, doc)))
+    except F.Unavailable as e:
+        if not any(cands):
+            raise NotTable(str(e))
+    except Exception:
+        pass
+    cands = [c for c in cands if c]
+    wb = cands[0] if cands else None
+    if len(cands) > 1:
+        import est_itemimport as I
+
+        def mark(c):
+            try:
+                r = I.read_schedule(c)
+            except Exception:
+                return (-1,)
+            alarms = sum(1 for n in r["notes"] if re.search(r" says |add up to|not the|accounted for", n))
+            return (int(r["all_checked"]), -alarms)
+        m0, m1 = mark(cands[0]), mark(cands[1])
+        wb = cands[1] if (m1[0] > m0[0] or (m1[0] == m0[0] == 1 and m1[1] > m0[1])) else cands[0]
     if wb is None:
         raise NotTable("No priced table (DESCRIPTION ... AMOUNT columns) was found in this file.")
     return wb

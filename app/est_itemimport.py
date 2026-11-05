@@ -50,6 +50,23 @@ def _n(v):
         return None
 
 
+QTY_UNIT = re.compile(r"^\s*\(?([\d,]*\.?\d+)\)?\s*([A-Za-z][A-Za-z0-9./²³]{0,8})\s*$")
+
+
+def _qu(v):
+    """A quantity written with its unit in one cell ("25 m2", "1 Lot", "46.5 Sqm") -> (25.0, "m2"); else (number, "")."""
+    n = _n(v)
+    if n is not None or v is None or isinstance(v, (int, float)):
+        return n, ""
+    m = QTY_UNIT.match(str(v))
+    if m:
+        try:
+            return float(m.group(1).replace(",", "")), m.group(2)
+        except ValueError:
+            pass
+    return None, ""
+
+
 def _key(t):
     return re.sub(r"[^a-z% ]", "", _s(t).lower().replace("\n", " ")).strip()
 
@@ -98,11 +115,217 @@ def _header(row):
     return cols
 
 
+# ---- the table of a sheet, any layout (5 Nov 2026) ------------------------------------------------------------------
+# Heading words of every kind (Description / Particulars / Scope of Work; Qty / Quantity; Unit / UOM / U/M; Rate /
+# Unit Price; Amount / Total / Total Price / Value ...), one or two heading rows (a merged "QUANTITY" over Qty | Unit,
+# "RATE (AED)" over Supply | Install | Total), columns in any order, hidden columns left out. Where the words leave a
+# doubt (which "Total" is the amount), the figures under them decide: amount = quantity x rate on the item rows.
+
+def _hk(v):
+    t = _s(v).lower().replace("\n", " ")
+    t = re.sub(r"\((?:aed|dhs?|qr|sar|usd)\)|\b(?:aed|dhs?|in aed)\b", " ", t)
+    return re.sub(r"[^a-z0-9%/ ]+", " ", t).strip()
+
+
+def _role(k, parent=""):
+    """A heading's meaning: desc / no / qty / unit / rate / amount / ... or None. parent: the merged heading above."""
+    k = re.sub(r"\s+", " ", k).strip()
+    p = re.sub(r"\s+", " ", parent).strip()
+    if not k and not p:
+        return None
+    if not k:
+        k, p = p, ""
+    full = f"{p} {k}".strip()
+    if re.search(r"\bappendix\b", k):
+        return "appendix"
+    if re.search(r"descr|particular|scope of work|details|item of work|work item|description of", k):
+        return "desc"
+    if "certified" in full and ("amount" in full or "value" in full) or "amount certified" in full:
+        return "cert_amt"
+    if re.search(r"claimed from client|received from client|amount claimed", full):
+        return "skip"
+    if re.search(r"certified q|work done at|quantity done|qty done", full):
+        return "cert_qty"
+    if "claimed" in full and re.search(r"qty|quantity", full):
+        return "claim_qty"
+    if re.search(r"previous", full) and "%" in full:
+        return "prev_pct"
+    if re.search(r"current|this (period|month)", full) and "%" in full:
+        return "cur_pct"
+    if re.search(r"% ?work done|% of work|total %|cumulative %|% complete|% done|percentage", full):
+        return "pct"
+    if re.search(r"remark|comment|make|brand|note", k):
+        return "remark"
+    if re.search(r"\b(supply|install(ation)?|material|labou?r|fixing)\b", k) and re.search(r"rate|price", p):
+        return "rate_part"
+    if re.search(r"rate|price", p) and re.search(r"\btotal\b", k):
+        return "rate"                                          # RATE (AED) over Supply | Install | Total
+    if re.search(r"\bunit (rate|price|cost)\b|\brate\b|price per|\bu ?price\b", full):
+        return "rate"
+    if re.search(r"\b(amount|value)\b", full) and re.search(r"previous|current|cumulative|this period|to date|up to", full):
+        return "skip"                                          # a certificate's period columns, not the contract amount
+    if re.search(r"\b(amount|value|sum)\b", full) or re.search(r"^(total|total price|total cost|total amount|grand total)$", k) \
+            or re.search(r"^(price|cost)$", k) and re.search(r"amount|total", p):
+        return "amount"
+    if re.search(r"^(unit|units|uom|u ?/ ?m|u m|unit of measure(ment)?|measure)$", k):
+        return "unit"
+    if re.search(r"\b(qty|qnty|quantity|quantities)\b", k) and not re.search(r"previous|cumulative|current|this", k):
+        return "qty"
+    if re.search(r"^(item|item no|item ref|items no|s ?no|sr ?no|sl ?no|si ?no|s ?/ ?n|sn|no|ref|ref no|reference|bill no|bill|code|serial|serial no|clause|pos)$", k):
+        return "no"
+    if k in ("items", "item description", "work"):
+        return "desc"
+    if re.search(r"^(price|cost)$", k):
+        return "price"                                         # rate or amount - the figures decide
+    return None
+
+
+def _hidden_cols(ws):
+    out = set()
+    try:
+        for key, d in ws.column_dimensions.items():
+            if d.hidden:
+                a, b = d.min or openpyxl.utils.column_index_from_string(key), d.max or openpyxl.utils.column_index_from_string(key)
+                out.update(range(a - 1, b))
+    except Exception:
+        pass
+    return out
+
+
+def _merged_text(ws, rows):
+    """{(row index, col index): text} for header reading: a merged heading's words over every column it spans."""
+    out = {}
+    for m in getattr(ws, "merged_cells", None).ranges if getattr(ws, "merged_cells", None) else []:
+        if m.min_row > 60:
+            continue
+        v = rows[m.min_row - 1][m.min_col - 1] if m.min_row - 1 < len(rows) and m.min_col - 1 < len(rows[m.min_row - 1]) else None
+        for rr in range(m.min_row, m.max_row + 1):
+            for cc in range(m.min_col, m.max_col + 1):
+                out[(rr - 1, cc - 1)] = (v, m.min_col == m.max_col and m.max_row > m.min_row, m.max_col > m.min_col, m.min_row - 1)
+    return out
+
+
+def find_table(ws, rows):
+    """-> (index of the last heading row, {role: column}) or (None, None). Reads one or two heading rows."""
+    hidden = _hidden_cols(ws)
+    mt = _merged_text(ws, rows)
+    best = None
+    for i in range(min(len(rows), 60)):
+        r = rows[i]
+        if sum(1 for v in r if _s(v)) < 2:
+            continue
+        for depth in (1, 2):
+            if depth == 2 and i + 1 >= len(rows):
+                continue
+            roles = {}
+            for j in range(len(r)):
+                if j in hidden:
+                    continue
+                top = mt.get((i, j))
+                t1 = _hk(top[0] if top else r[j])
+                if depth == 1:
+                    role = _role(t1)
+                else:
+                    r2 = rows[i + 1]
+                    m2 = mt.get((i + 1, j))
+                    if m2 and m2[3] == i:                       # the top heading merged down over both rows
+                        t2 = ""
+                    else:
+                        t2 = _hk(m2[0] if m2 else r2[j])
+                    if t2 and _n(r2[j]) is not None and not re.search(r"[a-z%]", t2):
+                        role = None                             # a figure: not a heading row
+                        roles = None
+                        break
+                    spans = top and top[2]                      # a heading merged across columns: the parent of the row below
+                    role = _role(t2, t1) if (t2 and spans) else (_role(t2) or _role(t1) if t2 else _role(t1))
+                    if t2 and not spans and t1 and _role(t1) and _role(t2) and _role(t1) != _role(t2):
+                        role = _role(t1)
+                if role:
+                    roles.setdefault(role, []).append(j)
+            if not roles or "desc" not in roles or not ({"amount", "rate", "price"} & set(roles)):
+                continue
+            if "appendix" in roles:
+                continue
+            score = len([k for k in roles if k not in ("skip", "rate_part", "remark")]) + (0.5 if depth == 1 else 0)
+            # the heading must stand over figures: some rows below it carry a number in a figure column
+            figc = [c for k in ("amount", "rate", "price", "qty") for c in roles.get(k, [])]
+            below = rows[i + depth:i + depth + 60]
+            nums = sum(1 for rr in below if any(c < len(rr) and _n(rr[c]) is not None and not isinstance(rr[c], bool) for c in figc))
+            if nums == 0:
+                continue
+            score += min(nums, 20) / 20.0
+            if best is None or score > best[0] + 0.01:
+                best = (score, i + depth - 1, roles, i)
+        if best and i > best[3] + 3:
+            break
+    if best is None:
+        return None, None
+    _, hi, roles, _ = best
+    cols = {}
+    for k, cs in roles.items():
+        if k in ("skip", "rate_part"):
+            continue
+        cols[k] = cs[0] if k not in ("amount", "rate") else cs[-1] if k == "rate" else cs[0]
+    if "price" in roles:
+        for c in roles["price"]:
+            if "rate" not in cols:
+                cols["rate"] = c
+            elif "amount" not in cols:
+                cols["amount"] = c
+        cols.pop("price", None)
+    cols = _check_figs(rows, hi, cols, roles)
+    return hi, cols
+
+
+def _check_figs(rows, hi, cols, roles):
+    """The figures decide which columns are quantity, rate and amount: on the item rows amount = qty x rate."""
+    cand = sorted({c for k in ("qty", "rate", "amount", "price") for c in roles.get(k, [])} | {cols.get(k) for k in ("qty", "rate", "amount") if k in cols} - {None})
+    if len(cand) < 3:
+        return cols
+    data = rows[hi + 1:hi + 400]
+    best, bestn = None, 0
+    for q in cand:
+        for ra in cand:
+            for am in cand:
+                if len({q, ra, am}) < 3:
+                    continue
+                n = 0
+                for r in data:
+                    a, b, c = _qu(r[q])[0] if q < len(r) else None, _n(r[ra]) if ra < len(r) else None, _n(r[am]) if am < len(r) else None
+                    if a and b and c and abs(a * b - c) <= max(0.011, abs(c) * 0.0005):
+                        n += 1
+                if n > bestn:
+                    best, bestn = (q, ra, am), n
+    if best and bestn >= 3:
+        cur = (cols.get("qty"), cols.get("rate"), cols.get("amount"))
+        curn = 0
+        if None not in cur:
+            for r in data:
+                a, b, c = (_qu(r[cur[0]])[0], _n(r[cur[1]]), _n(r[cur[2]])) if max(cur) < len(r) else (None, None, None)
+                if a and b and c and abs(a * b - c) <= max(0.011, abs(c) * 0.0005):
+                    curn += 1
+        if bestn > curn:
+            # qty and rate can swap (both multiply): the rate is the column the headings call rate, else the rightmost
+            q, ra, am = best
+            if cols.get("rate") == q or (cols.get("qty") == ra):
+                q, ra = ra, q
+            cols.update(qty=q, rate=ra, amount=am)
+    return cols
+
+
 LETTERED = re.compile(r"^\(?([a-z]|[ivx]{1,5})[.)]\s+", re.I)
 # A priced BOQ in bill pages (914 Al Raida MEP): each page ends "TO COLLECTION" / "TOTAL CARRIED TO COLLECTION" with
 # its own subtotal, the sheet ends with a COLLECTION of "HVAC BILL PAGE 1/6 ... 6/6", and a summary sheet carries the
 # trade totals. Those are roll-ups of the lines - never lines themselves; they are used only to check the lines.
-PAGE_TOTAL = re.compile(r"^(total\s+)?(carried\s+)?to\s+collection\b|^carried\s+(forward|over)\b|^page\s+total\b", re.I)
+PAGE_TOTAL = re.compile(r"^(total\s+)?(carried\s+)?to\s+collection\b|^(total\s+)?carried\s+(forward|over|fwd)\b|^page\s+total\b|^c\s*/\s*f\b"
+                        r"|^carried\s+to\s+(the\s+)?(collection|next\s+page)\b", re.I)
+# "Brought forward" at the top of a page restates the page before - never a line, never counted again
+BROUGHT = re.compile(r"^(b\s*/\s*f(wd)?\b|brought\s+(forward|fwd|over|down)\b|b/fwd\b|balance\s+brought)", re.I)
+# a roll-up under the lines: VAT, contingency, grand total ... - never a line of the schedule
+ROLLUP_LINE = re.compile(r"^(add\s*:?\s*)?(vat|value\s+added\s+tax)\b|^contingenc|^grand\s+total|^total\s+(amount\s+)?(including|incl|excluding|excl)"
+                         r"|^net\s+total|^total\s+contract|^amount\s+in\s+words", re.I)
+# "BILL NO. 2 - PLUMBING" / "BILL 3: ELECTRICAL" - a bill starting on a sheet holding several
+BILL_HEAD = re.compile(r"^bill\s*(?:no\.?|number|#)?\s*[:.]?\s*([0-9]{1,2}|[A-Z])\b\s*[-:.–]?\s*(.*)$", re.I)
 BILL_PAGE = re.compile(r"\bbill\s*page\s*\d+\s*/\s*\d+", re.I)
 COLLECTION_HEAD = re.compile(r"^(collection|summary|general summary|collection sheet|bill summary|grand summary)$", re.I)
 UNIT_WORDS = {"ls", "l.s", "l.s.", "lumpsum", "lump sum", "no", "no.", "nos", "nos.", "item", "items", "set", "sets", "m", "lm", "rm",
@@ -125,14 +348,16 @@ def read_schedule(data: bytes):
             continue
         rows = [list(r) + [None] * 6 for r in ws.iter_rows(values_only=True)]
         r0, c0 = 1, 1                                          # iter_rows always starts at A1: rows[i] is sheet row 1 + i, r[j] column 1 + j
-        hi, cols = None, None
-        for i, r in enumerate(rows[:40]):
-            c = _header(r)
-            if c:
-                hi, cols = i, c
-                break
+        hi, cols = find_table(ws, rows)
         if cols is None:
             continue
+        # hidden rows are not the BOQ's (an internal working, an old revision): left out, as Excel prints it
+        try:
+            for k_, d_ in ws.row_dimensions.items():
+                if d_.hidden and 0 < k_ <= len(rows) and k_ - 1 > hi:
+                    rows[k_ - 1] = [None] * len(rows[k_ - 1])
+        except Exception:
+            pass
         # the % column is read one way for the whole column: written as whole numbers (if any figure is over 1:
         # 1 = 1%, 50 = 50%) or as fractions (0.5 = 50%) - never 1 = 100% in one row and 50 = 50% in the next
         pct_whole = "pct" in cols and any((_n(r[cols["pct"]]) or 0) > 1.0000001 for r in rows[hi + 1:])
@@ -283,12 +508,69 @@ def read_schedule(data: bytes):
                 g_["_parts"] = list(heads)
             return g_
         skip_to = 0
+
+        def filled(k):
+            return 0 <= k - r0 < len(rows) and any(_s(v) for v in rows[k - r0][:max(cols.values()) + 1])
+
+        def above(k):
+            """The nearest row above with anything in it."""
+            k -= 1
+            while k > r0 + hi and not filled(k):
+                k -= 1
+            return k
+
+        def bold(k):
+            try:
+                f = ws.cell(k, cols["desc"] + c0).font
+                return bool(f and (f.b or f.u))
+            except Exception:
+                return False
+
+        def has_fig(r_):
+            return any(_n(r_[cols[k_]]) is not None or (k_ == "amount" and _s(r_[cols[k_]])) for k_ in ("qty", "rate", "amount") if k_ in cols)
+
+        last_head, last_item_xr, carry, first_head = None, None, None, None
+        tots_seen = set()
+        bill_runs, bstart = [], 0                              # several bills on one sheet: each checked against its own total
         for ri, r in enumerate(rows[hi + 1:], start=hi + 1):
             xr = r0 + ri
             if xr <= skip_to:
                 continue
             no = _s(r[cols["no"]]) if "no" in cols else ""
             desc = _s(r[cols["desc"]])
+            if desc and re.search(r"\btotal\b|carried|collection|summary", desc, re.I) and amt_of(r):
+                tots_seen.add(round(amt_of(r), 2))             # every total printed on the sheet (for telling a summary sheet)
+            if carry is not None:
+                # an item whose words run over two rows with its figures on the last (5 Nov 2026): one line
+                cxr, cno, cdesc = carry
+                carry = None
+                if desc and not no and xr == above(xr + 1) and above(xr) == cxr:
+                    no, desc = cno, f"{cdesc} {desc}"
+                    r = list(r)
+                    if "no" in cols:
+                        r[cols["no"]] = cno
+                    r[cols["desc"]] = desc
+            if desc and not no and not has_fig(r) and last_item_xr is not None and above(xr) == last_item_xr and mine \
+                    and not LETTERED.match(desc) and not ("unit" in cols and _s(r[cols["unit"]])) and not SIZE_LINE.match(desc) \
+                    and not mine[-1].get("grp") and xr not in groups and not BROUGHT.match(desc) and not PAGE_TOTAL.match(desc) \
+                    and not re.search(r"\btotal\b", desc, re.I) and not bold(xr) and not (desc.isupper() and len(desc) > 3) \
+                    and (desc[:1].islower() or (not re.search(r"[.:;]$", mine[-1]["description"])
+                                                and "no" in cols and filled(xr + 1) and _s(rows[xr + 1 - r0][cols["no"]]))) \
+                    and not (filled(xr + 1) and has_fig(rows[xr + 1 - r0]) and _s(rows[xr + 1 - r0][cols["desc"]])[:1].islower()
+                             and not ("no" in cols and _s(rows[xr + 1 - r0][cols["no"]]))):
+                # the item's words carried on to the row under it ("... complete with fixings" / "and accessories")
+                mine[-1]["description"] = (mine[-1]["description"] + " " + desc)[:2000]
+                last_item_xr = xr
+                continue
+            if desc and not has_fig(r) and xr + 1 not in groups and xr not in groups and filled(xr + 1) and above(xr + 2) == xr + 1:
+                nr = rows[xr + 1 - r0]
+                ndesc, nno = _s(nr[cols["desc"]]), (_s(nr[cols["no"]]) if "no" in cols else "")
+                if ndesc and not nno and has_fig(nr) and (_n(nr[cols["amount"]]) if "amount" in cols else None) \
+                        and not re.search(r"\btotal\b|carried|brought", ndesc, re.I) and not desc.isupper() and not desc.rstrip().endswith(":") \
+                        and not LETTERED.match(ndesc) and not LETTERED.match(desc) and not ("unit" in cols and _s(r[cols["unit"]])) \
+                        and (no or (ndesc[:1].islower() and not bold(xr) and not desc.isupper())):
+                    carry = (xr, no, desc)
+                    continue
             if xr in groups and not in_coll and not BILL_PAGE.search(" ".join(x for x in (no, desc) if x)) \
                     and not PAGE_TOTAL.match(" ".join(x for x in (no, desc) if x)):
                 # the bracket: every row of the merged price cell, the price on one line (the group), the rows under it
@@ -312,6 +594,8 @@ def read_schedule(data: bytes):
                 tdesc = _s(title_row[0][cols["desc"]]) if title_row else ""
                 tno = (_s(title_row[0][cols["no"]]) if "no" in cols else "") if title_row else ""
                 gtitle = tdesc if title_row else (group_title() or (_s(rows_txt[0][0][cols["desc"]]) if rows_txt else "Lump sum"))
+                if not title_row and last_head is not None and last_head[0] == above(xr) and (last_head[1] or len(last_head[2]) <= 60):
+                    gtitle, tno = last_head[2], last_head[1]   # the item heading right over the bracket names it
                 counts["rows"] += len(rows_txt)
                 if title_row:
                     counts["headings"] += 1
@@ -342,6 +626,28 @@ def read_schedule(data: bytes):
                     total_row = r
                 pstart = len(mine)
                 continue
+            if BROUGHT.match(label) or BROUGHT.match(desc):
+                continue
+            if ROLLUP_LINE.match(desc) and not (("unit" in cols and _s(r[cols["unit"]])) or ("qty" in cols and _n(r[cols["qty"]]))):
+                continue
+            mb = BILL_HEAD.match(desc) if not no and amt_of(r) is None and not ("rate" in cols and _s(r[cols["rate"]])) else None
+            if mb and len(desc) <= 90:
+                flush_pending("a new bill starts")
+                open_grp = None
+                if has_pages and pstart < len(mine):
+                    merge_page()
+                in_coll = False
+                if mine or bill_runs:
+                    bill_runs.append((bill, total_row, bstart))  # the bill before: its lines and its own total row
+                bstart, total_row = len(mine), None
+                pstart = len(mine)
+                bill, title = "B" + mb.group(1).upper(), (mb.group(2) or "").strip(" -:")
+                title = title.title() if title.isupper() else title
+                top = section = parent = intro = group = ""
+                heads = []
+                counts["rows"] += 1
+                counts["headings"] += 1
+                continue
             if desc and COLLECTION_HEAD.match(desc) and amt_of(r) is None:
                 flush_pending("the collection starts")
                 open_grp = None
@@ -351,8 +657,10 @@ def read_schedule(data: bytes):
                 v = amt_of(r)
                 if v is not None or (desc and "rate" in cols and _n(r[cols["rate"]])):
                     rollups.append((label, v or 0.0))
-                    if re.match(r"^\s*(grand\s+)?total\b", label, re.I) and v:
+                    if re.search(r"\btotal\b|carried\s+to\s+(the\s+)?(summary|main)", label, re.I) and v:
                         total_row = r
+                        if not re.match(r"^\s*total\s+\w+\s+systems?\b", label, re.I) and re.search(r"summary|bill|^total\s*[-:]|^sub", label, re.I):
+                            in_coll = False                 # the collection closed with the bill's total: items may follow
                 continue
             if desc and re.match(r"^\s*(sub\s*-?\s*|grand\s+)?total\b", desc, re.I) and not no and has_pages:
                 if amt_of(r):
@@ -398,8 +706,10 @@ def read_schedule(data: bytes):
             if not desc:
                 continue
             counts["rows"] += 1
-            qty = _n(r[cols["qty"]]) if "qty" in cols else None
+            qty, qu_ = _qu(r[cols["qty"]]) if "qty" in cols else (None, "")
             unit = _s(r[cols["unit"]]) if "unit" in cols else ""
+            if qu_ and not unit:
+                unit = qu_                                     # "25 m2" in the quantity column
             rate_raw = r[cols["rate"]] if "rate" in cols else None
             rate = _n(rate_raw)
             amt_raw = r[cols["amount"]] if "amount" in cols else None
@@ -428,6 +738,9 @@ def read_schedule(data: bytes):
                 if not (qty or rate or unit or cert_amt):
                     counts["headings"] += 1
                     page_heads.append((xr, no, desc))
+                    last_head = (xr, no, desc)
+                    if first_head is None:
+                        first_head = desc
                     head = f"{no} {desc}".strip() if no and len(no) <= 3 else desc
                     if open_grp is not None or pending:
                         flush_pending("a heading follows")
@@ -491,7 +804,7 @@ def read_schedule(data: bytes):
             ls = isinstance(rate_raw, str) and rate_raw.strip().upper() in ("LS", "L.S", "L.S.", "LUMPSUM", "LUMP SUM")
             if ls and amt:
                 qty, rate, unit = (qty or 1.0), (rate or amt), (unit or "LS")
-            if SIZE_LINE.match(desc) and intro and not LETTERED.match(desc):
+            if SIZE_LINE.match(desc) and intro and not LETTERED.match(desc) and len(desc) <= 28:
                 # "75mm diameter" alone says nothing - it is a size of the pipes the sentence above describes
                 desc = f"{intro if len(intro) <= 110 else intro[:107].rsplit(' ', 1)[0] + '...'} - {desc}"
             measure = "qty" if (is_qty and (rate or qty) and not ls and not amt) else "pct"
@@ -513,6 +826,7 @@ def read_schedule(data: bytes):
                          "stage_pct": round(as_pct(pct), 4) if (measure == "qty" and pct) else None,
                          "rate_missing": bool(qty) and not rate and not amt and not words, "grp": ""})
             counts["lines"] += 1
+            last_item_xr = xr
             heads = []
         flush_pending("the sheet ends")
         if has_pages and pstart < len(mine):
@@ -564,12 +878,27 @@ def read_schedule(data: bytes):
             if rollups:
                 summaries.append((ws.title, rollups))
             continue
+        for x in mine:
+            x["_src"] = ws.title
         if not bill and has_pages:
             for x in mine:
                 x["_sheet"] = ws.title                  # one bill per trade sheet - named once all sheets are read
         contract = round(sum(x["amount"] for x in mine), 2)
         certified = round(sum(x["certified"] or 0 for x in mine), 2)
         chk = {}
+        if bill_runs:
+            bill_runs.append((bill, total_row, bstart))
+            bad = []
+            for k_, (b_, tr_, st_) in enumerate(bill_runs):
+                en_ = bill_runs[k_ + 1][2] if k_ + 1 < len(bill_runs) else len(mine)
+                got_ = round(sum(x["amount"] for x in mine[st_:en_]), 2)
+                t_ = _n(tr_[cols["amount"]]) if (tr_ is not None and "amount" in cols) else None
+                if t_ is not None and abs(round(t_, 2) - got_) >= 0.01:
+                    bad.append(f"{b_ or 'bill'}: lines {got_:,.2f}, its total row {t_:,.2f}")
+            chk["contract"] = (round(sum(x["amount"] for x in mine), 2), not bad)
+            for b_ in bad:
+                notes.append(f"{ws.title}: {b_}")
+            total_row = None
         if total_row is not None:
             t_amt = _n(total_row[cols["amount"]]) if "amount" in cols else None
             t_cert = _n(total_row[cols["cert_amt"]]) if "cert_amt" in cols else None
@@ -587,7 +916,7 @@ def read_schedule(data: bytes):
                 continue
             calc = (x["amount"] * (x["done_pct"] or 0) / 100.0) if x["measure"] == "pct" else \
                 ((x["done_qty"] or 0) * x["rate"] * ((x["stage_pct"] / 100.0) if x.get("stage_pct") else 1.0))
-            if abs(round(calc, 2) - x["certified"]) > 0.01:
+            if abs(calc - x["certified"]) > 0.0101:      # a fil either way is Excel's rounding of the half
                 off.append(f"{x['no'] or x['description'][:30]} ({calc:,.2f} v {x['certified']:,.2f})")
         if off:
             notes.append(f"{ws.title}: {len(off)} line(s) where done x amount is not the certified figure: {', '.join(off[:4])}")
@@ -605,10 +934,39 @@ def read_schedule(data: bytes):
         if counts["groups"]:
             notes.append(f"{ws.title}: {counts['groups']} group(s) of items priced together (one lump sum each) - "
                          f"{counts['members']} items listed under their group, counted once")
-        sheets.append({"sheet": ws.title, "bill": bill, "title": title, "lines": len(mine), "contract": contract, "certified": certified,
+        sheets.append({"_tots": tots_seen, "_first": first_head or "", "_bills": {(x["bill"], x["bill_title"]) for x in mine}, "sheet": ws.title, "bill": bill, "title": title, "lines": len(mine), "contract": contract, "certified": certified,
                        "check": {k: {"sheet": v, "ok": ok} for k, (v, ok) in chk.items()}, "unpriced": skipped,
                        "rows": dict(counts, accounted=acc)})
         items += mine
+    # a SUMMARY sheet (any name, first or last): its lines are the other sheets' (or their bills') totals - a check on
+    # them, never lines of the schedule
+    srcs = [sh["sheet"] for sh in sheets]
+    if len(srcs) > 1:
+        for sh in list(sheets):
+            mine_ = [x for x in items if x.get("_src") == sh["sheet"]]
+            others = [x for x in items if x.get("_src") != sh["sheet"]]
+            if not mine_ or not others or len(mine_) > 80:
+                continue
+            tots = set()
+            for src in set(x["_src"] for x in others):
+                xs = [x for x in others if x["_src"] == src]
+                tots.add(round(sum(x["amount"] for x in xs), 2))
+                for b_ in set(x["bill"] for x in xs):
+                    tots.add(round(sum(x["amount"] for x in xs if x["bill"] == b_), 2))
+            tots.add(round(sum(x["amount"] for x in others), 2))
+            for sh2 in sheets:
+                if sh2 is not sh:
+                    tots |= sh2.get("_tots") or set()
+            hits = [x for x in mine_ if x["amount"] and round(x["amount"], 2) in tots]
+            priced = [x for x in mine_ if x["amount"]]
+            if len(hits) >= 2 and len(hits) >= 0.6 * len(priced) or (len(hits) == 1 and len(priced) == 1 and len(srcs) == 2):
+                items = [x for x in items if x.get("_src") != sh["sheet"]]
+                sheets.remove(sh)
+                summaries.append((sh["sheet"], [(x["description"], x["amount"]) for x in priced]))
+                notes[:] = [n for n in notes if not n.startswith(sh["sheet"] + ":")]
+                review[:] = [r_ for r_ in review if not r_.startswith(sh["sheet"] + " row")]
+    for x in items:
+        x.pop("_src", None)
     # a BOQ of several trade sheets in bill pages (MEP_BOQ_HVAC / _ELECTRICAL / _PLUMBING): each sheet is its own bill
     paged = [sh for sh in sheets if any(x.get("_sheet") == sh["sheet"] for x in items)]
     if len(paged) > 1:
@@ -628,22 +986,44 @@ def read_schedule(data: bytes):
         for lab, v in rows_:
             if re.search(r"grand|carried|all\b", lab, re.I) and not re.search(r"system|works", lab, re.I):
                 continue
-            words = set(re.findall(r"[a-z]{4,}", lab.lower().replace("systems", " ").replace("total", " ")))
-            hit = next((sh for sh in sheets if words & set(re.findall(r"[a-z]{4,}", sh["sheet"].lower()))), None)
-            if not hit:
+            stop = {"total", "systems", "system", "works", "work", "bill", "the", "and", "sheet", "boq", "mep", "sub", "of"}
+            wd = lambda t: {w for w in re.findall(r"[a-z]{3,}", t.lower()) if w not in stop}
+            words = wd(lab)
+            # the sheet whose name shares the most words with the line; between equals (FIRE ALARM / FIRE FIGHTING) the
+            # one whose lines make the figure
+            sc = [(len(words & (wd(sh["sheet"]) | wd(sh.get("title") or "") | wd(sh.get("_first") or ""))), abs(round(v, 2) - sh["contract"]) < 0.01, sh)
+                  for sh in sheets]
+            # several bills on one sheet: each bill (its title) is a target of its own
+            for b_ in {(x["bill"], x["bill_title"]) for x in items if x["bill"] and x["bill_title"]}:
+                tot_ = round(sum(x["amount"] for x in items if (x["bill"], x["bill_title"]) == b_), 2)
+                sh_ = next((sh for sh in sheets if sh.get("_bills") and b_ in sh["_bills"]), None)
+                if sh_ is not None:
+                    sc.append((len(words & wd(b_[1])) + 0.5 * bool(words & wd(b_[1])), abs(round(v, 2) - tot_) < 0.01,
+                               {"sheet": f"{sh_['sheet']} / {b_[1]}", "contract": tot_, "check": sh_["check"], "bill": b_[0], "title": b_[1], "_sub": True}))
+            sc = [x for x in sc if x[0]]
+            if not sc:
                 continue
+            best_n = max(x[0] for x in sc)
+            top_ = [x for x in sc if x[0] == best_n]
+            hit = next((x[2] for x in top_ if x[1]), None) or next((x[2] for x in sc if x[1]), None) or top_[0][2]
             title_ = re.sub(r"^\s*total\s+", "", lab, flags=re.I).strip()
             title_ = re.sub(r"(?i)(electrical|plumbing|hvac)(systems)", r"\1 \2", title_)
-            for x in items:
-                if x["bill"] == hit["bill"] and not x["bill_title"]:
-                    x["bill_title"] = title_.title().replace("Hvac", "HVAC")[:120]
-            hit["title"] = hit["title"] or title_.title().replace("Hvac", "HVAC")
+            if not hit.get("_sub"):
+                for x in items:
+                    if x["bill"] == hit["bill"] and not x["bill_title"]:
+                        x["bill_title"] = title_.title().replace("Hvac", "HVAC")[:120]
+                hit["title"] = hit["title"] or title_.title().replace("Hvac", "HVAC")
+            key_ = "summary" if not hit.get("_sub") else f"summary {hit['bill']}"
             if abs(round(v, 2) - hit["contract"]) >= 0.01:
                 notes.append(f"{sname}: '{lab}' says {v:,.2f}, the lines of {hit['sheet']} add up to {hit['contract']:,.2f} "
                              f"(difference {v - hit['contract']:,.2f})")
-                hit["check"]["summary"] = {"sheet": round(v, 2), "ok": False}
+                hit["check"][key_] = {"sheet": round(v, 2), "ok": False}
             else:
-                hit["check"]["summary"] = {"sheet": round(v, 2), "ok": True}
+                hit["check"][key_] = {"sheet": round(v, 2), "ok": True}
+    for sh in sheets:
+        sh.pop("_bills", None)
+        sh.pop("_first", None)
+        sh.pop("_tots", None)
     if not items:
         raise ValueError("No schedule lines found. Upload the agreement BOQ or a payment certificate with its Appendix / Bill sheets "
                          "(a heading row with Description and Amount or Rate).")

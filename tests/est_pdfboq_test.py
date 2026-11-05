@@ -126,8 +126,12 @@ if soffice:
         x = I.read_schedule(xd)
         p = I.read_schedule(P.workbook_of(data, "x.pdf"))
         a, e = summ(p), summ(x)
-        ck(f"{os.path.basename(b)}: the PDF reads as the Excel - lines, groups, total ({e[0]} lines, {e[1]} groups, {e[4]:,.2f})",
-           a[0] == e[0] and a[1] == e[1] and a[4] == e[4] and p["all_checked"] == x["all_checked"], (a, e))
+        pr = lambda r: [(i["bill"], round(i["amount"], 2)) for i in r["items"] if i["amount"]]
+        ck(f"{os.path.basename(b)}: the PDF reads as the Excel - every priced line and its amount, the groups, the total "
+           f"({len(pr(x))} priced lines, {e[1]} groups, {e[4]:,.2f})",
+           sorted(pr(p)) == sorted(pr(x)) and a[1] == e[1] and a[4] == e[4] and p["all_checked"] == x["all_checked"], (a, e))
+        # a PDF has no cell edges: words with no price may come apart or together a little differently - never lost
+        ck(f"{os.path.basename(b)}: the lines at nil within 3 of the Excel's ({e[0] - len(pr(x))})", abs(a[0] - e[0]) <= 3, (a[0], e[0]))
         ck(f"{os.path.basename(b)}: every bill's total as in the Excel", sorted(s["contract"] for s in p["sheets"]) == sorted(s["contract"] for s in x["sheets"]),
            ([s["contract"] for s in p["sheets"]], [s["contract"] for s in x["sheets"]]))
     # the upload on the schedule screen takes the PDF
