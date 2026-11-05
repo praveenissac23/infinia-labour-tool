@@ -382,7 +382,11 @@ def read_agreement_doc(data=None, name="", lines=None, trades=None):
     if data is not None:
         doc = load_doc(data, name)
         lines = old_lines(data, name, doc)
-    old = A.read(lines or [], trades=trades or [])
+    try:
+        old = A.read(lines or [], trades=trades or [])
+    except Exception as e:                                  # never an error for the user: the other readings go on
+        old = {"fields": {}, "found": [], "notes": [f"The agreement's text could not be read fully ({type(e).__name__}) - check the figures"],
+               "items": [], "checks": {}}
     xl_total = None
     # an agreement / BOQ in Excel: its priced schedule read from the cells (sheets, page totals, items priced together
     # in one lump sum - the same reader as the item schedule upload), not from the text a sheet turns into
@@ -399,8 +403,17 @@ def read_agreement_doc(data=None, name="", lines=None, trades=None):
                     # a PDF BOQ: its table put back into rows and columns and read like the Excel (5 Nov 2026) - used
                     # when every bill adds up to its own total, or the team's reader found no schedule
                     import est_pdfboq
-                    sch = est_pdfboq.read(lines or [])
-                    if not sch or not sch["items"] or not (sch["all_checked"] or not old.get("items")):
+                    sch = None
+                    try:
+                        wb_ = est_pdfboq.workbook_of(data, name)     # the page's words in the table's own columns
+                        sch = est_itemimport.read_schedule(wb_) if wb_ else None
+                    except Exception:
+                        sch = None
+                    if not sch or not sch.get("items"):
+                        sch = est_pdfboq.read(lines or [])
+                    oldp = [x for x in (old.get("items") or []) if x.get("amount")]
+                    newp = [x for x in ((sch or {}).get("items") or []) if x.get("amount")]
+                    if not sch or not sch["items"] or not (sch["all_checked"] or not oldp or len(newp) >= len(oldp)):
                         sch = {"items": []}
                 else:
                     xd = data

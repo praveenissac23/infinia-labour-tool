@@ -858,7 +858,19 @@ def _row(blk, ml, amt):
         elif c.lower().strip(". ") in UNITS or c.lower() in UNITS:
             unit = c
         elif money(c) is not None or re.fullmatch(r"\d+(?:\.\d+)?", c.replace(",", "")):
-            nums.append(float(c.replace(",", "")))
+            v_ = money(c)
+            if v_ is None:
+                try:
+                    v_ = float(c.replace(",", ""))
+                except ValueError:
+                    v_ = None
+            if v_ is None:
+                m_ = re.search(r"-?\d[\d,]*(?:\.\d+)?", c)       # "2110.15AED", "16900 AED": the figure in it
+                v_ = float(m_.group(0).replace(",", "")) if m_ else None
+            if v_ is None:
+                words.append(c)
+            else:
+                nums.append(v_)
         else:
             words.append(c)
     if words and unit is None:          # "640 hrs" run together on a scan, or at the end of the words

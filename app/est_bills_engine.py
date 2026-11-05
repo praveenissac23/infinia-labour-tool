@@ -18,7 +18,7 @@ import tempfile
 import math
 import re
 import zipfile
-from decimal import Decimal, ROUND_HALF_UP, ROUND_UP, ROUND_DOWN
+from decimal import Decimal, ROUND_HALF_UP, ROUND_UP, ROUND_DOWN, ROUND_CEILING, ROUND_FLOOR
 from xml.etree import ElementTree as ET
 
 import openpyxl
@@ -553,11 +553,13 @@ class Err(object):
 
 
 DIV0, VALUE, NAME, REF, NA = Err("#DIV/0!"), Err("#VALUE!"), Err("#NAME?"), Err("#REF!"), Err("#N/A")
+NUM_ = Err("#NUM!")
 
 TOKEN = re.compile(r"""
   (?P<ws>\s+)
 | (?P<str>"(?:[^"]|"")*")
 | (?P<err>\#(?:DIV/0!|VALUE!|REF!|NAME\?|N/A|NUM!|NULL!))
+| (?P<colref>(?:(?:'(?:[^']|'')+'|[A-Za-z0-9_\.]+)!)?\$?[A-Za-z]{1,3}:\$?[A-Za-z]{1,3}(?![A-Za-z0-9_(]))
 | (?P<ref>(?:'(?:[^']|'')+'|[A-Za-z0-9_\.]+)?!?\$?[A-Za-z]{1,3}\$?\d+(?::\$?[A-Za-z]{1,3}\$?\d+)?)
 | (?P<sheetref>(?:'(?:[^']|'')+'|[A-Za-z0-9_\.]+)!\$?[A-Za-z]{1,3}\$?\d+(?::\$?[A-Za-z]{1,3}\$?\d+)?)
 | (?P<num>(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)
@@ -583,6 +585,11 @@ def _tokens(f):
             if "!" not in t and not re.match(r"\$?[A-Za-z]{1,3}\$?\d+(:\$?[A-Za-z]{1,3}\$?\d+)?$", t):
                 raise BillError(f"Cannot read the formula ={f}")
         if k == "sheetref":
+            k = "ref"
+        if k == "colref":                                # a whole column (SUM(E:E)): rows 1 to the last
+            sh_, _, rng_ = t.rpartition("!")
+            a_, b_ = rng_.split(":")
+            t = (sh_ + "!" if sh_ else "") + f"{a_}1:{b_}1048576"
             k = "ref"
         out.append((k, t))
     return out
@@ -746,12 +753,20 @@ def general(v):
     return str(v)
 
 
+def _x15(x):
+    """Excel keeps 15 significant digits: 322993.07999999996 is 322993.08 to it."""
+    try:
+        return float(f"{float(x):.15g}")
+    except (TypeError, ValueError):
+        return x
+
+
 def _round(x, n, mode):
     if isinstance(x, Err):
         return x
     if isinstance(n, Err):
         return n
-    d = Decimal(repr(float(x)))
+    d = Decimal(repr(_x15(float(x))))
     q = Decimal(1).scaleb(-int(n)) if int(n) >= 0 else Decimal(10) ** (-int(n))
     if int(n) >= 0:
         return float(d.quantize(q, rounding=mode))
@@ -1027,6 +1042,8 @@ class Book(object):
             else:
                 if isinstance(v, Err):
                     return v
+                if a[0] == "ref" and (v is None or v == "" or isinstance(v, (str, bool))):
+                    continue                             # a referenced blank / text / TRUE cell: Excel leaves it out
                 x = _num(v)
                 if isinstance(x, Err):
                     if strict_text:
@@ -1035,7 +1052,317 @@ class Book(object):
                 out.append(x)
         return out
 
+    def _arg(self, args, i, default=None):
+        if i >= len(args) or args[i][0] == "none":
+            return default
+        return self.scalar(self.ev(args[i]))
+
+    def _narg(self, args, i, default=0.0):
+        v = self._arg(args, i, None)
+        if v is None:
+            return default
+        return _num(v)
+
+    def _date(self, v):
+        """A date serial (or a date typed as text) -> datetime.date, or an Err."""
+        if isinstance(v, Err):
+            return v
+        if isinstance(v, str):
+            for f in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d %b %Y", "%d %B %Y"):
+                try:
+                    return _dt.datetime.strptime(v.strip(), f).date()
+                except ValueError:
+                    pass
+            return VALUE
+        x = _num(v)
+        if isinstance(x, Err):
+            return x
+        return (EPOCH + _dt.timedelta(days=int(math.floor(x)))).date()
+
+    @staticmethod
+    def _serial(d):
+        return float((_dt.datetime(d.year, d.month, d.day) - EPOCH).days)
+
+    def fn_more(self, name, args):
+        """Functions a consultant's bill may use beyond the everyday ones (5 Nov 2026) - each as Excel works it.
+        Returns NotImplemented for a name this does not know."""
+        A, N = self._arg, self._narg
+        if name in ("TRUE", "FALSE") and not args or name in ("TRUE", "FALSE") and all(a[0] == "none" for a in args):
+            return name == "TRUE"
+        if name in ("TRUNC", "MROUND", "CEILING", "FLOOR", "CEILING.MATH", "FLOOR.MATH", "MOD", "POWER", "SQRT", "SIGN", "EVEN", "ODD"):
+            x = N(args, 0)
+            if isinstance(x, Err):
+                return x
+            if name == "TRUNC":
+                nd = N(args, 1, 0.0)
+                return _round(x, nd, ROUND_DOWN)
+            if name == "MROUND":
+                m = N(args, 1)
+                if isinstance(m, Err):
+                    return m
+                if m == 0:
+                    return 0.0
+                if x * m < 0:
+                    return NUM_
+                q = _round(_x15(x / m), 0, ROUND_HALF_UP)
+                return float(Decimal(repr(q)) * Decimal(repr(m)))
+            if name in ("CEILING", "FLOOR", "CEILING.MATH", "FLOOR.MATH"):
+                m = N(args, 1, 1.0 if x >= 0 or name.endswith("MATH") else -1.0)
+                if isinstance(m, Err):
+                    return m
+                if m == 0:
+                    return 0.0
+                if x > 0 and m < 0 and not name.endswith("MATH"):
+                    return NUM_
+                m = abs(m) if name.endswith("MATH") else m
+                q = Decimal(repr(_x15(x))) / Decimal(repr(m))
+                q = q.to_integral_value(rounding=(ROUND_CEILING if name.startswith("CEILING") else ROUND_FLOOR)) if x >= 0 or name.endswith("MATH") \
+                    else q.to_integral_value(rounding=(ROUND_UP if name.startswith("CEILING") else ROUND_DOWN))
+                return float(q * Decimal(repr(m)))
+            if name == "MOD":
+                d = N(args, 1)
+                if isinstance(d, Err):
+                    return d
+                return DIV0 if d == 0 else float(x - d * math.floor(x / d))
+            if name == "POWER":
+                y = N(args, 1)
+                if isinstance(y, Err):
+                    return y
+                try:
+                    return float(x ** y)
+                except Exception:
+                    return NUM_
+            if name == "SQRT":
+                return NUM_ if x < 0 else math.sqrt(x)
+            if name == "SIGN":
+                return float((x > 0) - (x < 0))
+            if name in ("EVEN", "ODD"):
+                v = math.ceil(abs(x))
+                if name == "EVEN":
+                    v += v % 2
+                else:
+                    v += 1 - v % 2 if v else 1
+                return float(v if x >= 0 else -v)
+        if name in ("LARGE", "SMALL"):
+            xs = self.nums(args[:1])
+            if isinstance(xs, Err):
+                return xs
+            k = N(args, 1)
+            if isinstance(k, Err):
+                return k
+            k = int(k)
+            if k < 1 or k > len(xs):
+                return NUM_
+            return sorted(xs, reverse=(name == "LARGE"))[k - 1]
+        if name == "COUNTBLANK":
+            n = 0
+            for a in args:
+                v = self.ev(a)
+                for x in (v if isinstance(v, list) else [v]):
+                    n += x in (None, "")
+            return float(n)
+        if name == "NOT":
+            v = A(args, 0)
+            return v if isinstance(v, Err) else (not bool(_num(v)))
+        if name == "CHOOSE":
+            k = N(args, 0)
+            if isinstance(k, Err):
+                return k
+            k = int(k)
+            return VALUE if k < 1 or k >= len(args) else self.scalar(self.ev(args[k]))
+        if name in ("ISNUMBER", "ISTEXT", "ISBLANK", "ISERROR", "ISERR", "ISNA", "ISLOGICAL", "ISNONTEXT"):
+            v = A(args, 0)
+            if name == "ISNUMBER":
+                return isinstance(v, (int, float)) and not isinstance(v, bool)
+            if name == "ISTEXT":
+                return isinstance(v, str) and v != "" or (isinstance(v, str) and args[0][0] != "ref")
+            if name == "ISNONTEXT":
+                return not isinstance(v, str) or v == ""
+            if name == "ISBLANK":
+                return args[0][0] == "ref" and v in (None, "")
+            if name == "ISLOGICAL":
+                return isinstance(v, bool)
+            if name == "ISNA":
+                return v is NA
+            if name == "ISERR":
+                return isinstance(v, Err) and v is not NA
+            return isinstance(v, Err)
+        if name in ("LOWER", "PROPER", "TRIM", "LEN", "LEFT", "RIGHT", "MID", "VALUE", "N", "T", "REPT", "SUBSTITUTE", "FIND", "SEARCH", "EXACT"):
+            v = A(args, 0)
+            if isinstance(v, Err):
+                return v
+            t = general(v) if v is not None else ""
+            if name == "LOWER":
+                return t.lower()
+            if name == "PROPER":
+                return re.sub(r"[A-Za-z]+", lambda m: m.group(0)[0].upper() + m.group(0)[1:].lower(), t)
+            if name == "TRIM":
+                return re.sub(r" +", " ", t).strip(" ")
+            if name == "LEN":
+                return float(len(t))
+            if name in ("LEFT", "RIGHT"):
+                n = N(args, 1, 1.0)
+                if isinstance(n, Err):
+                    return n
+                n = int(n)
+                return t[:n] if name == "LEFT" else (t[-n:] if n else "")
+            if name == "MID":
+                st, n = N(args, 1), N(args, 2)
+                if isinstance(st, Err) or isinstance(n, Err):
+                    return VALUE
+                st, n = int(st), int(n)
+                return VALUE if st < 1 or n < 0 else t[st - 1:st - 1 + n]
+            if name == "VALUE":
+                x = _num(t.replace("AED", "").strip()) if t.strip() else VALUE
+                return x
+            if name == "N":
+                return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else (1.0 if v is True else 0.0)
+            if name == "T":
+                return v if isinstance(v, str) else ""
+            if name == "REPT":
+                n = N(args, 1)
+                return VALUE if isinstance(n, Err) else t * int(n)
+            if name == "SUBSTITUTE":
+                old_, new_ = general(A(args, 1, "")), general(A(args, 2, ""))
+                inst = A(args, 3)
+                if inst is None:
+                    return t.replace(old_, new_)
+                k, i, out = int(_num(inst)), 0, t
+                pos = -1
+                for _ in range(k):
+                    pos = t.find(old_, pos + 1)
+                    if pos < 0:
+                        return t
+                return t[:pos] + new_ + t[pos + len(old_):]
+            if name in ("FIND", "SEARCH"):
+                hay = general(A(args, 1, ""))
+                st = int(_num(A(args, 2, 1.0)))
+                i = (hay.find(t, st - 1) if name == "FIND" else hay.lower().find(t.lower(), st - 1))
+                return VALUE if i < 0 else float(i + 1)
+            if name == "EXACT":
+                return t == general(A(args, 1, ""))
+        if name in ("ROWS", "COLUMNS"):
+            node = args[0]
+            if node[0] == "ref":
+                _, _sh, r1, c1, r2, c2, _isr = node
+                return float((r2 - r1 + 1) if name == "ROWS" else (c2 - c1 + 1))
+            return 1.0
+        if name == "HLOOKUP":
+            key = A(args, 0)
+            g = self.grid(args[1])[0]
+            row = int(_num(A(args, 2)))
+            approx = bool(_num(A(args, 3, True))) if len(args) > 3 else True
+            if not g or row < 1 or row > len(g):
+                return REF
+            idx = _lookup(list(g[0]), key, 1 if approx else 0)
+            return NA if idx is None else g[row - 1][idx]
+        if name == "IFS":
+            for i in range(0, len(args) - 1, 2):
+                c = A(args, i)
+                if isinstance(c, Err):
+                    return c
+                if bool(_num(c)) if not isinstance(c, str) else c != "":
+                    return A(args, i + 1)
+            return NA
+        if name == "SWITCH":
+            v = A(args, 0)
+            rest = args[1:]
+            for i in range(0, len(rest) - 1, 2):
+                if self.binop("=", v, self.scalar(self.ev(rest[i]))) is True:
+                    return self.scalar(self.ev(rest[i + 1]))
+            return self.scalar(self.ev(rest[-1])) if len(rest) % 2 == 1 else NA
+        if name in ("MAXIFS", "MINIFS", "AVERAGEIFS"):
+            src = [x for row in self.grid(args[0])[0] for x in row]
+            pairs = [([x for row in self.grid(args[i])[0] for x in row], self.scalar(self.ev(args[i + 1]))) for i in range(1, len(args) - 1, 2)]
+            vals = [float(src[i]) for i in range(len(src)) if all(i < len(pr[0]) and _crit_ok(pr[0][i], pr[1]) for pr in pairs)
+                    and isinstance(src[i], (int, float)) and not isinstance(src[i], bool)]
+            if name == "AVERAGEIFS":
+                return sum(vals) / len(vals) if vals else DIV0
+            return float((max if name == "MAXIFS" else min)(vals)) if vals else 0.0
+        if name in ("YEAR", "MONTH", "DAY", "WEEKDAY", "EOMONTH", "EDATE", "DAYS", "NETWORKDAYS", "DATEDIF", "TODAY", "NOW", "DATEVALUE", "WORKDAY"):
+            if name in ("TODAY", "NOW"):
+                return self._serial(_dt.date.today())
+            d = self._date(A(args, 0))
+            if isinstance(d, Err):
+                return d
+            if name == "DATEVALUE":
+                return self._serial(d)
+            if name == "YEAR":
+                return float(d.year)
+            if name == "MONTH":
+                return float(d.month)
+            if name == "DAY":
+                return float(d.day)
+            if name == "WEEKDAY":
+                t_ = int(_num(A(args, 1, 1.0)))
+                w = d.isoweekday() % 7 + 1                 # Sunday 1 ... Saturday 7
+                return float(w if t_ == 1 else (d.isoweekday() if t_ == 2 else d.weekday()))
+            if name in ("EOMONTH", "EDATE"):
+                m = N(args, 1)
+                if isinstance(m, Err):
+                    return m
+                y, mo = d.year, d.month + int(m)
+                y += (mo - 1) // 12
+                mo = (mo - 1) % 12 + 1
+                import calendar
+                last = calendar.monthrange(y, mo)[1]
+                return self._serial(_dt.date(y, mo, last if name == "EOMONTH" else min(d.day, last)))
+            e = self._date(A(args, 1)) if name not in ("WORKDAY",) else None
+            if name == "DAYS":
+                return float((d - e).days) if not isinstance(e, Err) else e
+            if isinstance(e, Err):
+                return e
+            if name == "NETWORKDAYS":
+                hol = set()
+                if len(args) > 2:
+                    for x in (self.ev(args[2]) if isinstance(self.ev(args[2]), list) else [self.ev(args[2])]):
+                        dd = self._date(x)
+                        if not isinstance(dd, Err):
+                            hol.add(dd)
+                a_, b_, sg = (d, e, 1) if d <= e else (e, d, -1)
+                n = 0
+                cur = a_
+                while cur <= b_:
+                    if cur.weekday() < 5 and cur not in hol:
+                        n += 1
+                    cur += _dt.timedelta(days=1)
+                return float(n * sg)
+            if name == "DATEDIF":
+                unit = general(A(args, 2, "D")).upper()
+                if e < d:
+                    return NUM_
+                if unit == "D":
+                    return float((e - d).days)
+                months = (e.year - d.year) * 12 + e.month - d.month - (1 if e.day < d.day else 0)
+                return float(months if unit == "M" else months // 12)
+            if name == "WORKDAY":
+                n = int(_num(A(args, 1)))
+                cur, step = d, (1 if n >= 0 else -1)
+                while n:
+                    cur += _dt.timedelta(days=step)
+                    if cur.weekday() < 5:
+                        n -= step
+                return self._serial(cur)
+        if name == "TEXTJOIN":
+            sep = general(A(args, 0, ""))
+            skip = bool(_num(A(args, 1, True)))
+            out = []
+            for a in args[2:]:
+                v = self.ev(a)
+                for x in (v if isinstance(v, list) else [v]):
+                    if isinstance(x, Err):
+                        return x
+                    if skip and x in (None, ""):
+                        continue
+                    out.append(general(x) if x is not None else "")
+            return sep.join(out)
+        return NotImplemented
+
     def fn(self, name, args):
+        name = name.upper().replace("_XLFN.", "").replace("_XLWS.", "")
+        more = self.fn_more(name, args)
+        if more is not NotImplemented:
+            return more
         if name == "SUM":
             xs = self.nums(args)
             return xs if isinstance(xs, Err) else float(sum(xs))
@@ -1073,7 +1400,7 @@ class Book(object):
             return _round(x, nd, {"ROUND": ROUND_HALF_UP, "ROUNDUP": ROUND_UP, "ROUNDDOWN": ROUND_DOWN}[name])
         if name == "INT":
             x = _num(self.scalar(self.ev(args[0])))
-            return x if isinstance(x, Err) else float(math.floor(x))
+            return x if isinstance(x, Err) else float(math.floor(_x15(x)))
         if name == "ABS":
             x = _num(self.scalar(self.ev(args[0])))
             return x if isinstance(x, Err) else abs(x)
