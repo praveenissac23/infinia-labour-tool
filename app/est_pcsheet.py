@@ -346,6 +346,12 @@ async def import_items(sid: int, file: UploadFile = File(None), save: int = Form
     data, fname = await E.upload_data(file, upload_id, parts, filename, user)
     if len(data) > E.MAX_FILE:
         raise HTTPException(413, "That file is over 25 MB.")
+    if data[:4] == b"\xd0\xcf\x11\xe0":                      # an old-format .xls (915 Al Raida) - converted on the server
+        import est_bills_engine as BE
+        try:
+            data = BE.xls_to_xlsx(data)
+        except Exception as e:
+            raise HTTPException(400, str(e) or "That .xls could not be converted - save it as .xlsx and upload that.")
     if data[:2] != b"PK":
         raise HTTPException(400, "That is not an Excel workbook (.xlsx). Save it as .xlsx and upload it again.")
     try:
