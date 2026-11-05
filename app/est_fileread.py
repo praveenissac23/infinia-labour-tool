@@ -392,14 +392,22 @@ def read_agreement_doc(data=None, name="", lines=None, trades=None):
             kind = sniff(data, name)
         except Exception:
             kind = ""
-        if kind in ("xlsx", "xlsm", "xls"):
+        if kind in ("xlsx", "xlsm", "xls", "pdf", "image"):
             try:
                 import est_itemimport
-                xd = data
-                if xd[:4] == b"\xd0\xcf\x11\xe0":
-                    import est_bills_engine as BE
-                    xd = BE.xls_to_xlsx(xd)
-                sch = est_itemimport.read_schedule(xd)
+                if kind in ("pdf", "image"):
+                    # a PDF BOQ: its table put back into rows and columns and read like the Excel (5 Nov 2026) - used
+                    # when every bill adds up to its own total, or the team's reader found no schedule
+                    import est_pdfboq
+                    sch = est_pdfboq.read(lines or [])
+                    if not sch or not sch["items"] or not (sch["all_checked"] or not old.get("items")):
+                        sch = {"items": []}
+                else:
+                    xd = data
+                    if xd[:4] == b"\xd0\xcf\x11\xe0":
+                        import est_bills_engine as BE
+                        xd = BE.xls_to_xlsx(xd)
+                    sch = est_itemimport.read_schedule(xd)
                 if sch["items"]:
                     old = dict(old)
                     old["items"] = [{k: x.get(k) for k in ("bill", "bill_title", "section", "no", "description", "qty", "unit", "rate", "amount", "grp")}

@@ -43,7 +43,7 @@ async function scheduleEditor(sid) {
     const tot = r2(rows.filter(x => !x.is_var).reduce((a, x) => a + num(x.amount || (num(x.qty) * num(x.rate))), 0));
     const vt = r2(rows.filter(x => x.is_var).reduce((a, x) => a + num(x.amount || (num(x.qty) * num(x.rate))), 0));
     $("#b-body").innerHTML = `
-      <div class="card"><div class="tools"><button class="btn btn-primary" id="it-up" title="The agreement BOQ or any payment certificate (Appendix A / Bill sheets) - every line comes in, checked against the sheet's own totals. The file is not stored.">Upload</button><input type="file" id="it-up-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-ghost" id="it-paste">Paste from Excel</button><button class="btn btn-ghost" id="it-add">+ Line</button><button class="btn btn-ghost" id="it-addv">+ Variation line</button>
+      <div class="card"><div class="tools"><button class="btn btn-primary" id="it-up" title="The agreement BOQ or any payment certificate (Appendix A / Bill sheets) - every line comes in, checked against the sheet's own totals. The file is not stored.">Upload</button><input type="file" id="it-up-f" accept=".xlsx,.xlsm,.xls,.pdf,.docx,.jpg,.jpeg,.png" hidden><button class="btn btn-ghost" id="it-paste">Paste from Excel</button><button class="btn btn-ghost" id="it-add">+ Line</button><button class="btn btn-ghost" id="it-addv">+ Variation line</button>
         <span class="spacer"></span><span class="muted">Contract lines <b>${money(tot, false)}</b>${d.sub.value ? ` of ${money(d.sub.value, false)}` : ""} · Variations <b>${money(vt, false)}</b></span></div>
         ${d.sub.value && Math.abs(tot - d.sub.value) > 0.5 && rows.some(x => !x.is_var) ? `<div class="warn" style="margin:0 0 10px">The contract lines add up to ${money(tot, false)}, the subcontract value is ${money(d.sub.value, false)}.</div>` : ""}
         ${rows.length ? `<div class="tw"><table class="t ed sched"><colgroup><col style="width:50px"><col style="width:110px"><col style="width:110px"><col style="width:50px"><col><col style="width:80px"><col style="width:78px"><col style="width:88px"><col style="width:64px"><col style="width:84px"><col style="width:100px"><col style="width:140px"><col style="width:118px"><col style="width:38px"></colgroup>
@@ -82,9 +82,11 @@ async function scheduleEditor(sid) {
 // The schedule out of Excel (agreement BOQ or a payment certificate): every line shown, each sheet
 // checked against its own total row, then saved - and opened in the editor for any change.
 async function importItems(sid, file, after) {
-  if (/\.(pdf|docx|jpe?g|png)$/i.test(file.name)) return importItemsDoc(sid, file, after);
+  if (/\.docx$/i.test(file.name)) return importItemsDoc(sid, file, after);
   const send = async (save, mode, force) => { const fd = new FormData(); await addFile(fd, file); fd.append("save", save ? "1" : "0"); fd.append("mode", mode || "replace"); if (force) fd.append("force", "1"); return api(`/store/est/subs/${sid}/items/import`, { method: "POST", body: fd }); };
-  let r; try { toast("Reading " + file.name + " ..."); r = await send(false); } catch (e) { return fail(e); }
+  // a PDF / scan of the BOQ is read on the server like the Excel (bills, page totals, lump-sum groups); one with no
+  // BOQ table in it (an agreement's pages), or a server that cannot read it now, goes to the agreement reader
+  let r; try { toast("Reading " + file.name + " ..."); r = await send(false); } catch (e) { if (/\.(pdf|jpe?g|png)$/i.test(file.name) && (e.status === 422 || e.status === 501)) return importItemsDoc(sid, file, after); return fail(e); }
   const ok = c => c ? (c.ok ? `<span class="st g">= sheet total</span>` : `<span class="st r">sheet says ${money(c.sheet, false)}</span>`) : `<span class="small muted">no total row</span>`;
   const ML = { pct: "% done", size: "size", qty: "quantity" };
   let bill = null;

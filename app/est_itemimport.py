@@ -469,8 +469,7 @@ def read_schedule(data: bytes):
                 numbered = bool(no) or any(("no" in cols and _s(r_[cols["no"]])) for r_, _ in pending)
                 if ls_row and amt and not numbered:
                     # the rows above with no price + this one with the lump sum: one group (no merged cell to say so) -
-                    # unless they carry item numbers: a numbered item is an item of its own
-                    counts["groups"] += 1
+                    # unless they carry item numbers: a numbered item is an item of its own (counted in new_group)
                     g = new_group(group_title() or desc, "", amt, "", r)
                     mine.append(g)
                     for r_, xr_ in pending:

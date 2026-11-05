@@ -358,7 +358,17 @@ async def import_items(sid: int, file: UploadFile = File(None), save: int = Form
         except Exception as e:
             raise HTTPException(400, str(e) or "That .xls could not be converted - save it as .xlsx and upload that.")
     if data[:2] != b"PK":
-        raise HTTPException(400, "That is not an Excel workbook (.xlsx). Save it as .xlsx and upload it again.")
+        # a priced BOQ that is only a PDF (or a scan of one): its pages put back into rows and columns, then read
+        # exactly like the Excel - page totals, the collection, items priced together as one lump sum (5 Nov 2026)
+        import est_pdfboq
+        from starlette.concurrency import run_in_threadpool
+        try:
+            wb = await run_in_threadpool(est_pdfboq.workbook_of, data, fname)
+        except est_pdfboq.NotTable as e:
+            raise HTTPException(422, str(e))
+        if wb is None:
+            raise HTTPException(400, "That is not an Excel workbook (.xlsx) or a PDF. Save it as .xlsx or PDF and upload it again.")
+        data = wb
     try:
         r = est_itemimport.read_schedule(data)
     except ValueError as e:

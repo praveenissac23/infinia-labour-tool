@@ -426,6 +426,16 @@ def read_approval(lines, flat):
 
 
 def read_items(lines, flat):
+    import est_pdfboq
+    try:
+        x = est_pdfboq.read(lines)                 # a BOQ table: read like the Excel - bills, page totals, lump-sum groups
+    except Exception:
+        x = None
+    if x and x["items"] and x["all_checked"]:
+        items = [{k: i.get(k) for k in ("bill", "bill_title", "section", "no", "description", "qty", "unit", "rate", "amount", "grp")} for i in x["items"]]
+        secs = [{"bill": s["bill"], "total": s["contract"], "in_doc": s["contract"], "ok": True} for s in x["sheets"]]
+        return {"fields": {}, "found": [f"{len(items)} priced lines"], "notes": x["notes"] + ["Review: " + n for n in x.get("review") or []],
+                "items": items, "checks": {"items": len(items), "items_total": x["contract"], "total_in_doc": x["contract"], "sections": secs}}
     r = A.read(lines)
     return {"fields": {}, "found": [f"{len(r['items'])} priced lines"] if r["items"] else [], "notes": r["notes"], "items": r["items"], "checks": r["checks"]}
 
