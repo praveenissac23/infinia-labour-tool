@@ -1951,6 +1951,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .lpo-matw input { flex:1; min-width:0; }
   .lpo-bbtn { flex:none; width:34px; height:32px; border:1px solid #D5D9DE; border-radius:8px; background:#fff; color:#6B7075; font-weight:700; font-family:Georgia, serif; font-size:14px; cursor:pointer; padding:0; }
   .lpo-d2w { align-items:flex-start; }
+  .lpo-fmtprev { font-size:12px; color:#3B3F44; margin:4px 2px 0; line-height:1.35; }
+  .lpo-fmtprev .lbl { color:#8A8F94; font-size:11px; }
   #lpo-fmt { position:absolute; z-index:1200; display:none; gap:4px; align-items:center; background:#fff; border:1px solid #E3E5E8; border-radius:12px; padding:6px; box-shadow:0 10px 30px rgba(0,0,0,.16); }
   #lpo-fmt.on { display:flex; }
   #lpo-fmt button { width:32px; height:32px; border:1px solid transparent; border-radius:8px; background:none; cursor:pointer; font-family:Georgia, serif; font-size:15px; color:#2B2622; display:flex; align-items:center; justify-content:center; padding:0; }
@@ -3200,7 +3202,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 
             <div class="form-row" style="margin-top:10px; gap:10px; flex-wrap:wrap;">
               <div class="field" style="flex:1; min-width:260px;"><label>Notes</label>
-                <div class="lpo-matw"><input type="text" id="lpo-notes" placeholder="Deliver to the site" style="width:100%;" title="Pick words and press Aa for bold, italic, underline or a colour on the LPO"><button type="button" class="lpo-bbtn" onmousedown="event.preventDefault()" onclick="lpoFmtOpen(this, {box: document.getElementById('lpo-notes')})" title="Pick words in the notes, then bold, italic, underline or a colour - as printed on the LPO">Aa</button></div></div>
+                <div class="lpo-matw"><input type="text" id="lpo-notes" placeholder="Deliver to the site" style="width:100%;" oninput="lpoPrevUnder(this)" title="Pick words and press Aa for bold, italic, underline or a colour on the LPO"><button type="button" class="lpo-bbtn" onmousedown="event.preventDefault()" onclick="lpoFmtOpen(this, {box: document.getElementById('lpo-notes')})" title="Pick words in the notes, then bold, italic, underline or a colour - as printed on the LPO">Aa</button></div><div class="lpo-fmtprev" id="lpo-notes-prev" hidden></div></div>
             </div>
             <!-- Terms: the clause sets the materials on the order bring in (Standard always), as chips - plus any added by hand. -->
             <div class="lpo-cl-head"><label>Terms &amp; conditions</label>
@@ -14105,6 +14107,7 @@ async function newLpo() {
   ["lpo-supref", "lpo-supplier", "lpo-trn", "lpo-sup-contact", "lpo-sup-phone",
    "lpo-sup-email", "lpo-plot", "lpo-mobile", "lpo-scope", "lpo-location",
    "lpo-notes"].forEach(id => document.getElementById(id).value = "");
+  { const _np = document.getElementById("lpo-notes-prev"); if (_np) _np.hidden = true; }
   document.getElementById("lpo-contact").dataset.manual = "";
   document.getElementById("lpo-discount").value = "0";
   document.getElementById("lpo-roundoff").value = "";
@@ -14163,7 +14166,7 @@ async function editLpo(id) {
     document.getElementById("lpo-location").value = o.project_location || "";
     document.getElementById("lpo-discount").value = o.discount_pct || 0;
     document.getElementById("lpo-roundoff").value = o.round_off ? Number(o.round_off).toFixed(2) : "";
-    document.getElementById("lpo-notes").value = o.notes || "";
+    document.getElementById("lpo-notes").value = o.notes || ""; { const _nb = document.getElementById("lpo-notes"); if (_nb) lpoPrevUnder(_nb); }
     try { lpoClReset((await apiCall("/store/purchase/clauses")).sets, true); } catch (e) { lpoClReset(null, true); }
     document.getElementById("lpo-termstext").value = o.terms_text || "";
     const sn = document.getElementById("lpo-supplier-note"); if (sn) sn.textContent = "";
@@ -14174,6 +14177,7 @@ async function editLpo(id) {
       item_id: l.item_id, description: l.description, description2: l.description2 || "",
       qty: l.qty, unit: l.unit, rate: l.rate, tax_pct: l.tax_pct, cost_to: l.cost_to || "",
       service: l.service === true || l.service === false ? l.service : null, bold: !!l.bold, style: l.style || (l.bold ? "b" : ""),
+      description_fmt: l.description_fmt || "",
     }));
     if (!lpoLines.length) addLpoLine();
     lpoCmbReset(!!o.combined); if (o.combined) renderLpoCombined();
@@ -14432,6 +14436,9 @@ async function lpoNameCheck(i, box) {
 function onLpoLineField(i, field, value) {
   lpoLines[i][field] = value;
   if (field === "description") {
+    lpoFmtSync(lpoLines[i]);                                   // the words picked out follow what is typed
+    { const tr = document.querySelectorAll("#lpo-lines tr")[i], pv = tr && tr.querySelector(".lpo-fmtprev");
+      if (pv) { pv.hidden = !lpoLines[i].description_fmt; pv.innerHTML = lpoFmtPrev(lpoLines[i]); } }
     // Typed by hand rather than chosen, so the line no longer stands
     // for whichever material was picked before.
     lpoLines[i].item_id = null;
@@ -14556,16 +14563,96 @@ function lpoFmtMark() {
   const s = lpoFmtFor.line != null ? lpoStyleSet(lpoLines[lpoFmtFor.line]) : new Set();
   m.querySelectorAll("button[data-f]").forEach(b => b.classList.toggle("on", s.has(b.dataset.f)));
 }
+// A text with marks as letters each with its look, and back - so a look can be put on (or taken off) any words.
+function lpoFmtChars(fmt) {
+  const out = [], st = new Set(); let i = 0; fmt = String(fmt || "");
+  const rx = /^(\*\*|\/\/|__|\[\/?(red|blue|green)\])/;
+  while (i < fmt.length) {
+    const m = fmt.slice(i).match(rx);
+    if (m && !(m[1] === "//" && fmt[i - 1] === ":")) {
+      const k = m[1], mk = { "**": "b", "//": "i", "__": "u" }[k];
+      if (mk) st.has(mk) ? st.delete(mk) : st.add(mk);
+      else if (k.startsWith("[/")) st.delete(k.slice(2, -1));
+      else { Object.keys(LPO_FMT_COL).forEach(c => st.delete(c)); st.add(k.slice(1, -1)); }
+      i += k.length; continue;
+    }
+    out.push({ ch: fmt[i], a: new Set(st) }); i++;
+  }
+  return out;
+}
+function lpoFmtText(chars) {
+  let s = "", i = 0;
+  while (i < chars.length) {
+    let j = i; const key = [...chars[i].a].sort().join();
+    while (j < chars.length && [...chars[j].a].sort().join() === key) j++;
+    let w = chars.slice(i, j).map(c => c.ch).join(""); const a = chars[i].a;
+    if (a.size && w.trim()) {
+      const lead = w.match(/^\s*/)[0], tail = w.match(/\s*$/)[0]; w = w.trim();     // marks hug the words, not the spaces
+      if (a.has("b")) w = "**" + w + "**"; if (a.has("i")) w = "//" + w + "//"; if (a.has("u")) w = "__" + w + "__";
+      const c = Object.keys(LPO_FMT_COL).find(k => a.has(k)); if (c) w = `[${c}]${w}[/${c}]`;
+      w = lead + w + tail;
+    }
+    s += w; i = j;
+  }
+  return s;
+}
+function lpoPlain(t) { return lpoFmtChars(t).map(c => c.ch).join(""); }
+// the name's words picked out, kept in step with the name: what was typed again keeps the look of the letters around it
+function lpoFmtSync(l) {
+  if (!l) return "";
+  const name = String(l.description || ""), fmt = String(l.description_fmt || "");
+  if (!fmt) return "";
+  const ch = lpoFmtChars(fmt), old = ch.map(c => c.ch).join("");
+  if (old !== name) {
+    let p = 0; while (p < old.length && p < name.length && old[p] === name[p]) p++;
+    let q = 0; while (q < old.length - p && q < name.length - p && old[old.length - 1 - q] === name[name.length - 1 - q]) q++;
+    const mid = name.slice(p, name.length - q).split("").map(c => ({ ch: c, a: new Set() }));
+    l.description_fmt = lpoFmtText([...ch.slice(0, p), ...mid, ...ch.slice(old.length - q)]);
+  }
+  if (!lpoFmtChars(l.description_fmt).some(c => c.a.size)) l.description_fmt = "";
+  return l.description_fmt;
+}
+function lpoFmtPrev(l) { return lpoFmtPrevText(lpoFmtSync(l)); }
+// "Prints as:" under a box - only when the text has marks in it
+function lpoFmtPrevText(f) {
+  f = String(f || ""); if (!lpoFmtChars(f).some(c => c.a.size)) return "";
+  const e = t => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const css = a => (a.has("b") ? "font-weight:700;" : "") + (a.has("i") ? "font-style:italic;" : "") + (a.has("u") ? "text-decoration:underline;" : "") + (Object.keys(LPO_FMT_COL).filter(k => a.has(k)).map(k => `color:${LPO_FMT_COL[k]};`).join(""));
+  const ch = lpoFmtChars(f); let h = "", i = 0;
+  while (i < ch.length) { let j = i; const k = [...ch[i].a].sort().join(); while (j < ch.length && [...ch[j].a].sort().join() === k) j++;
+    const w = e(ch.slice(i, j).map(c => c.ch).join("")).replace(/\n/g, "<br>"); h += ch[i].a.size ? `<span style="${css(ch[i].a)}">${w}</span>` : w; i = j; }
+  return `<span class="lbl">Prints as:</span> ${h}`;
+}
+// the "Prints as:" line under a description / notes box follows what is in it
+function lpoPrevUnder(box) {
+  const pv = box.id === "lpo-notes" ? document.getElementById("lpo-notes-prev") : box.closest("td") && box.closest("td").querySelector(".lpo-fmtprev");
+  if (!pv) return; const h = lpoFmtPrevText(box.value); pv.hidden = !h; pv.innerHTML = h;
+}
 function lpoFmtApply(f) {
   const t = lpoFmtFor; if (!t) return;
-  if (t.line != null) {                                   // a material name: the whole name
+  if (t.line != null) {                                   // a material name: the words picked - or, none picked, the whole name
     const l = lpoLines[t.line]; if (!l) return;
+    const inp = t.btn.parentElement.querySelector("input.lpo-mat");
+    const a0 = inp ? inp.selectionStart : 0, b0 = inp ? inp.selectionEnd : 0;
+    if (inp && a0 != null && b0 > a0) {
+      const ch = lpoFmtChars(lpoFmtSync(l) || l.description || "");
+      const part = ch.slice(a0, b0);
+      if (f === "clear") part.forEach(c => c.a.clear());
+      else if (LPO_FMT_COL[f]) { const all = part.every(c => c.a.has(f)); part.forEach(c => { Object.keys(LPO_FMT_COL).forEach(k => c.a.delete(k)); if (!all) c.a.add(f); }); }
+      else { const all = part.every(c => c.a.has(f)); part.forEach(c => all ? c.a.delete(f) : c.a.add(f)); }
+      l.description_fmt = lpoFmtText(ch); lpoFmtSync(l);
+      const pv = t.btn.closest("td").querySelector(".lpo-fmtprev");
+      if (pv) { pv.hidden = !l.description_fmt; pv.innerHTML = lpoFmtPrev(l); }
+      t.btn.classList.toggle("on", !!l.description_fmt || lpoStyleSet(l).size > 0);
+      inp.focus(); inp.setSelectionRange(a0, b0);
+      return;
+    }
     const s = lpoStyleSet(l);
     if (f === "clear") s.clear();
     else if (LPO_FMT_COL[f]) { const had = s.has(f); Object.keys(LPO_FMT_COL).forEach(k => s.delete(k)); if (!had) s.add(f); }
     else s.has(f) ? s.delete(f) : s.add(f);
     l.style = [...s].join(" "); l.bold = s.has("b");
-    const inp = t.btn.parentElement.querySelector("input.lpo-mat"); if (inp) inp.setAttribute("style", lpoNameCss(l));
+    if (inp) inp.setAttribute("style", lpoNameCss(l));
     t.btn.classList.toggle("on", s.size > 0);
     lpoFmtMark();
     return;
@@ -14608,10 +14695,10 @@ function renderLpoLines() {
             onfocus="showMatches(this, ${i})"
             onkeydown="matchKey(event, this, ${i})"
             onblur="closeMatchList(true)"
-            style="width:100%;" title="${esc(l.description)}"><button type="button" class="lpo-bbtn${lpoStyleSet(l).size ? " on" : ""}" onclick="lpoFmtOpen(this, {line: ${i}})" title="Bold, italic, underline, colour - how this material name prints on the LPO">Aa</button></div></td>
+            style="width:100%;" title="${esc(l.description)}"><button type="button" class="lpo-bbtn${lpoStyleSet(l).size || lpoFmtSync(l) ? " on" : ""}" onmousedown="event.preventDefault()" onclick="lpoFmtOpen(this, {line: ${i}})" title="Pick words in the name, then bold, italic, underline or a colour - as printed on the LPO. Nothing picked = the whole name.">Aa</button></div><div class="lpo-fmtprev"${lpoFmtSync(l) ? "" : " hidden"}>${lpoFmtPrev(l)}</div></td>
       <td><div class="lpo-matw lpo-d2w"><textarea class="lpo-d2" rows="1" placeholder="Type the description as it should print on the LPO:&#10;• Enter = a new line&#10;• Enter twice = a blank gap between parts&#10;• Pick words, press Aa = bold, italic, underline, colour&#10;• Start a line with - or • for a point"
             title="Printed under the material, exactly as typed. Enter = a new line. Enter twice = a blank gap. Pick words and press Aa for bold, italic, underline or a colour. A line starting with - or • prints as a point."
-            oninput="onLpoLineField(${i}, 'description2', this.value); lpoGrow(this)">${String(l.description2 == null ? "" : l.description2).replace(/&/g, "&amp;").replace(/</g, "&lt;")}</textarea><button type="button" class="lpo-bbtn" onmousedown="event.preventDefault()" onclick="lpoFmtOpen(this, {box: this.previousElementSibling})" title="Pick words, then bold, italic, underline or a colour - as printed on the LPO">Aa</button></div></td>
+            oninput="onLpoLineField(${i}, 'description2', this.value); lpoGrow(this); lpoPrevUnder(this)">${String(l.description2 == null ? "" : l.description2).replace(/&/g, "&amp;").replace(/</g, "&lt;")}</textarea><button type="button" class="lpo-bbtn" onmousedown="event.preventDefault()" onclick="lpoFmtOpen(this, {box: this.previousElementSibling})" title="Pick words, then bold, italic, underline or a colour - as printed on the LPO">Aa</button></div><div class="lpo-fmtprev"${lpoFmtPrevText(l.description2) ? "" : " hidden"}>${lpoFmtPrevText(l.description2)}</div></td>
       <td><input type="text" inputmode="decimal" value="${esc(l.qty)}" oninput="onLpoLineField(${i}, 'qty', this.value)" style="width:100%; text-align:right;"></td>
       <td><input type="text" value="${esc(l.unit)}" class="lpo-unit" oninput="onLpoLineField(${i}, 'unit', this.value)" style="width:100%;"></td>
       <td><input type="text" inputmode="decimal" value="${esc(l.rate)}" oninput="onLpoLineField(${i}, 'rate', this.value)" style="width:100%; text-align:right;"></td>
@@ -14956,7 +15043,7 @@ async function saveLpo() {
                  qty: parseFloat(l.qty) || 0, unit: l.unit || "", rate: parseFloat(l.rate) || 0,
                  tax_pct: parseFloat(l.tax_pct) || 0, cost_to: lpoCmbOn() ? (l.cost_to || "") : "",
                  service: (l.service === true || l.service === false) ? l.service : null,
-                 style: [...lpoStyleSet(l)].join(" "), bold: lpoStyleSet(l).has("b") }));
+                 style: [...lpoStyleSet(l)].join(" "), bold: lpoStyleSet(l).has("b"), description_fmt: lpoFmtSync(l) }));
   if (lpoCmbOn() && lines.some(l => !l.cost_to)) {
     if (tab) tab.close();
     renderLpoCombined(); document.getElementById("lpo-cmb").scrollIntoView({ block: "center" });

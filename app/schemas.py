@@ -479,6 +479,7 @@ class PurchaseOrderLineIn(BaseModel):
     service: bool | None = None  # ticked = a service (no stock); None = decided by the words
     bold: bool = False           # the material name printed bold
     style: str = ""              # the material name's look: "b i u red"
+    description_fmt: str = ""    # the name with words picked out, as printed
 
 
 class PurchaseOrderIn(BaseModel):

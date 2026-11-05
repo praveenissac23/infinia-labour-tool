@@ -2356,7 +2356,7 @@ def build_lpo_pdf(po: dict):
         taxpc = float(l.get("tax_pct") or 0)
         sub += amount
         import main as _Mf
-        desc = [P(_Mf.lpo_name(_x(l.get("description", "")), _Mf.lpo_name_style(l), pdf=True), 8.5)]
+        desc = [P(_Mf.lpo_name_of(l, _x, pdf=True), 8.5)]
         d2 = (l.get("description2") or "").strip()
         if d2:
             import main as _M
@@ -2578,20 +2578,27 @@ def build_lpo_excel(po: dict):
             c.border = box
             c.alignment = L if col == 2 else (C if col in (1, 4) else R)
             c.font = Font(size=9.5)
+        # the name in its look (whole name and words picked out), the description under it with its own marks - by run
         st = _Mx.lpo_name_style(l)
-        if st:                                              # the name in its look, the description under it as typed
-            colr = next((_Mx.LPO_COLOURS[x].lstrip("#") for x in st if x in _Mx.LPO_COLOURS), None)
-            if not (l.get("description2") or "").strip():
-                ws.cell(row=r, column=2).font = Font(size=9.5, bold="b" in st, italic="i" in st, underline="single" if "u" in st else None, color=colr)
-            else:
-                try:
-                    from openpyxl.cell.rich_text import CellRichText, TextBlock
-                    from openpyxl.cell.text import InlineFont
-                    ws.cell(row=r, column=2).value = CellRichText(
-                        TextBlock(InlineFont(b="b" in st, i="i" in st, u="single" if "u" in st else None, color=colr, sz=9.5), l.get("description", "")),
-                        TextBlock(InlineFont(sz=9.5), desc[len(l.get("description", "")):]))
-                except Exception:
-                    pass
+        nfmt = l.get("description_fmt") or ""
+        name_runs = _Mx.lpo_runs(nfmt) if nfmt and _Mx.lpo_plain(nfmt).strip() == (l.get("description") or "").strip() else [(l.get("description") or "", set())]
+        d2 = (l.get("description2") or "").strip()
+        d2_runs = _Mx.lpo_runs(d2) if d2 else []
+        if st or any(a for _, a in name_runs) or any(a for _, a in d2_runs):
+            try:
+                from openpyxl.cell.rich_text import CellRichText, TextBlock
+                from openpyxl.cell.text import InlineFont
+
+                def _blk(words, a):
+                    colr = next((_Mx.LPO_COLOURS[x].lstrip("#") for x in a if x in _Mx.LPO_COLOURS), None)
+                    return TextBlock(InlineFont(b="b" in a, i="i" in a, u="single" if "u" in a else None, color=colr, sz=9.5), words)
+                blocks = [_blk(w, a | st if not (st & set(_Mx.LPO_COLOURS) and a & set(_Mx.LPO_COLOURS)) else (a | (st - set(_Mx.LPO_COLOURS)))) for w, a in name_runs]
+                if d2_runs:
+                    blocks.append(_blk("\n", set()))
+                    blocks += [_blk(w, a) for w, a in d2_runs]
+                ws.cell(row=r, column=2).value = CellRichText(*blocks)
+            except Exception:
+                pass
         ws.cell(row=r, column=7).value = f"=ROUND(C{r}*E{r},2)"
         # the quantity as typed (9.091 stays 9.091): at least 2 decimals, more when typed
         dq = len(f"{qty:.6f}".rstrip("0").partition(".")[2])

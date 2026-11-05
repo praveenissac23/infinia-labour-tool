@@ -50,12 +50,27 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.screenshot({ path: SH + 'form.png' });
   await p.click('#lpo-fmt button[data-f="red"]'); await p.click('#lpo-fmt button[data-f="i"]');
   await p.keyboard.press('Escape');
+  // material name: pick ONE word, Aa, B and red - only that word (the name itself stays plain for stock)
+  const nm2 = p.locator('#lpo-lines input.lpo-mat').nth(1);
+  await nm2.evaluate(el => { el.focus(); el.setSelectionRange(7, 13); });          // "helmet"
+  await p.locator('#lpo-lines input.lpo-mat + .lpo-bbtn').nth(1).click(); await sleep(200);
+  await p.click('#lpo-fmt button[data-f="b"]'); await p.click('#lpo-fmt button[data-f="red"]');
+  ck('name: only the picked word is bold and red', await p.evaluate(() => lpoLines[1].description_fmt) === 'Safety [red]**helmet**[/red]', await p.evaluate(() => lpoLines[1].description_fmt));
+  ck('name: the name itself stays plain', await nm2.inputValue() === 'Safety helmet');
+  ck('name: "Prints as" shows the word in its look', await p.isVisible('#lpo-lines tr:nth-child(2) .lpo-fmtprev') && /helmet/.test(await p.innerHTML('#lpo-lines tr:nth-child(2) .lpo-fmtprev span[style*="font-weight:700"]')));
+  await p.keyboard.press('Escape');
+  await nm2.evaluate(el => el.setSelectionRange(el.value.length, el.value.length)); await nm2.press('End'); await nm2.type(' XL'); await sleep(200);
+  await p.keyboard.press('Escape');
+  ck('name typed on: the word keeps its look', await p.evaluate(() => lpoLines[1].description_fmt) === 'Safety [red]**helmet**[/red] XL', await p.evaluate(() => lpoLines[1].description_fmt));
+  await nm2.scrollIntoViewIfNeeded(); await sleep(200);
+  await p.screenshot({ path: SH + 'form_word.png' });
   // description: pick a word, Aa, B
   const ta = p.locator('#lpo-lines textarea.lpo-d2').nth(1);
   await ta.fill('White ABS shell'); await ta.evaluate(el => el.setSelectionRange(6, 9));
   await p.locator('#lpo-lines .lpo-d2w .lpo-bbtn').nth(1).click(); await sleep(200);
   await p.click('#lpo-fmt button[data-f="b"]');
   ck('description: the picked words get bold', (await ta.inputValue()) === 'White **ABS** shell', await ta.inputValue());
+  ck('description: "Prints as" shows the bold word', /ABS/.test(await p.innerHTML('#lpo-lines tr:nth-child(2) td:nth-child(3) .lpo-fmtprev span[style*="font-weight:700"]')));
   await p.click('#lpo-fmt button[data-f="b"]');
   ck('... B again takes it off', (await ta.inputValue()) === 'White ABS shell', await ta.inputValue());
   await p.keyboard.press('Escape');
@@ -63,12 +78,29 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await p.fill('#lpo-notes', 'Deliver before 10 am'); await p.evaluate(() => document.getElementById('lpo-notes').setSelectionRange(15, 20));
   await p.click('.field .lpo-matw .lpo-bbtn'); await sleep(200);
   await p.click('#lpo-fmt button[data-f="green"]');
+  ck('notes: "Prints as" shows it, no marks', await p.isVisible('#lpo-notes-prev') && /10 am/.test(await p.innerHTML('#lpo-notes-prev span[style*="color"]')) && !/\[green\]/.test(await p.textContent('#lpo-notes-prev')));
   ck('notes: the picked words get the colour', (await p.inputValue('#lpo-notes')) === 'Deliver before [green]10 am[/green]', await p.inputValue('#lpo-notes'));
   await p.locator('#lpo-notes').scrollIntoViewIfNeeded(); await sleep(200);
   await p.screenshot({ path: SH + 'form_notes.png' });
   // saved from the form: the name look goes with the line
   const saved = await p.evaluate(() => lpoLines.map(l => [...lpoStyleSet(l)].sort().join(' ')));
   ck('the form keeps the name look to save', saved[0] === 'b red u', saved);
+  // saved from the form, then printed: the one word
+  await p.evaluate(() => { lpoLines[0].style = 'b u red'; lpoLines[0].bold = true; });
+  await p.evaluate(() => saveLpo()); await sleep(2500);
+  const g2 = await api(`/store/purchase/orders/${o.id}`);
+  ck('saved: the stock name plain, the printed name with the word picked out', g2.lines[1].description === 'Safety helmet XL' && g2.lines[1].description_fmt === 'Safety [red]**helmet**[/red] XL', g2.lines[1]);
+  const t4 = (await api('/auth/download-token', 'POST')).token;
+  const v2 = await ctx.newPage(); await v2.goto(`${B}/export/purchase/${o.id}/view?token=${t4}`); await sleep(1500);
+  const h2 = await v2.content();
+  ck('print: only "helmet" is bold and red', /Safety <span class="ink-keep" style="color:#C0392B"><b>helmet<\/b><\/span> XL/.test(h2), (h2.match(/Safety[^\n]{0,120}/) || [''])[0]);
+  await v2.evaluate(() => { const t = [...document.querySelectorAll('table')].find(x => /Item & Description/.test(x.textContent)); t && t.scrollIntoView({ block: 'start' }); window.scrollBy(0, -120); });
+  await v2.screenshot({ path: SH + 'print_word.png' });
+  const t5 = (await api('/auth/download-token', 'POST')).token;
+  const pdf2 = await v2.evaluate(async u => { const r = await fetch(u); return r.status; }, `${B}/export/purchase/${o.id}?token=${t5}&format=pdf`);
+  const t6 = (await api('/auth/download-token', 'POST')).token;
+  const xl2 = await v2.evaluate(async u => { const r = await fetch(u); return r.status; }, `${B}/export/purchase/${o.id}?token=${t6}&format=excel`);
+  ck('PDF and Excel build with it', pdf2 === 200 && xl2 === 200, [pdf2, xl2]);
   ck('no page errors', !errs.length, errs);
   await br.close(); console.log(bad ? `\n${bad} FAILED` : '\nALL PASS');
 })();

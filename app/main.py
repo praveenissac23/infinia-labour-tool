@@ -9157,12 +9157,50 @@ def lpo_plain(t):
     return re.sub(r"\[/?(?:" + "|".join(LPO_COLOURS) + r")\]", "", t)
 
 
+def lpo_runs(t):
+    """The text in runs of one look: [(words, {"b", "i", "u", "red"} ...)] - for Excel, which colours by run."""
+    out, st = [], set()
+    tok = re.compile(r"\*\*|(?<!:)//|__|\[/?(?:" + "|".join(LPO_COLOURS) + r")\]")
+    pos, buf = 0, ""
+    marks = {"**": "b", "//": "i", "__": "u"}
+    for m in tok.finditer(t or ""):
+        buf = (t or "")[pos:m.start()]
+        if buf:
+            out.append((buf, set(st)))
+        k = m.group(0)
+        if k in marks:
+            st ^= {marks[k]}
+        elif k.startswith("[/"):
+            st.discard(k[2:-1])
+        else:
+            st -= set(LPO_COLOURS)
+            st.add(k[1:-1])
+        pos = m.end()
+    if pos < len(t or ""):
+        out.append(((t or "")[pos:], set(st)))
+    return out
+
+
 def lpo_name_style(l):
     """The material name's look: a set of b / i / u and a colour name."""
     st = set((getattr(l, "style", "") or "").split()) if not isinstance(l, dict) else set((l.get("style") or "").split())
     if (l.get("bold") if isinstance(l, dict) else getattr(l, "bold", False)):
         st.add("b")
     return st
+
+
+def _lpo_fmt_in(fmt, name):
+    """The formatted name is kept only while it is this name with marks (the name typed again = marks dropped)."""
+    fmt = str(fmt or "").strip()
+    return fmt[:2000] if fmt and lpo_plain(fmt).strip() == (name or "").strip() and fmt != (name or "").strip() else ""
+
+
+def lpo_name_of(l, esc_fn, pdf=False):
+    """The material name as printed: the words picked out in it, then the look of the whole name."""
+    get = (lambda k: l.get(k)) if isinstance(l, dict) else (lambda k: getattr(l, k, None))
+    name, fmt = get("description") or "", get("description_fmt") or ""
+    base = lpo_fmt(esc_fn(fmt), pdf=pdf) if fmt and lpo_plain(fmt).strip() == name.strip() else esc_fn(name)
+    return lpo_name(base, lpo_name_style(l), pdf=pdf)
 
 
 def lpo_name(escaped, st, pdf=False):
@@ -9219,7 +9257,7 @@ def _lpo_dict(o):
         "lines": [{"id": l.id, "item_id": l.item_id, "description": l.description,
                    "description2": l.description2, "qty": l.qty, "unit": l.unit,
                    "rate": l.rate, "tax_pct": l.tax_pct, "cost_to": getattr(l, "cost_to", "") or "",
-                   "service": getattr(l, "service", None), "bold": bool(getattr(l, "bold", False)), "style": getattr(l, "style", "") or "",
+                   "service": getattr(l, "service", None), "bold": bool(getattr(l, "bold", False)), "style": getattr(l, "style", "") or "", "description_fmt": getattr(l, "description_fmt", "") or "",
                    "service_now": _is_service_line(l)} for l in o.lines],
     }
 
@@ -9316,7 +9354,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
             order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
             description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
             rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0,
-            cost_to=_cost_to(payload, l), service=getattr(l, "service", None), bold=bool(getattr(l, "bold", False)), style=_lpo_style_in(getattr(l, "style", ""))))
+            cost_to=_cost_to(payload, l), service=getattr(l, "service", None), bold=bool(getattr(l, "bold", False)), style=_lpo_style_in(getattr(l, "style", "")), description_fmt=_lpo_fmt_in(getattr(l, "description_fmt", ""), l.description)))
     db.flush()
     new_items = []
     _lpo_lines_to_materials(db, o, new_items)
@@ -9656,7 +9694,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
             order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
             description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
             rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0,
-            cost_to=_cost_to(payload, l), service=getattr(l, "service", None), bold=bool(getattr(l, "bold", False)), style=_lpo_style_in(getattr(l, "style", ""))))
+            cost_to=_cost_to(payload, l), service=getattr(l, "service", None), bold=bool(getattr(l, "bold", False)), style=_lpo_style_in(getattr(l, "style", "")), description_fmt=_lpo_fmt_in(getattr(l, "description_fmt", ""), l.description)))
     db.flush()
     db.expire(o, ["lines"])          # the collection still held the lines just deleted
     new_items = []
@@ -10155,7 +10193,7 @@ def _lpo_html(o):
         # a long or several-line description prints as typed - its lines, gaps and **bold** - at the
         # material's own size; a short note keeps the small grey line under the material name
         second = (f'<div class="{"det" if lpo_long_note(d2) else "sub"}">{lpo_rich(esc(d2), "<br>")}</div>' if d2 else "")
-        name = lpo_name(esc(l.description), lpo_name_style(l))
+        name = lpo_name_of(l, esc)
         rows.append(
             f'<tr><td class="c">{i}</td><td>{name}{second}</td>'
             f'<td class="r">{lpo_qty(l.qty)}</td><td class="c">{esc(l.unit)}</td><td class="r">{l.rate:,.2f}</td>'

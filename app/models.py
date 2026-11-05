@@ -528,6 +528,8 @@ class PurchaseOrderLine(Base):
     service = Column(Boolean, nullable=True)
     bold = Column(Boolean, default=False)            # the material name printed bold on the LPO (5 Nov 2026)
     style = Column(String, default="")              # its look: "b i u" and a colour (red / blue / green), e.g. "b u red"
+    description_fmt = Column(String, default="")    # the name with words picked out (**Pitbull** PB-7051) - printed only;
+                                                    # description stays the plain name (stock, lists)
 
     order = relationship("PurchaseOrder", back_populates="lines")
     item = relationship("StoreItem")
