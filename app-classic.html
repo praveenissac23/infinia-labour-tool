@@ -376,6 +376,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   /* purchasing (31 Oct 2026): LPO deliveries, petty cash arrivals, the supplier's bill */
   /* Order tracker - the app's own card, chips, dropdowns, buttons and table headings; colour only for the step */
   #ot-table th.ot-srt { cursor: pointer; user-select: none; }
+  #ot-table .ot-lpo { font-weight: 700; font-size: 13.5px; color: #8E2A20; margin-bottom: 3px; letter-spacing: .2px; }
+  #ot-table .ot-lpo span { font-weight: 400; font-size: 11.5px; color: #8A8F94; margin-left: 8px; letter-spacing: 0; }
+  #ot-table mark.ot-hl { background: #FFE58F; color: inherit; padding: 0 1px; border-radius: 2px; }
   #ot-table th.ot-srt:hover { color: #2B2622; }
   #ot-table th .ot-ar { font-size: .8em; margin-left: 4px; color: #C0392B; }
   #ot-table thead tr.ot-sortline td { font-size: 11.5px; color: #888; font-weight: 400; padding: 3px 10px; background: transparent; border: 0; text-transform: none; letter-spacing: 0; }
@@ -22605,6 +22608,13 @@ function otRender() {
   const rows = otSorted(otShown());
   const body = document.getElementById("ot-body");
   if (!rows.length) { body.innerHTML = `<tr><td colspan="${tidy ? 7 : 6}" class="empty-note">${OT_VIEW === "mine" && OT_STEP === null ? "Nothing waiting on you." : "Nothing here."}</td></tr>`; otTidyCount(); return; }
+  // Searching (a supplier, an LPO, a material): each result leads with its LPO number, the materials under it, and
+  // what was typed is marked wherever it is found (5 Nov 2026)
+  const q = ((document.getElementById("ot-search") || {}).value || "").trim();
+  const hl = t => { const e = escapeHtml(t || ""); if (!q) return e;
+    const re = new RegExp("(" + escapeHtml(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig"); return e.replace(re, '<mark class="ot-hl">$1</mark>'); };
+  const sl = document.querySelector("#ot-head tr.ot-sortline td");
+  if (sl && q) sl.innerHTML = `<b>${rows.length}</b> result${rows.length === 1 ? "" : "s"} for "${escapeHtml(q)}" - LPO number first, then the materials · ` + sl.innerHTML;
   body.innerHTML = rows.map(r => {
     const steps = OT_STEPS.map((s, i) => {
       if (r.cancelled) return i === 5 ? `<span class="x">Closed</span>` : `<span>&nbsp;</span>`;
@@ -22615,14 +22625,15 @@ function otRender() {
     }).join("");
     const refs = r.kind === "lpo" ? [r.ref, ...(r.requests || [])] : [r.ref + (r.requested_by ? " · " + r.requested_by : "")];
     const sup = r.supplier
-      ? `<div class="t1">${escapeHtml(r.supplier)}</div>${r.contact ? `<div class="t2">${escapeHtml(r.contact)}</div>` : ""}${r.phone ? `<div class="t2"><a href="tel:${escapeAttr(r.phone.replace(/[^\d+]/g, ""))}" onclick="event.stopPropagation()" title="Call">${escapeHtml(r.phone)}</a></div>` : ""}${!r.contact && !r.phone ? `<div class="t2">no contact on file</div>` : ""}`
+      ? `<div class="t1">${hl(r.supplier)}</div>${r.contact ? `<div class="t2">${hl(r.contact)}</div>` : ""}${r.phone ? `<div class="t2"><a href="tel:${escapeAttr(r.phone.replace(/[^\d+]/g, ""))}" onclick="event.stopPropagation()" title="Call">${hl(r.phone)}</a></div>` : ""}${!r.contact && !r.phone ? `<div class="t2">no contact on file</div>` : ""}`
       : `<div class="t2">${r.stage === 0 ? "Waiting for approval" : r.stage === 5 ? "-" : "Approved - no LPO yet"}</div>`;
     const note = (r.late > 0 ? `<div class="ot-late">${r.late} day${r.late === 1 ? "" : "s"} late</div>` : "") + (r.to_come ? `<div class="ot-come">${escapeHtml(r.to_come)} to come</div>` : "") + (r.part_why ? `<div class="ot-res">${r.part_why === "site" ? (r.part ? "Site asked to hold the rest" : "Site asked to hold it") : "Supplier sent less"}${r.part_note ? " - " + escapeHtml(r.part_note) : ""}</div>` : r.part_note ? `<div class="ot-res">${escapeHtml(r.part_note)}</div>` : (r.part ? `<div class="ot-res">why? - not said yet</div>` : "")) + (r.result ? `<div class="ot-res">${escapeHtml(r.result)}</div>` : "");
     const can = r.stage < 5 && r.action && otCanDo(r.role);
     return `<tr class="ot-r" data-k="${r.key}" onclick="otSheet('${r.key}')" title="Tap for everything that can be done">
       ${tidy ? `<td class="pick" onclick="event.stopPropagation()">${r.stage < 5 ? `<input type="checkbox" class="ot-pick" value="${r.key}" onchange="otTidyCount()">` : ""}</td>` : ""}
       <td class="site">${escapeHtml(r.site || "-")}</td>
-      <td class="what"><div class="t1">${escapeHtml(r.what || "-")}</div><div class="t2">${escapeHtml(refs.join(" · "))}${r.date ? " · " + escapeHtml(dmy(r.date)) : ""}</div></td>
+      <td class="what">${q ? `<div class="ot-lpo">${hl(r.ref)}${r.date ? `<span>${escapeHtml(dmy(r.date))}</span>` : ""}</div><div class="t1">${hl(r.what || "-")}</div><div class="t2">${hl(refs.slice(1).join(" · ") || (r.kind === "lpo" ? "" : r.requested_by || ""))}</div>`
+        : `<div class="t1">${escapeHtml(r.what || "-")}</div><div class="t2">${escapeHtml(refs.join(" · "))}${r.date ? " · " + escapeHtml(dmy(r.date)) : ""}</div>`}</td>
       <td>${sup}</td>
       <td class="st"><div class="ot-steps">${steps}</div></td>
       <td>${note}</td>
