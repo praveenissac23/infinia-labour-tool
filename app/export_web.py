@@ -2355,12 +2355,12 @@ def build_lpo_pdf(po: dict):
         amount = qty * rate
         taxpc = float(l.get("tax_pct") or 0)
         sub += amount
-        desc = [P(_x(l.get("description", "")), 8.5)]
+        desc = [P(_x(l.get("description", "")), 8.5, bold=bool(l.get("bold")))]
         d2 = (l.get("description2") or "").strip()
         if d2:
             import main as _M
             # several lines / a long description: as typed, the material's size; a short note: small grey
-            desc.append(P(_M.lpo_rich(_x(d2), "<br/>"), 8.5, leading=12) if _M.lpo_long_note(d2) else P(_x(d2), 7.5, colour="#555555"))
+            desc.append(P(_M.lpo_rich(_x(d2), "<br/>"), 8.5, leading=12) if _M.lpo_long_note(d2) else P(_M.lpo_bold(_x(d2)), 7.5, colour="#555555"))
         data.append([P(i, 8.5, align=TA_CENTER), desc,
                      P(_Mq.lpo_qty(qty), 8.5, align=TA_RIGHT),
                      P(_x(l.get("unit", "") or ""), 8.5, align=TA_CENTER),
@@ -2434,8 +2434,9 @@ def build_lpo_pdf(po: dict):
     notes_cell = []
     if (po.get("notes") or "").strip():
         notes_cell.append(P("Notes", 8, colour="#3B3F44"))
+        import main as _Mn
         for ln in po["notes"].splitlines():
-            notes_cell.append(P(ln, 8.5))
+            notes_cell.append(P(_Mn.lpo_bold(_x(ln)), 8.5))         # **words** bold
         notes_cell.append(Spacer(1, 6))
     notes_cell.append(P("Terms &amp; Conditions", 8, colour="#3B3F44"))
     for ln in (po.get("terms_text") or "").splitlines():
@@ -2574,7 +2575,15 @@ def build_lpo_excel(po: dict):
             c = ws.cell(row=r, column=col, value=v)
             c.border = box
             c.alignment = L if col == 2 else (C if col in (1, 4) else R)
-            c.font = Font(size=9.5)
+            c.font = Font(size=9.5, bold=bool(col == 2 and l.get("bold") and not (l.get("description2") or "").strip()))
+        if l.get("bold") and (l.get("description2") or "").strip():
+            try:                                            # the name bold, the description under it as typed
+                from openpyxl.cell.rich_text import CellRichText, TextBlock
+                from openpyxl.cell.text import InlineFont
+                ws.cell(row=r, column=2).value = CellRichText(TextBlock(InlineFont(b=True, sz=9.5), l.get("description", "")),
+                                                              TextBlock(InlineFont(sz=9.5), desc[len(l.get("description", "")):]))
+            except Exception:
+                pass
         ws.cell(row=r, column=7).value = f"=ROUND(C{r}*E{r},2)"
         # the quantity as typed (9.091 stays 9.091): at least 2 decimals, more when typed
         dq = len(f"{qty:.6f}".rstrip("0").partition(".")[2])
@@ -2613,8 +2622,9 @@ def build_lpo_excel(po: dict):
         ws.cell(row=nr, column=1, value="Notes").font = Font(size=9, color="3B3F44")
         nr += 1
         import textwrap as _tw
+        import main as _Mn
         for ln in po["notes"].splitlines():
-            for piece in _tw.wrap(ln, width=70) or [""]:
+            for piece in _tw.wrap(_Mn.lpo_plain(ln), width=70) or [""]:
                 ws.cell(row=nr, column=1, value=piece).font = Font(size=9)
                 ws.merge_cells(start_row=nr, start_column=1, end_row=nr, end_column=4)
                 nr += 1

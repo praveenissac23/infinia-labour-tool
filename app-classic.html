@@ -1947,6 +1947,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pc-form.vat #pc-vdone .vf-pill { flex:1; padding:0 8px; }
   .pc-vmore { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-start; } .pc-vmore input { min-width:260px; height:36px; }
   /* LPO line description: grows with what is typed; Enter = new line */
+  .lpo-matw { display:flex; gap:6px; align-items:center; }
+  .lpo-matw input { flex:1; min-width:0; }
+  .lpo-bbtn { flex:none; width:32px; height:32px; border:1px solid #D5D9DE; border-radius:8px; background:#fff; color:#6B7075; font-weight:800; font-family:Georgia, serif; font-size:15px; cursor:pointer; padding:0; }
+  .lpo-bbtn:hover { border-color:#C0392B; color:#C0392B; }
+  .lpo-bbtn.on { background:#2B2622; border-color:#2B2622; color:#fff; }
+  input.lpo-mat.is-b { font-weight:700; }
   textarea.lpo-d2 { width:100%; min-height:34px; resize:vertical; font:inherit; line-height:1.4; padding:6px 8px; box-sizing:border-box; overflow:hidden; }
 
   /* ===== UI STANDARD (2 Nov 2026) - one look on every screen; new screens use these, nothing else =====
@@ -3185,7 +3191,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 
             <div class="form-row" style="margin-top:10px; gap:10px; flex-wrap:wrap;">
               <div class="field" style="flex:1; min-width:260px;"><label>Notes</label>
-                <input type="text" id="lpo-notes" placeholder="Deliver to the site" style="width:100%;"></div>
+                <div class="lpo-matw"><input type="text" id="lpo-notes" placeholder="Deliver to the site" style="width:100%;" title="**two stars each side** = bold on the LPO - or pick the words and press B"><button type="button" class="lpo-bbtn" onmousedown="event.preventDefault()" onclick="lpoBoldNotes()" title="Pick words in the notes, press B - they print bold on the LPO">B</button></div></div>
             </div>
             <!-- Terms: the clause sets the materials on the order bring in (Standard always), as chips - plus any added by hand. -->
             <div class="lpo-cl-head"><label>Terms &amp; conditions</label>
@@ -14158,7 +14164,7 @@ async function editLpo(id) {
     (o.lines || []).forEach(l => addLpoLine({
       item_id: l.item_id, description: l.description, description2: l.description2 || "",
       qty: l.qty, unit: l.unit, rate: l.rate, tax_pct: l.tax_pct, cost_to: l.cost_to || "",
-      service: l.service === true || l.service === false ? l.service : null,
+      service: l.service === true || l.service === false ? l.service : null, bold: !!l.bold,
     }));
     if (!lpoLines.length) addLpoLine();
     lpoCmbReset(!!o.combined); if (o.combined) renderLpoCombined();
@@ -14506,6 +14512,23 @@ function paintLpoLine(i) {
   if (last) last.innerHTML = lastCell;
 }
 
+// B beside the material: its name prints bold on the LPO (5 Nov 2026)
+function lpoBoldName(i, btn) {
+  const l = lpoLines[i]; if (!l) return;
+  l.bold = !l.bold;
+  btn.classList.toggle("on", l.bold);
+  const inp = btn.parentElement.querySelector("input.lpo-mat"); if (inp) inp.classList.toggle("is-b", l.bold);
+}
+// B beside Notes: the words picked print bold (**two stars each side**, as in the description box); nothing picked =
+// a pair of ** to type between
+function lpoBoldNotes() {
+  const t = document.getElementById("lpo-notes"); if (!t) return;
+  const a = t.selectionStart ?? t.value.length, b = t.selectionEnd ?? a, v = t.value, sel = v.slice(a, b);
+  if (sel && /^\*\*[\s\S]*\*\*$/.test(sel)) { t.value = v.slice(0, a) + sel.slice(2, -2) + v.slice(b); t.setSelectionRange(a, b - 4); }
+  else if (a >= 2 && v.slice(a - 2, a) === "**" && v.slice(b, b + 2) === "**") { t.value = v.slice(0, a - 2) + sel + v.slice(b + 2); t.setSelectionRange(a - 2, b - 2); }
+  else { t.value = v.slice(0, a) + "**" + sel + "**" + v.slice(b); t.setSelectionRange(a + 2, b + 2); }
+  t.focus(); t.dispatchEvent(new Event("input", { bubbles: true }));
+}
 // The line description box grows with what is typed, so a long description is read whole.
 function lpoGrow(t) { t.style.height = "auto"; const h = t.scrollHeight + 2; t.style.height = Math.min(h, 640) + "px"; t.style.overflowY = h > 640 ? "auto" : "hidden"; }
 // A full redraw. Only for lines coming or going - never while typing.
@@ -14517,15 +14540,15 @@ function renderLpoLines() {
     const esc = v => String(v == null ? "" : v).replace(/"/g, "&quot;");
     return `<tr>
       <td>${i + 1}</td>
-      <td><input type="text" placeholder="e.g. cement"
+      <td><div class="lpo-matw"><input type="text" placeholder="e.g. cement"
             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-            value="${esc(l.description)}" class="lpo-mat"
+            value="${esc(l.description)}" class="lpo-mat${l.bold ? " is-b" : ""}"
             oninput="onLpoLineField(${i}, 'description', this.value)"
             onchange="lpoNameCheck(${i}, this)"
             onfocus="showMatches(this, ${i})"
             onkeydown="matchKey(event, this, ${i})"
             onblur="closeMatchList(true)"
-            style="width:100%;" title="${esc(l.description)}"></td>
+            style="width:100%;" title="${esc(l.description)}"><button type="button" class="lpo-bbtn${l.bold ? " on" : ""}" onclick="lpoBoldName(${i}, this)" title="Print this material name in bold on the LPO">B</button></div></td>
       <td><textarea class="lpo-d2" rows="1" placeholder="Type the description as it should print on the LPO:&#10;• Enter = a new line&#10;• Enter twice = a blank gap between parts&#10;• **two stars each side** = bold, e.g. **Size:** 20mm&#10;• Start a line with - or • for a point"
             title="Printed under the material, exactly as typed. Enter = a new line. Enter twice = a blank gap. **two stars each side** = bold (e.g. **Size:** 20mm). A line starting with - or • prints as a point."
             oninput="onLpoLineField(${i}, 'description2', this.value); lpoGrow(this)">${String(l.description2 == null ? "" : l.description2).replace(/&/g, "&amp;").replace(/</g, "&lt;")}</textarea></td>
@@ -14872,7 +14895,7 @@ async function saveLpo() {
     .map(l => ({ item_id: l.item_id, description: l.description.trim(), description2: (l.description2 || "").trim(),
                  qty: parseFloat(l.qty) || 0, unit: l.unit || "", rate: parseFloat(l.rate) || 0,
                  tax_pct: parseFloat(l.tax_pct) || 0, cost_to: lpoCmbOn() ? (l.cost_to || "") : "",
-                 service: (l.service === true || l.service === false) ? l.service : null }));
+                 service: (l.service === true || l.service === false) ? l.service : null, bold: !!l.bold }));
   if (lpoCmbOn() && lines.some(l => !l.cost_to)) {
     if (tab) tab.close();
     renderLpoCombined(); document.getElementById("lpo-cmb").scrollIntoView({ block: "center" });
