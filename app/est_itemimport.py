@@ -119,11 +119,12 @@ WORDS_ZERO = ("-", "--", "0", "nil")
 
 def read_schedule(data: bytes):
     wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
-    items, sheets, notes, summaries = [], [], [], []
+    items, sheets, notes, summaries, review = [], [], [], [], []
     for ws in wb.worksheets:
         if ws.sheet_state != "visible":
             continue
         rows = [list(r) + [None] * 6 for r in ws.iter_rows(values_only=True)]
+        r0, c0 = ws.min_row or 1, ws.min_column or 1          # rows[i] is sheet row r0 + i; r[j] is column c0 + j
         hi, cols = None, None
         for i, r in enumerate(rows[:40]):
             c = _header(r)
@@ -150,7 +151,25 @@ def read_schedule(data: bytes):
             m = re.match(r"^bill\s*(\d+)\s*-?\s*(.*)$", ws.title, re.I)
             if m:
                 bill, title = "B" + m.group(1), title or m.group(2).strip()
+        # Several items priced as ONE lump sum (a bracket drawn beside them in the BOQ): the price is a cell merged down
+        # all their rows, its figure / "LS" / "Included" in the top row (914/915 Al Raida: Sanitary fittings, pipe
+        # sizes, cable trays, final circuits ...). The bracket itself is a drawing - the merged cell is what is read.
+        groups = {}                                            # first sheet row -> last sheet row
+        pcols = [cols[k] + c0 for k in ("amount", "rate") if k in cols]
+        for m in getattr(ws, "merged_cells", None).ranges if getattr(ws, "merged_cells", None) else []:
+            if m.max_row <= m.min_row or m.min_row <= r0 + hi or not any(m.min_col <= pc <= m.max_col for pc in pcols):
+                continue
+            top_vals = [rows[m.min_row - r0][pc - c0] for pc in pcols if 0 <= m.min_row - r0 < len(rows)]
+            if not any(_s(v) for v in top_vals):
+                continue                                       # a merged cell with nothing in it prices nothing
+            a, b = m.min_row, m.max_row
+            for k in list(groups):                             # rate and amount merged over the same rows: one group
+                if k <= b and groups[k] >= a:
+                    a, b = min(a, k), max(b, groups.pop(k))
+            groups[a] = b
         top, section, parent, mine, skipped = "", "", "", [], 0
+        heads, pending, open_grp = [], [], None                # heading lines over the next item; unpriced rows waiting; the group being filled
+        counts = {"rows": 0, "lines": 0, "members": 0, "headings": 0, "review": 0, "groups": 0}
         NUMBERED = re.compile(r"^\(?\d{1,2}\s*[.)]\s+")
         total_row = None
         is_qty = "cert_qty" in cols
@@ -160,9 +179,141 @@ def read_schedule(data: bytes):
         has_pages = any(PAGE_TOTAL.match(label_of(r)) for r in rows[hi + 1:])
         pages, rollups, pstart, in_coll = [], [], 0, False
         intro, group = "", ""
-        for r in rows[hi + 1:]:
+        row_no = {id(r_): r0 + i_ for i_, r_ in enumerate(rows)}
+        xr_of = lambda r_: row_no.get(id(r_), 0)
+        page_heads = []                                        # (sheet row, no., words) of the heading rows on this page
+
+        def merge_page():
+            """A bill page with ONE price (a group) and only unpriced items besides: they are all that group's - the
+            bracket runs the length of the page, through its sub-headings (914 fire alarm: 2,700 for rows 303-344)."""
+            if not has_pages:
+                return
+            page = mine[pstart:]
+            gs = [x for x in page if x.get("grp") == "head"]
+            if len(gs) != 1 or not any(x.get("review") for x in page):
+                return
+            g = gs[0]
+            if not all(x is g or x.get("grp") == "in" or x.get("review") for x in page):
+                return
+            rest = [x for x in page if x is not g]
+            for x in rest:
+                if x.pop("review", None):
+                    counts["review"] -= 1
+                    counts["members"] += 1
+                    x["grp"] = "in"
+            lo, hi_ = min(x["_xr"] for x in rest), max(x["_xr"] for x in rest)
+            sub = [h for h in page_heads if lo < h[0] < hi_ and h[0] not in {x["_xr"] for x in rest}]
+            for xr_, no_, d_ in sub:
+                counts["headings"] -= 1
+                counts["members"] += 1
+                rest.append({"bill": bill, "bill_title": title[:120], "section": section[:200], "no": no_[:20], "description": d_[:2000],
+                             "qty": 0.0, "unit": "", "rate": 0.0, "amount": 0.0, "measure": "pct", "words": "", "remark": "", "done_pct": None,
+                             "done_qty": None, "claimed_qty": None, "certified": None, "stage_pct": None, "rate_missing": False, "grp": "in",
+                             "_xr": xr_})
+            if g.get("_parts"):                                # a sub-heading now listed under the group leaves its name
+                inside = {d_ for _, _, d_ in sub}
+                left = [t for t in g["_parts"] if t not in inside]
+                if left:
+                    g["description"] = title_of(left)[:2000]
+            mine[pstart:] = [g] + sorted(rest, key=lambda x: x["_xr"])
+
+        def unit_qty(r):
+            """A row's unit and quantity - the unit may be typed in the QTY column ("No | 5")."""
+            q = _n(r[cols["qty"]]) if "qty" in cols else None
+            u = _s(r[cols["unit"]]) if "unit" in cols else ""
+            qt = _s(r[cols["qty"]]).lower() if "qty" in cols else ""
+            if q is None and qt in UNIT_WORDS and (not u or _n(u) is not None):
+                if _n(u) is not None:
+                    q = _n(u)
+                u = _s(r[cols["qty"]])
+            return u, q
+
+        def short(t, n=200):
+            return t if len(t) <= n else t[:n - 3].rsplit(" ", 1)[0] + "..."
+
+        def member(r, why):
+            """A row priced in its group: shown under the group, never counted."""
+            no_, d_ = (_s(r[cols["no"]]) if "no" in cols else ""), _s(r[cols["desc"]])
+            u_, q_ = unit_qty(r)
+            counts["members"] += 1
+            return {"bill": bill, "bill_title": title[:120], "section": section[:200], "no": no_[:20], "description": d_[:2000],
+                    "qty": round(q_ or 0, 4), "unit": u_[:20], "rate": 0.0, "amount": 0.0, "measure": "pct", "words": "", "remark": "",
+                    "done_pct": None, "done_qty": None, "claimed_qty": None, "certified": None, "stage_pct": None, "rate_missing": False,
+                    "grp": "in", "_why": why, "_xr": xr_of(r)}
+
+        def group_head(desc_, no_, amt_, words_, r_top):
+            counts["groups"] += 1
+            pct_ = _n(r_top[cols["pct"]]) if "pct" in cols else None
+            cert_ = _n(r_top[cols["cert_amt"]]) if "cert_amt" in cols else None
+            amount_ = round(amt_ or 0, 2)
+            dp = round(as_pct(pct_), 4) if pct_ is not None else (round(100 * cert_ / amount_, 4) if (cert_ is not None and amount_) else None)
+            return {"bill": bill, "bill_title": title[:120], "section": section[:200], "no": no_[:20], "description": desc_[:2000],
+                    "qty": 1.0, "unit": "LS", "rate": amount_, "amount": amount_, "measure": "pct", "words": words_[:60], "remark": "",
+                    "done_pct": dp, "done_qty": None, "claimed_qty": None, "certified": round(cert_, 2) if cert_ is not None else None,
+                    "stage_pct": None, "rate_missing": False, "grp": "head", "_xr": xr_of(r_top), "_parts": []}
+
+        def flush_pending(why):
+            """Unpriced item rows no group took: brought in at nil and listed for review - never dropped."""
+            nonlocal_pending = list(pending)
+            pending.clear()
+            for r_, xr_ in nonlocal_pending:
+                x = member(r_, "")
+                counts["members"] -= 1
+                counts["review"] += 1
+                x["grp"] = ""
+                x["review"] = f"{ws.title} row {xr_}: '{x['description'][:70]}' - no price and no group ({why}) - brought in at nil"
+                mine.append(x)
+
+        # a group's name: its heading ("Sanitary Fittings & Accessories") - the sentence under a short heading is the
+        # BOQ's wording of the work, not the name; a single sentence (no heading over it) is the name
+        title_of = lambda parts: (parts[0] if len(parts) >= 2 and len(parts[0]) <= 80 else " - ".join(parts))
+        group_title = lambda: title_of(heads) or group or (section.split(" ", 1)[1] if re.match(r"^\S{1,4}\s", section or "") else section)
+
+        def new_group(desc_, no_, amt_, words_, r_top):
+            g_ = group_head(desc_, no_, amt_, words_, r_top)
+            if not no_ and heads and desc_ == title_of(heads):
+                g_["_parts"] = list(heads)
+            return g_
+        skip_to = 0
+        for ri, r in enumerate(rows[hi + 1:], start=hi + 1):
+            xr = r0 + ri
+            if xr <= skip_to:
+                continue
             no = _s(r[cols["no"]]) if "no" in cols else ""
             desc = _s(r[cols["desc"]])
+            if xr in groups and not in_coll and not BILL_PAGE.search(" ".join(x for x in (no, desc) if x)) \
+                    and not PAGE_TOTAL.match(" ".join(x for x in (no, desc) if x)):
+                # the bracket: every row of the merged price cell, the price on one line (the group), the rows under it
+                end = groups[xr]
+                skip_to = end
+                flush_pending("before a priced group")
+                open_grp = None
+                rr = [(rows[k - r0], k) for k in range(xr, end + 1) if 0 <= k - r0 < len(rows)]
+                amt_g = amt_of(r)
+                araw = r[cols["amount"]] if "amount" in cols else None
+                words_g = "" if amt_g is not None or araw is None else _s(araw)
+                if amt_g is None and "rate" in cols and _n(r[cols["rate"]]) is not None and not _s(araw):
+                    amt_g = _n(r[cols["rate"]])                # a figure in the rate column only
+                rows_txt = [(rr_, k) for rr_, k in rr if _s(rr_[cols["desc"]]) or (("no" in cols) and _s(rr_[cols["no"]]))]
+                u0, q0 = unit_qty(r)
+                # the first row with words, with no unit or quantity of its own, is the group's title ("S TELEPHONE AND DATA
+                # SYSTEM", "AB Fire Alarm Control Panel"); else the group is named by the heading lines over it
+                t0 = rows_txt[0][0] if rows_txt else None
+                tu, tq = unit_qty(t0) if t0 is not None else ("", None)
+                title_row = rows_txt[0] if (t0 is not None and _s(t0[cols["desc"]]) and not tu and not tq and len(rows_txt) > 1) else None
+                tdesc = _s(title_row[0][cols["desc"]]) if title_row else ""
+                tno = (_s(title_row[0][cols["no"]]) if "no" in cols else "") if title_row else ""
+                gtitle = tdesc if title_row else (group_title() or (_s(rows_txt[0][0][cols["desc"]]) if rows_txt else "Lump sum"))
+                counts["rows"] += len(rows_txt)
+                if title_row:
+                    counts["headings"] += 1
+                mine.append(new_group(_s(gtitle), tno, amt_g, words_g, r))
+                for rr_, k in rows_txt:
+                    if title_row and k == title_row[1]:
+                        continue
+                    mine.append(member(rr_, f"{ws.title} rows {xr}-{end}"))
+                heads, parent, intro = [], "", ""
+                continue
             rowtext = " ".join(_s(x) for x in r[:12]).lower()
             label = label_of(r)
             if BILL_PAGE.search(label):                         # "HVAC BILL PAGE 3/6": a page's subtotal brought to the collection
@@ -173,6 +324,10 @@ def read_schedule(data: bytes):
                     total_row = r
                 continue
             if PAGE_TOTAL.match(label):                         # the page ends: its lines must add up to its subtotal
+                flush_pending("the page ends")
+                open_grp = None
+                merge_page()
+                page_heads = []
                 v = amt_of(r)
                 if v is not None:
                     pages.append({"label": label, "sheet": round(v, 2), "lines": mine[pstart:]})
@@ -180,6 +335,8 @@ def read_schedule(data: bytes):
                 pstart = len(mine)
                 continue
             if desc and COLLECTION_HEAD.match(desc) and amt_of(r) is None:
+                flush_pending("the collection starts")
+                open_grp = None
                 in_coll = True                                  # from here the sheet only adds up what is above
                 continue
             if in_coll:
@@ -209,6 +366,22 @@ def read_schedule(data: bytes):
                     and not any(_s(r[cols[k]]) for k in ("no", "unit", "rate", "qty") if k in cols):
                 total_row = r                           # a total with no words beside it (911)
                 continue
+            if not desc and not in_coll and pending:
+                a_ = amt_of(r)
+                araw_ = r[cols["amount"]] if "amount" in cols else None
+                w_ = "" if a_ is not None or araw_ is None else _s(araw_)
+                rr_ = _s(r[cols["rate"]]).upper() if "rate" in cols else ""
+                if a_ or (w_ and w_.lower() not in WORDS_ZERO) or rr_ in ("LS", "L.S", "L.S.", "LUMPSUM", "LUMP SUM"):
+                    # 914 hot water pipes: "15mm" / "0 Included" / "20mm" - the price row in the run prices the run
+                    g = new_group(group_title() or "Lump sum", "", a_, w_, r)
+                    g["_xr"] = pending[0][1]
+                    mine.append(g)
+                    for r_, xr_ in pending:
+                        mine.append(member(r_, "the run priced by the row inside it"))
+                    pending.clear()
+                    open_grp = g
+                    heads, parent, intro = [], "", ""
+                    continue
             if not desc and has_pages and amt_of(r):
                 # a lump sum written on a row of its own under the lines it prices (914: "LS 4,500" under the cable
                 # tray sizes) - it is that group's line, named by the group and the sentence that introduces it
@@ -216,6 +389,7 @@ def read_schedule(data: bytes):
                 no = ""
             if not desc:
                 continue
+            counts["rows"] += 1
             qty = _n(r[cols["qty"]]) if "qty" in cols else None
             unit = _s(r[cols["unit"]]) if "unit" in cols else ""
             rate_raw = r[cols["rate"]] if "rate" in cols else None
@@ -244,27 +418,60 @@ def read_schedule(data: bytes):
             priced = bool(amt) or bool(qty and rate) or (is_qty and bool(qty or rate))
             if not priced and not words:
                 if not (qty or rate or unit or cert_amt):
+                    counts["headings"] += 1
+                    page_heads.append((xr, no, desc))
                     head = f"{no} {desc}".strip() if no and len(no) <= 3 else desc
+                    if open_grp is not None or pending:
+                        flush_pending("a heading follows")
+                        open_grp = None
                     if NUMBERED.match(desc) and len(desc) <= 60:
                         section, parent = head, ""             # "10) TELEPHONE SYSTEM:", "17) Any Other Items"
                         intro = group = ""
+                        heads = []
                     elif desc.upper() == desc and len(desc) < 120:
                         top = section = head                   # "9 ELECTRICAL WORKS", "BOOSTER SET"
                         parent = ""
                         intro = group = ""
+                        heads = []
                     elif no and len(no) <= 4 and len(desc) <= 80:
                         section, parent, intro, group = head, "", "", ""   # "A) Watse, Soil & Vent Pipes"
+                        heads = []
                     else:
                         parent = desc
                         if len(desc) >= 40:
                             intro = desc                       # "Supply, install and connect hot dip galvanized cable trays ..."
                         elif desc.strip(" :.").lower() not in ("generally", "general", "note", "notes"):
                             group, intro = desc, ""            # "Storm Water Drainage"
+                        if desc.strip(" :.").lower() not in ("generally", "general", "note", "notes") and not re.search(r"\(\s*cont", desc, re.I):
+                            heads.append(short(desc))          # the words over the next item / group (not "... (Cont.)" - a page's repeat)
                 else:
+                    # an item with its unit (and maybe a quantity) but no price: one of several priced together,
+                    # waiting for the row that carries their lump sum - or, if none comes, brought in for review
+                    if open_grp is not None:
+                        mine.append(member(r, "after the priced row"))
+                    else:
+                        pending.append((r, xr))
                     if len(desc) >= 40:
                         intro = desc                           # "Supply, Install, test ... PRV station" (qty 0, no price)
                     skipped += 1
                 continue
+            if pending:
+                ls_row = (isinstance(rate_raw, str) and rate_raw.strip().upper() in ("LS", "L.S", "L.S.", "LUMPSUM", "LUMP SUM")) or \
+                    unit.strip().lower() in ("ls", "l.s", "l.s.", "lumpsum", "lump sum", "item", "lot")
+                if ls_row and amt:
+                    # the rows above with no price + this one with the lump sum: one group (no merged cell to say so)
+                    counts["groups"] += 1
+                    g = new_group(group_title() or desc, "", amt, "", r)
+                    mine.append(g)
+                    for r_, xr_ in pending:
+                        mine.append(member(r_, "before the priced row"))
+                    pending.clear()
+                    mine.append(member(r, "the priced row"))
+                    open_grp = g
+                    heads, parent, intro = [], "", ""
+                    continue
+                flush_pending("the next row has its own price")
+            open_grp = None
             if NUMBERED.match(desc) and section != top:
                 section = top                                  # "11) ..." is back at the bill's own level
             if parent and LETTERED.match(desc):
@@ -295,7 +502,12 @@ def read_schedule(data: bytes):
                          "claimed_qty": round(_n(r[cols["claim_qty"]]) or 0, 4) if "claim_qty" in cols else None,
                          "certified": round(cert_amt, 2) if cert_amt is not None else None,
                          "stage_pct": round(as_pct(pct), 4) if (measure == "qty" and pct) else None,
-                         "rate_missing": bool(qty) and not rate and not amt and not words})
+                         "rate_missing": bool(qty) and not rate and not amt and not words, "grp": ""})
+            counts["lines"] += 1
+            heads = []
+        flush_pending("the sheet ends")
+        if has_pages and pstart < len(mine):
+            merge_page()
         if pstart < len(mine) and pages:
             pages.append({"label": "after the last page", "sheet": None, "lines": mine[pstart:]})
         # each page: its lines must make its own subtotal. A quantity x rate the BOQ left without an amount is not in
@@ -374,8 +586,19 @@ def read_schedule(data: bytes):
         missing = [x["description"][:50] for x in mine if x["rate_missing"]]
         if missing:
             notes.append(f"{ws.title}: {len(missing)} line(s) have a quantity but no rate - type the rate after bringing them in ({', '.join(missing[:4])}{'...' if len(missing) > 4 else ''})")
+        # every description row of the sheet is accounted for: a line, an item in a group, a heading - or for review
+        acc = counts["lines"] + counts["members"] + counts["headings"] + counts["review"]
+        if acc != counts["rows"]:
+            notes.append(f"{ws.title}: {counts['rows']} description rows in the file, {acc} accounted for - check the schedule")
+        for x in mine:
+            if x.get("review"):
+                review.append(x["review"])
+        if counts["groups"]:
+            notes.append(f"{ws.title}: {counts['groups']} group(s) of items priced together (one lump sum each) - "
+                         f"{counts['members']} items listed under their group, counted once")
         sheets.append({"sheet": ws.title, "bill": bill, "title": title, "lines": len(mine), "contract": contract, "certified": certified,
-                       "check": {k: {"sheet": v, "ok": ok} for k, (v, ok) in chk.items()}, "unpriced": skipped})
+                       "check": {k: {"sheet": v, "ok": ok} for k, (v, ok) in chk.items()}, "unpriced": skipped,
+                       "rows": dict(counts, accounted=acc)})
         items += mine
     # a BOQ of several trade sheets in bill pages (MEP_BOQ_HVAC / _ELECTRICAL / _PLUMBING): each sheet is its own bill
     paged = [sh for sh in sheets if any(x.get("_sheet") == sh["sheet"] for x in items)]
@@ -387,6 +610,10 @@ def read_schedule(data: bytes):
                     x["bill"] = sh["bill"]
     for x in items:
         x.pop("_sheet", None)
+        x.pop("_why", None)
+        x.pop("_xr", None)
+        x.pop("_parts", None)
+        x.setdefault("grp", "")
     # the summary sheet ("TOTAL HVAC SYSTEMS 243,000"): each trade's figure there against its own sheet's lines
     for sname, rows_ in summaries:
         for lab, v in rows_:
@@ -415,7 +642,7 @@ def read_schedule(data: bytes):
     if len({x["bill"] for x in items}) == 1 and len(sheets) == 1:
         for x in items:
             x["bill"] = x["bill"] if x["bill"] not in ("A",) else ""
-    return {"items": items, "sheets": sheets, "notes": notes,
+    return {"items": items, "sheets": sheets, "notes": notes, "review": review,
             "contract": round(sum(x["amount"] for x in items), 2),
             "certified": round(sum(x["certified"] or 0 for x in items), 2),
             "all_checked": all(c["ok"] for s in sheets for c in s["check"].values()) and all(s["check"] for s in sheets)}

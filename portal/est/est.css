@@ -320,7 +320,7 @@ select.fsub { width: 190px; }
 /* Contract works: columns sized to their content, boxes fill their cells, text wraps */
 table.sl { table-layout: fixed; width: 100%; }
 table.sl th { white-space: normal; line-height: 1.25; vertical-align: bottom; padding-left: 8px; padding-right: 6px; }
-table.sl td.d { min-width: 0; max-width: none; white-space: normal; overflow-wrap: anywhere; }
+table.sl td.d { min-width: 0; max-width: none; white-space: normal; overflow-wrap: break-word; word-break: normal; }
 table.sl input { box-sizing: border-box; min-width: 0; }
 table.sl .pctin { display: flex; align-items: center; gap: 4px; } table.sl .pctin input { flex: 1; }
 /* a sideways scroll bar, when a table still needs one, is always shown - not only while scrolling on a Mac */
@@ -783,3 +783,15 @@ table.sl tr.rsub td { background: #FAF7F5; border-top: 1px solid #E8E1DC; font-s
 table.sl tr.rtot td { background: #F3ECE8; border-top: 2px solid #D9CBC3; }
 table.sl tr.over td, table.rollsum tr.over td { background: #FDEDEC !important; }
 table.rollsum tr.gt td { border-top: 2px solid #D9CBC3; background: #F3ECE8; }
+/* several items priced as one lump sum (a bracket in the BOQ): the group's line, its items under it (5 Nov 2026) */
+table.sl tr.gin td, table.t tr.gin td { background: #FBFAF9; color: #555B61; font-size: 12px; padding-top: 4px; padding-bottom: 4px; }
+table.sl tr.gin td.d, table.t tr.gin td.d { padding-left: 26px; position: relative; }
+table.sl tr.gin td.d::before, table.t tr.gin td.d::before { content: ""; position: absolute; left: 12px; top: 0; bottom: 0; border-left: 2px solid #E3D5CE; }
+table.t.sched tr.gin textarea, table.t.sched tr.gin input { color: #555B61; }
+table.t.sched tr.gin td:nth-child(5) { padding-left: 18px; border-left: 3px solid #E3D5CE; }
+table.sl tr.ghd td, table.t tr.ghd td { font-weight: 600; }
+button.gtog { border: 0; background: #F4EEEA; color: #8E2A20; border-radius: 6px; font: inherit; font-size: 11.5px; font-weight: 600; padding: 2px 8px; margin-top: 4px; cursor: pointer; }
+button.gtog:hover { background: #EBDDD6; }
+/* the certificate's bill tables: headings fit their columns - never cut (5 Nov 2026) */
+table.sl th, table.sl th.r { letter-spacing: .2px; padding-left: 6px; padding-right: 4px; white-space: normal !important; }
+table.sl th .tip, table.sl th .hi, table.sl th [data-tip] { display: inline-block; }

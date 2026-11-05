@@ -52,7 +52,10 @@ ck("hidden sheets are not read", "Hidden line" not in D)
 ck("bill code and name from 'Appendix - B1' and the line under it", L[0]["bill"] == "B1" and L[0]["bill_title"] == "Electrical Works", (L[0]["bill"], L[0]["bill_title"]))
 k = next(x for x in D if x.endswith("a. M.D.B (IP.55) with meter panel"))
 ck("a lettered line carries the sentence that introduces it", k.startswith("1) The contractor to include cost") and D[k]["amount"] == 10000 and D[k]["measure"] == "pct" and D[k]["unit"] == "NO's")
-ck("an unpriced lettered line is left out (counted in the sheet's 'unpriced')", not any("SMDB" in x for x in D) and r["sheets"][0]["unpriced"] == 1)
+# 5 Nov 2026: nothing is dropped - a row with no price and no group comes in at nil and is listed for review
+ck("an unpriced lettered line comes in at nil, listed for review (never dropped)", any("SMDB" in x and D[x]["amount"] == 0 and D[x]["grp"] == "" for x in D)
+   and len(r["review"]) == 1 and "row 12" in r["review"][0] and r["sheets"][0]["unpriced"] == 1, r.get("review"))
+ck("every description row of the sheet accounted for", r["sheets"][0]["rows"]["rows"] == r["sheets"][0]["rows"]["accounted"], r["sheets"][0]["rows"])
 ck("% done read as a percentage (0.45 -> 45%)", D[k]["done_pct"] == 45)
 ck("a numbered heading is a heading", D["Supply, install, test and commission telephone system"]["section"] == "10) TELEPHONE SYSTEM:")
 ck("the next numbered item goes back to the bill's own heading", D["11) Contractor to include for fixing of light fixtures"]["section"] == "9 ELECTRICAL WORKS")
@@ -108,6 +111,41 @@ ck("quantity x rate x stage %: 11,459.17", abs((w.work_cum or 0) - 11459.17) < .
 c.put(f"/store/est/subpcs/{pc2}/sheet", json={"lines": [{"item_id": it["id"], "qty": 849.86, "pct": 0}]}, headers=H)
 db.refresh(w)
 ck("no stage % = the whole quantity (849.86 x 16 = 13,597.76)", abs((w.work_cum or 0) - 13597.76) < .005, w.work_cum)
+# ---- items priced together as ONE lump sum (a bracket beside them in the BOQ - 5 Nov 2026) ----
+def bracket_book():
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "MEP_BOQ_PLUMBING"
+    rows = [["ITEM", "WORK DESCRIPTION", "UNIT", "QTY", "UNIT RATE", "AMOUNT"], [], [None, "PLUMBING SYSTEMS:"],
+            [None, "Sanitary Fittings & Accessories(EXCLUDE FITTING SUPPLY)"], [None, "Supply, Install & Testing Sanitary drainage fittings and accessories all in accordance with the drawings and specification"],
+            [None, "Clean Out, CO", None, "No", "LS", 10800], [None, "Catch Basin, CB", None, "No"], [None, "Floor drain, FD", None, "No"],
+            [None, "Hot Water Pipes"], [None, "Supply, Install & Test PP-R pipes for hot water pipe work including all fittings"],
+            [None, "15mm diameter", "m"], [None, None, None, None, 0, "Included"], [None, "20mm diameter", "m"],
+            [None, "Manholes", 5, "No", 900, 4500],
+            [None, "Pump base", "No"],
+            ["TO COLLECTION", None, None, None, None, 15300], [], [None, "COLLECTION"], [None, "PLUMBING BILL PAGE 1/1", "Item", 1, 15300, 15300],
+            ["TOTAL CARRIED TO COLLECTION", None, None, None, None, 15300]]
+    for r_ in rows:
+        ws.append(r_)
+    ws.merge_cells("E6:E8"); ws.merge_cells("F6:F8")           # the bracket's price: merged down its rows, the figure in the top row
+    bio = io.BytesIO(); wb.save(bio); return bio.getvalue()
+
+
+g = I.read_schedule(bracket_book())
+G = g["items"]
+san = next(x for x in G if x["grp"] == "head" and x["description"].startswith("Sanitary"))
+kids = G[G.index(san) + 1:G.index(san) + 4]
+ck("bracket: one group line, named by its heading, LS 1 x 10,800", san["amount"] == 10800 and san["unit"] == "LS" and san["qty"] == 1
+   and san["description"] == "Sanitary Fittings & Accessories(EXCLUDE FITTING SUPPLY)", san)
+ck("bracket: every item of it under it at nil - the priced one too", [x["description"] for x in kids] == ["Clean Out, CO", "Catch Basin, CB", "Floor drain, FD"]
+   and all(x["grp"] == "in" and x["amount"] == 0 and x["rate"] == 0 and x["unit"] == "No" for x in kids), kids)
+hw = next(x for x in G if x["grp"] == "head" and x["description"] == "Hot Water Pipes")
+ck("no merged cell: the price row inside the run ('Included') makes the group", hw["words"] == "Included" and
+   [x["description"] for x in G[G.index(hw) + 1:G.index(hw) + 3]] == ["15mm diameter", "20mm diameter"], G[G.index(hw):G.index(hw) + 3])
+ck("a row priced on its own stays its own line", any(x["description"] == "Manholes" and x["grp"] == "" and x["amount"] == 4500 for x in G))
+ck("a row with no price and no group comes in at nil and is listed for review", any(x["description"] == "Pump base" and x["amount"] == 0 for x in G)
+   and len(g["review"]) == 1 and "Pump base" in g["review"][0] and "row 15" in g["review"][0], g["review"])
+ck("the group counted once: lines = page total = 15,300", g["contract"] == 15300 and g["sheets"][0]["check"]["contract"]["ok"], g["sheets"][0])
+rw = g["sheets"][0]["rows"]
+ck("every description row of the file accounted for", rw["rows"] == rw["accounted"] and rw["review"] == 1, rw)
 for s_ in (sid, sid2):
     c.delete(f"/store/est/subs/{s_}", headers=H)
 print(f"\n{len(fails)} FAILED: {fails}" if fails else "\nALL PASS")

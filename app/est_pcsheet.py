@@ -63,6 +63,9 @@ class EstSubItem(Base):
     measure = Column(String, default="pct")     # pct | size | qty
     is_var = Column(Boolean, default=False)     # a variation / additional scope
     var_ref = Column(String, default="")        # Var 01, IC/LPO/9103374
+    # Several items priced as ONE lump sum in the BOQ (a bracket beside them): "head" = the priced line of the group
+    # (its lump sum, certified by %); "in" = an item of the group, listed under it, never priced or counted (5 Nov 2026)
+    grp = Column(String, default="")
     locals().update(E._audit())
 
 
@@ -118,6 +121,8 @@ def _rec_label(s, pc):
 def item_amount(it):
     """The line amount as the agreement prints it; qty x rate only when no amount is given
     (3 x 6,539.45 is 19,618.34 on the 910 agreement - its rate has more decimals)."""
+    if (getattr(it, "grp", "") or "") == "in":
+        return 0.0                      # an item of a group: its money is the group's line
     if it.amount:
         return r2(it.amount)
     return r2((it.qty or 0) * (it.rate or 0))
@@ -125,7 +130,7 @@ def item_amount(it):
 
 def line_amount(it, ln):
     """What a line is worth to date on a certificate."""
-    if ln is None:
+    if ln is None or (getattr(it, "grp", "") or "") == "in":
         return 0.0
     ded = ln.deduct or 0
     if it.measure == "qty":            # quantity x rate; a stage % (70% = first coat done) when given
@@ -227,7 +232,7 @@ def _item_out(it, used=False):
     return {"id": it.id, "sort": it.sort, "bill": it.bill or "", "bill_title": it.bill_title or "", "section": it.section or "",
             "no": it.no or "", "description": it.description or "", "ref": it.ref or "", "qty": it.qty or 0, "claimed_qty": it.claimed_qty or 0, "unit": it.unit or "",
             "rate": it.rate or 0, "amount": r2(it.amount), "measure": it.measure or "pct", "is_var": bool(it.is_var),
-            "var_ref": it.var_ref or "", "used": used}
+            "var_ref": it.var_ref or "", "used": used, "grp": it.grp or ""}
 
 
 def _items(db, sid):
@@ -372,8 +377,10 @@ async def import_items(sid: int, file: UploadFile = File(None), save: int = Form
     out["value_diff"] = r2(r["contract"] - (s.value or 0)) if s.value else None             # replacing the schedule
     out["value_diff_add"] = r2(have_total + r["contract"] - (s.value or 0)) if s.value else None   # adding to it
     out.update({"lines": len(r["items"]), "existing": len(have), "used": len(used), "value": r2(s.value or 0), "file": fname,
-                "items": [{k: x[k] for k in ("bill", "bill_title", "section", "no", "description", "qty", "unit", "rate", "amount", "measure",
-                                            "words", "done_pct", "done_qty", "certified", "rate_missing")} for x in r["items"]]})
+                "items": [{k: x.get(k) for k in ("bill", "bill_title", "section", "no", "description", "qty", "unit", "rate", "amount", "measure",
+                                                "words", "done_pct", "done_qty", "certified", "rate_missing", "grp")} for x in r["items"]],
+                "review": r.get("review") or [], "groups": sum(1 for x in r["items"] if x.get("grp") == "head"),
+                "members": sum(1 for x in r["items"] if x.get("grp") == "in")})
     if not save:
         return out
     if mode not in ("replace", "add"):
@@ -398,8 +405,9 @@ async def import_items(sid: int, file: UploadFile = File(None), save: int = Form
         base = max([i.sort or 0 for i in have] or [0])
     for n, x in enumerate(r["items"], 1):
         it = EstSubItem(sub_id=sid, sort=base + n, bill=x["bill"][:20], bill_title=x["bill_title"][:120], section=x["section"][:200], no=x["no"][:20],
-                        description=x["description"], ref=x["words"][:120], qty=x["qty"], unit=x["unit"][:20], rate=x["rate"], amount=x["amount"],
-                        measure=x["measure"], is_var=False, created_by=user.id)
+                        description=x["description"], ref=x["words"][:120], qty=x["qty"], unit=x["unit"][:20],
+                        rate=0.0 if x.get("grp") == "in" else x["rate"], amount=0.0 if x.get("grp") == "in" else x["amount"],
+                        measure=x["measure"], is_var=False, grp=x.get("grp") or "", created_by=user.id)
         db.add(it)
     db.flush()
     refresh_sub(db, sid)
@@ -429,6 +437,9 @@ def save_items(sid: int, data: dict = Body(...), db: Session = Depends(get_db), 
             setattr(it, k, _f(x.get(k)))
         it.measure = x.get("measure") if x.get("measure") in MEASURES else "pct"
         it.is_var = bool(x.get("is_var"))
+        it.grp = x.get("grp") if x.get("grp") in ("head", "in") else ""
+        if it.grp == "in":                      # an item of a group: priced in the group's lump sum, never on its own
+            it.rate = it.amount = 0.0
         if not it.description.strip():
             raise HTTPException(400, f"Line {n + 1} has no description.")
         # A paid certificate keeps its stored work figure; a changed rate counts from the next open certificate.
@@ -583,7 +594,7 @@ def put_sheet(rid: int, data: dict = Body(...), db: Session = Depends(get_db), u
         for x in data.get("lines") or []:
             iid = int(x.get("item_id") or 0)
             it = items.get(iid)
-            if not it:
+            if not it or (it.grp or "") == "in":    # an item of a group is certified on its group's line
                 continue
             ln = have.get(iid)
             if ln is None:
@@ -1183,6 +1194,12 @@ def _render_pdf(doc, fit=1.0):
                     sty.append(("SPAN", (1, len(data)), (-1, len(data))))
                     sty.append(("BACKGROUND", (0, len(data)), (-1, len(data)), TINT))
                     data.append(["", P(sec, stb)] + [""] * 13)
+                if it.get("grp") == "in":         # an item of a group: listed under its group's line, priced there (incl.)
+                    y = len(data)
+                    sty.append(("TEXTCOLOR", (0, y), (-1, y), colors.HexColor("#555B61")))
+                    data.append([it["no"], P("\u00a0\u00a0\u00a0\u00a0" + it["description"], sts), P(it["ref"] or "", sts), f"{it['qty']:g}" if it["qty"] else "",
+                                 it["unit"], "incl.", "", "", "", "", "", "", "", "", ""])
+                    continue
                 meas, done = _cell_measure(r)
                 if r["chg"]:                      # changed since the last certificate: a pale shade, the moved figure a little deeper
                     y = len(data)
@@ -1332,6 +1349,10 @@ def render_html(doc, pdf_url, toggle_url=""):
                 if it["section"] and it["section"] != sec_:
                     sec_ = it["section"]
                     ae += f"<tr class=sh><td></td><td colspan=14>{e(sec_)}</td></tr>"
+                if it.get("grp") == "in":         # an item of a group: under its group's line, priced there
+                    ae += (f"<tr class=gin><td>{e(it['no'])}</td><td class=d style='padding-left:18px;color:#555B61'>{e(it['description'])}</td><td>{e(it['ref'] or '')}</td>"
+                           f"<td class=r>{(format(it['qty'], 'g')) if it['qty'] else ''}</td><td>{e(it['unit'])}</td><td class=r style='color:#8A8F94'>incl.</td>" + "<td></td>" * 9 + "</tr>")
+                    continue
                 meas, done = _cell_measure(r)
                 ch = r["chg"]
                 k = lambda *f: " chg" if ch & set(f) else ""          # the figure that moved, a shade deeper
