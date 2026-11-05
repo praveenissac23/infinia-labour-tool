@@ -15540,6 +15540,8 @@ try:
     est_bills.create_tables(engine)                  # Bills: formats and monthly bills
     import est_golive
     est_golive.run(SessionLocal)                     # go-live 26 Oct 2026: Estimation starts clean (once; backup kept)
+    import est_onetime
+    est_onetime.run(SessionLocal)                    # one-time data fixes with the normal deploy (each once, only if its checks pass)
 except Exception as _e:
     print("estimation tables:", _e)
 
