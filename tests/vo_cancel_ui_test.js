@@ -1,7 +1,7 @@
 // Variations: open one, "Cancel variation", pick "Implemented before the portal" - it moves to a Cancelled group,
 // struck out with the note, not in the totals; the next one takes its number. Restore brings it back.
 const { chromium } = require('playwright');
-const B = 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/vocancel_';
+const B = process.env.BASE || 'http://127.0.0.1:8032', SH = process.env.SHOTS || '/tmp/claude-0/vocancel_';
 let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  ' + JSON.stringify(i === undefined ? '' : i).slice(0, 300))); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 (async () => {

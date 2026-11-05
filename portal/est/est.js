@@ -993,7 +993,7 @@ function voSubForm(s, v) {
     { k: "title", label: "Description", value: v.title || "", full: true, focus: true },
     { k: "sign", label: "Type", type: "seg", options: ["Addition", "Omission"], value: (v.amount || 0) < 0 ? "Omission" : "Addition", tip: "Omission takes the amount off the subcontract - type the amount without a minus." },
     { k: "amount", label: "Amount (AED)", type: "money", value: v.amount ? Math.abs(v.amount) : "" },
-    { k: "on_date", label: "Date", type: "date", value: v.on_date || today() }, { k: "ref", label: "Variation no.", value: v.ref || nextSubVoRef(s), ro: true, tip: "Numbered for you, in order: V01, V02, V03 ... The subcontractor's own reference can go in the description." },
+    { k: "on_date", label: "Date", type: "date", value: v.on_date || today() }, { k: "ref", label: "Variation no.", value: v.ref || nextSubVoRef(s), tip: "Numbered for you, in order: V01, V02, V03 ... Wrong? Type the right number - the PC sheet lines claimed against it follow the new number." },
   ], async x => { const a = Math.abs(Number(String(x.amount || 0).replace(/,/g, "")) || 0); x.amount = x.sign === "Omission" ? -a : a; delete x.sign; if (v.id) await PATCH(`/store/est/subvos/${v.id}`, x); else await POST("/store/est/subvos", Object.assign(x, { sub_id: s.id })); await reload(); toast("Saved"); },
   { doc: { kind: "subvo", what: "variation letter or the subcontractor's quotation", want: [["title", "Description"], ["amount", "Amount"]] },
     del: v.id ? async () => { await DEL(`/store/est/subvos/${v.id}`); reload(); } : null });
@@ -1553,7 +1553,7 @@ SECTIONS["client.vo"] = el => {
   const sum = (k, s) => r2(b.variations.filter(v => v.status !== "Cancelled" && (!s || v.status === s) && (k !== "submitted_amount" || v.kind !== "Coordination")).reduce((a, v) => a + (v[k] || 0), 0));
   const absorbed = sum("absorbed_amount");
   const fig = (l, v, c, tip) => `<div class="fig ${c || ""}" ${tip ? `title="${esc(tip)}"` : ""}><div class="l">${l}</div><div class="v">${aed(v)}</div></div>`;
-  el.innerHTML = tools("variations", { add: `<button class="btn btn-primary" id="add-vo">+ Variation</button><button class="btn btn-plain" id="imp-vo" title="Bring in the QS variation log Excel (Ref.No, Description, Submitted / Revised / Accepted / Absorbed amount, dates, Claimed in PC, Remarks). The OHP sheet comes in too.">Import log</button><input type="file" id="imp-vo-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden>`,
+  el.innerHTML = tools("variations", { add: `<button class="btn btn-primary" id="add-vo">+ Variation</button><button class="btn btn-plain" id="imp-vo" title="Bring in the QS variation log Excel (Ref.No, Description, Submitted / Revised / Accepted / Absorbed amount, dates, Claimed in PC, Remarks). The OHP sheet comes in too.">Import log</button><input type="file" id="imp-vo-f" accept=".xlsx,.xlsm,.pdf,.docx,.jpg,.jpeg,.png" hidden>${b.variations.length ? `<button class="btn btn-plain" id="qs-vo" title="Put back the numbers the QS log sent to the consultant (CP01, CP02, V01, OHP-1) on the past variations, and keep every past number as it is. New variations carry on V.. after them.">Numbers sent to consultant</button>` : ""}`,
       chips: [["", b.variations.length], ...VO_ST.filter(s => n(s) || ["Identified", "Submitted", "Approved", "Rejected"].includes(s)).map(s => [s, n(s)])] }) +
     `<div class="strip">${fig("Submitted", sum("submitted_amount"), "", "Every variation sent to the client (coordination lines left out)")}${fig("Approved", sum("approved_amount", "Approved"), "green", "Added to the contract value")}${fig("Waiting approval", sum("submitted_amount", "Submitted"), "amber", "Submitted, not yet accepted or rejected")}${absorbed ? fig("Absorbed", absorbed, "", "Cost Infinia carries itself - not added to the contract") : ""}</div>` +
     (list.length ? voTable(list) : '<div class="empty">No variations yet. Press + Variation, or Import log to bring in the QS variation log.</div>');
@@ -1561,6 +1561,7 @@ SECTIONS["client.vo"] = el => {
   $("#add-vo", el).onclick = () => voForm();
   const fi = $("#imp-vo-f", el);
   $("#imp-vo", el).onclick = () => fi.click();
+  const qb = $("#qs-vo", el); if (qb) qb.onclick = () => voQsNumbers();
   fi.onchange = () => { if (fi.files[0]) voImport(fi.files[0]); fi.value = ""; };
   $$("[data-vo]", el).forEach(r => r.onclick = e => { if (e.target.closest("button")) return; voForm(b.variations.find(v => v.id === +r.dataset.vo)); });
   $$("[data-vrestore]", el).forEach(x => x.onclick = async () => { try { const r = await POST(`/store/est/variations/${x.dataset.vrestore}/cancel`, { restore: true }); await reload(); toast(`Restored as ${r.ref} - the numbers after it moved down`); } catch (e) { fail(e); } });
@@ -1647,7 +1648,7 @@ function voForm(v) {
   modal(v.id ? (v.ref || vref(v.seq)) : "New variation", [
     { k: "title", label: "Description", value: v.title || "", full: true, focus: true },
     ...[ctrField(v.contract_id)].filter(Boolean),
-    { k: "ref", label: "Variation no.", value: v.ref || (v.id ? vref(v.seq) : nextVoRef()), ro: true, tip: "Every variation is numbered for you in the order it is made: V01, V02, V03 ... (cost proposals and OHP claims too). The client's or QS's own reference can go in the remarks." },
+    { k: "ref", label: "Variation no.", value: v.ref || (v.id ? vref(v.seq) : nextVoRef()), tip: "Numbered for you in order: V01, V02, V03 ... Type any number to change it (e.g. CP01 as sent to the consultant, or V05) - it is kept as typed. Clear the box to go back to the number in order." },
     { k: "kind", label: "Type", type: "select", options: ["Addition", "Omission", "Coordination"], value: v.kind || "Addition" },
     { k: "source", label: "Source", type: "select", options: ["Client instruction", "Consultant instruction", "Site condition", "Design change", "Authority requirement", "Coordination & attendance"], value: v.source || "Client instruction" },
     { k: "submitted", label: "Submitted on", type: "date", value: v.submitted || "" },
@@ -1668,6 +1669,16 @@ function voForm(v) {
       if (st_.value === "Submitted" && !$("#f-submitted").value) $("#f-submitted").value = today();
       if (st_.value === "Approved") { if (!$("#f-approved_on").value) $("#f-approved_on").value = today(); if (!$("#f-approved_amount").value) $("#f-approved_amount").value = $("#f-revised_amount").value || $("#f-submitted_amount").value; } }); } });
 }
+// The numbers already sent to the consultant (CP01, CP02 ... from the QS log) back on the past variations, fixed as
+// they are; new ones carry on V.. (5 Nov 2026). Shows every line - now / will be - before anything changes.
+async function voQsNumbers() {
+  let r; try { r = await POST(`/store/est/projects/${ST.pid}/variations/qs-numbers`, { save: 0 }); } catch (e) { return fail(e); }
+  const rows = r.lines.map(x => `<tr${x.now !== x.will ? ' style="background:#FFF8E6"' : ""}><td class="small">${esc(x.now || "-")}</td><td><b>${esc(x.will)}</b></td><td class="small">${esc(x.title)}</td><td class="small muted">${esc(x.status)}</td></tr>`).join("");
+  modal("Numbers sent to the consultant", [], async () => { await POST(`/store/est/projects/${ST.pid}/variations/qs-numbers`, { save: 1 }); await reload(); toast(`Done - the past numbers are kept as sent. The next new variation is ${r.next}.`, { ms: 5000 }); }, {
+    wide: true, save: r.changes ? `Put back ${r.changes} number${r.changes === 1 ? "" : "s"}` : "Keep these numbers",
+    top: `<div class="small muted" style="margin-bottom:8px">The past variations take the numbers they were sent to the consultant with (from the QS log), and every past number is kept as it is from now on. New variations carry on: the next one is <b>${esc(r.next)}</b>. Any number can still be changed by hand later.</div>
+      <div class="tw" style="max-height:52vh;overflow:auto"><table class="t"><thead><tr><th>Now</th><th>Will be</th><th>Variation</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>` });
+}
 // Cancel a variation: kept on the log with its note, not counted, no number - the ones after it move up.
 function voCancel(v) {
   modal(`Cancel ${v.ref || vref(v.seq)} - ${v.title}`, [
@@ -1677,7 +1688,14 @@ function voCancel(v) {
 }
 // Variation numbers: V01, V02 ... in the order they are made (the server gives the same number).
 function vref(n) { return "V" + String(+n || 0).padStart(2, "0"); }
-function nextVoRef() { return vref(Math.max(0, ...ST.b.variations.map(x => +x.seq || 0)) + 1); }
+// the next number given in order - the same rule as the server: numbers typed or sent to the consultant are skipped
+function nextVoRef() {
+  const live = ST.b.variations.filter(x => x.status !== "Cancelled");
+  const taken = new Set(live.filter(x => x.ref_typed).map(x => String(x.ref || "").trim().toUpperCase()));
+  let n = 0; const step = () => { n++; while (taken.has(vref(n))) n++; };
+  live.filter(x => !x.ref_typed).forEach(step); step();
+  return vref(n);
+}
 function nextSubVoRef(s) {
   const nums = (s.vos || []).map(x => { const m = String(x.ref || "").trim().match(/^V(\d+)$/i); return m ? +m[1] : 0; });
   return vref(Math.max((s.vos || []).length, ...nums) + 1);

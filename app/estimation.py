@@ -274,6 +274,7 @@ class EstVariation(Base):
     cancelled_on = Column(Date, nullable=True)
     prev_status = Column(String, default="")       # the status it had before it was cancelled (to restore it)
     qs_ref = Column(String, default="")            # the QS log's own number (CP01, OHP-1) - kept, not shown
+    ref_typed = Column(Boolean, default=False)     # the number was typed (corrected) by hand - kept as typed, never renumbered
     locals().update(_audit())
 
 
@@ -743,7 +744,7 @@ KINDS = {
     "variations": (EstVariation, "project_id", {"seq": I, "title": S, "kind": S, "source": S, "ref": S, "on_date": D,
                                                 "submitted": D, "submitted_amount": F, "approved_on": D, "approved_amount": F,
                                                 "revised_amount": F, "absorbed_amount": F, "pc_ref": S,
-                                                "status": S, "sub_id": I, "notes": S, "contract_id": I, "cancel_note": S, "cancelled_on": D, "prev_status": S}),
+                                                "status": S, "sub_id": I, "notes": S, "contract_id": I, "cancel_note": S, "cancelled_on": D, "prev_status": S, "ref_typed": B}),
     "contracts": (EstContract, "project_id", {"name": S, "ref": S, "value": F, "adv_pct": F, "ret_pct": F, "vat_pct": F, "sort": I, "notes": S}),
     "boq": (EstBoq, "project_id", {"section": S, "code": S, "description": S, "unit": S, "qty": F, "rate": F, "cost_rate": F,
                                    "done_pct": F, "sort": I, "bill": S, "remark": S, "scope": S}),
@@ -1695,7 +1696,13 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
     elif kind == "variations":
         if not data.get("seq"):
             row.seq = _next_seq(db, EstVariation, project_id=row.project_id)
-        row.ref = vref(row.seq)                 # every variation is V01, V02 ... in the order made
+        row.ref, row.ref_typed = "", False      # every variation is V01, V02 ... in the order made (after any fixed numbers)
+        typed = str(data.get("ref") or "").strip()
+        db.add(row)
+        db.flush()
+        renumber_project_vos(db, row.project_id)
+        if typed and typed.upper() != (row.ref or "").upper():
+            vo_number_in(db, row, typed)        # another number typed in its place
         if row.on_date is None:
             row.on_date = t
         if not row.title:
@@ -1704,6 +1711,10 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
         nums = [int(m.group(1)) for (r,) in db.query(EstSubVO.ref).filter(EstSubVO.sub_id == row.sub_id).all()
                 for m in [re.match(r"^V(\d+)$", (r or "").strip(), re.I)] if m]
         row.ref = vref(max(nums + [db.query(EstSubVO).filter(EstSubVO.sub_id == row.sub_id).count()]) + 1)
+        typed = str(data.get("ref") or "").strip()
+        if typed and typed.upper() != row.ref:
+            row.id = None
+            vo_number_in(db, row, typed, sub=True)
     elif kind == "logs":
         if row.kind not in LOG_STATUS:
             raise HTTPException(400, "Unknown log.")
@@ -1760,8 +1771,8 @@ def edit_row(kind: str, rid: int, data: dict = Body(...), db: Session = Depends(
     row = db.query(model).get(rid)
     if not row:
         raise HTTPException(404, "That line is not there any more.")
-    if kind in ("variations", "subvos"):
-        data.pop("ref", None)                   # the V number is given, never typed
+    # The variation number can be corrected too (5 Nov 2026): kept as typed, never two the same.
+    vo_typed = data.pop("ref", None) if kind in ("variations", "subvos") else None
     if kind == "subs" and user.role != "admin" and any(k in data and _coerce(F, data[k], k) != round(getattr(row, k) or 0, 4) for k in ("adv_pct", "ret_pct", "vat_pct")) \
             and db.query(EstSubPC).filter(EstSubPC.sub_id == row.id, EstSubPC.status == "Paid").first():
         raise HTTPException(400, "This subcontract has paid certificates - its advance, retention and VAT % are locked. Ask an admin if they must change.")
@@ -1785,6 +1796,10 @@ def edit_row(kind: str, rid: int, data: dict = Body(...), db: Session = Depends(
             and db.query(EstClientPC).filter(EstClientPC.contract_id == row.id, EstClientPC.status.in_(LOCKED_STATUS)).first():
         raise HTTPException(400, "This contract has invoiced or paid certificates - its advance, retention and VAT % are locked. Ask an admin if they must change.")
     _apply(row, fields, data)
+    if vo_typed is not None and (str(vo_typed).strip().upper() != (row.ref or "").strip().upper() or (not str(vo_typed).strip() and kind == "variations" and row.ref_typed)):
+        was = row.ref
+        vo_number_in(db, row, vo_typed, sub=(kind == "subvos"))
+        db.add(models.AuditLog(user_id=user.id, action="est_vo_number", details=f"{'subcontract ' if kind == 'subvos' else ''}variation #{row.id} {(row.title or '')[:60]}: number {was or '-'} -> {row.ref}"))
     if kind == "subs" and "adv_rec_pct" in data and str(data.get("adv_rec_pct")).strip() in ("", "None"):
         row.adv_rec_pct = None
     if kind == "subs" and "adv_rec_mode" in data and (row.adv_rec_mode or "") != "pct":
@@ -2505,14 +2520,90 @@ def renumber_variations(SessionLocal):
 
 def renumber_project_vos(db, pid):
     """The project's variations numbered V01, V02 ... in their order - a cancelled one takes no number (and
-    the ones after it move up), so the log has no gap."""
+    the ones after it move up), so the log has no gap. A number typed by hand, or one sent to the consultant (CP01,
+    V03, OHP-1 - put back from the QS log), stays as it is, and the numbers given in order skip it (5 Nov 2026)."""
+    rows = db.query(EstVariation).filter(EstVariation.project_id == pid).order_by(EstVariation.seq, EstVariation.id).all()
+    fixed = any(v.ref_typed for v in rows)
+    taken = {(v.ref or "").strip().upper() for v in rows if v.ref_typed and (v.status or "") != "Cancelled"}
     n = 0
-    for v in db.query(EstVariation).filter(EstVariation.project_id == pid).order_by(EstVariation.seq, EstVariation.id).all():
+    for v in rows:
+        if v.ref_typed:
+            continue
         if (v.status or "") == "Cancelled":
-            v.seq, v.ref = 0, ""
+            if not fixed:
+                v.seq = 0
+            v.ref = ""
             continue
         n += 1
-        v.seq, v.ref = n, vref(n)
+        while vref(n) in taken:
+            n += 1
+        v.ref = vref(n)
+        if not fixed:                           # a log with no fixed numbers: its order follows the numbers, as before
+            v.seq = n
+
+
+def vo_number_in(db, row, typed, sub=False):
+    """A variation number typed by hand (a correction): kept as typed, and only this one changes. When another
+    variation of the project has that number in order, the two swap (it takes this one's old number). Refused when
+    another variation was given that number by hand too. Empty puts it back to a number in order."""
+    typed = re.sub(r"\s+", " ", str(typed or "")).strip()[:30]
+    if not sub:
+        others = [v for v in db.query(EstVariation).filter(EstVariation.project_id == row.project_id, EstVariation.id != (row.id or 0)).all()
+                  if (v.status or "") != "Cancelled"]
+        if not typed:                           # back to a number given in order
+            row.ref_typed = False
+            db.flush()
+            renumber_project_vos(db, row.project_id)
+            return
+        m = re.match(r"^V\s*0*(\d+)$", typed, re.I)
+        if m:
+            typed = vref(int(m.group(1)))       # v5 / V 05 -> V05
+        twin = next((v for v in others if not v.ref_typed and (v.ref or "").strip().upper() == typed.upper()), None)
+        row.ref, row.ref_typed = typed, True    # kept as typed (an old log may give one number to several lines)
+        if twin:                                # a number given in order moves out of the way
+            db.flush()
+            renumber_project_vos(db, row.project_id)
+        return
+    if not typed:
+        return
+    m = re.match(r"^V\s*0*(\d+)$", typed, re.I)
+    if m:
+        typed = vref(int(m.group(1)))
+    twin = db.query(EstSubVO).filter(EstSubVO.sub_id == row.sub_id, EstSubVO.id != (row.id or 0),
+                                     func.upper(func.trim(EstSubVO.ref)) == typed.upper()).first()
+    if twin:
+        raise HTTPException(400, f"{typed} is already the number of another variation on this subcontract. Give this one another number.")
+    old = (row.ref or "").strip()
+    if old and old.upper() != typed.upper():
+        import est_pcsheet as S                 # the lines claimed against it follow the new number
+        for it in db.query(S.EstSubItem).filter(S.EstSubItem.sub_id == row.sub_id, S.EstSubItem.is_var == True).all():  # noqa: E712
+            if (it.var_ref or "").strip().lower() == old.lower():
+                it.var_ref = typed
+    row.ref = typed
+
+
+@router.post("/store/est/projects/{pid}/variations/qs-numbers")
+def vo_qs_numbers(pid: int, data: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
+    """The numbers the QS log sent to the consultant (CP01, V03, OHP-1) put back on the past variations, and every
+    past number fixed as it is - new variations carry on V.. after them. {save: 0} shows what would change."""
+    _project(db, pid)
+    rows = db.query(EstVariation).filter(EstVariation.project_id == pid).order_by(EstVariation.seq, EstVariation.id).all()
+    lines = []
+    for v in rows:
+        if (v.status or "") == "Cancelled":
+            continue
+        will = (v.qs_ref or "").strip() or (v.ref or "").strip()
+        lines.append({"id": v.id, "title": v.title or "", "now": v.ref or "", "will": will, "status": v.status or ""})
+    if data.get("save"):
+        for x in lines:
+            v = db.get(EstVariation, x["id"])
+            v.ref, v.ref_typed, v.updated_by = x["will"], True, user.id
+        db.add(models.AuditLog(user_id=user.id, action="est_vo_number", details=f"project #{pid}: numbers sent to the consultant put back on {len(lines)} variations"))
+        db.commit()
+    taken, n = {x["will"].upper() for x in lines}, 1
+    while vref(n) in taken:                     # the first V number not sent - as a new variation will be numbered
+        n += 1
+    return {"lines": lines, "changes": sum(1 for x in lines if x["now"] != x["will"]), "next": vref(n)}
 
 
 @router.post("/store/est/variations/{rid}/cancel")
