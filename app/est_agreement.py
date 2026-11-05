@@ -405,12 +405,15 @@ def read(lines, trades=None, names=None):
             break
     desc = find_label(lines, "works")
     if not works and desc:
-        m = re.search(r"(?:of|for)\s+([A-Za-z&/ ]{3,40}?)\s+works", desc, re.I)
+        m = re.search(r"(?:of|for)\s+([A-Za-z&/ ]{3,40}?)\s+works", desc, re.I) or \
+            re.match(r"^\s*([A-Za-z&/\- ]{2,40}?)\s+works?\s*$", desc, re.I)       # "SUB CONTRACT WORKS : POST TENSIONING WORKS"
         works = m.group(1) if m else ""
     if works and re.search(r"\bof\b", works, re.I):
         works = re.split(r"\bof\b", works, flags=re.I)[-1].strip()       # "Maintenance of Elevator" -> "Elevator"
     if works:
         f["scope"] = works.strip().title() if works.isupper() else works.strip()[:1].upper() + works.strip()[1:]
+        if re.search(r"post[\s-]*tension|^p\.?\s?t\.?$", works.strip(), re.I):
+            f["scope"] = "PT Works"                     # the name on the Work list (5 Nov 2026)
         found.append("Work")
     if desc:
         # the full description, kept with the subcontract
@@ -432,7 +435,7 @@ def read(lines, trades=None, names=None):
                ("Finishes", ["paint", "tiling", "gypsum", "ceiling", "flooring", "marble", "plaster", "waterproof"]),
                ("External", ["landscap", "pool", "external works", "paving", "boundary wall"]),
                ("Manpower", ["manpower", "labour supply", "labor supply"]),
-               ("Civil", ["civil", "concrete", "blockwork", "shoring", "piling", "excavation", "structure", "foundation"])]
+               ("Civil", ["civil", "concrete", "post tension", "blockwork", "shoring", "piling", "excavation", "structure", "foundation"])]
         best = ""
         for k, ws in KEY:                               # what the work is, not a word like "supply" in every agreement
             if any(w in hay for w in ws):

@@ -545,7 +545,7 @@ def seed_projects(SessionLocal, first=901, last=927):
 # ---- the lists people pick from (so nothing is typed that can be picked) ---------------
 
 TRADES = ["Civil", "MEP", "Finishes", "Joinery", "Aluminium & Glazing", "Steel", "External", "Manpower", "Supply", "Other"]
-SCOPES = ["Shoring", "Piling", "Dewatering", "Anti Termite", "Waterproofing", "Blockwork", "Plaster", "Tiling", "Painting",
+SCOPES = ["Shoring", "Piling", "PT Works", "Dewatering", "Anti Termite", "Waterproofing", "Blockwork", "Plaster", "Tiling", "Painting",
           "False Ceiling", "Gypsum", "Joinery", "Wooden Doors", "Metal Doors", "Kitchen Cabinets", "Wardrobes", "Aluminium & Glazing",
           "Glass Partition", "Cladding", "Stone Cladding", "MEP", "Plumbing", "Electrical", "HVAC", "Fire Fighting", "Lift / Elevators",
           "Swimming Pool", "Landscaping", "Hardscape", "Signage", "Scaffolding", "Steel Structure", "Insulation", "Manpower Supply",
