@@ -431,7 +431,9 @@ def read_agreement_doc(data=None, name="", lines=None, trades=None):
                     val = (old.get("fields") or {}).get("value")
                     old["checks"] = {"items": len(sch["items"]), "items_total": tot, "total_in_doc": None, "contract_value": val,
                                      "match": val is not None and abs(tot - val) < 1, "sections": []}
-                    old["notes"] = [n for n in (old.get("notes") or []) if "schedule adds up" not in n] + sch["notes"] + \
+                    # the team's own reading of the items is replaced: its remarks about them go with it
+                    old["notes"] = [n for n in (old.get("notes") or []) if "schedule adds up" not in n and not n.startswith("Review: ")
+                                    and "priced as one lump sum" not in n] + sch["notes"] + \
                         ["Review: " + x for x in (sch.get("review") or [])]
             except Exception:
                 pass

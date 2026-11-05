@@ -38,7 +38,7 @@ MONEY = ("submitted_amount", "revised_amount", "approved_amount", "absorbed_amou
 
 
 def head_roles(text):
-    n = norm(text)
+    n = norm(re.sub(r"(?<=[a-z])(?=[A-Z])", " ", text or ""))   # "ApprovedOn": two words printed touching
     out = {}
     for k, pats in H.items():
         for rx, s in pats:
@@ -118,6 +118,27 @@ def _columns(header_rows, rows_below, vrules=None):
         hy = header_rows[-1].y
         rl = sorted(x for x, y0, y1 in (vrules or []) if y0 - 4 <= hy <= y1 + 30)
         data = [c for r in rows_below[:30] for c in r.cells]
+        # a ruled column between two headings with no heading of its own (a scan that lost "Amount Submitted"):
+        # a column all the same, its meaning from what it holds and the columns taken
+        extra = []
+        for k in range(len(cols) - 1):
+            a, b = cols[k][1], cols[k + 1][0]
+            between = [x for x in rl if a - 2 <= x <= b + 2]
+            if len(between) >= 2 and between[-1] - between[0] > 25:
+                x0_, x1_ = between[0], between[-1]
+                inside = [c for c in data if c.x0 >= x0_ - 1 and c.x1 <= x1_ + 1]
+                if len(inside) >= 3:
+                    extra.append([x0_ + 0.5, x1_ - 0.5, None, ""])
+        for c in extra:
+            kinds = _content(c, rows_below)
+            taken = {x[2] for x in cols + extra}
+            if kinds == "money":
+                c[2] = next((m for m in MONEY if m not in taken), None)
+            elif kinds == "date":
+                c[2] = "submitted" if "submitted" not in taken else ("approved_on" if "approved_on" not in taken else None)
+            if c[2]:
+                cols.append(c)
+        cols.sort(key=lambda c: c[0])
         bounds = []
         for k in range(len(cols) - 1):
             a, b = cols[k][1], cols[k + 1][0]
@@ -235,6 +256,95 @@ STATUS_WORDS = [("Rejected", r"reject|not accepted|declined"), ("Absorbed", r"ab
                 ("Submitted", r"submit|pending|under review|awaiting"), ("Identified", r"identif|to be submitted|draft")]
 
 
+def _repair_refs(out, detail, ocr=False):
+    """A scan's misread references put right from the log's own numbering (5 Nov 2026): "Sl-11" between "SI-10" and
+    "SI-12" is SI-11; "vog" between "V08" and "V10" is V09. Only where the rows on both sides are read cleanly with the
+    same lettering and their numbers leave exactly one number for it (at the first / last row: one side, and its own
+    figures agree); every one put right is marked for checking."""
+    if not ocr or len(out) < 3:
+        return
+    clean = re.compile(r"^([A-Za-z][A-Za-z .\-]*?)(\d+)$")
+    cl = [clean.match((x.get("ref") or "").strip()) for x in out]
+    nrm = lambda t: re.sub(r"[\s.\-]", "", (t or "").upper().replace("|", "I").replace("$", "S").replace("!", "I"))
+    fold = lambda t: nrm(t).replace("L", "I").replace("1", "I").replace("0", "O")
+    # the lettering grouped by how it would read with the scan's usual confusions (Sl/SI/S1, V.0./V.O., vo/VO)
+    grp, raw = {}, {}
+    for x in out:
+        t = nrm(x.get("ref"))
+        mm = re.match(r"^([A-Z][A-Z0-9]*?)(\d{1,4})$", t)
+        if not mm:
+            continue
+        k = fold(mm.group(1))
+        grp[k] = grp.get(k, 0) + 1
+    for m in cl:
+        if m:
+            raw.setdefault(fold(m.group(1)), {}).setdefault(m.group(1), 0)
+            raw[fold(m.group(1))][m.group(1)] += 1
+    if not grp:
+        return
+    for k in list(grp):                                    # "V01" and "VO1" / "V.0.1": the same lettering, an O taken for a 0
+        if k + "O" in grp and k in grp:
+            a, b = (k, k + "O") if sum(raw.get(k, {}).values()) >= sum(raw.get(k + "O", {}).values()) else (k + "O", k)
+            grp[a] += grp.pop(b)
+    nmain = max(grp, key=grp.get)
+    if grp[nmain] < 0.6 * len(out) or nmain not in raw:
+        return
+    pad = {}
+    for m in cl:
+        if m and fold(m.group(1)) == nmain and m.group(2).startswith("0") and len(m.group(2)) > 1:
+            pad[len(m.group(2))] = pad.get(len(m.group(2)), 0) + 1   # numbered 01, 02 ... only where the log itself shows a leading 0
+    pad = max(pad, key=pad.get) if pad else 0
+    # its printed form: the commonest spelling, letters as letters (an "I" or "O" in lettering, not "l"/"1"/"0")
+    vs = raw[nmain]
+    main = max(vs, key=lambda v: (not re.search(r"[0-9]", v) and v.upper() == v, vs[v]))
+    orig = {}
+    dig = str.maketrans({"O": "0", "Q": "0", "D": "0", "I": "1", "L": "1", "T": "1", "G": "9", "S": "5", "Z": "2", "B": "8"})
+    for i, x in enumerate(out):
+        if cl[i] and cl[i].group(1) == main:
+            continue
+        t = nrm(x.get("ref"))
+        head = t[:len(nmain)].replace("L", "I").replace("1", "I").replace("0", "O")
+        rest = t[len(nmain):].translate(dig)
+        if head == nmain and rest.isdigit() and len(rest) <= 4:
+            # the letters misread ("Sl-11", "V.0.3", "vo2"), the number read: the log's own lettering with that number
+            old_ = x.get("ref") or ""
+            orig[i] = old_
+            x["ref"] = f"{main}{str(int(rest)).zfill(pad)}"
+            cl[i] = clean.match(x["ref"])
+            if i < len(detail):
+                detail[i].setdefault("check", [])
+                if "ref" not in detail[i]["check"]:
+                    detail[i]["check"].append("ref")
+                detail[i]["ref_note"] = f"read as '{old_}'"
+    ok = [bool(m and m.group(1) == main) for m in cl]
+    num = [int(m.group(2)) if (m and m.group(1) == main) else None for m in cl]
+    wid = [len(m.group(2)) if (m and m.group(1) == main) else None for m in cl]
+    for i, x in enumerate(out):
+        if ok[i] and not (0 < i < len(out) - 1 and ok[i - 1] and ok[i + 1] and num[i + 1] - num[i - 1] == 2 and num[i] != num[i - 1] + 1
+                          and (num[i] in num[:i] or str(num[i]).endswith(str(num[i - 1] + 1)))) \
+                and not (i == 0 and i in orig and len(out) > 1 and ok[1] and num[0] != num[1] - 1):
+            continue                                       # (a number read twice where the next one belongs is put right too)
+        old_ = orig.get(i) or x.get("ref") or ""
+        digits = re.sub(r"\D", "", nrm(old_).translate(dig))
+        p_, n_ = (i - 1, i + 1)
+        want = w_ = None
+        if 0 <= p_ and n_ < len(out) and ok[p_] and ok[n_] and num[n_] - num[p_] == 2:
+            want, w_ = num[p_] + 1, wid[p_]
+        elif i == 0 and n_ < len(out) and ok[n_] and (digits.endswith(str(num[n_] - 1)) or (num[n_] - 1 > 0 and digits.startswith(str(num[n_] - 1).zfill(wid[n_] or 0)) and len(digits) == (wid[n_] or 0) + 1)):
+            want, w_ = num[n_] - 1, wid[n_]
+        elif i == len(out) - 1 and ok[p_] and digits.endswith(str(num[p_] + 1)):
+            want, w_ = num[p_] + 1, wid[p_]
+        if want is None or want < 0:
+            continue
+        x["ref"] = f"{main}{str(want).zfill(w_ if w_ and w_ > len(str(want)) else 0)}"
+        ok[i], num[i], wid[i] = True, want, w_
+        if i < len(detail):
+            detail[i].setdefault("check", [])
+            if "ref" not in detail[i]["check"]:
+                detail[i]["check"].append("ref")
+            detail[i]["ref_note"] = f"read as '{old_}' - put right from the numbering around it"
+
+
 def read_log(doc):
     """doc -> {"rows": [...same shape as est_voimport.read_log...], "checks": [...], "detail": [...], "notes": [...]}"""
     t0 = time.perf_counter()
@@ -286,15 +396,27 @@ def read_log(doc):
         if re.match(r"^(grand\s+)?total|^sub[\s-]*total|^net\s+total|^الإجمالي", low) or (re.match(r"^total", ref.lower())):
             totals.append({k: _money(get.get(k), r.ocr)[0] for k in MONEY})
             continue
-        if title.lower() == "description" or ref.lower().startswith(("ref", "s.no", "sl")):
+        if title.lower() == "description" or re.match(r"^(ref|s\.?\s*no|sl\.?\s*no|sr\.?\s*no)\b", ref.lower()):
             continue
-        money, text_money = {}, {}
+        money, text_money, doubt = {}, {}, set()
         for k in MONEY:
             v, t = _money(get.get(k), r.ocr)
+            if r.ocr and v is not None and v == int(v) and 0 < abs(v) < 10 and not re.search(r"[.,]\d", t or get[k].text):
+                v = None                               # a lone digit in a scanned money cell: a speck or a rule, not an amount
+                doubt.add(k)
             money[k] = v
             if t and t not in ("-",):
                 text_money[k] = t
+                if r.ocr:
+                    doubt.add(k)                       # figures the scan could not read cleanly (doubled, smudged): to check
         sub, acc = _date(get.get("submitted")), _date(get.get("approved_on"))
+        if r.ocr:
+            for k_, v_ in (("submitted", sub), ("approved_on", acc)):
+                if v_ is None and get.get(k_) is not None and re.search(r"\d", get[k_].text or ""):
+                    doubt.add(k_)                      # a date there, not read whole
+            if re.search(r"(?i)\bfagade", title):
+                title = re.sub(r"\b([Ff])agade", r"\1açade", title)   # the scan's usual misreading of ç
+                doubt.add("title")
         if sub is None and get.get("date") is not None:
             sub = _date(get.get("date"))
         rem = get["remarks"].text.strip() if get.get("remarks") is not None else ""
@@ -359,11 +481,15 @@ def read_log(doc):
             row["kind"] = "Omission"
         row["notes"] = "\n".join(nts)
         row.pop("remarks", None)
-        low = sorted(k for k, c in get.items() if c is not None and c.conf < 0.85 and k in MONEY + ("ref", "title", "submitted", "approved_on"))
+        low = set(k for k, c in get.items() if c is not None and c.conf < 0.85 and k in MONEY + ("ref", "title", "submitted", "approved_on")) | doubt
+        if r.ocr and low & set(MONEY + ("approved_on",)) and section != "absorbed":
+            low.add("status")                          # the status follows from those figures
+        low = sorted(low)
         detail.append({"page": r.page, "where": (get.get("title") or r.cells[0]).where(),
                        "cells": {k: (c.where() if c is not None else None) for k, c in get.items()}, "conf": min(c.conf for c in r.cells),
                        "check": low})
         out.append(row)
+    _repair_refs(out, detail, ocr=any(getattr(r_, "ocr", False) for reg in doc.regions for r_ in reg.rows))
     for k, x in enumerate(out):
         x["seq"] = k + 1
     # the totals row checks each money column

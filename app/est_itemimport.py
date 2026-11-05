@@ -559,7 +559,8 @@ def read_schedule(data: bytes):
                     and not LETTERED.match(desc) and not ("unit" in cols and _s(r[cols["unit"]])) and not SIZE_LINE.match(desc) \
                     and not mine[-1].get("grp") and xr not in groups and not BROUGHT.match(desc) and not PAGE_TOTAL.match(desc) \
                     and not re.search(r"\btotal\b", desc, re.I) and not bold(xr) and not (desc.isupper() and len(desc) > 3) \
-                    and (desc[:1].islower() or (not re.search(r"[.:;]$", mine[-1]["description"])
+                    and xr + 1 not in groups \
+                    and ((desc[:1].islower() and desc.split()[0] == desc.split()[0].lower()) or (not re.search(r"[.:;]$", mine[-1]["description"])
                                                 and "no" in cols and filled(xr + 1) and _s(rows[xr + 1 - r0][cols["no"]]))) \
                     and not (filled(xr + 1) and has_fig(rows[xr + 1 - r0]) and _s(rows[xr + 1 - r0][cols["desc"]])[:1].islower()
                              and not ("no" in cols and _s(rows[xr + 1 - r0][cols["no"]]))):
@@ -809,7 +810,8 @@ def read_schedule(data: bytes):
             ls = isinstance(rate_raw, str) and rate_raw.strip().upper() in ("LS", "L.S", "L.S.", "LUMPSUM", "LUMP SUM")
             if ls and amt:
                 qty, rate, unit = (qty or 1.0), (rate or amt), (unit or "LS")
-            if SIZE_LINE.match(desc) and intro and not LETTERED.match(desc) and len(desc) <= 28:
+            if SIZE_LINE.match(desc) and intro and not LETTERED.match(desc) and len(desc) <= 28 \
+                    and len(SIZE_LINE.sub("", desc).split()) <= 2 and not re.search(r"\bas per\b", desc, re.I):
                 # "75mm diameter" alone says nothing - it is a size of the pipes the sentence above describes
                 desc = f"{intro if len(intro) <= 110 else intro[:107].rsplit(' ', 1)[0] + '...'} - {desc}"
             measure = "qty" if (is_qty and (rate or qty) and not ls and not amt) else "pct"

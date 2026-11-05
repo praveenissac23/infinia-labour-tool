@@ -264,7 +264,9 @@ def _brackets(s):
                 and not total.search(str(o[di] or "")) and (
                 not o[di] or (rate is not None and isinstance(o[rate], str)) or not any(isinstance(o[c], (int, float)) and o[c] > 0 for c in uq))
         # "LS" alone on a line (the merged rate cell printed again at the foot of a page): part of the bracket
-        bare_ls = lambda j: not rows[j][di] and not code(rows[j]) and not has(rows[j], uq) and ls_only(rows[j])
+        bare_ls = lambda j: not rows[j][di] and not code(rows[j]) and (
+            (not has(rows[j], uq) and ls_only(rows[j])) or                 # (or printed under the quantity: "LS" there too)
+            (has(rows[j], uq + price) and all(rows[j][c] in (None, "") or ls_word(rows[j][c]) for c in uq + price)))
         member = lambda j, near=True: j not in used and (unit_only(rows[j]) or again(j, near) or bare_ls(j))
         a = k
         while a - 1 >= 0 and member(a - 1):
@@ -294,7 +296,7 @@ def _brackets(s):
             b = j
         dups = [j for j in range(a, b + 1) if again(j)]
         dups = [j for j in dups if again(j, False) or any(abs(j - m) == 1 and not plain(rows[m]) for m in range(a, b + 1))]
-        gone = {j for j in [k] + dups + [j for j in range(a, b + 1) if bare_ls(j)] if not rows[j][di] and not code(rows[j]) and not has(rows[j], uq)}
+        gone = {j for j in [k] + dups + [j for j in range(a, b + 1) if bare_ls(j)] if not rows[j][di] and not code(rows[j]) and (not has(rows[j], uq) or bare_ls(j))}
         run = [j for j in range(a, b + 1) if j not in gone]
         if not run:
             k += 1
@@ -437,9 +439,15 @@ def to_workbook(lines):
                 for k in list(b_["figs"]):
                     if k in a_["notes"] and _num(b_["figs"][k]) is None:
                         b_["notes"].setdefault(k, b_["figs"].pop(k))
-        # rows: words close together are one description; the figures half-way down it go with it
+        # the next page's first line (a bracket's title at the foot of a page, its items over the page)
+        peek = None
+        nps = [q for q in sorted(pages) if q > p]
+        if nps:
+            nl = sorted((l for l in pages[nps[0]] if not l.get("hdr") and not FOOT.match(" ".join(l["c"]).strip())), key=lambda l: l["y"])
+            if nl and len(nl[0]["c"]) >= 2 and not CODE.match(nl[0]["c"][0]):
+                peek = {"words": nl[0]["c"][0], "code": "", "figs": {k: v for k, v in enumerate(nl[0]["c"][1:])}}
         rows = []
-        for it in items:
+        for ii, it in enumerate(items):
             if not it["words"] and not it["code"]:
                 continue
             last = rows[-1] if rows else None
@@ -453,7 +461,13 @@ def to_workbook(lines):
             heading = last and caps(last["words"]) and not caps(it["words"])     # "LIGHT FITTINGS ..." over "Supply, Install ..."
             numf = lambda f: f
             tot_ = lambda t: re.match(r"^(total\b|sub\s*-?\s*total|carried|brought|b\s*/\s*f|c\s*/\s*f|page\s+total|collection\b|bill\s+total|grand\s+total)", t or "", re.I)
-            if last and not it["code"] and not heading and not tot_(it["words"]) and not tot_(last["words"]) and ((gap <= 1.12 * it["h"] and (wrapped or not it["figs"])) or (wrapped and gap <= 1.45 * it["h"])) \
+            nx = next((o for o in items[ii + 1:] if o["words"] or o["code"]), None)
+            if nx is None and peek is not None:
+                nx = peek
+            # words alone under a priced item, over items with a unit and no price: the title of a bracket, not more words
+            title_ = bool(last and last["figs"] and any(_num(v) is not None for v in last["figs"].values()) and not it["figs"]
+                          and nx is not None and nx["figs"] and all(_num(v) is None for v in nx["figs"].values()) and not nx["code"])
+            if last and not title_ and not it["code"] and not heading and not tot_(it["words"]) and not tot_(last["words"]) and ((gap <= 1.12 * it["h"] and (wrapped or not it["figs"])) or (wrapped and gap <= 1.45 * it["h"])) \
                     and (not numf(it["figs"]) or not numf(last["figs"])) and last["words"]:
                 last["words"] += " " + it["words"]
                 last["y1"] = it["y"]
@@ -487,7 +501,8 @@ def to_workbook(lines):
         # a description that runs over the page break: the page's first words go on with the last row of the page before
         prev = cur["rows"][-1] if cur["rows"] else None
         if rows and prev is not None and prev[di] and not rows[0]["code"] and rows[0]["words"][:1].islower() \
-                and not (rows[0]["figs"] and any(v not in (None, "") for k_, v in enumerate(prev) if k_ > di)):
+                and not (rows[0]["figs"] and any(v not in (None, "") for k_, v in enumerate(prev) if k_ > di)) \
+                and not (rows[0]["figs"] and all(_num(v) is None for v in rows[0]["figs"].values())):   # an item of a bracket: a unit, no price
             prev[di] = prev[di] + " " + rows[0]["words"]
             for k, v in rows[0]["figs"].items():
                 if prev[k] in (None, ""):
@@ -570,7 +585,7 @@ def column_lines(doc, data=None):
             import pdfplumber
             with pdfplumber.open(io.BytesIO(data)) as pdf:
                 for n, pg in enumerate(pdf.pages, 1):
-                    ws_ = pg.extract_words(x_tolerance=1.0, y_tolerance=2.0, keep_blank_chars=False, use_text_flow=False)
+                    ws_ = pg.extract_words(x_tolerance=1.0, y_tolerance=2.0, keep_blank_chars=False, use_text_flow=False, return_chars=True)
                     if len(ws_) < 3:
                         continue
                     vr = []                                    # the table's vertical rules (cell borders), if drawn
@@ -584,8 +599,12 @@ def column_lines(doc, data=None):
                             # a quantity and its unit printed touching ("52Set", "1514lm"): two words
                             cw = (w["x1"] - w["x0"]) / max(1, len(w["text"]))
                             xm = w["x0"] + cw * len(m_.group(1))
-                            w1 = Word(text=m_.group(1), x0=w["x0"], x1=xm, y0=w["top"], y1=w["bottom"])
-                            w2 = Word(text=m_.group(2), x0=xm + 0.01, x1=w["x1"], y0=w["top"], y1=w["bottom"])
+                            ch_ = w.get("chars") or []
+                            xa, xb = xm, xm + 0.01
+                            if len(ch_) == len(w["text"]):              # the letters' own positions, where known
+                                xa, xb = ch_[len(m_.group(1)) - 1]["x1"], ch_[len(m_.group(1))]["x0"]
+                            w1 = Word(text=m_.group(1), x0=w["x0"], x1=xa, y0=w["top"], y1=w["bottom"])
+                            w2 = Word(text=m_.group(2), x0=max(xb, xa + 0.01), x1=w["x1"], y0=w["top"], y1=w["bottom"])
                             w2.glue = True                     # back together if both halves land in one column
                             wl_ += [w1, w2]
                         else:
@@ -706,6 +725,19 @@ def column_lines(doc, data=None):
                     num = NUM.match(w.text.strip()) is not None or re.fullmatch(r"\(?[\d,]+\.\d+\)?", w.text.strip()) is not None
                     k = col_at((w.x1 - 0.5) if num else (w.x0 + 0.5))
                     cells.setdefault(k, []).append([w])
+            # an amount printed right against the note after it ("29360Approved make"): the figure ends past the line
+            # into the notes; it is the empty money column's before them
+            for k in sorted(cells):
+                if k - 1 > di and k - 1 not in cells and cols[k].get("role") not in ("rate", "amount", "price", "cert_amt", "qty", "pct") \
+                        and not re.search(r"rate|amount|price|total|qty|quantity", cols[k]["label"], re.I) \
+                        and (cols[k - 1].get("role") in ("amount", "price", "cert_amt") or re.search(r"amount|price|total", cols[k - 1]["label"], re.I)):
+                    ws3 = sorted((w for grp in cells[k] for w in grp), key=lambda w: w.x0)
+                    if len(ws3) >= 2 and re.fullmatch(r"\(?[\d,]*\.?\d+\)?", ws3[0].text.strip()) and not NUM.match(ws3[1].text.strip().replace(",", "")) \
+                            and ws3[0].x0 < bounds[k - 1] + 0.5 * (ws3[0].x1 - ws3[0].x0):
+                        cells[k - 1] = [[ws3[0]]]
+                        cells[k] = [[w] for w in ws3[1:]]
+                        if getattr(ws3[1], "glue", False):
+                            ws3[1].glue = False
             line = {"p": reg.page, "y": r["y"], "h": r["h"], "c": [], "x": [], "xe": []}
             for k in sorted(cells):
                 ws2 = [w for grp in cells[k] for w in grp]

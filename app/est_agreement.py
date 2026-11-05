@@ -506,6 +506,8 @@ def read(lines, trades=None, names=None):
                 continue
             g = (r.get("group") or "")
             words = r["description"]
+            if re.match(r"^\s*(vat|value added tax|contingenc\w*|discount|overheads?|profit|ohp|provisional|grand total|sub-?total|total)\b", words, re.I):
+                continue                                   # a summary's VAT / contingency %, not a payment stage
             stages.append({"pct": r["pct"], "text": words, "group": g, "amount": r["amount"]})
             if adv is None and re.search(r"advance", g + " " + words, re.I):
                 adv = r["pct"]
