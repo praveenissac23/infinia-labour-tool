@@ -1949,10 +1949,19 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   /* LPO line description: grows with what is typed; Enter = new line */
   .lpo-matw { display:flex; gap:6px; align-items:center; }
   .lpo-matw input { flex:1; min-width:0; }
-  .lpo-bbtn { flex:none; width:32px; height:32px; border:1px solid #D5D9DE; border-radius:8px; background:#fff; color:#6B7075; font-weight:800; font-family:Georgia, serif; font-size:15px; cursor:pointer; padding:0; }
+  .lpo-bbtn { flex:none; width:34px; height:32px; border:1px solid #D5D9DE; border-radius:8px; background:#fff; color:#6B7075; font-weight:700; font-family:Georgia, serif; font-size:14px; cursor:pointer; padding:0; }
+  .lpo-d2w { align-items:flex-start; }
+  #lpo-fmt { position:absolute; z-index:1200; display:none; gap:4px; align-items:center; background:#fff; border:1px solid #E3E5E8; border-radius:12px; padding:6px; box-shadow:0 10px 30px rgba(0,0,0,.16); }
+  #lpo-fmt.on { display:flex; }
+  #lpo-fmt button { width:32px; height:32px; border:1px solid transparent; border-radius:8px; background:none; cursor:pointer; font-family:Georgia, serif; font-size:15px; color:#2B2622; display:flex; align-items:center; justify-content:center; padding:0; }
+  #lpo-fmt button:hover { background:#F4F5F6; }
+  #lpo-fmt button.on { background:#2B2622; color:#fff; }
+  #lpo-fmt .sep { width:1px; height:22px; background:#E3E5E8; margin:0 3px; }
+  #lpo-fmt .sw { width:16px; height:16px; border-radius:50%; display:block; }
+  #lpo-fmt button.on .sw { box-shadow:0 0 0 2px #fff; }
+  #lpo-fmt .sw.clr { background:#fff; border:1px solid #9AA0A6; background:linear-gradient(135deg,#fff 45%,#C0392B 45%,#C0392B 55%,#fff 55%); }
   .lpo-bbtn:hover { border-color:#C0392B; color:#C0392B; }
   .lpo-bbtn.on { background:#2B2622; border-color:#2B2622; color:#fff; }
-  input.lpo-mat.is-b { font-weight:700; }
   textarea.lpo-d2 { width:100%; min-height:34px; resize:vertical; font:inherit; line-height:1.4; padding:6px 8px; box-sizing:border-box; overflow:hidden; }
 
   /* ===== UI STANDARD (2 Nov 2026) - one look on every screen; new screens use these, nothing else =====
@@ -3151,7 +3160,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <thead><tr>
                   <th style="width:3%;">#</th>
                   <th style="width:24%;">Material</th>
-                  <th style="width:21%;" title="Printed under the material on the order. A short note prints as a small line ('Double washed', 'price/week'); a full description prints as typed - press Enter for a new line, leave an empty line for a gap, put **two stars** round words to print them bold. Leave it empty and nothing prints.">Spec / description <span style="color:#bbb;">(optional)</span></th>
+                  <th style="width:21%;" title="Printed under the material on the order. A short note prints as a small line ('Double washed', 'price/week'); a full description prints as typed - press Enter for a new line, leave an empty line for a gap, pick words and press Aa to print them bold, italic, underlined or in colour. Leave it empty and nothing prints.">Spec / description <span style="color:#bbb;">(optional)</span></th>
                   <th style="width:6%;">Qty</th>
                   <th style="width:6%;">Unit</th>
                   <th style="width:7%;">Rate</th>
@@ -3191,7 +3200,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 
             <div class="form-row" style="margin-top:10px; gap:10px; flex-wrap:wrap;">
               <div class="field" style="flex:1; min-width:260px;"><label>Notes</label>
-                <div class="lpo-matw"><input type="text" id="lpo-notes" placeholder="Deliver to the site" style="width:100%;" title="**two stars each side** = bold on the LPO - or pick the words and press B"><button type="button" class="lpo-bbtn" onmousedown="event.preventDefault()" onclick="lpoBoldNotes()" title="Pick words in the notes, press B - they print bold on the LPO">B</button></div></div>
+                <div class="lpo-matw"><input type="text" id="lpo-notes" placeholder="Deliver to the site" style="width:100%;" title="Pick words and press Aa for bold, italic, underline or a colour on the LPO"><button type="button" class="lpo-bbtn" onmousedown="event.preventDefault()" onclick="lpoFmtOpen(this, {box: document.getElementById('lpo-notes')})" title="Pick words in the notes, then bold, italic, underline or a colour - as printed on the LPO">Aa</button></div></div>
             </div>
             <!-- Terms: the clause sets the materials on the order bring in (Standard always), as chips - plus any added by hand. -->
             <div class="lpo-cl-head"><label>Terms &amp; conditions</label>
@@ -14164,7 +14173,7 @@ async function editLpo(id) {
     (o.lines || []).forEach(l => addLpoLine({
       item_id: l.item_id, description: l.description, description2: l.description2 || "",
       qty: l.qty, unit: l.unit, rate: l.rate, tax_pct: l.tax_pct, cost_to: l.cost_to || "",
-      service: l.service === true || l.service === false ? l.service : null, bold: !!l.bold,
+      service: l.service === true || l.service === false ? l.service : null, bold: !!l.bold, style: l.style || (l.bold ? "b" : ""),
     }));
     if (!lpoLines.length) addLpoLine();
     lpoCmbReset(!!o.combined); if (o.combined) renderLpoCombined();
@@ -14512,22 +14521,73 @@ function paintLpoLine(i) {
   if (last) last.innerHTML = lastCell;
 }
 
-// B beside the material: its name prints bold on the LPO (5 Nov 2026)
-function lpoBoldName(i, btn) {
-  const l = lpoLines[i]; if (!l) return;
-  l.bold = !l.bold;
-  btn.classList.toggle("on", l.bold);
-  const inp = btn.parentElement.querySelector("input.lpo-mat"); if (inp) inp.classList.toggle("is-b", l.bold);
+// Aa (5 Nov 2026): how words print on the LPO - bold, italic, underline, a colour. On a material name it is the whole
+// name (kept with the line, the name itself stays plain for stock); in the description and the notes it is the words
+// picked, marked in the text as the LPO reads them: **bold** //italic// __underline__ [red]..[/red]
+const LPO_FMT_COL = { red: "#C0392B", blue: "#1F4E99", green: "#1E7B34" };
+const LPO_FMT_MARK = { b: ["**", "**"], i: ["//", "//"], u: ["__", "__"] };
+function lpoStyleSet(l) { const s = new Set(String((l && l.style) || "").split(/\s+/).filter(Boolean)); if (l && l.bold) s.add("b"); return s; }
+function lpoNameCss(l) { const s = lpoStyleSet(l), c = Object.keys(LPO_FMT_COL).find(k => s.has(k));
+  return (s.has("b") ? "font-weight:700;" : "") + (s.has("i") ? "font-style:italic;" : "") + (s.has("u") ? "text-decoration:underline;" : "") + (c ? `color:${LPO_FMT_COL[c]};` : ""); }
+let lpoFmtFor = null;
+function lpoFmtOpen(btn, target) {
+  let m = document.getElementById("lpo-fmt");
+  if (!m) {
+    m = document.createElement("div"); m.id = "lpo-fmt";
+    m.innerHTML = `<button type="button" data-f="b" title="Bold"><b>B</b></button><button type="button" data-f="i" title="Italic"><i>I</i></button><button type="button" data-f="u" title="Underline"><u>U</u></button><span class="sep"></span>` +
+      Object.entries(LPO_FMT_COL).map(([k, c]) => `<button type="button" data-f="${k}" title="${k[0].toUpperCase() + k.slice(1)}"><span class="sw" style="background:${c}"></span></button>`).join("") +
+      `<button type="button" data-f="clear" title="Plain - take the look off"><span class="sw clr"></span></button>`;
+    m.addEventListener("mousedown", e => e.preventDefault());           // the words picked stay picked
+    m.addEventListener("click", e => { const b = e.target.closest("button[data-f]"); if (b) lpoFmtApply(b.dataset.f); });
+    document.body.appendChild(m);
+    document.addEventListener("mousedown", e => { if (m.classList.contains("on") && !m.contains(e.target) && !e.target.closest(".lpo-bbtn")) m.classList.remove("on"); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") m.classList.remove("on"); });
+  }
+  if (lpoFmtFor && lpoFmtFor.btn === btn && m.classList.contains("on")) { m.classList.remove("on"); return; }
+  lpoFmtFor = Object.assign({ btn }, target);
+  const r = btn.getBoundingClientRect();
+  m.classList.add("on");
+  m.style.top = (window.scrollY + r.bottom + 6) + "px";
+  m.style.left = Math.max(8, Math.min(window.scrollX + r.right - m.offsetWidth, window.scrollX + document.documentElement.clientWidth - m.offsetWidth - 8)) + "px";
+  lpoFmtMark();
 }
-// B beside Notes: the words picked print bold (**two stars each side**, as in the description box); nothing picked =
-// a pair of ** to type between
-function lpoBoldNotes() {
-  const t = document.getElementById("lpo-notes"); if (!t) return;
-  const a = t.selectionStart ?? t.value.length, b = t.selectionEnd ?? a, v = t.value, sel = v.slice(a, b);
-  if (sel && /^\*\*[\s\S]*\*\*$/.test(sel)) { t.value = v.slice(0, a) + sel.slice(2, -2) + v.slice(b); t.setSelectionRange(a, b - 4); }
-  else if (a >= 2 && v.slice(a - 2, a) === "**" && v.slice(b, b + 2) === "**") { t.value = v.slice(0, a - 2) + sel + v.slice(b + 2); t.setSelectionRange(a - 2, b - 2); }
-  else { t.value = v.slice(0, a) + "**" + sel + "**" + v.slice(b); t.setSelectionRange(a + 2, b + 2); }
-  t.focus(); t.dispatchEvent(new Event("input", { bubbles: true }));
+function lpoFmtMark() {
+  const m = document.getElementById("lpo-fmt"); if (!m || !lpoFmtFor) return;
+  const s = lpoFmtFor.line != null ? lpoStyleSet(lpoLines[lpoFmtFor.line]) : new Set();
+  m.querySelectorAll("button[data-f]").forEach(b => b.classList.toggle("on", s.has(b.dataset.f)));
+}
+function lpoFmtApply(f) {
+  const t = lpoFmtFor; if (!t) return;
+  if (t.line != null) {                                   // a material name: the whole name
+    const l = lpoLines[t.line]; if (!l) return;
+    const s = lpoStyleSet(l);
+    if (f === "clear") s.clear();
+    else if (LPO_FMT_COL[f]) { const had = s.has(f); Object.keys(LPO_FMT_COL).forEach(k => s.delete(k)); if (!had) s.add(f); }
+    else s.has(f) ? s.delete(f) : s.add(f);
+    l.style = [...s].join(" "); l.bold = s.has("b");
+    const inp = t.btn.parentElement.querySelector("input.lpo-mat"); if (inp) inp.setAttribute("style", lpoNameCss(l));
+    t.btn.classList.toggle("on", s.size > 0);
+    lpoFmtMark();
+    return;
+  }
+  const box = t.box; if (!box) return;                     // description / notes: the words picked
+  let a = box.selectionStart ?? box.value.length, b = box.selectionEnd ?? a;
+  const v = box.value;
+  if (f === "clear") {
+    const sel = v.slice(a, b), plain = sel.replace(/\*\*|\/\/|__|\[\/?(?:red|blue|green)\]/g, "");
+    box.value = v.slice(0, a) + plain + v.slice(b); box.setSelectionRange(a, a + plain.length);
+  } else {
+    const [o, c] = LPO_FMT_MARK[f] || [`[${f}]`, `[/${f}]`];
+    const sel = v.slice(a, b);
+    if (sel.startsWith(o) && sel.endsWith(c) && sel.length >= o.length + c.length) {          // on already: off
+      box.value = v.slice(0, a) + sel.slice(o.length, sel.length - c.length) + v.slice(b); box.setSelectionRange(a, b - o.length - c.length);
+    } else if (v.slice(a - o.length, a) === o && v.slice(b, b + c.length) === c) {
+      box.value = v.slice(0, a - o.length) + sel + v.slice(b + c.length); box.setSelectionRange(a - o.length, b - o.length);
+    } else {
+      box.value = v.slice(0, a) + o + sel + c + v.slice(b); box.setSelectionRange(a + o.length, b + o.length);
+    }
+  }
+  box.focus(); box.dispatchEvent(new Event("input", { bubbles: true }));
 }
 // The line description box grows with what is typed, so a long description is read whole.
 function lpoGrow(t) { t.style.height = "auto"; const h = t.scrollHeight + 2; t.style.height = Math.min(h, 640) + "px"; t.style.overflowY = h > 640 ? "auto" : "hidden"; }
@@ -14542,16 +14602,16 @@ function renderLpoLines() {
       <td>${i + 1}</td>
       <td><div class="lpo-matw"><input type="text" placeholder="e.g. cement"
             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-            value="${esc(l.description)}" class="lpo-mat${l.bold ? " is-b" : ""}"
+            value="${esc(l.description)}" class="lpo-mat" style="${lpoNameCss(l)}"
             oninput="onLpoLineField(${i}, 'description', this.value)"
             onchange="lpoNameCheck(${i}, this)"
             onfocus="showMatches(this, ${i})"
             onkeydown="matchKey(event, this, ${i})"
             onblur="closeMatchList(true)"
-            style="width:100%;" title="${esc(l.description)}"><button type="button" class="lpo-bbtn${l.bold ? " on" : ""}" onclick="lpoBoldName(${i}, this)" title="Print this material name in bold on the LPO">B</button></div></td>
-      <td><textarea class="lpo-d2" rows="1" placeholder="Type the description as it should print on the LPO:&#10;• Enter = a new line&#10;• Enter twice = a blank gap between parts&#10;• **two stars each side** = bold, e.g. **Size:** 20mm&#10;• Start a line with - or • for a point"
-            title="Printed under the material, exactly as typed. Enter = a new line. Enter twice = a blank gap. **two stars each side** = bold (e.g. **Size:** 20mm). A line starting with - or • prints as a point."
-            oninput="onLpoLineField(${i}, 'description2', this.value); lpoGrow(this)">${String(l.description2 == null ? "" : l.description2).replace(/&/g, "&amp;").replace(/</g, "&lt;")}</textarea></td>
+            style="width:100%;" title="${esc(l.description)}"><button type="button" class="lpo-bbtn${lpoStyleSet(l).size ? " on" : ""}" onclick="lpoFmtOpen(this, {line: ${i}})" title="Bold, italic, underline, colour - how this material name prints on the LPO">Aa</button></div></td>
+      <td><div class="lpo-matw lpo-d2w"><textarea class="lpo-d2" rows="1" placeholder="Type the description as it should print on the LPO:&#10;• Enter = a new line&#10;• Enter twice = a blank gap between parts&#10;• Pick words, press Aa = bold, italic, underline, colour&#10;• Start a line with - or • for a point"
+            title="Printed under the material, exactly as typed. Enter = a new line. Enter twice = a blank gap. Pick words and press Aa for bold, italic, underline or a colour. A line starting with - or • prints as a point."
+            oninput="onLpoLineField(${i}, 'description2', this.value); lpoGrow(this)">${String(l.description2 == null ? "" : l.description2).replace(/&/g, "&amp;").replace(/</g, "&lt;")}</textarea><button type="button" class="lpo-bbtn" onmousedown="event.preventDefault()" onclick="lpoFmtOpen(this, {box: this.previousElementSibling})" title="Pick words, then bold, italic, underline or a colour - as printed on the LPO">Aa</button></div></td>
       <td><input type="text" inputmode="decimal" value="${esc(l.qty)}" oninput="onLpoLineField(${i}, 'qty', this.value)" style="width:100%; text-align:right;"></td>
       <td><input type="text" value="${esc(l.unit)}" class="lpo-unit" oninput="onLpoLineField(${i}, 'unit', this.value)" style="width:100%;"></td>
       <td><input type="text" inputmode="decimal" value="${esc(l.rate)}" oninput="onLpoLineField(${i}, 'rate', this.value)" style="width:100%; text-align:right;"></td>
@@ -14895,7 +14955,8 @@ async function saveLpo() {
     .map(l => ({ item_id: l.item_id, description: l.description.trim(), description2: (l.description2 || "").trim(),
                  qty: parseFloat(l.qty) || 0, unit: l.unit || "", rate: parseFloat(l.rate) || 0,
                  tax_pct: parseFloat(l.tax_pct) || 0, cost_to: lpoCmbOn() ? (l.cost_to || "") : "",
-                 service: (l.service === true || l.service === false) ? l.service : null, bold: !!l.bold }));
+                 service: (l.service === true || l.service === false) ? l.service : null,
+                 style: [...lpoStyleSet(l)].join(" "), bold: lpoStyleSet(l).has("b") }));
   if (lpoCmbOn() && lines.some(l => !l.cost_to)) {
     if (tab) tab.close();
     renderLpoCombined(); document.getElementById("lpo-cmb").scrollIntoView({ block: "center" });

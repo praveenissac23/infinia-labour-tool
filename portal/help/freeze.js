@@ -205,7 +205,8 @@
       var fg = rgb(cs.color);
       // coloured writing (red remaining, green "free", amber "partial", a red title) in black - ink saving;
       // white writing on the red heading bar is left as it is
-      if (fg && sat(fg) > 0.35 && !inHead && el.textContent.trim().length > 0 && /^(H1|H2|H3|H4|H5|DIV|SPAN|P|B|STRONG|TD|EM|I|SMALL|LABEL|LI)$/.test(el.tagName))
+      // a colour picked on purpose (an LPO's words in red / blue / green - .ink-keep) is left as it is
+      if (fg && sat(fg) > 0.35 && !inHead && !el.closest(".ink-keep") && el.textContent.trim().length > 0 && /^(H1|H2|H3|H4|H5|DIV|SPAN|P|B|STRONG|TD|EM|I|SMALL|LABEL|LI)$/.test(el.tagName))
         el.style.setProperty("color", "#1F2328", "important");
     });
   }

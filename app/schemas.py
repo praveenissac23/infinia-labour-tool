@@ -478,6 +478,7 @@ class PurchaseOrderLineIn(BaseModel):
     cost_to: str = ""            # combined LPO: "STORE" or a site code
     service: bool | None = None  # ticked = a service (no stock); None = decided by the words
     bold: bool = False           # the material name printed bold
+    style: str = ""              # the material name's look: "b i u red"
 
 
 class PurchaseOrderIn(BaseModel):

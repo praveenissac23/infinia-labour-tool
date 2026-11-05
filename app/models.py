@@ -527,6 +527,7 @@ class PurchaseOrderLine(Base):
     # is the LPO's site's. None = decided by the words and the material's type; True / False = ticked on the LPO.
     service = Column(Boolean, nullable=True)
     bold = Column(Boolean, default=False)            # the material name printed bold on the LPO (5 Nov 2026)
+    style = Column(String, default="")              # its look: "b i u" and a colour (red / blue / green), e.g. "b u red"
 
     order = relationship("PurchaseOrder", back_populates="lines")
     item = relationship("StoreItem")

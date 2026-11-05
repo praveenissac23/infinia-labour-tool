@@ -9130,21 +9130,67 @@ def lpo_long_note(t):
     return "\n" in t or len(t) > 70
 
 
-def lpo_bold(escaped):
-    """**words** printed bold (an already-escaped line) - the LPO's notes, a short line note."""
-    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", escaped or "")
+# The look of words on an LPO (5 Nov 2026), typed with the Aa button on the form:
+#   **bold**   //italic//   __underline__   [red]colour[/red]  ([blue] [green])
+LPO_COLOURS = {"red": "#C0392B", "blue": "#1F4E99", "green": "#1E7B34"}
+
+
+def lpo_fmt(escaped, pdf=False):
+    """An already-escaped text with its marks turned into the look (HTML, or the PDF's own tags)."""
+    t = escaped or ""
+    t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
+    t = re.sub(r"(?<!:)//(.+?)(?<!:)//", r"<i>\1</i>", t)
+    t = re.sub(r"__(.+?)__", r"<u>\1</u>", t)
+    for c, hx in LPO_COLOURS.items():
+        t = re.sub(r"\[" + c + r"\](.+?)\[/" + c + r"\]", (r'<font color="' + hx + r'">\1</font>') if pdf else (r'<span class="ink-keep" style="color:' + hx + r'">\1</span>'), t)
+    return t
+
+
+lpo_bold = lpo_fmt                     # (the name it had first)
 
 
 def lpo_plain(t):
-    """The words without the ** marks (Excel, lists)."""
-    return re.sub(r"\*\*(.+?)\*\*", r"\1", t or "")
+    """The words without the marks (Excel, lists)."""
+    t = re.sub(r"\*\*(.+?)\*\*", r"\1", t or "")
+    t = re.sub(r"(?<!:)//(.+?)(?<!:)//", r"\1", t)
+    t = re.sub(r"__(.+?)__", r"\1", t)
+    return re.sub(r"\[/?(?:" + "|".join(LPO_COLOURS) + r")\]", "", t)
+
+
+def lpo_name_style(l):
+    """The material name's look: a set of b / i / u and a colour name."""
+    st = set((getattr(l, "style", "") or "").split()) if not isinstance(l, dict) else set((l.get("style") or "").split())
+    if (l.get("bold") if isinstance(l, dict) else getattr(l, "bold", False)):
+        st.add("b")
+    return st
+
+
+def lpo_name(escaped, st, pdf=False):
+    t = escaped
+    if "b" in st:
+        t = f"<b>{t}</b>"
+    if "i" in st:
+        t = f"<i>{t}</i>"
+    if "u" in st:
+        t = f"<u>{t}</u>"
+    c = next((LPO_COLOURS[x] for x in st if x in LPO_COLOURS), None)
+    if c:
+        t = f'<font color="{c}">{t}</font>' if pdf else f'<span class="ink-keep" style="color:{c}">{t}</span>'
+    return t
+
+
+def _lpo_style_in(v):
+    ok = {"b", "i", "u"} | set(LPO_COLOURS)
+    words = [w for w in str(v or "").lower().split() if w in ok]
+    col = [w for w in words if w in LPO_COLOURS][-1:]
+    return " ".join(sorted({w for w in words if w not in LPO_COLOURS}) ) + (" " + col[0] if col else "") if words else ""
 
 
 def lpo_rich(escaped, br):
     """An already-escaped line description as typed: each line kept, an empty line kept as a gap,
     **words** in bold."""
     t = escaped.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
-    t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
+    t = lpo_fmt(t, pdf=(br == "<br/>"))
     return t.replace("\n", br)
 
 
@@ -9173,7 +9219,7 @@ def _lpo_dict(o):
         "lines": [{"id": l.id, "item_id": l.item_id, "description": l.description,
                    "description2": l.description2, "qty": l.qty, "unit": l.unit,
                    "rate": l.rate, "tax_pct": l.tax_pct, "cost_to": getattr(l, "cost_to", "") or "",
-                   "service": getattr(l, "service", None), "bold": bool(getattr(l, "bold", False)),
+                   "service": getattr(l, "service", None), "bold": bool(getattr(l, "bold", False)), "style": getattr(l, "style", "") or "",
                    "service_now": _is_service_line(l)} for l in o.lines],
     }
 
@@ -9270,7 +9316,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
             order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
             description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
             rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0,
-            cost_to=_cost_to(payload, l), service=getattr(l, "service", None), bold=bool(getattr(l, "bold", False))))
+            cost_to=_cost_to(payload, l), service=getattr(l, "service", None), bold=bool(getattr(l, "bold", False)), style=_lpo_style_in(getattr(l, "style", ""))))
     db.flush()
     new_items = []
     _lpo_lines_to_materials(db, o, new_items)
@@ -9610,7 +9656,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
             order_id=o.id, item_id=l.item_id, description=(l.description or "").strip(),
             description2=(l.description2 or "").strip(), qty=l.qty or 0, unit=l.unit or "",
             rate=l.rate or 0, tax_pct=l.tax_pct if l.tax_pct is not None else 5.0,
-            cost_to=_cost_to(payload, l), service=getattr(l, "service", None), bold=bool(getattr(l, "bold", False))))
+            cost_to=_cost_to(payload, l), service=getattr(l, "service", None), bold=bool(getattr(l, "bold", False)), style=_lpo_style_in(getattr(l, "style", ""))))
     db.flush()
     db.expire(o, ["lines"])          # the collection still held the lines just deleted
     new_items = []
@@ -10109,7 +10155,7 @@ def _lpo_html(o):
         # a long or several-line description prints as typed - its lines, gaps and **bold** - at the
         # material's own size; a short note keeps the small grey line under the material name
         second = (f'<div class="{"det" if lpo_long_note(d2) else "sub"}">{lpo_rich(esc(d2), "<br>")}</div>' if d2 else "")
-        name = f"<b>{esc(l.description)}</b>" if getattr(l, "bold", False) else esc(l.description)
+        name = lpo_name(esc(l.description), lpo_name_style(l))
         rows.append(
             f'<tr><td class="c">{i}</td><td>{name}{second}</td>'
             f'<td class="r">{lpo_qty(l.qty)}</td><td class="c">{esc(l.unit)}</td><td class="r">{l.rate:,.2f}</td>'
