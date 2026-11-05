@@ -8,7 +8,7 @@ const DEFAULT_PU = ["fields", "dashboard", "calendar", "timeline", "table", "min
 
 async function openBoard(bid, cid) {
   S.board = null; S.view = (location.hash.match(/view=(\w+)/) || [])[1] || "board"; S.filter = emptyFilter();
-  document.body.classList.add("on-board");
+  document.body.classList.add("on-board"); document.body.classList.remove("on-home");
   $("#home").classList.add("hide"); const el = $("#board"); el.classList.remove("hide");
   // A board seen before shows at once from memory, then catches up (only what changed is redrawn).
   const cached = BOARD_CACHE[bid];

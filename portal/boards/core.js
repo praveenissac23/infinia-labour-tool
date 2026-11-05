@@ -226,7 +226,7 @@ async function pollNotes() {
 // ---------- home ----------
 async function refreshBoards() { const d = await GET("/store/kb/boards"); S.boards = d.boards; return d; }
 async function showHome(tab = "boards") {
-  stopPoll(); S.board = null; document.body.classList.remove("on-board"); document.body.style.removeProperty("--hdr-bg");
+  stopPoll(); S.board = null; document.body.classList.remove("on-board"); document.body.classList.add("on-home"); document.body.style.removeProperty("--hdr-bg");
   $("#board").classList.add("hide"); const home = $("#home"); home.classList.remove("hide");
   $("#dk-board").classList.toggle("on", !S.side);
   try { await refreshBoards(); } catch (e) { fail(e); }
