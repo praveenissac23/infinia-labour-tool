@@ -30,7 +30,7 @@ def _cells(l):
 
 
 def _num(t):
-    t = t.replace(",", "").strip()
+    t = re.sub(r"(?i)^(aed|dhs?\.?)\s*|\s*(aed|dhs?)$", "", t.replace(",", "").strip()).strip()   # "AED 84,700.00"
     neg = t.startswith("(") and t.endswith(")")
     t = t.strip("()")
     try:
@@ -181,9 +181,13 @@ def _sig(cols):
 def _same_rows(pl):
     """Lines a few points apart whose pieces do not overlap are one row of the table ("13,500.00" and "LS" of one item)."""
     out = []
+    gaps = sorted(b["y"] - a["y"] for a, b in zip(pl, pl[1:]) if b["y"] - a["y"] > 2.5)
+    pitch = gaps[len(gaps) // 2] if gaps else 99.0             # the usual distance between rows on this page
     for l in pl:
         o = out[-1] if out else None
-        if o is not None and abs(l["y"] - o["y"]) <= 0.42 * max(l.get("h") or 10.0, o.get("h") or 10.0):
+        dy = abs(l["y"] - o["y"]) if o is not None else 99
+        if o is not None and dy <= min(0.42 * max(l.get("h") or 10.0, o.get("h") or 10.0), 0.4 * pitch) and (
+                dy <= 0.2 * pitch or (len([c for c in l["c"] if c.strip()]) <= 2 and len([c for c in o["c"] if c.strip()]) <= 2)):
             a, b = _cells(o), _cells(l)
             if not any(x < xe2 and x2 < xe for x, xe, _ in a for x2, xe2, _ in b):
                 cs = sorted(a + b)
@@ -482,7 +486,8 @@ def to_workbook(lines):
                 host.setdefault("notes", {}).setdefault(k, []).append(v)
         # a description that runs over the page break: the page's first words go on with the last row of the page before
         prev = cur["rows"][-1] if cur["rows"] else None
-        if rows and prev is not None and prev[di] and not rows[0]["code"] and rows[0]["words"][:1].islower():
+        if rows and prev is not None and prev[di] and not rows[0]["code"] and rows[0]["words"][:1].islower() \
+                and not (rows[0]["figs"] and any(v not in (None, "") for k_, v in enumerate(prev) if k_ > di)):
             prev[di] = prev[di] + " " + rows[0]["words"]
             for k, v in rows[0]["figs"].items():
                 if prev[k] in (None, ""):
@@ -504,6 +509,9 @@ def to_workbook(lines):
                     out[k] = " ".join(v)
             cur["rows"].append(out)
             w = (r["words"] or "").strip()
+            if (cur.get("ended") or cur.get("coll")) and w and not re.search(r"\btotal\b|carried|collection|summary|^page\s+\d|bill\s*page", w, re.I) \
+                    and not re.match(r"^collection$", w, re.I):
+                cur["ended"], cur["coll"] = False, False       # the sheet goes on after its collection (the next bill on it)
             if re.match(r"^collection$", w, re.I):
                 cur["coll"] = True
             m = re.search(r"^(.*?)\bbill\s*page\b", w, re.I)
@@ -649,15 +657,17 @@ def column_lines(doc, data=None):
             if rule:
                 bounds.append(min(rule, key=lambda x: abs(x - (a["xe"] + b["x"]) / 2)))
                 continue
-            best, bx = None, (lo + hi) / 2
+            occs = []
             x = lo
             while x <= hi:
-                occ = sum(1 for r in data for w in r["w"] if w.x0 < x < w.x1)
-                d = abs(x - (a["xe"] + b["x"]) / 2)
-                if best is None or occ < best[0] or (occ == best[0] and d < best[1]):
-                    best, bx = (occ, d), x
+                occs.append((sum(1 for r in data for w in r["w"] if w.x0 < x < w.x1), x))
                 x += 0.5
-            bounds.append(bx)
+            mn = min(o for o, _ in occs)
+            clear = [x for o, x in occs if o == mn]
+            # the clear channel just before the next column's heading: figures stand right against their column's
+            # right edge, the next column's words start at its left
+            near = [x for x in clear if x <= b["x"] + 2]
+            bounds.append(max(near) if near else min(clear, key=lambda x: abs(x - (a["xe"] + b["x"]) / 2)))
         cols_prev = cols
 
         def col_at(x):
