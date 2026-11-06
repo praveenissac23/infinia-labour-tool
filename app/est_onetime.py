@@ -70,5 +70,76 @@ def raida_groups(SessionLocal):
         db.close()
 
 
+def abaad_whole(SessionLocal):
+    """913 Al Abaad (post-tension): the schedule held one line of 21,000 - "Ground Floor Work Progress - 30% of the
+    Work" - against a 70,000 subcontract, so nothing past that stage could ever be certified (6 Nov 2026, Praveen:
+    21,000 is 30% of the 70,000). The line becomes the whole subcontract, 70,000, certified by %: PC-02's 100% of
+    21,000 becomes 30% of 70,000 - the same 21,000. Every certificate's work to date, retention and advance recovery
+    are checked unchanged, or nothing is written."""
+    key = "est_onetime_abaad_whole_20261106"
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == key).first():
+            return
+        import estimation as E
+        import est_pcsheet as S
+        subs = [x for x in db.query(E.EstSub).filter(E.EstSub.name.ilike("%AL ABAAD%")).all()
+                if (db.get(E.EstProject, x.project_id).code or "") == "913"]
+        if len(subs) != 1:
+            return                                   # not this database (a test copy): nothing to do
+        sub = subs[0]
+        items = db.query(S.EstSubItem).filter(S.EstSubItem.sub_id == sub.id, S.EstSubItem.is_var == False).all()  # noqa: E712
+        why = None
+        if abs((sub.value or 0) - 70000) > 0.01:
+            why = f"subcontract value is {sub.value:,.2f}, not 70,000"
+        elif len(items) != 1 or abs((items[0].amount or 0) - 21000) > 0.01:
+            why = "the schedule is no longer the one 21,000 line"
+        if why:
+            _note(db, f"913 Al Abaad schedule NOT changed (nothing changed): {why}")
+            db.add(models.Setting(key=key, value="skipped"))
+            db.commit()
+            return
+        it = items[0]
+        pcs = db.query(E.EstSubPC).filter(E.EstSubPC.sub_id == sub.id).all()
+        before = {p.id: (round(p.work_cum or 0, 2), round(p.ret_cum or 0, 2), round(p.adv_rec_cum or 0, 2)) for p in pcs}
+        lines = db.query(S.EstPCLine).filter(S.EstPCLine.item_id == it.id).all()
+        was = {ln.id: S.line_amount(it, ln) for ln in lines}
+        for ln in lines:                                 # the same money, as a % of the whole 70,000
+            if it.measure == "qty":
+                worth = S.line_amount(it, ln) + (ln.deduct or 0)
+                ln.qty, ln.pct = 0, 0
+            else:
+                worth = (it.amount or 0) * (ln.pct or 0) / 100.0
+            ln.pct = round(worth / 70000 * 100, 6)
+        it.measure = "pct"
+        it.qty, it.unit, it.rate, it.amount = 1, it.unit or "LS", 70000.0, 70000.0
+        it.description = "Post-tension works - the whole subcontract, certified by % done (Ground floor = 30%)"
+        db.flush()
+        for ln in lines:
+            if abs(S.line_amount(it, ln) - was[ln.id]) > 0.005:
+                raise SystemExit(f"a certificate line would change ({was[ln.id]:,.2f} -> {S.line_amount(it, ln):,.2f})")
+        S.refresh_sub(db, sub.id)
+        db.flush()
+        db.expire_all()
+        after = {p.id: (round(db.get(E.EstSubPC, p.id).work_cum or 0, 2), round(db.get(E.EstSubPC, p.id).ret_cum or 0, 2),
+                        round(db.get(E.EstSubPC, p.id).adv_rec_cum or 0, 2)) for p in pcs}
+        if after != before:
+            raise SystemExit(f"certificate figures would change {before} -> {after}")
+        db.add(models.Setting(key=key, value="1"))
+        db.add(models.AuditLog(action="est_onetime", details="913 Al Abaad: schedule line made the whole 70,000 subcontract "
+                                                              "(certified by %); every certificate's figures checked unchanged"))
+        db.commit()
+        print("913 Al Abaad: schedule is now the whole 70,000 (certificates unchanged)")
+    except SystemExit as e:
+        db.rollback()
+        _note(db, f"913 Al Abaad schedule NOT changed (nothing changed): {e}")
+    except Exception as e:
+        db.rollback()
+        _note(db, f"913 Al Abaad schedule NOT changed (nothing changed): {type(e).__name__}: {e}")
+    finally:
+        db.close()
+
+
 def run(SessionLocal):
     raida_groups(SessionLocal)
+    abaad_whole(SessionLocal)
