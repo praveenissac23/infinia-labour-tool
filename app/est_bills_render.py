@@ -514,7 +514,7 @@ def _faces():
 
 
 SHEET_CSS = _faces() + """
-.xs{position:relative;font-family:Calibri,sans-serif !important;font-size:11pt;color:#000;background:#fff}
+.xs{position:relative;-webkit-text-size-adjust:100%;text-size-adjust:100%;font-family:Calibri,sans-serif !important;font-size:11pt;color:#000;background:#fff}
 .xs *{font-family:inherit !important}
 .xt{border-collapse:collapse;table-layout:fixed}
 .xt td{padding:0 3px;overflow:hidden;white-space:nowrap;text-overflow:clip;line-height:1.15}
@@ -583,7 +583,7 @@ def preview_html(model, values, title, pdf_url, excel_url, inputs=None, embed=Fa
                 im = stamps[sh["name"]]
                 hf.append(f'<img class="stp" src="data:{_mime(im)};base64,{im["data"]}" alt="" style="right:{pl["mr"] * PX:.1f}px;bottom:{pl["mf"] * PX:.1f}px;width:{STAMP_PT * PX:.1f}px;height:{STAMP_PT * PX:.1f}px">')
             out.append(f'<section class="pg {size}{orient}" style="width:{pl["pw"] * PX:.1f}px;height:{pl["ph"] * PX:.1f}px">'
-                       f'<div class="pz" style="left:{pl["x0"] * PX:.1f}px;top:{pl["y0"] * PX:.1f}px"><div style="zoom:{pl["sc"]:.4f}">{body}</div></div>{"".join(hf)}'
+                       f'<div class="pz" style="left:{pl["x0"] * PX:.1f}px;top:{pl["y0"] * PX:.1f}px"><div style="transform:scale({pl["sc"]:.4f});transform-origin:0 0">{body}</div></div>{"".join(hf)}'
                        f'<div class="pno">{pno} / {total}</div></section>')
     t = escape(title)
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -600,10 +600,12 @@ body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#E4E
 {SHEET_CSS}
 @page a4p{{size:A4 portrait;margin:0}} @page a4l{{size:A4 landscape;margin:0}} @page a3p{{size:A3 portrait;margin:0}} @page a3l{{size:A3 landscape;margin:0}}
 .a4p{{page:a4p}} .a4l{{page:a4l}} .a3p{{page:a3p}} .a3l{{page:a3l}}
-@media print{{.bar,.pno{{display:none}} body{{background:#fff}} .pages{{padding:0}} .pg{{box-shadow:none;margin:0;break-after:page;zoom:1!important}} .xs,.xt td{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
+@media print{{.bar,.pno{{display:none}} body{{background:#fff}} .pages{{padding:0}} .pg{{box-shadow:none;margin:0;break-after:page;transform:none!important}} .pgw{{width:auto!important;height:auto!important;margin:0!important}} .xs,.xt td{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
 </style></head><body><div class="bar"><b>{t}</b><button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><a href="{excel_url}">Excel</a><button onclick="shr()">Share</button></div>
 <script>async function shr(){{try{{const r=await fetch("{pdf_url}");const b=await r.blob();const f=new File([b],{repr(re.sub(r'[^A-Za-z0-9]+', '_', title).strip('_') + '.pdf')},{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{t}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}
-function fit(){{var W=document.documentElement.clientWidth-24;document.querySelectorAll(".pg").forEach(function(p){{var w=parseFloat(p.style.width);p.style.zoom=w>W?(W/w).toFixed(4):"";}});}}
+function fit(){{var W=document.documentElement.clientWidth-24;document.querySelectorAll(".pg").forEach(function(p){{var w=parseFloat(p.style.width),h=parseFloat(p.style.height),k=w>W?W/w:1,g=p.parentNode;
+if(!g.classList.contains("pgw")){{g=document.createElement("div");g.className="pgw";p.parentNode.insertBefore(g,p);g.appendChild(p);}}
+p.style.margin="0";p.style.transformOrigin="0 0";p.style.transform=k<1?"scale("+k.toFixed(4)+")":"";g.style.cssText="width:"+(w*k).toFixed(1)+"px;height:"+(h*k).toFixed(1)+"px;margin:0 auto 18px;overflow:hidden";}});}}
 function fitcells(){{document.querySelectorAll(".cl").forEach(function(d){{d.style.fontSize="";if(d.scrollHeight<=d.clientHeight+1)return;var f=parseFloat(getComputedStyle(d).fontSize),k=1;while(d.scrollHeight>d.clientHeight+1&&k>0.6){{k-=0.05;d.style.fontSize=(f*k).toFixed(2)+"px";}}}});}}
 addEventListener("resize",fit);addEventListener("DOMContentLoaded",function(){{fit();fitcells();}});if(document.fonts)document.fonts.ready.then(fitcells);</script>
 <div class="pages">{''.join(out)}</div>{"<style>.bar{display:none}</style>" if embed else ""}</body></html>"""

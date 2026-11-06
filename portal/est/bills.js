@@ -93,13 +93,17 @@ function sheetFrame(el, d, opts = {}) {
       <span class="sv-zoom"><button class="btn btn-plain btn-sm" data-sv="out" title="Zoom out (Ctrl -)">&minus;</button><span class="sv-pc" title="Zoom">100%</span><button class="btn btn-plain btn-sm" data-sv="in" title="Zoom in (Ctrl +)">+</button>
         <button class="btn btn-plain btn-sm" data-sv="fit" title="The whole width of the sheet in the window">Fit width</button><button class="btn btn-plain btn-sm" data-sv="page" title="The whole sheet in the window">Fit page</button><button class="btn btn-plain btn-sm" data-sv="one" title="Actual size">100%</button></span></div>
     ${opts.below || ""}
-    <div class="sv-box"><div class="sv-in ipa-sheet-in">${d.html}</div></div></div>`;
-  const box = $(".sv-box", el), inner = $(".sv-in", el);
+    <div class="sv-box"><div class="sv-sz"><div class="sv-in ipa-sheet-in">${d.html}</div></div></div></div>`;
+  const box = $(".sv-box", el), inner = $(".sv-in", el), sz = $(".sv-sz", el);
   SV.w = d.width || inner.scrollWidth;
   // the box: down to the bottom of the window - or only as tall as the sheet, so no empty band is left under it
   const avail = () => Math.max(260, window.innerHeight - box.getBoundingClientRect().top - 14);
   const size = () => { box.style.height = Math.min(avail(), Math.ceil(inner.offsetHeight * (SV.z || 1)) + 26 + (box.offsetHeight - box.clientHeight)) + "px"; };
-  const set = z => { z = Math.max(0.3, Math.min(2.5, z)); SV.z = z; inner.style.zoom = z; $(".sv-pc", el).textContent = Math.round(z * 100) + "%"; size(); };
+  // scaled as a picture (transform), not with CSS zoom: Safari (iPhone / iPad / Mac) will not draw text below its
+  // smallest size, so a zoomed-out sheet came out with its words too big for their cells - cut off and run together
+  const set = z => { z = Math.max(0.3, Math.min(2.5, z)); SV.z = z; inner.style.transform = `scale(${z})`;
+    sz.style.width = Math.ceil(inner.offsetWidth * z) + "px"; sz.style.height = Math.ceil(inner.offsetHeight * z) + "px";
+    $(".sv-pc", el).textContent = Math.round(z * 100) + "%"; size(); };
   const fit = () => set(Math.min(1.25, (box.clientWidth - 26) / Math.max(1, SV.w)));     // a small sheet is not blown up
   const fitPage = () => { box.style.height = avail() + "px"; set(Math.min((box.clientWidth - 26) / Math.max(1, SV.w), (avail() - 26) / Math.max(1, inner.offsetHeight))); };
   box.style.height = avail() + "px";
