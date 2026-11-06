@@ -74,15 +74,30 @@ def one(db, E, S, code, r, apply):
         else:
             h = None
     priced = [k for k, x in enumerate(new) if x["grp"] != "in"]
-    target = {}
-    for it in {pl.item_id: next(i for i in have if i.id == pl.item_id) for pl in plines}.values():
+    target, drop = {}, set()
+    item_of = {i.id: i for i in have}
+    nothing = lambda iid: all(abs(S.line_amount(item_of[iid], pl)) < 0.005 and not (pl.pct or 0) and not (pl.qty or 0)
+                              for pl in plines if pl.item_id == iid)
+    alike = lambda d, k: (norm(new[k]["description"]) == d or norm(new[k]["description"]).startswith(d[:60])
+                          or d.startswith(norm(new[k]["description"])[:60]))
+    for it in sorted({pl.item_id: item_of[pl.item_id] for pl in plines}.values(), key=lambda i: nothing(i.id)):
+        d = norm(it.description)
         same = [k for k in priced if new[k]["bill"] == it.bill and abs((new[k]["amount"] or 0) - (it.amount or 0)) < 0.01]
         if len(same) > 1:
-            d = norm(it.description)
-            same = [k for k in same if norm(new[k]["description"]) == d or d in members_of.get(k, [])
-                    or norm(new[k]["description"]).startswith(d[:60]) or d.startswith(norm(new[k]["description"])[:60])]
+            same = [k for k in same if alike(d, k) or d in members_of.get(k, [])]
+        if len(same) != 1 and nothing(it.id):
+            # a line with nothing certified on it (an item at nil, now listed under its group): its own line if it
+            # is there, else it is not needed - it carried no money on any certificate
+            same = [k for k, x in enumerate(new) if x["bill"] == it.bill and alike(d, k) and k not in target.values()]
+            if len(same) != 1:
+                drop.add(it.id)
+                print(f"  {it.bill:<11}{it.description[:44]:<45}{it.amount:>11,.2f} -> nothing certified on it: its blank certificate line taken off")
+                continue
         if len(same) != 1:
             sys.exit(f"{code}: '{it.description[:60]}' ({it.amount:,.2f}) has {len(same)} matching lines in the new schedule - nothing done.")
+        if same[0] in target.values() and nothing(it.id):
+            drop.add(it.id)
+            continue
         target[it.id] = same[0]
         x = new[same[0]]
         print(f"  {it.bill:<11}{it.description[:44]:<45}{it.amount:>11,.2f} -> {'GROUP ' if x['grp'] == 'head' else ''}{x['description'][:60]}")
@@ -95,7 +110,7 @@ def one(db, E, S, code, r, apply):
                                        if (x.bill if hasattr(x, "bill") else x["bill"]) == b), 2) for b in {(x.bill if hasattr(x, "bill") else x["bill"]) for x in rows}}
     if bills(have) != bills(new):
         sys.exit(f"{code}: the bill totals would change ({bills(have)} -> {bills(new)}) - nothing done.")
-    print(f"PCs: " + ", ".join(f"PC {p.seq:02d} {p.status} {p.work_cum or 0:,.2f}" for p in pcs) + f"; certificate lines moved: {len(plines)}")
+    print(f"PCs: " + ", ".join(f"PC {p.seq:02d} {p.status} {p.work_cum or 0:,.2f}" for p in pcs) + f"; certificate lines moved: {sum(1 for pl in plines if pl.item_id not in drop)}, blank ones taken off: {sum(1 for pl in plines if pl.item_id in drop)}")
     if not apply:
         return
     made = []
@@ -108,7 +123,10 @@ def one(db, E, S, code, r, apply):
         made.append(it)
     db.flush()
     for pl in plines:
-        pl.item_id = made[target[pl.item_id]].id
+        if pl.item_id in drop:
+            db.delete(pl)
+        else:
+            pl.item_id = made[target[pl.item_id]].id
     for i in have:
         db.delete(i)
     db.flush()

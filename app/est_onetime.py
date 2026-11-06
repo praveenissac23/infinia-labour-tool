@@ -20,6 +20,19 @@ def _load(name):
     return mod
 
 
+def _note(db, text):
+    """Why a fix did not go in, kept in the audit log (read from the app's data, not only the server log); once a day."""
+    try:
+        import datetime as dt
+        last = db.query(models.AuditLog).filter(models.AuditLog.action == "est_onetime").order_by(models.AuditLog.id.desc()).first()
+        if last and last.details == text[:2000] and last.created_at and (dt.datetime.now(last.created_at.tzinfo) - last.created_at).days < 1:
+            return
+        db.add(models.AuditLog(action="est_onetime", details=text[:2000]))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 def raida_groups(SessionLocal):
     """914 / 915 Al Raida: the items priced together as one lump sum put under their group (5 Nov 2026) - the same work
     and the same checks as deploy/sub_raida_groups_2026_11_05.py: every certificate's work to date, every bill's
@@ -42,13 +55,17 @@ def raida_groups(SessionLocal):
         except SystemExit as e:                      # a check did not pass: nothing written, tried again next start
             db.rollback()
             print(f"Al Raida groups not put in: {e}")
+            _note(db, f"Al Raida 914/915 groups NOT put in (nothing changed): {e}")
             return
         db.add(models.Setting(key=key, value="1"))
+        db.add(models.AuditLog(action="est_onetime", details="Al Raida 914/915: items priced together put under their groups; "
+                                                              "every certificate's figures checked unchanged"))
         db.commit()
         print("Al Raida 914 / 915: items priced together put under their groups (certificates unchanged)")
     except Exception as e:
         db.rollback()
         print("Al Raida groups:", e)
+        _note(db, f"Al Raida 914/915 groups NOT put in (nothing changed): {type(e).__name__}: {e}")
     finally:
         db.close()
 
