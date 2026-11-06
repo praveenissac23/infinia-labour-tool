@@ -212,12 +212,20 @@
       var text = [data.title && !f ? data.title : "", data.text || "", data.url || ""].filter(Boolean).join("\n");
       return new Promise(function (resolve, reject) {
         var items = [];
-        // a phone: its share window, WhatsApp in it. A computer: the file saved where they choose, then WhatsApp opened
-        var phone = origShare && !PICK;
-        items.push(["\u{1F4F1}", "WhatsApp app", phone ? "Pick WhatsApp in the share window" : f ? "Save the file, then WhatsApp opens - attach it there" : "Opens WhatsApp on this computer", function () {
-          if (phone) { origShare(data).then(resolve, reject); return; }
-          if (!f) { location.href = waLinks("", text).app; resolve(); return; }
-          saveBlob(f, f.name).then(function (ok) { if (ok) goToast("Open WhatsApp", waLinks("", text).app, true); resolve(); });
+        // The system share window wherever it can take the file (phones; Windows; Mac Safari / Chrome): WhatsApp is in
+        // it and gets the file attached. Elsewhere: the file goes to Downloads and the WhatsApp app opens at once
+        // (the same tap) - the file is then attached from Downloads. (6 Nov 2026: it only saved the file before.)
+        var sys = false;
+        try { sys = !!(origShare && (!f || !origCanShare || origCanShare({ files: files }))); } catch (e) { sys = false; }
+        items.push(["\u{1F4F1}", "WhatsApp app", sys ? "Pick WhatsApp in the share window - the file goes with it" : f ? "WhatsApp opens; the file is in Downloads - attach it" : "Opens WhatsApp on this computer", function () {
+          if (sys) { origShare(data).then(resolve, function (e) { if (e && e.name === "AbortError") return reject(e); fallback(); }); return; }
+          fallback();
+          function fallback() {
+            if (f) plainDownload(f, f.name);
+            location.href = waLinks("", text).app;
+            if (f) toast(f.name + " is in Downloads - attach it in WhatsApp (the paperclip).");
+            resolve();
+          }
         }]);
         items.push(["\u{1F310}", "WhatsApp Web", f ? "Opens WhatsApp Web - save the file, then attach it there" : "Opens web.whatsapp.com in a new tab", function () {
           origOpen(f ? "https://web.whatsapp.com/" : waLinks("", text).web, "_blank");

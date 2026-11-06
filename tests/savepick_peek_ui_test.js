@@ -89,8 +89,7 @@ const OUT = process.env.SHOTS || '/tmp/claude-0/ui2';
     ck('... Save puts the PDF where they choose', vs.length === 1 && /\.pdf$/i.test(vs[0].name) && vs[0].size > 500, vs);
     await shareBtn.click(); await sleep(2000);
     await vp.click('.isp-box .isp-b:has-text("WhatsApp app")'); await sleep(800);
-    const vs2 = await vp.evaluate(() => window.__saves.length);
-    ck('WhatsApp app (computer): the PDF is saved where they choose, then one tap opens WhatsApp', vs2 === 2 && /Open WhatsApp/.test(await vp.textContent('.isp-toast')), vs2);
+    ck('WhatsApp app (computer without the system share): WhatsApp opens and the PDF is in Downloads', /Downloads/.test(await vp.textContent('.isp-toast')));
     await vp.screenshot({ path: OUT + '/share_app.png', clip: { x: 300, y: 600, width: 900, height: 300 } });
   }
   ck('no page errors', !errs.length, errs);
