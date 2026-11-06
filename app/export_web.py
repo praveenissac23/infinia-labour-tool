@@ -2370,8 +2370,16 @@ def build_lpo_pdf(po: dict):
                      P(f"{amount:,.2f}", 8.5, align=TA_RIGHT)])
     import main as _Mb
     _banner, _notes_left = _Mb.lpo_banner(po.get("notes"))
-    for b in _banner:            # OPEN LPO: a row of its own under the items, centred, bold
-        data.append(["", P(f"<b>{b}</b>", 10, align=TA_CENTER), "", "", "", "", ""])
+    # OPEN LPO: a band of its own across the whole table at its foot (just above the totals), centred, bold
+    ban_rows = [[P(f"<b>{b}</b>", 10, align=TA_CENTER), "", "", "", "", "", ""] for b in _banner]
+
+    def _with_ban(rows, style):
+        n0 = len(rows)
+        st = list(style)
+        for k in range(len(ban_rows)):
+            st += [("SPAN", (0, n0 + k), (-1, n0 + k)), ("BACKGROUND", (0, n0 + k), (-1, n0 + k), colors.HexColor("#E4E4E4")),
+                   ("TOPPADDING", (0, n0 + k), (-1, n0 + k), 6), ("BOTTOMPADDING", (0, n0 + k), (-1, n0 + k), 6)]
+        return rows + ban_rows, st
     widths = [W * x for x in (0.05, 0.40, 0.10, 0.08, 0.12, 0.08, 0.17)]
     line_style = [
         ("BACKGROUND", (0, 0), (-1, 0), dark),
@@ -2380,8 +2388,9 @@ def build_lpo_pdf(po: dict):
         ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
     ]
-    lt = Table(data, colWidths=widths, repeatRows=1)
-    lt.setStyle(TableStyle(line_style))
+    _r, _st = _with_ban(data, line_style)
+    lt = Table(_r, colWidths=widths, repeatRows=1)
+    lt.setStyle(TableStyle(_st))
     el.append(lt)
     lines_at = len(el) - 1
 
@@ -2466,9 +2475,10 @@ def build_lpo_pdf(po: dict):
     # the signature never tips onto a second sheet
     gap = doc.height - 12 - used - 10
     if gap > 12:
-        filled = Table(data + [[""] * len(widths)], colWidths=widths, repeatRows=1,
-                       rowHeights=[None] * len(data) + [gap])
-        filled.setStyle(TableStyle(line_style))
+        _r, _st = _with_ban(data + [[""] * len(widths)], line_style)
+        filled = Table(_r, colWidths=widths, repeatRows=1,
+                       rowHeights=[None] * len(data) + [gap] + [None] * len(ban_rows))
+        filled.setStyle(TableStyle(_st))
         el[lines_at] = filled
 
     # A cancelled order still opens and prints - stamped across every page, so an old copy
@@ -2618,10 +2628,13 @@ def build_lpo_excel(po: dict):
         r += 1
         for col in range(1, 8):
             ws.cell(row=r, column=col).border = box
-        c = ws.cell(row=r, column=2, value=b)
+        for col in range(1, 8):
+            ws.cell(row=r, column=col).fill = PatternFill("solid", fgColor="E4E4E4")
+        c = ws.cell(row=r, column=1, value=b)
         c.font = Font(bold=True, size=11)
         c.alignment = Alignment(horizontal="center", vertical="center")
-        ws.row_dimensions[r].height = 20
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=7)
+        ws.row_dimensions[r].height = 22
 
     r += 2
     money_start = r

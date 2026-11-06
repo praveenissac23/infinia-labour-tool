@@ -10030,7 +10030,8 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
   /* the same column widths as the PDF: a long description wraps inside its column (40%), the figures keep theirs */
   table.lines {{ width:100%; border-collapse:collapse; margin-top:14px; table-layout:fixed; }}
   table.lines td {{ overflow-wrap:anywhere; }}
-  table.lines td.ban {{ font-weight:700; font-size:13px; letter-spacing:.5px; text-align:center; }}
+  table.lines tr.banrow {{ height:1px; }}
+  table.lines td.ban {{ font-weight:700; font-size:13px; letter-spacing:.5px; text-align:center; background:#E4E4E4; padding:8px; }}
   table.lines th {{ background:#7B1F1A; color:white; padding:6px; font-size:11.5px; }}
   table.lines td {{ border:1px solid #B0B0B0; padding:6px; }}
   table.lines th.r, td.r {{ text-align:right; }} th.c, td.c {{ text-align:center; }}
@@ -10267,7 +10268,7 @@ def _lpo_html(o):
     terms = "".join(f"<div>{esc(x)}</div>" for x in (o.terms_text or "").splitlines() if x.strip())
     banner, notes_left = lpo_banner(o.notes)
     notes = ("".join(f"<div>{lpo_bold(esc(x))}</div>" for x in notes_left.splitlines() if x.strip()))
-    rows = rows + [f'<tr><td></td><td class="c ban">{b}</td><td></td><td></td><td></td><td></td><td></td></tr>' for b in banner]
+    ban_html = "".join(f'<tr class="banrow"><td colspan="7" class="ban">{b}</td></tr>' for b in banner)
 
     return f"""
       <div class="head">
@@ -10287,7 +10288,7 @@ def _lpo_html(o):
         <col style="width:12%"><col style="width:8%"><col style="width:17%"></colgroup><thead><tr><th class="c">#</th><th style="text-align:left">Item &amp; Description</th>
         <th class="r">Qty</th><th class="c">Unit</th><th class="r">Rate</th><th class="r">Tax %</th>
         <th class="r">Amount</th></tr></thead>
-        <tbody>{''.join(rows)}<tr class="fill"><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr></tbody></table></div>
+        <tbody>{''.join(rows)}<tr class="fill"><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>{ban_html}</tbody></table></div>
       <div class="foot">
         <div class="terms">
           {f'<div class="lbl">Notes</div>{notes}' if notes else ''}
