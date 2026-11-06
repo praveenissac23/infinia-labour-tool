@@ -445,8 +445,8 @@ function workSection(t, i) {
   }
   return `<div class="ipa-card ipa-sec ${t.hidden ? "hid" : ""}" id="ipa-sec-${i}"><div class="ipa-sec-h"><h3>${esc(t.sheet)}${t.hidden ? ` <span class="st">hidden sheet - not printed</span>` : ""}</h3>
       ${ed ? `<span class="ipa-sec-add"><button class="btn btn-ghost btn-sm" data-addln="${esc(t.sheet)}" title="A new item or variation at the end of ${esc(t.sheet)}">+ Line</button><button class="btn btn-ghost btn-sm" data-addsec="${esc(t.sheet)}" title="A heading at the end of ${esc(t.sheet)}, to put new lines under">+ Section</button></span>` : ""}</div>
-    <div class="ipa-tw"><table class="ipa-lines"><colgroup><col style="width:64px"><col><col style="width:118px"><col style="width:86px"><col style="width:104px"><col style="width:104px"><col style="width:118px"><col style="width:118px">${ed ? '<col style="width:40px">' : ""}</colgroup>
-    <thead><tr><th>Item</th><th>Description</th><th class="r">Amount</th><th class="r">Previous</th><th class="r in">This month %</th><th class="r in">Total %</th><th class="r">This month</th><th class="r">To date</th>${ed ? "<th></th>" : ""}</tr></thead>
+    <div class="ipa-tw"><table class="ipa-lines"><colgroup><col style="width:72px"><col><col style="width:124px"><col style="width:112px"><col style="width:142px"><col style="width:118px"><col style="width:132px"><col style="width:124px">${ed ? '<col style="width:40px">' : ""}</colgroup>
+    <thead><tr><th>Item</th><th>Description</th><th class="r">Amount</th><th class="c">Previous</th><th class="c in">This month %</th><th class="c in">Total %</th><th class="r">This month</th><th class="r">To date</th>${ed ? "<th></th>" : ""}</tr></thead>
     <tbody>${rows.map(x => x.h).join("") || `<tr><td colspan="${ed ? 9 : 8}" class="muted c">No lines match.</td></tr>`}</tbody></table></div></div>`;
 }
 function headRow(sh, h, ed) {
@@ -467,16 +467,16 @@ function lineRow(sh, l, ed, hd) {
   if (hd) return `<tr class="${c.cls} one" data-line="${esc(id)}" data-head="${esc(sh + "|" + hd.r)}"><td class="it"><b>${esc(hd.item)}</b></td>
     <td class="ds" title="${esc([l.item, l.desc].filter(Boolean).join(" "))}"><b>${esc(hd.desc)}</b>${l.added ? ' <span class="new-tag">added</span>' : ""}${!l.how && l.follows ? followsLink(sh, l) : ""}</td>
     <td class="r" data-l="Amount">${l.amount !== null ? money(l.amount, false) : `<span class="muted small">${esc(l.amount_text || "-")}</span>`}</td>
-    <td class="r muted" data-c="prev" data-l="Previous">${c.prev}</td>
-    <td class="r in" data-c="now" data-l="This month %">${inp("now", c.now)}</td>
-    <td class="r in" data-c="tot" data-l="Total %">${inp("tot", l.total)}</td>
+    <td class="c muted" data-c="prev" data-l="Previous">${c.prev}</td>
+    <td class="c in" data-c="now" data-l="This month %">${inp("now", c.now)}</td>
+    <td class="c in" data-c="tot" data-l="Total %">${inp("tot", l.total)}</td>
     <td class="r" data-c="nowAmt" data-l="This month">${c.nowAmt}</td><td class="r" data-c="td" data-l="To date">${c.td}</td>
     ${ed ? `<td class="act"><button class="ln-menu" data-menu="${esc(id)}" data-kind="line" title="Line: edit its details, add a line or section below">&#8942;</button></td>` : ""}</tr>`;
   return `<tr class="${c.cls}" data-line="${esc(id)}"><td class="it">${esc(l.item)}</td>
     <td class="ds">${esc(l.desc) || '<span class="muted">(no description)</span>'}${l.added ? ' <span class="new-tag">added</span>' : ""}${l.unit && !/^(item|ls|l\.s\.?|lump ?sum)$/i.test(l.unit.trim()) ? ` <span class="muted small">(${esc(l.unit)})</span>` : ""}${!l.how && l.follows ? followsLink(sh, l) : ""}</td>
     <td class="r" data-l="Amount">${l.amount !== null ? money(l.amount, false) : `<span class="muted small">${esc(l.amount_text || "-")}</span>`}</td>
-    <td class="r muted" data-c="prev" data-l="Previous">${c.prev}</td>
-    <td class="r in" data-c="now" data-l="This month %">${inp("now", c.now)}</td><td class="r in" data-c="tot" data-l="Total %">${inp("tot", l.total)}</td>
+    <td class="c muted" data-c="prev" data-l="Previous">${c.prev}</td>
+    <td class="c in" data-c="now" data-l="This month %">${inp("now", c.now)}</td><td class="c in" data-c="tot" data-l="Total %">${inp("tot", l.total)}</td>
     <td class="r" data-c="nowAmt" data-l="This month">${c.nowAmt}</td><td class="r" data-c="td" data-l="To date">${c.td}</td>
     ${ed ? `<td class="act"><button class="ln-menu" data-menu="${esc(id)}" data-kind="line" title="Line: edit its details, add a line or section below">&#8942;</button></td>` : ""}</tr>`;
 }

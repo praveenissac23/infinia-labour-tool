@@ -54,7 +54,10 @@
       if (!t) return;
       const i = document.createElement("span");
       i.className = "help-i in-label in-head"; i.tabIndex = 0; i.textContent = "i"; i.dataset.tip = t;
-      lbl.appendChild(i);
+      // a right-aligned heading (figures) gets its (i) in front, so the words end in line with the figures under them
+      let al = ""; try { al = getComputedStyle(th).textAlign; } catch (e) {}
+      if (al === "right" || al === "end") { i.classList.add("pre"); lbl.insertBefore(i, lbl.firstChild); }
+      else lbl.appendChild(i);
     });
     root.querySelectorAll(".frm .f > label, .field > label, label > span:first-child").forEach(lab => {
       if (lab.dataset.helpI || lab.querySelector(".help-i")) return;
