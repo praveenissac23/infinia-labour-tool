@@ -171,9 +171,14 @@ def _lpos(db, match, d1, d2):
         # Where the LPO is for decides (31 Oct 2026, purchaser: deliveries always go straight to the site): an LPO
         # for a site is that site's cost even when its request was raised as a store top-up; only an LPO for the
         # store (or naming no place, raised for the store) is stock.
+        # Project location decides (6 Nov 2026, Praveen): one project = all of it, two written ("914 & 915") = shared
+        # equally; blank = the request's site, then the plot no. Job scope and the delivery address are never read
+        # for cost (a project named in the job scope no longer splits it). "900" is the store.
         loc = (o.project_location or "").strip()
+        if re.fullmatch(r"900", loc):
+            loc = "Store"
         to_store = loc.upper() in ("STORE", "CENTRAL STORE") or (not loc and req_site.upper() == "STORE")
-        sites = [] if to_store else (match(o.project_location, o.plot_no, o.job_scope) or match(req_site))
+        sites = [] if to_store else (match(loc) or ([] if loc and not req_site else match(req_site)) or match(o.plot_no))
         if not sites and not loc and req_site.upper() == "STORE":
             to_store = True
         out.append({"sites": sites, "to_store": to_store, "date": o.order_date, "ref": o.ref or f"LPO {o.po_no}",
