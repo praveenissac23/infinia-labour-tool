@@ -9157,6 +9157,19 @@ def lpo_plain(t):
     return re.sub(r"\[/?(?:" + "|".join(LPO_COLOURS) + r")\]", "", t)
 
 
+def lpo_banner(notes):
+    """'OPEN LPO' written on its own line in the notes -> (["OPEN LPO"], the other notes). It prints as a row of its
+    own under the items, centred and bold, not in the notes (6 Nov 2026, purchaser)."""
+    ban, rest = [], []
+    for ln in (notes or "").splitlines():
+        if re.fullmatch(r"\s*open\s+lpo\s*[.!]*\s*", lpo_plain(ln), re.I):
+            if "OPEN LPO" not in ban:
+                ban.append("OPEN LPO")
+        else:
+            rest.append(ln)
+    return ban, "\n".join(rest)
+
+
 def lpo_runs(t):
     """The text in runs of one look: [(words, {"b", "i", "u", "red"} ...)] - for Excel, which colours by run."""
     out, st = [], set()
@@ -10014,7 +10027,10 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
   .pairs td {{ padding:3px 8px; vertical-align:top; }}
   .pairs .k {{ color:#444; width:1%; white-space:nowrap; padding-right:4px; }}
   .pairs .v {{ font-weight:600; overflow-wrap:anywhere; }}
-  table.lines {{ width:100%; border-collapse:collapse; margin-top:14px; }}
+  /* the same column widths as the PDF: a long description wraps inside its column (40%), the figures keep theirs */
+  table.lines {{ width:100%; border-collapse:collapse; margin-top:14px; table-layout:fixed; }}
+  table.lines td {{ overflow-wrap:anywhere; }}
+  table.lines td.ban {{ font-weight:700; font-size:13px; letter-spacing:.5px; text-align:center; }}
   table.lines th {{ background:#7B1F1A; color:white; padding:6px; font-size:11.5px; }}
   table.lines td {{ border:1px solid #B0B0B0; padding:6px; }}
   table.lines th.r, td.r {{ text-align:right; }} th.c, td.c {{ text-align:center; }}
@@ -10249,7 +10265,9 @@ def _lpo_html(o):
     right = "".join(pair(k, v) for k, v in right_rows)
     addr = ""          # the address is no longer printed on an order
     terms = "".join(f"<div>{esc(x)}</div>" for x in (o.terms_text or "").splitlines() if x.strip())
-    notes = ("".join(f"<div>{lpo_bold(esc(x))}</div>" for x in (o.notes or "").splitlines() if x.strip()))
+    banner, notes_left = lpo_banner(o.notes)
+    notes = ("".join(f"<div>{lpo_bold(esc(x))}</div>" for x in notes_left.splitlines() if x.strip()))
+    rows = rows + [f'<tr><td></td><td class="c ban">{b}</td><td></td><td></td><td></td><td></td><td></td></tr>' for b in banner]
 
     return f"""
       <div class="head">
@@ -10265,7 +10283,8 @@ def _lpo_html(o):
         <div class="half"><div class="boxhead">VENDOR DETAILS</div>
           <table class="pairs">{right}</table></div>
       </div>
-      <div class="lines-wrap"><table class="lines"><thead><tr><th class="c">#</th><th>Item &amp; Description</th>
+      <div class="lines-wrap"><table class="lines"><colgroup><col style="width:5%"><col style="width:40%"><col style="width:10%"><col style="width:8%">
+        <col style="width:12%"><col style="width:8%"><col style="width:17%"></colgroup><thead><tr><th class="c">#</th><th style="text-align:left">Item &amp; Description</th>
         <th class="r">Qty</th><th class="c">Unit</th><th class="r">Rate</th><th class="r">Tax %</th>
         <th class="r">Amount</th></tr></thead>
         <tbody>{''.join(rows)}<tr class="fill"><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr></tbody></table></div>

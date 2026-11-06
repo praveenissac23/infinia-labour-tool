@@ -2368,6 +2368,10 @@ def build_lpo_pdf(po: dict):
                      P(f"{rate:,.2f}", 8.5, align=TA_RIGHT),
                      P(f"{taxpc:,.2f}", 8.5, align=TA_RIGHT),
                      P(f"{amount:,.2f}", 8.5, align=TA_RIGHT)])
+    import main as _Mb
+    _banner, _notes_left = _Mb.lpo_banner(po.get("notes"))
+    for b in _banner:            # OPEN LPO: a row of its own under the items, centred, bold
+        data.append(["", P(f"<b>{b}</b>", 10, align=TA_CENTER), "", "", "", "", ""])
     widths = [W * x for x in (0.05, 0.40, 0.10, 0.08, 0.12, 0.08, 0.17)]
     line_style = [
         ("BACKGROUND", (0, 0), (-1, 0), dark),
@@ -2433,10 +2437,10 @@ def build_lpo_pdf(po: dict):
                               ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
 
     notes_cell = []
-    if (po.get("notes") or "").strip():
+    if _notes_left.strip():
         notes_cell.append(P("Notes", 8, colour="#3B3F44"))
         import main as _Mn
-        for ln in po["notes"].splitlines():
+        for ln in _notes_left.splitlines():
             notes_cell.append(P(_Mn.lpo_fmt(_x(ln), pdf=True), 8.5))     # **bold** //italic// __underline__ [red]..[/red]
         notes_cell.append(Spacer(1, 6))
     notes_cell.append(P("Terms &amp; Conditions", 8, colour="#3B3F44"))
@@ -2608,6 +2612,16 @@ def build_lpo_excel(po: dict):
         ws.row_dimensions[r].height = (min(400, 14 * (desc.count("\n") + 1) + 6 + 14 * sum(len(x) // 60 for x in desc.split("\n")))
                                        if (l.get("description2") or "").strip() else 17)
     last_line = r
+    import main as _Mb2
+    _xban, _xnotes = _Mb2.lpo_banner(po.get("notes"))
+    for b in _xban:                      # OPEN LPO: its own row under the items, centred, bold (outside the sums)
+        r += 1
+        for col in range(1, 8):
+            ws.cell(row=r, column=col).border = box
+        c = ws.cell(row=r, column=2, value=b)
+        c.font = Font(bold=True, size=11)
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[r].height = 20
 
     r += 2
     money_start = r
@@ -2633,12 +2647,12 @@ def build_lpo_excel(po: dict):
     money("Total", f"=SUM(G{money_start}:G{r-1})", bold=True, size=11)
 
     nr = money_start
-    if (po.get("notes") or "").strip():
+    if _xnotes.strip():
         ws.cell(row=nr, column=1, value="Notes").font = Font(size=9, color="3B3F44")
         nr += 1
         import textwrap as _tw
         import main as _Mn
-        for ln in po["notes"].splitlines():
+        for ln in _xnotes.splitlines():
             for piece in _tw.wrap(_Mn.lpo_plain(ln), width=70) or [""]:
                 ws.cell(row=nr, column=1, value=piece).font = Font(size=9)
                 ws.merge_cells(start_row=nr, start_column=1, end_row=nr, end_column=4)
