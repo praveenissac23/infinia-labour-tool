@@ -2486,6 +2486,8 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
             new = {k: ("=" + c["f"]) if "f" in c else c.get("v") for k, c in s["cells"].items() if c.get("new")}
             if new:                                       # the formulas of lines put in on the bill
                 inp_s = dict(new, **inp_s)
+            if (model.get("_restyled") or {}).get(s["name"]):    # previous-payment lines drawn like the first one
+                raw = _xml_restyle_rows(raw.decode("utf-8"), model["_restyled"][s["name"]]).encode("utf-8")
             raw = _patch_sheet(raw, s, inp_s, values.get(s["name"], {}), shown_rows(model, s["name"], inputs))
             if item.filename in hf_rels:
                 raw = _legacy_hf(_hf_stamp(raw.decode("utf-8")), "rIdInfStampHF").encode("utf-8")
@@ -2751,6 +2753,88 @@ def expand(model, inputs):
         m = insert_rows(m, sh, int(x[0]), int(x[1]), x[2] if len(x) > 2 else None, row_opts(x))
     m["map"] = find_inputs(m)
     return m
+
+
+def pay_rows_like(model, inputs):
+    """The lines of the previous-payments table filled on a bill whose look differs from the table's first bill line
+    - a spare row of the workbook styled bigger (914 APP A: spare rows 18 pt, bill lines 16 pt), or a row put in
+    like one - {sheet: {row: first bill row}}. Header, total and signature rows are outside the table."""
+    out = {}
+    for p in (model.get("map") or {}).get("payments", []):
+        s = next((x for x in model["sheets"] if x["name"] == p["sheet"]), None)
+        if not s:
+            continue
+        cells = s["cells"]; inp = (inputs or {}).get(p["sheet"]) or {}
+        dc = p["cols"].get("desc")
+        rows = range(p["head_row"] + 1, p["total_row"])
+        base = next((r for r in rows if isinstance((cells.get(f"{r},{dc}") or {}).get("v"), str)
+                     and re.search(r"[A-Za-z]", cells[f"{r},{dc}"]["v"]) and (cells.get(f"{r},{dc}") or {}).get("v", "").strip()), None)
+        if base is None:
+            continue
+        bcols = {int(k.split(",")[1]): c.get("s") for k, c in cells.items() if k.split(",")[0] == str(base)}
+        for r in rows:
+            if r == base:
+                continue
+            filled = any(inp.get(f"{r},{c}") not in (None, "") or (cells.get(f"{r},{c}") or {}).get("v") not in (None, "")
+                         for c in p["cols"].values())
+            if filled and any((cells.get(f"{r},{c}") or {}).get("s") != sid for c, sid in bcols.items()):
+                out.setdefault(p["sheet"], {})[r] = base
+    return out
+
+
+def restyle_pay_rows(model, inputs):
+    """The bill with every filled previous-payments line drawn like the first one (font, size, alignment, number
+    format, borders, row height); the 'changed this month' yellow is only a fill on top. Same object back when
+    nothing differs. The pairs are kept on the copy (_restyled) for the Excel file."""
+    pairs = pay_rows_like(model, inputs)
+    if not pairs:
+        return model
+    m = dict(model)
+    m["sheets"] = []
+    for s in model["sheets"]:
+        pr = pairs.get(s["name"])
+        if not pr:
+            m["sheets"].append(s); continue
+        s2 = dict(s); cells = dict(s["cells"]); rowh = dict(s.get("rowh") or {})
+        for r, b in pr.items():
+            for k, c in s["cells"].items():
+                rr, cc = k.split(",")
+                if rr != str(b):
+                    continue
+                t = dict(cells.get(f"{r},{cc}") or {})
+                t["s"] = c.get("s")
+                cells[f"{r},{cc}"] = t
+            if str(b) in rowh:
+                rowh[str(r)] = rowh[str(b)]
+        s2["cells"] = cells; s2["rowh"] = rowh
+        m["sheets"].append(s2)
+    m["_restyled"] = {sh: {int(r): int(b) for r, b in pr.items()} for sh, pr in pairs.items()}
+    return m
+
+
+def _xml_restyle_rows(xml, pairs):
+    """In the sheet's XML: each row in pairs takes its model row's cell styles (s=) and height."""
+    def row_of(r):
+        return re.search(r'<row\b[^>]*?\br="%d"[^>]*?(?:/>|>.*?</row>)' % r, xml, re.S)
+    for r, b in pairs.items():
+        bm, tm = row_of(b), row_of(r)
+        if not bm or not tm:
+            continue
+        bs = {mm.group(1): mm.group(2) for mm in re.finditer(r'<c\b[^>]*?\br="([A-Z]+)\d+"[^>]*?\bs="(\d+)"', bm.group(0))}
+        def cfix(x):
+            col = re.search(r'\br="([A-Z]+)\d+"', x.group(0)).group(1)
+            if col not in bs:
+                return x.group(0)
+            a = x.group(0)
+            return re.sub(r'\bs="\d+"', f's="{bs[col]}"', a, count=1) if re.search(r'\bs="\d+"', a) else a.replace("<c ", f'<c s="{bs[col]}" ', 1)
+        row = re.sub(r'<c\b[^>]*?>', cfix, tm.group(0))
+        bh = re.search(r'\bht="([\d.]+)"', re.match(r'<row\b[^>]*>', bm.group(0)).group(0))
+        if bh:
+            head = re.match(r'<row\b[^>]*>', row).group(0)
+            nh = re.sub(r'\bht="[\d.]+"', f'ht="{bh.group(1)}"', head) if 'ht="' in head else head.replace("<row ", f'<row ht="{bh.group(1)}" customHeight="1" ', 1)
+            row = nh + row[len(head):]
+        xml = xml[:tm.start()] + row + xml[tm.end():]
+    return xml
 
 
 def shift_inputs(inp, sheet, at, n):

@@ -140,7 +140,7 @@ def _bill_model(fmt, b_or_inputs):
     rows = tuple((sh, json.dumps(inp.get("_rows"))) for sh, inp in sorted(inputs.items()) if isinstance(inp, dict) and inp.get("_rows"))
     pages = json.dumps(BE.pages_of(inputs))
     if not rows and pages == "[]":
-        return model
+        return BE.restyle_pay_rows(model, inputs)        # previous-payment lines all drawn like the first one
     key = (fmt.id, rows, pages)
     hit = _EXP_CACHE.get(key)
     if hit is None:
@@ -148,7 +148,7 @@ def _bill_model(fmt, b_or_inputs):
         _EXP_CACHE[key] = hit
         if len(_EXP_CACHE) > 24:
             _EXP_CACHE.pop(next(iter(_EXP_CACHE)))
-    return hit
+    return BE.restyle_pay_rows(hit, inputs)
 
 
 def _inputs(b):
