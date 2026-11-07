@@ -869,12 +869,24 @@ async function setStatus(s) {
 }
 
 // ---- Sheets step formatting: what is picked stays picked across a redraw of the same sheet
-const FSZ = [8, 9, 10, 11, 12, 14, 16, 18];
+const FSZ = [6, 7, 8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24];
 // number formats (real Excel formats - the value itself never changes, only how it shows)
 const NF = { general: "General", num: "#,##0.00", num0: "#,##0", pct: "0%", pct2: "0.00%",
-  acc: '_("AED "* #,##0.00_);_("AED "* (#,##0.00);_("AED "* "-"??_);_(@_)', neg: "#,##0.00;[Red](#,##0.00)" };
+  acc: '_("AED "* #,##0.00_);_("AED "* (#,##0.00);_("AED "* "-"??_);_(@_)', neg: "#,##0.00;[Red](#,##0.00)", date: "dd/mm/yyyy", date2: "dd-mmm-yyyy" };
 const NFS = [["general", "General 1318577.14"], ["num", "Number 1,318,577.14"], ["num0", "Number (0 dp) 1,318,577"], ["pct", "Percentage 45%"], ["pct2", "Percentage 45.00%"],
-  ["acc", "Accounting AED 1,318,577.14"], ["neg", "Negative in ( ) (1,234.56)"]];
+  ["acc", "Accounting AED 1,318,577.14"], ["neg", "Negative in ( ) (1,234.56)"], ["date", "Date 08/05/2026"], ["date2", "Date 08-May-2026"]];
+// dates are read day first, always (05/06/2026 = 5 June), whatever the computer is set to: -> an Excel date number
+const MONS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+function parseDMY(t) {
+  t = String(t || "").trim(); let d, m, y, x;
+  if ((x = t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})$/))) { d = +x[1]; m = +x[2]; y = +x[3]; }
+  else if ((x = t.match(/^(\d{1,2})(?:st|nd|rd|th)?[\s\-]+([A-Za-z]{3,9})\.?,?[\s\-]+(\d{2}|\d{4})$/))) { d = +x[1]; m = MONS.indexOf(x[2].slice(0, 3).toLowerCase()) + 1; y = +x[3]; }
+  else return null;
+  if (y < 100) y += 2000;
+  if (!m || m > 12 || d < 1 || d > new Date(Date.UTC(y, m, 0)).getUTCDate()) return NaN;     // 31/02/2026: not a date
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 864e5);
+}
+const isDateNf = nf => { const t = String(nf || "").replace(/"[^"]*"|\[[^\]]*\]/g, ""); return /[dy]/i.test(t) && !/[0#?]/.test(t) && !/general/i.test(t); };
 // one section of a format at a time: commas on / off, decimals 0-4 (text sections and dates left alone)
 function nfEach(nf, f) { const out = [], parts = []; let cur = "", q = false;
   for (const ch of nf || "General") { if (ch === '"') q = !q; if (ch === ";" && !q) { parts.push(cur); cur = ""; } else cur += ch; } parts.push(cur);
@@ -889,87 +901,130 @@ function nfSec(p, comma, dec) {             // comma: true / false / null (keep)
 function nfDec(nf) { const m = (nf || "").replace(/"[^"]*"/g, "").match(/[#0?][#0?,]*(?:\.([0#?]*))?/); return m && m[1] ? m[1].length : 0; }
 function fmtTools(v, host, b, sh, redraw) {
   const bar = $("#sv-fmt", v); if (!bar) return;
-  if (!IPA.fsel || IPA.fsel.sh !== sh) IPA.fsel = { sh, a: null, z: null, rows: null };
-  const S = IPA.fsel;
-  // row numbers down the left, as in Excel: a click picks the whole row
-  host.style.position = "relative"; host.style.paddingLeft = "30px";
+  if (!IPA.fsel || IPA.fsel.sh !== sh) IPA.fsel = { sh, a: null, z: null, rows: null, cols: null, add: [] };
+  const S = IPA.fsel; S.add = S.add || [];
+  // row numbers down the left and column letters along the top, as in Excel; the corner box picks the whole sheet
+  host.style.position = "relative"; host.style.paddingLeft = "30px"; host.style.paddingTop = "18px";
   const gut = document.createElement("div"); gut.className = "sv-gut"; host.appendChild(gut);
+  const ctop = document.createElement("div"); ctop.className = "sv-cgut"; host.appendChild(ctop);
+  const corner = document.createElement("div"); corner.className = "sv-corner"; corner.title = "The whole sheet (Ctrl+A)"; host.appendChild(corner);
+  const colL = n => { let t = ""; while (n > 0) { const m = (n - 1) % 26; t = String.fromCharCode(65 + m) + t; n = Math.floor((n - 1) / 26); } return t; };
   const place = () => { gut.innerHTML = ""; const hr = host.getBoundingClientRect(), z = SV.z || 1;
     $$("tr[data-r]", host).forEach(tr => { const r = tr.getBoundingClientRect(); const d = document.createElement("div"); d.className = "sv-rn"; d.dataset.r = tr.dataset.r; d.textContent = tr.dataset.r;
       Object.assign(d.style, { top: (r.top - hr.top) / z + "px", height: Math.max(r.height / z, 10) + "px" }); gut.appendChild(d); }); };
-  place();
-  // column letters along the top: a click picks the whole column
-  const colL = n => { let t = ""; while (n > 0) { const m = (n - 1) % 26; t = String.fromCharCode(65 + m) + t; n = Math.floor((n - 1) / 26); } return t; };
-  const ctop = document.createElement("div"); ctop.className = "sv-cgut"; host.appendChild(ctop);
-  host.style.paddingTop = "18px";
   const placeCols = () => { ctop.innerHTML = ""; const hr = host.getBoundingClientRect(), z = SV.z || 1, span = {};
-    $$("td[data-c]", host).forEach(td => { if (td.colSpan > 1) return; const c = +td.dataset.c, r = td.getBoundingClientRect();
-      if (!span[c]) span[c] = [r.left, r.right]; });
+    $$("td[data-c]", host).forEach(td => { if (td.colSpan > 1) return; const c = +td.dataset.c, r = td.getBoundingClientRect(); if (!span[c]) span[c] = [r.left, r.right]; });
     Object.keys(span).forEach(c => { const d = document.createElement("div"); d.className = "sv-cn"; d.dataset.c = c; d.textContent = colL(+c);
       Object.assign(d.style, { left: (span[c][0] - hr.left) / z + "px", width: Math.max((span[c][1] - span[c][0]) / z, 8) + "px" }); ctop.appendChild(d); }); };
   placeCols(); place();
-  const cellsOf = () => { const out = []; if (S.rows || S.cols) return out; if (!S.a) return out;
+  const allRows = () => $$("tr[data-r]", host).map(t => +t.dataset.r);
+  const rangeCells = () => { if (!S.a) return [];
     const [r1, r2] = [Math.min(S.a[0], (S.z || S.a)[0]), Math.max(S.a[0], (S.z || S.a)[0])], [c1, c2] = [Math.min(S.a[1], (S.z || S.a)[1]), Math.max(S.a[1], (S.z || S.a)[1])];
-    for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) out.push([r, c]); return out; };
-  const tdsOf = () => { if (S.rows) return S.rows.flatMap(r => $$(`tr[data-r="${r}"] td[data-c]`, host));
+    const out = []; for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) out.push([r, c]); return out; };
+  const cellsOf = () => { if (S.rows || S.cols) return []; const seen = new Set(), out = [];
+    for (const x of rangeCells().concat(S.add)) { const k = x.join(","); if (!seen.has(k)) { seen.add(k); out.push(x); } } return out; };
+  const tdsOf = () => { if (S.rows) { const set = new Set(S.rows); return $$("tr[data-r] td[data-c]", host).filter(td => set.has(+td.parentElement.dataset.r)); }
     if (S.cols) return $$("td[data-c]", host).filter(td => S.cols.includes(+td.dataset.c));
     const set = new Set(cellsOf().map(x => x.join(","))); return $$("tr[data-r] td[data-c]", host).filter(td => set.has(td.parentElement.dataset.r + "," + td.dataset.c)); };
-  const paint = () => { $$(".xsel", host).forEach(x => x.classList.remove("xsel")); $$(".sv-rn.on", gut).forEach(x => x.classList.remove("on"));
-    $$(".sv-cn.on", ctop).forEach(x => x.classList.remove("on"));
-    const tds = tdsOf(); tds.forEach(td => td.classList.add("xsel")); (S.rows || []).forEach(r => { const d = $(`.sv-rn[data-r="${r}"]`, gut); if (d) d.classList.add("on"); });
+  const st = td => td ? (td.getAttribute("style") || "") : "";
+  const paint = () => { $$(".xsel", host).forEach(x => x.classList.remove("xsel")); $$(".sv-rn.on, .sv-cn.on", host).forEach(x => x.classList.remove("on"));
+    const tds = tdsOf(); tds.forEach(td => td.classList.add("xsel"));
+    (S.rows || []).forEach(r => { const d = $(`.sv-rn[data-r="${r}"]`, gut); if (d) d.classList.add("on"); });
     (S.cols || []).forEach(c => { const d = $(`.sv-cn[data-c="${c}"]`, ctop); if (d) d.classList.add("on"); });
+    corner.classList.toggle("on", !!S.all);
     const on = tds.length > 0; $$("[data-fx]", bar).forEach(x => x.disabled = !on);
-    const f = tds.find(td => td.textContent.trim()) || tds[0];
-    const st = f ? (f.getAttribute("style") || "") : "", szm = st.match(/font-size:\s*([\d.]+)pt/);
-    const sz = szm ? Math.round(+szm[1] * 2) / 2 : (f ? Math.round(parseFloat(getComputedStyle(f).fontSize) * 0.75 * 2) / 2 : "");
+    const f = tds.find(td => td.textContent.trim()) || tds[0], fs = getComputedStyle(f || document.body);
+    const szm = st(f).match(/font-size:\s*([\d.]+)pt/);
+    const sz = szm ? Math.round(+szm[1] * 2) / 2 : (f ? Math.round(parseFloat(fs.fontSize) * 0.75 * 2) / 2 : "");
     const sel = $('[data-fx="sz"]', bar);
-    if (sz && !FSZ.includes(sz) && !$(`option[value="${sz}"]`, sel)) sel.insertAdjacentHTML("beforeend", `<option value="${sz}">${sz}</option>`);
+    if (sz && !$(`option[value="${sz}"]`, sel)) sel.insertAdjacentHTML("beforeend", `<option value="${sz}">${sz}</option>`);
     sel.value = on && sz ? String(sz) : "";
-    const has = (re) => on && tds.filter(td => td.textContent.trim()).length > 0 && tds.filter(td => td.textContent.trim()).every(td => re.test(td.getAttribute("style") || ""));
+    const fam = (st(f).match(/font-family:\s*'([^']+)'/) || [])[1] || "";
+    const fsel = $('[data-fx="font"]', bar); if (fam && !$(`option[value="${CSS.escape(fam)}"]`, fsel)) fsel.insertAdjacentHTML("beforeend", `<option value="${esc(fam)}">${esc(fam)}</option>`);
+    fsel.value = on ? fam : "";
+    const txt = tds.filter(td => td.textContent.trim());
+    const has = re => on && txt.length > 0 && txt.every(td => re.test(st(td)));
     $('[data-fx="b"]', bar).classList.toggle("on", has(/font-weight:\s*(700|bold)/));
     $('[data-fx="i"]', bar).classList.toggle("on", has(/font-style:\s*italic/));
     $('[data-fx="u"]', bar).classList.toggle("on", has(/text-decoration:[^;]*underline/));
-    // the number format and alignment of the first figure picked
+    $('[data-fx="wrap"]', bar).classList.toggle("on", has(/white-space:\s*pre-wrap/));
+    const fcm = st(f).match(/(?:^|;)\s*color:\s*#([0-9A-Fa-f]{6})/); const fci = $('[data-fx="fc"]', bar); fci.value = "#" + (fcm ? fcm[1] : "000000");
+    fci.parentElement.style.setProperty("--fc", fci.value);
     const nt = tds.find(td => td.dataset.num) || f, nf = nt ? nt.dataset.nf || "General" : "";
-    const key = Object.keys(NF).find(k => NF[k] === nf) || "";
-    const ns = $('[data-fx="nf"]', bar); ns.value = on ? key : "";
+    const key = Object.keys(NF).find(k => NF[k] === nf) || (isDateNf(nf) ? "date" : "");
+    $('[data-fx="nf"]', bar).value = on ? key : "";
     $('[data-fx="comma"]', bar).classList.toggle("on", on && /#,##0/.test(nf));
     const ha = nt ? (nt.dataset.ha || "") : "";
     $$('[data-fx="al"]', bar).forEach(x => x.classList.toggle("on", on && x.dataset.v === ha));
-    S.cur = { sz, tds, nf }; };
+    const va = (st(f).match(/vertical-align:\s*(\w+)/) || [])[1]; const vam = { top: "top", middle: "center", bottom: "bottom" }[va] || "";
+    $$('[data-fx="va"]', bar).forEach(x => x.classList.toggle("on", on && x.dataset.v === vam));
+    const ind = +((st(f).match(/padding-left:\s*(\d+)px/) || [])[1] || 3); S.cur = { sz, tds, nf, ind: Math.max(0, Math.round((ind - 3) / 9)) }; };
+  const clearAll = () => { S.a = null; S.z = null; S.rows = null; S.cols = null; S.add = []; S.all = false; };
   host.addEventListener("click", e => { const td = e.target.closest("td[data-c]"); if (!td || !host.contains(td)) return;
     const rc = [+td.parentElement.dataset.r, +td.dataset.c];
-    if (e.shiftKey && S.a && !S.rows && !S.cols) { S.z = rc; e.preventDefault(); window.getSelection && window.getSelection().removeAllRanges(); }
-    else { S.a = rc; S.z = null; S.rows = null; S.cols = null; }
+    if ((e.ctrlKey || e.metaKey) && !S.rows && !S.cols) { const k = rc.join(","), i = S.add.findIndex(x => x.join(",") === k);
+      if (i >= 0) S.add.splice(i, 1); else S.add.push(rc); e.preventDefault(); e.stopPropagation(); }
+    else if (e.shiftKey && S.a && !S.rows && !S.cols) { S.z = rc; e.preventDefault(); window.getSelection && window.getSelection().removeAllRanges(); }
+    else { clearAll(); S.a = rc; }
     paint(); }, true);
   gut.addEventListener("click", e => { const d = e.target.closest(".sv-rn"); if (!d) return; e.stopPropagation(); const r = +d.dataset.r;
-    if (e.shiftKey && S.rows && S.rows.length) { const a = S.rows[0], lo = Math.min(a, r), hi = Math.max(a, r);
-      S.rows = $$("tr[data-r]", host).map(t => +t.dataset.r).filter(x => x >= lo && x <= hi); if (!S.rows.includes(a)) S.rows.unshift(a); }
-    else S.rows = [r];
-    S.a = null; S.z = null; S.cols = null; paint();
-    const tr = $(`tr[data-r="${r}"]`, host); if (tr) tr.click(); });
+    if (e.shiftKey && S.rows && S.rows.length) { const a = S.rows[0], lo = Math.min(a, r), hi = Math.max(a, r); S.rows = [a].concat(allRows().filter(x => x >= lo && x <= hi && x !== a)); }
+    else if ((e.ctrlKey || e.metaKey) && S.rows) S.rows = S.rows.includes(r) ? S.rows.filter(x => x !== r) : S.rows.concat([r]);
+    else { clearAll(); S.rows = [r]; }
+    paint(); const tr = $(`tr[data-r="${r}"]`, host); if (tr && S.rows.length === 1) tr.click(); });
   ctop.addEventListener("click", e => { const d = e.target.closest(".sv-cn"); if (!d) return; e.stopPropagation(); const c = +d.dataset.c;
-    if (e.shiftKey && S.cols && S.cols.length) { const a = S.cols[0], lo = Math.min(a, c), hi = Math.max(a, c);
-      S.cols = $$(".sv-cn", ctop).map(x => +x.dataset.c).filter(x => x >= lo && x <= hi); }
-    else S.cols = [c];
-    S.a = null; S.z = null; S.rows = null; paint(); });
+    if (e.shiftKey && S.cols && S.cols.length) { const a = S.cols[0], lo = Math.min(a, c), hi = Math.max(a, c); S.cols = $$(".sv-cn", ctop).map(x => +x.dataset.c).filter(x => x >= lo && x <= hi); }
+    else if ((e.ctrlKey || e.metaKey) && S.cols) S.cols = S.cols.includes(c) ? S.cols.filter(x => x !== c) : S.cols.concat([c]);
+    else { clearAll(); S.cols = [c]; }
+    paint(); });
+  const pickAll = () => { clearAll(); S.rows = allRows(); S.all = true; paint(); };
+  corner.addEventListener("click", e => { e.stopPropagation(); pickAll(); });
   const send = async body => { const p = Object.assign({ sheet: sh }, S.rows ? { rows: S.rows } : S.cols ? { cols: S.cols } : { cells: cellsOf() }, body);
     if (!(p.rows || p.cols || p.cells).length) return toast("Pick cells first");
     try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/fmt`, p); redraw(); } catch (e) { fail(e); } };
-  bar.onclick = e => { const x = e.target.closest("button[data-fx]"); if (!x || x.disabled) return; const a = x.dataset.fx, cur = (S.cur || {}).sz || 11;
-    if (a === "up" || a === "dn") { const nxt = a === "up" ? (FSZ.find(z => z > cur) || Math.min(36, cur + 2)) : ([...FSZ].reverse().find(z => z < cur) || Math.max(6, cur - 1)); send({ set: { sz: nxt } }); }
-    else if (a === "b" || a === "i" || a === "u") send({ set: { [a]: !x.classList.contains("on") } });
+  // Delete: the contents go, the look stays (only cells that can be typed in; formulas that work things out are kept)
+  const clearCells = async () => { const tds = tdsOf().filter(td => td.classList.contains("ed") && td.dataset.k && (td.dataset.raw || "") !== "");
+    if (!tds.length) return toast("Nothing to clear here");
+    const set = {}; tds.forEach(td => set[td.dataset.k] = ""); if (await save({ set: { [sh]: set } })) { toast(tds.length === 1 ? "Cleared" : `${tds.length} cells cleared`); redraw(); } };
+  const act = (a, x) => { const cur = (S.cur || {}).sz || 11;
+    if (a === "up" || a === "dn") { const nxt = a === "up" ? (FSZ.find(z => z > cur) || Math.min(24, cur + 2)) : ([...FSZ].reverse().find(z => z < cur) || Math.max(6, cur - 1)); send({ set: { sz: nxt } }); }
+    else if (a === "b" || a === "i" || a === "u" || a === "wrap") send({ set: { [a]: !x.classList.contains("on") } });
     else if (a === "al") send({ set: { ha: x.dataset.v } });
+    else if (a === "va") send({ set: { va: x.dataset.v } });
+    else if (a === "ind") send({ set: { ind: Math.max(0, Math.min(10, ((S.cur || {}).ind || 0) + +x.dataset.v)) } });
     else if (a === "comma") { const on = !x.classList.contains("on"); send({ set: { nf: nfEach(S.cur.nf, p => nfSec(p, on, null)) } }); }
     else if (a === "dless" || a === "dmore") { const d = Math.max(0, Math.min(4, nfDec(S.cur.nf) + (a === "dmore" ? 1 : -1))); send({ set: { nf: nfEach(S.cur.nf, p => nfSec(p, null, d)) } }); }
     else if (a === "like") send({ like_above: true });
+    else if (a === "clear") clearCells();
     else if (a === "reset") send({ reset: true }); };
+  bar.onclick = e => { const x = e.target.closest("button[data-fx]"); if (!x || x.disabled) return; act(x.dataset.fx, x); };
   $('[data-fx="sz"]', bar).onchange = e => { if (e.target.value) send({ set: { sz: +e.target.value } }); };
+  $('[data-fx="font"]', bar).onchange = e => { if (e.target.value) send({ set: { font: e.target.value } }); };
+  $('[data-fx="fc"]', bar).onchange = e => send({ set: { fc: e.target.value.replace("#", "") } });
   $('[data-fx="nf"]', bar).onchange = e => { if (e.target.value) send({ set: { nf: NF[e.target.value] } }); };
+  // right-click: the same tools by the cell
+  host.addEventListener("contextmenu", e => { const td = e.target.closest("td[data-c]"); if (!td) return; e.preventDefault();
+    if (!td.classList.contains("xsel")) { clearAll(); S.a = [+td.parentElement.dataset.r, +td.dataset.c]; paint(); }
+    $$(".sv-ctx").forEach(x => x.remove());
+    const items = [["b", "Bold", "Ctrl+B"], ["i", "Italic", "Ctrl+I"], ["u", "Underline", "Ctrl+U"], ["wrap", "Wrap text"], ["-"], ["al:left", "Align left"], ["al:center", "Centre"], ["al:right", "Align right"], ["al:dec", "Align on decimal"],
+      ["-"], ["nf:num", "Number 1,318,577.14"], ["nf:pct", "Percentage 45%"], ["nf:date", "Date 08/05/2026"], ["nf:general", "General"], ["-"], ["like", "Match row above"], ["clear", "Clear contents", "Delete"], ["reset", "Reset to the consultant's look"]];
+    const m = document.createElement("div"); m.className = "sv-ctx";
+    m.innerHTML = items.map(([k, l, h]) => k === "-" ? "<hr>" : `<button type="button" data-k="${k}">${l}${h ? `<small>${h}</small>` : ""}</button>`).join("");
+    document.body.appendChild(m);
+    m.style.left = Math.min(e.clientX, innerWidth - m.offsetWidth - 8) + "px"; m.style.top = Math.min(e.clientY, innerHeight - m.offsetHeight - 8) + "px";
+    m.onclick = ev => { const x = ev.target.closest("button[data-k]"); if (!x) return; m.remove(); const [a, val] = x.dataset.k.split(":");
+      if (a === "nf") send({ set: { nf: NF[val] } }); else if (a === "al") send({ set: { ha: val } });
+      else { const btn = $(`[data-fx="${a}"]`, bar); act(a, btn || x); } };
+    setTimeout(() => document.addEventListener("click", () => m.remove(), { once: true }), 0); });
+  SV.fx = { paint, pickAll, clearCells, act, bar };
   if (!SV.fkeys) { SV.fkeys = true;
-    document.addEventListener("keydown", e => { if (!(e.ctrlKey || e.metaKey) || e.altKey) return; const k = e.key.toLowerCase(); if (!["b", "i", "u"].includes(k)) return;
-      const fb = document.querySelector("#sv-fmt"); if (!fb || /INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || "")) return;
-      const btn = fb.querySelector(`[data-fx="${k}"]`); if (!btn || btn.disabled) return; e.preventDefault(); btn.click(); }); }
+    document.addEventListener("keydown", e => { const fb = document.querySelector("#sv-fmt"); if (!fb || !SV.fx) return;
+      if (/INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || "") || document.querySelector(".ipa-cell")) return;
+      if (document.querySelector(".modal-bg, .modal.open")) return;
+      const k = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && k === "a" && document.querySelector(".sv-in")) { e.preventDefault(); SV.fx.pickAll(); return; }
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && ["b", "i", "u"].includes(k)) { const btn = fb.querySelector(`[data-fx="${k}"]`); if (!btn || btn.disabled) return; e.preventDefault(); btn.click(); return; }
+      if ((e.key === "Delete" || e.key === "Backspace") && document.querySelector(".sv-in td.xsel")) { e.preventDefault(); SV.fx.clearCells(); } }); }
   paint();
 }
 
@@ -981,22 +1036,27 @@ async function drawSheet(v, i, keep) {
   if (!document.getElementById("ipa-css")) document.head.appendChild(h(`<style id="ipa-css">${d.css}</style>`));
   d.i = i;
   const b = IPA.bill, cur = b.sheets.find(x => x.i === i) || {};
-  const locked = b.status === "Paid" && !ST.meta.me.admin;
-  const FS = [8, 9, 10, 11, 12, 14, 16, 18];
-  const fmtBar = locked ? "" : `<span class="sv-sep"></span><span class="sv-fmt" id="sv-fmt" title="Pick cells first: click a cell, Shift+click for a range, or click a row number">
+  const locked = b.status !== "Draft";                  // the sheets are changed only while the bill is a Draft
+  const FS = [6, 7, 8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24];
+  const FONTS = ["Calibri", "Arial", "Arial Narrow", "Times New Roman", "Cambria", "Tahoma", "Verdana", "Century Gothic", "Book Antiqua"];
+  const B_ = (fx, t, h, v) => `<button class="btn btn-plain btn-sm" data-fx="${fx}"${v !== undefined ? ` data-v="${v}"` : ""} title="${t}" disabled>${h}</button>`;
+  const fmtBar = locked ? "" : `<span class="sv-sep"></span><span class="sv-fmt" id="sv-fmt" title="Pick cells first: click a cell, Shift+click a range, Ctrl+click to add cells, a row number / column letter for a whole row / column, Ctrl+A for the sheet. Right-click for the same tools.">
+      <select data-fx="font" title="Font" disabled><option value="">Font</option>${FONTS.map(x => `<option value="${x}">${x}</option>`).join("")}</select>
       <select data-fx="sz" title="Font size" disabled><option value="">Size</option>${FS.map(x => `<option value="${x}">${x}</option>`).join("")}</select>
-      <button class="btn btn-plain btn-sm" data-fx="dn" title="Smaller" disabled>A&minus;</button><button class="btn btn-plain btn-sm" data-fx="up" title="Bigger" disabled>A+</button>
-      <button class="btn btn-plain btn-sm fx-b" data-fx="b" title="Bold (Ctrl+B)" disabled><b>B</b></button><button class="btn btn-plain btn-sm fx-i" data-fx="i" title="Italic (Ctrl+I)" disabled><i>I</i></button><button class="btn btn-plain btn-sm fx-u" data-fx="u" title="Underline (Ctrl+U)" disabled><u>U</u></button>
+      ${B_("dn", "Smaller", "A&minus;")}${B_("up", "Bigger", "A+")}
+      ${B_("b", "Bold (Ctrl+B)", "<b>B</b>")}${B_("i", "Italic (Ctrl+I)", "<i>I</i>")}${B_("u", "Underline (Ctrl+U)", "<u>U</u>")}
+      <label class="btn btn-plain btn-sm sv-fc" title="Text colour"><span>A</span><input type="color" data-fx="fc" value="#000000" disabled></label>
       <span class="sv-sep"></span>
-      <button class="btn btn-plain btn-sm" data-fx="al" data-v="left" title="Align left" disabled>&#8676;</button><button class="btn btn-plain btn-sm" data-fx="al" data-v="center" title="Centre" disabled>&#8596;</button><button class="btn btn-plain btn-sm" data-fx="al" data-v="right" title="Align right" disabled>&#8677;</button><button class="btn btn-plain btn-sm" data-fx="al" data-v="dec" title="Align on decimal: the points line up under each other" disabled>.00</button>
+      ${B_("al", "Align left", "&#8676;", "left")}${B_("al", "Centre", "&#8596;", "center")}${B_("al", "Align right", "&#8677;", "right")}${B_("al", "Align on decimal: the points line up under each other", ".00", "dec")}
+      ${B_("va", "Top", "&#8868;", "top")}${B_("va", "Middle", "&#8801;", "center")}${B_("va", "Bottom", "&#8869;", "bottom")}
+      ${B_("ind", "Outdent", "&#8676;&#8676;", "-1")}${B_("ind", "Indent (B1, B2, B3)", "&#8677;&#8677;", "1")}${B_("wrap", "Wrap text: onto several lines, the row grows", "Wrap")}
       <span class="sv-sep"></span>
       <select data-fx="nf" title="Number format" disabled><option value="">Format</option>${NFS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
-      <button class="btn btn-plain btn-sm" data-fx="comma" title="Thousands separator: 1,318,577.14" disabled>,</button><button class="btn btn-plain btn-sm" data-fx="dless" title="Fewer decimals" disabled>.0&larr;</button><button class="btn btn-plain btn-sm" data-fx="dmore" title="More decimals" disabled>.00&rarr;</button>
+      ${B_("comma", "Thousands separator: 1,318,577.14", ",")}${B_("dless", "Fewer decimals", ".0&larr;")}${B_("dmore", "More decimals", ".00&rarr;")}
       <span class="sv-sep"></span>
-      <button class="btn btn-plain btn-sm" data-fx="like" title="Font, size, bold, alignment and borders of the row above" disabled>Match row above</button>
-      <button class="btn btn-plain btn-sm" data-fx="reset" title="Back to the consultant's look" disabled>Reset</button></span>`;
+      ${B_("like", "Font, size, bold, alignment and borders of the row above", "Match row above")}${B_("clear", "Clear contents (Delete) - the look stays", "Clear")}${B_("reset", "Back to the consultant's look", "Reset")}</span>`;
   const tools = locked ? "" : fmtBar + `<span class="sv-sep"></span><button class="btn btn-ghost btn-sm" data-pg="add" title="A copy of one of the sheets, added after the last one - e.g. a second variations or authority fees page">+ Add page</button>${cur.added ? `<button class="btn btn-plain btn-sm" data-pg="del" title="Take this added page off the bill">Delete page</button>` : ""}`;
-  const below = locked ? "" : `<div class="sv-rows" id="sv-rows"><span class="muted">Click a row of the sheet to add a line or a section next to it, or to hide it.</span>${cur.hidden ? ` <button class="btn btn-plain btn-sm" data-rw="show">Show ${cur.hidden} hidden line${cur.hidden === 1 ? "" : "s"}</button>` : ""}</div>`;
+  const below = locked ? `<div class="sv-locked">Read only - this bill is ${esc(b.status)}. The sheets can be changed while the bill is a Draft.</div>` : `<div class="sv-rows" id="sv-rows"><span class="muted">Click a row of the sheet to add a line or a section next to it, or to hide it.</span>${cur.hidden ? ` <button class="btn btn-plain btn-sm" data-rw="show">Show ${cur.hidden} hidden line${cur.hidden === 1 ? "" : "s"}</button>` : ""}</div>`;
   const fr = sheetFrame(v, d, { sheets: b.sheets, go: j => { IPA.sheet = j; drawSheet(v, j); }, tools, below });
   if (was) { fr.box.scrollLeft = was[0]; fr.box.scrollTop = was[1]; }
   if (locked) return;
@@ -1060,7 +1120,13 @@ async function drawSheet(v, i, keep) {
       const s = rm ? inp.value.replace(/\s+$/, "") : inp.value.trim();
       if (!keep || s === (pc ? pct(Number(raw)) : raw)) { inp.remove(); if (keep && next) goNext(td); return; }
       let val = s === "" ? (rm ? "" : null) : s;
-      if (!rm && val !== null && !s.startsWith("=")) {
+      let asDate = false;
+      if (!rm && val !== null && !s.startsWith("=") && (isDateNf(nf) || /^\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}$|^\d{1,2}(st|nd|rd|th)?[\s\-]+[A-Za-z]{3,9}\.?,?[\s\-]+\d{2,4}$/.test(s))) {
+        const dn = parseDMY(s);                          // day first, always: 05/06/2026 = 5 June 2026
+        if (Number.isNaN(dn)) { done = false; inp.classList.add("bad"); inp.title = "Invalid date - use DD/MM/YYYY"; toast("Invalid date - use DD/MM/YYYY"); inp.focus(); return; }
+        if (dn !== null) { val = dn; asDate = true; }
+      }
+      if (!rm && !asDate && val !== null && !s.startsWith("=")) {
         // a figure typed or pasted with commas, AED, or in brackets for a minus is still a figure: 145,841.90 -> 145841.9
         let t = s.replace(/^AED\s*/i, "").replace(/\s+/g, ""); const neg = /^\(.*\)$/.test(t); if (neg) t = t.slice(1, -1);
         const n = Number(t.replace(/,/g, "").replace(/%$/, ""));
@@ -1069,7 +1135,10 @@ async function drawSheet(v, i, keep) {
       if (rm && /^=/.test(val)) val = "\u200B" + val;     // a remark is words: "= done" is not worked out as a formula
       inp.disabled = true;
       if (next) IPA.rmNext = nextRm(td);
-      if (await save({ set: { [sh]: { [td.dataset.k]: val } } })) { toast("Saved"); redraw(); } else { inp.remove(); IPA.rmNext = null; }
+      if (await save({ set: { [sh]: { [td.dataset.k]: val } } })) {
+        if (asDate && !isDateNf(nf)) { const [r_, c_] = td.dataset.k.split(",").map(Number);     // a date typed in a figure cell: shown as a date
+          try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/fmt`, { sheet: sh, cells: [[r_, c_]], set: { nf: NF.date } }); } catch (e) { /* the date is saved either way */ } }
+        toast("Saved"); redraw(); } else { inp.remove(); IPA.rmNext = null; }
     };
     inp.onkeydown = e => {
       if (e.key === "Enter" && rm && e.altKey) { e.preventDefault(); const a = inp.selectionStart; inp.value = inp.value.slice(0, a) + "\n" + inp.value.slice(inp.selectionEnd); inp.setSelectionRange(a + 1, a + 1); }

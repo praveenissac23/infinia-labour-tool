@@ -96,4 +96,30 @@ try:
     ck("PDF: 1,318,577.14 with AED, (1,234.56)", "1,318,577.14" in txt and "AED" in txt and "(1,234.56)" in txt and "124,936.19" in txt, txt)
 except ImportError:
     pass
+# ---- dates DD/MM/YYYY (12), font family / colour / wrap / indent (1, 2)
+wb4 = Workbook(); w4 = wb4.active; w4.title = "APP A"
+import datetime as _d
+w4["B2"] = _d.datetime(2026, 5, 8); w4["B2"].number_format = "d-mmm-yyyy"
+w4["B3"] = _d.datetime(2026, 5, 21); w4["B3"].number_format = "mm-dd-yy"
+w4["B4"] = "Concrete pouring - 8th September 2026"
+w4["B5"] = "=B2+30"; w4["B5"].number_format = "d-mmm-yy"
+buf4 = io.BytesIO(); wb4.save(buf4); d4 = buf4.getvalue()
+m4 = BE.dates_dmy(BE.read_format(d4, "d.xlsx")); v4 = BE.calculate(m4, {})
+s4 = m4["sheets"][0]; stl = lambda k: m4["styles"][s4["cells"][k]["s"]]
+ck("date cells DD/MM/YYYY on screen", BR.fmt(v4["APP A"]["2,2"], stl("2,2")["nf"]) == "08/05/2026" and BR.fmt(v4["APP A"]["3,2"], stl("3,2")["nf"]) == "21/05/2026",
+   (BR.fmt(v4["APP A"]["2,2"], stl("2,2")["nf"]), BR.fmt(v4["APP A"]["3,2"], stl("3,2")["nf"])))
+ck("dates in text: only the date part", BR.fmt(v4["APP A"].get("4,2", s4["cells"]["4,2"]["v"]), "General") == "Concrete pouring - 08/09/2026")
+ck("formula date =B2+30 DD/MM/YYYY", BR.fmt(v4["APP A"]["5,2"], stl("5,2")["nf"]) == "07/06/2026", BR.fmt(v4["APP A"]["5,2"], stl("5,2")["nf"]))
+ck("the stored date never changes", v4["APP A"]["2,2"] == 46150)
+x4 = BE.write_xlsx(d4, m4, {}, v4); a4 = load_workbook(io.BytesIO(x4))["APP A"]
+ck("Excel: real dates with dd/mm/yyyy", a4["B2"].number_format == "dd/mm/yyyy" and a4["B3"].number_format == "dd/mm/yyyy" and isinstance(a4["B2"].value, _d.datetime),
+   (a4["B2"].number_format, a4["B3"].number_format, type(a4["B2"].value)))
+ck("Excel: text date written DD/MM/YYYY", a4["B4"].value == "Concrete pouring - 08/09/2026", a4["B4"].value)
+inp5 = {"APP A": {"_fmt": {"2,2": {"nf": "dd-mmm-yyyy", "font": "Arial", "fc": "1F4E79", "wrap": True, "ind": 2, "va": "top"}}}}
+m5 = BE.apply_fmt(m4, inp5); st5 = m5["styles"][m5["sheets"][0]["cells"]["2,2"]["s"]]
+ck("DD-MMM-YYYY when the office picks it", BR.fmt(46150, st5["nf"]) == "08-May-2026")
+ck("font / colour / wrap / indent / top", st5["font"] == "Arial" and st5["fc"] == "1F4E79" and st5["wrap"] and st5["ind"] == 2 and st5["va"] == "top", st5)
+x5 = BE.write_xlsx(d4, m5, inp5, v4); a5 = load_workbook(io.BytesIO(x5))["APP A"]["B2"]
+ck("Excel: font / colour / wrap / indent / top / dd-mmm-yyyy", a5.font.name == "Arial" and str(a5.font.color.rgb).endswith("1F4E79") and a5.alignment.wrap_text and a5.alignment.indent == 2 and a5.alignment.vertical == "top" and a5.number_format == "dd-mmm-yyyy",
+   (a5.font.name, a5.font.color.rgb if a5.font.color else None, a5.alignment.wrap_text, a5.alignment.indent, a5.alignment.vertical, a5.number_format))
 print("ALL PASS" if not bad else f"{bad} FAILED")

@@ -2553,7 +2553,7 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
             zout.writestr(media, png)
     zout.close()
     # the content types and relationships must not point at the removed calcChain
-    res = _drop_calcchain_refs(out.getvalue())
+    res = _xlsx_dates(_drop_calcchain_refs(out.getvalue()))   # DD/MM/YYYY - before the office's own formats
     if any(isinstance(v, dict) and (v.get("_fmt") or v.get("_rowh")) for v in (inputs or {}).values()):
         res = _xlsx_apply_fmt(res, model, inputs)
     return res
@@ -2593,53 +2593,66 @@ def _xlsx_apply_fmt(data, model, inputs):
         for ch in a:
             n = n * 26 + ord(ch) - 64
         return n
+    def set_align(xf, attrs):
+        xf = re.sub(r'\sapplyAlignment="[^"]*"', "", xf).replace("<xf ", '<xf applyAlignment="1" ', 1)
+        if "<alignment" not in xf:
+            xf = (xf[:-2] + "><alignment/></xf>") if xf.endswith("/>") else xf.replace("</xf>", "<alignment/></xf>")
+        al = re.search(r"<alignment\b[^>]*/>", xf).group(0)
+        al2 = al
+        for a, v in attrs.items():
+            al2 = re.sub(r'\s%s="[^"]*"' % a, "", al2)
+            if v not in (None, "", 0, False):
+                al2 = al2.replace("<alignment", f'<alignment {a}="{v}"', 1)
+        return xf.replace(al, al2)
+    FONT_KEYS = FMT_KEYS + ("font", "fc")
     def xf_with(xi, f):
         xi = xi if 0 <= xi < len(xfs) else 0
-        nf_, ha_ = f.get("nf") if isinstance(f.get("nf"), str) and f.get("nf") else None, f.get("ha") if f.get("ha") in ALIGNS else None
-        if not any(a in f for a in FMT_KEYS) and not nf_ and not ha_:
+        nf_ = f.get("nf") if isinstance(f.get("nf"), str) and f.get("nf") else None
+        al = {}
+        if f.get("ha") in ALIGNS:
+            al["horizontal"] = "right" if f["ha"] == "dec" else f["ha"]
+        if f.get("va") in VALIGNS:
+            al["vertical"] = f["va"]
+        if "ind" in f:
+            al["indent"] = int(f["ind"] or 0)
+        if "wrap" in f:
+            al["wrapText"] = "1" if f["wrap"] else ""
+        fk = [a for a in FONT_KEYS if a in f]
+        if not fk and not nf_ and not al:
             return xi
-        k = (xi, tuple((a, f.get(a)) for a in FMT_KEYS), nf_, ha_)
+        k = (xi, tuple((a, f.get(a)) for a in FONT_KEYS), nf_, tuple(sorted(al.items())))
         if k in made:
             return made[k]
         xf = xfs[xi]
         if nf_:
             xf = re.sub(r'\s(numFmtId|applyNumberFormat)="[^"]*"', "", xf).replace("<xf ", f'<xf numFmtId="{numfmt_id(nf_)}" applyNumberFormat="1" ', 1)
-        if ha_:
-            h = "right" if ha_ == "dec" else ha_
-            xf = re.sub(r'\sapplyAlignment="[^"]*"', "", xf).replace("<xf ", '<xf applyAlignment="1" ', 1)
-            if "<alignment" in xf:
-                al = re.search(r"<alignment\b[^>]*/>", xf).group(0)
-                al2 = re.sub(r'\shorizontal="[^"]*"', "", al).replace("<alignment", f'<alignment horizontal="{h}"', 1)
-                xf = xf.replace(al, al2)
-            elif xf.endswith("/>"):
-                xf = xf[:-2] + f'><alignment horizontal="{h}"/></xf>'
-            else:
-                xf = xf.replace("</xf>", f'<alignment horizontal="{h}"/></xf>')
-        if not any(a in f for a in FMT_KEYS):
+        if al:
+            xf = set_align(xf, al)
+        if not fk:
             xfs.append(xf); made[k] = len(xfs) - 1
             return made[k]
         fm = re.search(r'\bfontId="(\d+)"', xf)
         fid = int(fm.group(1)) if fm else 0
         font = fonts[fid] if fid < len(fonts) else "<font/>"
         body = re.sub(r"^<font\b[^>]*?/?>|</font>$", "", font, flags=re.S) if not font.endswith("/>") else ""
-        def tag(name, on, body):
-            body = re.sub(r"<%s\b[^>]*/>" % name, "", body)
-            return (f"<{name}/>" + body) if on else body
+        parts = {t: re.search(r"<%s\b[^>]*/>" % t, body) for t in ("b", "i", "strike", "u", "sz", "color", "name", "family", "charset", "scheme", "vertAlign", "outline", "shadow", "condense", "extend")}
+        parts = {t: (m.group(0) if m else "") for t, m in parts.items()}
         if "b" in f:
-            body = tag("b", f["b"], body)
+            parts["b"] = "<b/>" if f["b"] else ""
         if "i" in f:
-            body = tag("i", f["i"], body)
+            parts["i"] = "<i/>" if f["i"] else ""
         if "u" in f:
-            body = re.sub(r"<u\b[^>]*/>", "", body)
-            if f["u"]:
-                body = "<u/>" + body
+            parts["u"] = "<u/>" if f["u"] else ""
         if "sz" in f:
-            body = re.sub(r'<sz\b[^>]*/>', "", body)
-            body = re.sub(r"(<b/>|<i/>|<u/>|<strike/>)*", lambda m: m.group(0) + f'<sz val="{float(f["sz"]):g}"/>', body, count=1)
-        # Excel wants b, i, strike, ..., u, ..., sz, color, name in that order: put the flags first
-        flags = "".join(t for t in ("<b/>", "<i/>") if t in body)
-        rest = body.replace("<b/>", "").replace("<i/>", "")
-        fonts.append(f"<font>{flags}{rest}</font>")
+            parts["sz"] = f'<sz val="{float(f["sz"]):g}"/>'
+        if "fc" in f:
+            parts["color"] = f'<color rgb="FF{str(f["fc"]).upper()}"/>' if f["fc"] else '<color theme="1"/>'
+        if "font" in f and f["font"]:
+            parts["name"] = f'<name val="{_esc(str(f["font"]))}"/>'
+            parts["scheme"] = ""                       # a theme font would win over the name
+        # Excel's order inside <font>
+        order = ("b", "i", "strike", "condense", "extend", "outline", "shadow", "u", "vertAlign", "sz", "color", "name", "family", "charset", "scheme")
+        fonts.append("<font>" + "".join(parts.get(t, "") for t in order) + "</font>")
         nf = len(fonts) - 1
         nxf = re.sub(r'\bfontId="\d+"', f'fontId="{nf}"', xf) if fm else xf.replace("<xf ", f'<xf fontId="{nf}" ', 1)
         nxf = nxf if 'applyFont="' in nxf else nxf.replace("<xf ", '<xf applyFont="1" ', 1)
@@ -3051,14 +3064,160 @@ def _xml_restyle_rows(xml, pairs):
     return xml
 
 
+# ---------------------------------------------------------------------------------- dates: DD/MM/YYYY everywhere (7 Nov 2026)
+DMY = "dd/mm/yyyy"
+_MON = {m: i + 1 for i, m in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split())}
+
+
+def is_date_nf(nf):
+    """A number format that shows a date (d-mmm-yyyy, mm/dd/yyyy, dd-mm-yy, [$-409]d-mmm-yy ...), not a figure."""
+    t = re.sub(r'"[^"]*"|\[[^\]]*\]|\\.', "", nf or "")
+    return bool(re.search(r"[dy]", t, re.I)) and not re.search(r"[0#?]", t) and "general" not in t.lower()
+
+
+def dmy_nf(nf):
+    """Every date shows DD/MM/YYYY (with HH:mm when the format has a time). DD-MMM-YYYY chosen by the office stays."""
+    if not is_date_nf(nf):
+        return nf
+    if nf.strip().lower() in ("dd-mmm-yyyy", DMY):
+        return nf
+    t = re.sub(r'"[^"]*"|\[[^\]]*\]', "", nf)
+    return DMY + (" hh:mm" if re.search(r"h", t, re.I) else "")
+
+
+_TXT_DATE = re.compile(
+    r"\b(\d{1,2})(?:st|nd|rd|th)?[\s\-]+(?:of\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?,?[\s\-]+(\d{4}|\d{2})\b"
+    r"|\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b"
+    r"|(?<![\d/.\-])(\d{1,2})([.\-])(\d{1,2})\8(\d{4})(?![\d/.\-])", re.I)
+
+
+def dmy_text(t):
+    """Dates written inside text as DD/MM/YYYY - only the date part: "Concrete pouring - 8th September 2026" ->
+    "Concrete pouring - 08/09/2026"; 8-May-2026, May 8, 2026, 06.10.2026 the same. Day first, always."""
+    if not isinstance(t, str) or not re.search(r"\d", t):
+        return t
+    def rep(m):
+        try:
+            if m.group(1):
+                d, mo, y = int(m.group(1)), _MON[m.group(2)[:3].lower()], int(m.group(3))
+            elif m.group(4):
+                d, mo, y = int(m.group(5)), _MON[m.group(4)[:3].lower()], int(m.group(6))
+            else:
+                d, mo, y = int(m.group(7)), int(m.group(9)), int(m.group(10))
+            y = y + 2000 if y < 100 else y
+            _dt.date(y, mo, d)
+            return f"{d:02d}/{mo:02d}/{y}"
+        except (ValueError, KeyError):
+            return m.group(0)
+    return _TXT_DATE.sub(rep, t)
+
+
+def dates_dmy(model):
+    """The bill with every date cell shown DD/MM/YYYY and the dates written in its text the same way - the stored
+    date values never change. Same object back when nothing is a date."""
+    st0 = model.get("styles") or []
+    newst = [dict(x, nf=dmy_nf(x.get("nf", "General"))) if is_date_nf(x.get("nf", "General")) else x for x in st0]
+    txt = any(isinstance(c.get("v"), str) and dmy_text(c["v"]) != c["v"] for s in model["sheets"] for c in s["cells"].values())
+    if newst == st0 and not txt:
+        return model
+    m = dict(model); m["styles"] = newst
+    if txt:
+        m["sheets"] = []
+        for s in model["sheets"]:
+            ch = {k: dict(c, v=dmy_text(c["v"])) for k, c in s["cells"].items() if isinstance(c.get("v"), str) and dmy_text(c["v"]) != c["v"]}
+            m["sheets"].append(dict(s, cells=dict(s["cells"], **ch)) if ch else s)
+    return m
+
+
+def _xlsx_dates(data):
+    """The Excel file with every date format DD/MM/YYYY (the dates stay real dates) and the dates written in its
+    text the same way."""
+    zin = zipfile.ZipFile(io.BytesIO(data))
+    out = io.BytesIO(); zout = zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED)
+    for item in zin.infolist():
+        raw = zin.read(item.filename)
+        if item.filename == "xl/styles.xml":
+            x = raw.decode("utf-8")
+            ids = {}
+            def nfx(m):
+                code = _unesc(m.group(2))
+                if is_date_nf(code):
+                    ids[m.group(1)] = 1
+                    return m.group(0).replace(m.group(3), _esc(dmy_nf(code)))
+                return m.group(0)
+            x = re.sub(r'<numFmt\b[^>]*numFmtId="(\d+)"[^>]*formatCode="(([^"]*))"', nfx, x)
+            # Excel's own date formats (14 = the computer's short date, 15-17 = d-mmm-yy ...): our DD/MM/YYYY instead
+            if re.search(r'<xf\b[^>]*numFmtId="(1[4-7]|22)"', x):
+                have = [int(i) for i in re.findall(r'<numFmt\b[^>]*numFmtId="(\d+)"', x)]
+                nid = max([163] + have) + 1
+                x = re.sub(r'(<xf\b[^>]*numFmtId=")(1[4-7]|22)(")', lambda m: f"{m.group(1)}{nid}{m.group(3)}", x)
+                nf_el = f'<numFmt numFmtId="{nid}" formatCode="{DMY}"/>'
+                if re.search(r"<numFmts\b[^>]*/>", x):
+                    x = re.sub(r"<numFmts\b[^>]*/>", f'<numFmts count="1">{nf_el}</numFmts>', x, count=1)
+                elif "<numFmts" in x:
+                    x = re.sub(r"(<numFmts\b[^>]*>)", lambda m: m.group(1) + nf_el, x, count=1)
+                    x = re.sub(r'(<numFmts\b[^>]*?\bcount=")\d+"', lambda m: f'{m.group(1)}{len(re.findall("<numFmt ", x))}"', x, count=1)
+                else:
+                    x = re.sub(r"(<styleSheet\b[^>]*>)", lambda m: m.group(1) + f'<numFmts count="1">{nf_el}</numFmts>', x, count=1)
+            raw = x.encode("utf-8")
+        elif item.filename == "xl/sharedStrings.xml" or (item.filename.startswith("xl/worksheets/sheet") and item.filename.endswith(".xml")):
+            x = raw.decode("utf-8")
+            x2 = re.sub(r"(<t\b[^>]*>)(.*?)(</t>)", lambda m: m.group(1) + _esc(dmy_text(_unesc(m.group(2)))) + m.group(3), x, flags=re.S)
+            if x2 != x:
+                raw = x2.encode("utf-8")
+        zout.writestr(item, raw)
+    zout.close()
+    return out.getvalue()
+
+
 def remarks_cols(s, styles=None):
+    return head_cols(s, styles, r"\s*remarks?\s*:?\s*")
+
+
+def with_defaults(model, inputs):
+    """The bill's typed cells with the office's standing look added to its formatting (7 Nov 2026): Description and
+    Remarks wrap inside their cells (never cut off at the edge - the row grows) and Remarks are in the sheet's normal
+    black. Whatever the office set with the toolbar wins. Used for the screen, PDF and Excel alike."""
+    styles = model.get("styles") or []
+    out = None
+    for s in model["sheets"]:
+        want = {}
+        for c, (r0, r1) in head_cols(s, styles, r"\s*remarks?\s*:?\s*").items():
+            for r in range(r0, r1 + 1):
+                cell = s["cells"].get(f"{r},{c}") or {}
+                if "f" in cell:
+                    continue
+                st = styles[cell.get("s", 0)] if styles else {}
+                w = {} if st.get("wrap") else {"wrap": True}
+                if (st.get("fc") or "").upper() not in ("", "000000"):
+                    w["fc"] = ""
+                if w:
+                    want[f"{r},{c}"] = w
+        for c, (r0, r1) in head_cols(s, styles, r"\s*(item\s+)?description(\s+of\s+works?)?\s*").items():
+            for r in range(r0, r1 + 1):
+                cell = s["cells"].get(f"{r},{c}") or {}
+                if isinstance(cell.get("v"), str) and not (styles[cell.get("s", 0)] if styles else {}).get("wrap"):
+                    want.setdefault(f"{r},{c}", {})["wrap"] = True
+        if not want:
+            continue
+        if out is None:
+            out = dict(inputs or {})
+        inp = dict(out.get(s["name"]) or {})
+        f = {k: dict(w, **(inp.get("_fmt") or {}).get(k, {})) for k, w in want.items()}
+        f.update({k: v for k, v in (inp.get("_fmt") or {}).items() if k not in f})
+        inp["_fmt"] = f
+        out[s["name"]] = inp
+    return inputs if out is None else out
+
+
+def head_cols(s, styles, pat):
     """A sheet's Remarks column(s): {column: (first row, last row)} - every row of the table under the "Remarks"
     heading (items, section headings, blank rows), down to the last ruled cell of that column (the signature block
     and the empty page below are not part of it)."""
     out = {}
     for k, cell in s["cells"].items():
         v = cell.get("v")
-        if not isinstance(v, str) or not re.fullmatch(r"\s*remarks?\s*:?\s*", v, re.I):
+        if not isinstance(v, str) or not re.fullmatch(pat, v, re.I):
             continue
         r, c = (int(x) for x in k.split(","))
         def ruled(rr):
@@ -3096,6 +3255,7 @@ def is_remark(s, k, cols=None):
 
 FMT_KEYS = ("sz", "b", "i", "u")
 ALIGNS = ("left", "center", "right", "dec")             # dec = decimal points under each other (right in Excel)
+VALIGNS = ("top", "center", "bottom")
 
 
 def apply_fmt(model, inputs):
@@ -3132,6 +3292,16 @@ def apply_fmt(model, inputs):
                 st["nf"] = f["nf"]                        # how a number shows - the value itself is never changed
             if f.get("ha") in ALIGNS:
                 st["ha"] = f["ha"]
+            if f.get("va") in VALIGNS:
+                st["va"] = f["va"]
+            if "ind" in f:
+                st["ind"] = max(0, min(10, int(f["ind"] or 0)))
+            if "wrap" in f:
+                st["wrap"] = bool(f["wrap"])
+            if "font" in f and f["font"]:
+                st["font"] = str(f["font"])[:40]
+            if "fc" in f:
+                st["fc"] = str(f["fc"] or "").upper()
             kk = repr(sorted(st.items()))
             if kk not in key:
                 key[kk] = len(styles); styles.append(st)

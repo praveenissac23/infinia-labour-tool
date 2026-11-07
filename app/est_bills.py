@@ -140,7 +140,7 @@ def _bill_model(fmt, b_or_inputs):
     rows = tuple((sh, json.dumps(inp.get("_rows"))) for sh, inp in sorted(inputs.items()) if isinstance(inp, dict) and inp.get("_rows"))
     pages = json.dumps(BE.pages_of(inputs))
     if not rows and pages == "[]":
-        return BE.apply_fmt(BE.restyle_pay_rows(model, inputs), inputs)   # payment lines like the first; office formatting
+        return _looks(BE.restyle_pay_rows(model, inputs), inputs)   # payment lines like the first; DD/MM/YYYY; office formatting
     key = (fmt.id, rows, pages)
     hit = _EXP_CACHE.get(key)
     if hit is None:
@@ -148,7 +148,16 @@ def _bill_model(fmt, b_or_inputs):
         _EXP_CACHE[key] = hit
         if len(_EXP_CACHE) > 24:
             _EXP_CACHE.pop(next(iter(_EXP_CACHE)))
-    return BE.apply_fmt(BE.restyle_pay_rows(hit, inputs), inputs)
+    return _looks(BE.restyle_pay_rows(hit, inputs), inputs)
+
+
+def _looks(model, inputs):
+    """The bill as it is drawn: dates DD/MM/YYYY, Description / Remarks wrapping, then the office's own formatting."""
+    m = BE.dates_dmy(model)
+    w = BE.with_defaults(m, inputs)
+    out = dict(BE.apply_fmt(m, w))
+    out["_with"] = w                                     # the same formatting for the Excel file
+    return out
 
 
 def _inputs(b):
@@ -1587,8 +1596,8 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
      borders of the row above, and its height) - or "reset": true (back to the consultant's look)}.
     Kept on the bill (inputs[sheet]["_fmt"]); the next bill keeps it. Wording and figures are never touched."""
     b = _get(db, EstBill, bid)
-    if b.status == "Paid" and user.role != "admin":
-        raise HTTPException(400, "A paid bill cannot be changed.")
+    if b.status != "Draft":
+        raise HTTPException(400, f"This bill is {b.status} - the sheets can be changed while it is a Draft.")
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
     sh = str(payload.get("sheet") or "")
@@ -1636,6 +1645,23 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
             if not 6 <= sz <= 36:
                 raise HTTPException(400, "Font size 6 to 36.")
             new["sz"] = sz
+        if "font" in st:
+            fn = re.sub(r"[^A-Za-z0-9 \-]", "", str(st["font"] or ""))[:40].strip()
+            if fn:
+                new["font"] = fn
+        if "fc" in st:
+            fc = str(st["fc"] or "").lstrip("#").upper()
+            if fc and not re.fullmatch(r"[0-9A-F]{6}", fc):
+                raise HTTPException(400, "Pick a colour.")
+            new["fc"] = fc
+        if "va" in st:
+            if st["va"] not in BE.VALIGNS:
+                raise HTTPException(400, "Pick top, middle or bottom.")
+            new["va"] = st["va"]
+        if "ind" in st:
+            new["ind"] = max(0, min(10, int(st["ind"] or 0)))
+        if "wrap" in st:
+            new["wrap"] = bool(st["wrap"])
         for a in ("b", "i", "u"):
             if a in st:
                 new[a] = bool(st[a])
@@ -1855,7 +1881,7 @@ def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, d
     fname = re.sub(r"[^A-Za-z0-9]+", "_", f"{code}_IPA_{label}").strip("_")
     store = _sig_store(db)
     if format == "excel":
-        data = BE.write_xlsx(BE.add_pages_xlsx(fmt.data, inputs), model, inputs, values, sign_images(model, _signs(b), store))
+        data = BE.write_xlsx(BE.add_pages_xlsx(fmt.data, inputs), model, model.get("_with") or inputs, values, sign_images(model, _signs(b), store))
         return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                  headers={"Content-Disposition": f"attachment; filename={fname}.xlsx"})
     if format == "pdf":

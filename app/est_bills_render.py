@@ -10,7 +10,7 @@ import math
 import re
 from html import escape
 
-from est_bills_engine import Err, general, EPOCH, remarks_cols
+from est_bills_engine import Err, general, EPOCH, remarks_cols, dmy_text, dmy_nf
 
 EMU_PX = 9525.0
 
@@ -41,6 +41,9 @@ def _date_text(serial, fmt):
     names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
     days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     lit = False
+    after_h = False
+    secs_total = round((float(serial) % 1) * 86400)
+    hh, mi, ss = secs_total // 3600, (secs_total % 3600) // 60, secs_total % 60
     while i < len(f):
         ch = f[i]
         if ch == "\x00":
@@ -50,6 +53,14 @@ def _date_text(serial, fmt):
         if lit:
             out += ch; i += 1; continue
         low = f[i:].lower()
+        if low.startswith("hh") or low.startswith("h"):
+            n = 2 if low.startswith("hh") else 1
+            out += f"{hh:02d}" if n == 2 else f"{hh}"; i += n; after_h = True; continue
+        if after_h and (low.startswith("mm") or low.startswith("m")):
+            n = 2 if low.startswith("mm") else 1
+            out += f"{mi:02d}" if n == 2 else f"{mi}"; i += n; after_h = False; continue
+        if low.startswith("ss"):
+            out += f"{ss:02d}"; i += 2; continue
         for tok, val in (("yyyy", f"{d.year}"), ("yy", f"{d.year % 100:02d}"), ("mmmm", names[d.month - 1]), ("mmm", names[d.month - 1][:3]),
                          ("mm", f"{d.month:02d}"), ("m", f"{d.month}"), ("dddd", days[d.weekday()]), ("ddd", days[d.weekday()][:3]),
                          ("dd", f"{d.day:02d}"), ("d", f"{d.day}")):
@@ -82,6 +93,7 @@ def fmt(v, nf="General"):
     if isinstance(v, bool):
         return "TRUE" if v else "FALSE"
     if isinstance(v, str):
+        v = dmy_text(v)                                  # dates written in text: DD/MM/YYYY
         secs = _sections(nf or "")
         if len(secs) >= 4 and "@" in secs[3]:
             return _literals(secs[3]).replace("@", v)
