@@ -120,7 +120,9 @@ function sheetFrame(el, d, opts = {}) {
       else if (e.key === "0") { e.preventDefault(); fr.querySelector('[data-sv="fit"]').click(); } });
     window.addEventListener("resize", () => { const f = document.querySelector(".sv [data-sv=fit]"), pg = document.querySelector(".sv [data-sv=page]"), p_ = svZoomPref();
       if (p_ === "fit" && f) f.click(); else if (p_ === "page" && pg) pg.click(); }); }
-  return { box, inner, zoom: () => SV.z || 1 };
+  // after the row numbers / column letters go round the sheet: sized again so nothing is cut off at the right or bottom
+  const refit = () => { SV.w = Math.max(d.width || 0, inner.scrollWidth); const p_ = svZoomPref(); if (p_ === "fit") fit(); else if (p_ === "page") fitPage(); else set(SV.z || 1); };
+  return { box, inner, zoom: () => SV.z || 1, refit };
 }
 
 // A previous bill (or the format) to read: its sheets as sent, one at a time.
@@ -1439,6 +1441,7 @@ async function drawSheet(v, i, keep) {
   if (IPA.flash && IPA.flash.sheet === sh) { const fl = IPA.flash; IPA.flash = null;
     setTimeout(() => { const t = $(`td[data-k="${fl.k}"]`, fr.inner); if (t) { t.scrollIntoView({ block: "center", inline: "center" }); t.classList.add("ipa-flash"); setTimeout(() => t.classList.remove("ipa-flash"), 1800); } }, 60); }
   fmtTools(v, host, b, sh, () => drawSheet(v, i, true));
+  fr.refit();
   // ---- typing in a cell (the sheet may be zoomed: the box is placed in the sheet's own size). A figure, words, a date,
   // or a formula: "=" starts one - its cell references coloured, with a matching box on the sheet; a click on a cell
   // (Shift+click / drag for a range, arrow keys, even on another sheet) puts its reference in; F4 fixes it with $.
