@@ -140,6 +140,49 @@ def abaad_whole(SessionLocal):
         db.close()
 
 
+def summary_mirror(SessionLocal):
+    """Lines and sections added to a bill's sheet (913 bill 10: VI VARIATION ORDER - 04 / Construction of Swimming
+    Pool 312,000 on the Cost Proposal Log) put on the Summary that copies that sheet line by line, so its totals and
+    TOTAL DUE take them in (7 Nov 2026). Draft bills only; each bill's change is written to the audit log."""
+    key = "est_onetime_summary_mirror_20261107"
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == key).first():
+            return
+        import est_bills as EB
+        notes = []
+        for b in db.query(EB.EstBill).filter(EB.EstBill.status == "Draft").all():
+            fmt = db.get(EB.EstBillFormat, b.format_id)
+            if not fmt:
+                continue
+            inputs = EB._inputs(b)
+            try:
+                new, added = EB._mirror_repair(fmt, json.loads(json.dumps(inputs)))
+            except Exception as e:                   # one bill that cannot be read is left as it is
+                notes.append(f"bill #{b.id}: left as it was ({type(e).__name__})")
+                continue
+            if not added:
+                continue
+            due0, wd0 = b.total_due, b.work_done
+            model = EB._bill_model(fmt, new)
+            new, values = EB._calc(model, new)
+            b.inputs = json.dumps(new)
+            EB._save_totals(b, model, values)
+            notes.append(f"bill #{b.id} ({b.label}): {len(added)} added row(s) put on the Summary {[(a[0], a[1], a[2], a[3]) for a in added]}; "
+                         f"total due {due0 or 0:,.2f} -> {b.total_due or 0:,.2f}, work done {wd0 or 0:,.2f} -> {b.work_done or 0:,.2f}")
+        db.add(models.Setting(key=key, value="1"))
+        db.add(models.AuditLog(action="est_onetime", details=("Summary copies of added lines: " + ("; ".join(notes) or "none needed"))[:4000]))
+        db.commit()
+        if notes:
+            print("Summary copies of added lines: " + "; ".join(notes))
+    except Exception as e:
+        db.rollback()
+        _note(db, f"Summary copies of added lines NOT put in (nothing changed): {type(e).__name__}: {e}")
+    finally:
+        db.close()
+
+
 def run(SessionLocal):
     raida_groups(SessionLocal)
     abaad_whole(SessionLocal)
+    summary_mirror(SessionLocal)

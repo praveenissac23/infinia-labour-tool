@@ -1402,6 +1402,145 @@ def _num_in(v, label):
         raise HTTPException(400, f"{label}: type a number.")
 
 
+_ROMAN = [(1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"), (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
+
+
+def _roman(n):
+    out = ""
+    for v, t in _ROMAN:
+        while n >= v:
+            out += t; n -= v
+    return out
+
+
+def _unroman(t):
+    t = str(t or "").strip().upper()
+    if not t or not re.fullmatch(r"[MDCLXVI]+", t):
+        return None
+    vals = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+    n = 0
+    for i, ch in enumerate(t):
+        v = vals[ch]
+        n += -v if i + 1 < len(t) and vals[t[i + 1]] > v else v
+    return n
+
+
+def _mirrors(model, sh, inputs=None):
+    """Sheets that copy `sh` line by line (the Summary: ='Cost Proposal Log'!F15 for every line): {sheet: {"rows":
+    {sheet row: [its rows]}, "cols": {its column: sheet column}}}. A sheet with only a total or two is not one."""
+    pat = re.compile(r"\s*(?:'%s'|%s)!\$?([A-Z]{1,3})\$?(\d+)\s*" % (re.escape(sh.replace("'", "''")), re.escape(sh) if re.fullmatch(r"\w+", sh) else "(?!x)x"))
+    out = {}
+    for s in model["sheets"]:
+        if s["name"] == sh:
+            continue
+        rows, cols = {}, {}
+        typed = {k: {"f": v[1:]} for k, v in ((inputs or {}).get(s["name"]) or {}).items() if not k.startswith("_") and isinstance(v, str) and v.startswith("=")}
+        for k, c in list(s["cells"].items()) + list(typed.items()):
+            if k in typed and typed[k] is not c:
+                continue                                   # a typed formula takes the place of the format's
+            f = c.get("f")
+            if not f:
+                continue
+            m = pat.fullmatch(f)
+            if not m:
+                continue
+            r, cc = (int(x) for x in k.split(","))
+            rows.setdefault(int(m.group(2)), set()).add(r)
+            cols.setdefault(cc, []).append(BE.column_index_from_string(m.group(1)))
+        if len(rows) >= 3:
+            out[s["name"]] = {"rows": rows, "cols": {cc: max(set(v), key=v.count) for cc, v in cols.items()}}
+    return out
+
+
+def _mirror_add(fmt, inputs, sh, at, kind):
+    """A line / section put in to `sh` at row `at` also goes on every sheet that copies `sh` line by line (the
+    Summary), right after the copy of the line above it, with the same look, its figures linked to the new row - so
+    the Summary, its totals and TOTAL DUE take it in (7 Nov 2026, 913 bill 10: VO-04 on the Cost Proposal Log)."""
+    model = _bill_model(fmt, inputs)
+    t = _table(model, sh)
+    xheads = {h for h in (inputs.get(sh) or {}).get("_heads") or []}
+    done = []
+    for osh, mm in _mirrors(model, sh, inputs).items():
+        if at in mm["rows"]:
+            continue                                   # already copied there
+        before = [xr for xr in mm["rows"] if xr < at]
+        if not before:
+            continue
+        xa = max(before)
+        M = max(mm["rows"][xa])
+        s = next(x for x in model["sheets"] if x["name"] == osh)
+        lines = {ln["r"] for ln in t["lines"]}
+        if kind == "head":
+            hx = [xr for xr in mm["rows"] if xr < at and xr not in lines]
+            like = max(mm["rows"][max(hx)]) if hx else M
+        else:
+            lx = [xr for xr in mm["rows"] if xr < at and xr in lines]
+            like = max(mm["rows"][max(lx)]) if lx else M
+        pos = M + 1
+        inp = BE.shift_inputs(inputs.get(osh) or {}, osh, pos, 1)
+        opts = {"kind": "line", "last_c": s["maxc"], "zero": [], "mirror_of": sh} if kind == "line" else {"kind": "head", "mirror_of": sh}
+        inp.setdefault("_rows", []).append([pos, 1, [like], opts])
+        if kind == "head":
+            inp["_heads"] = sorted(set(inp.get("_heads") or []) | {pos})
+        q = "'" + sh.replace("'", "''") + "'"
+        cols = mm["cols"]
+        if kind == "head":                              # a heading copies only what the headings copy (its name)
+            hx = [xr for xr in mm["rows"] if xr < at and xr not in lines]
+            own = {int(k.split(",")[1]) for k, c in s["cells"].items() if k.split(",")[0] == str(like) and "f" in c}
+            cols = {oc: xc for oc, xc in cols.items() if oc in own} or {oc: xc for oc, xc in cols.items() if xc == (t.get("desc_c") or xc)}
+        for oc, xc in cols.items():
+            inp[f"{pos},{oc}"] = f"={q}!{BE.get_column_letter(xc)}{at}"
+        # the item column of the copy: "A" for a line as the line above has it; the next number for a section
+        mapped = set(mm["cols"])
+        c1 = next((c for c in range(1, s["maxc"] + 1) if c not in mapped), None)
+        if c1:
+            lv = (s["cells"].get(f"{like},{c1}") or {}).get("v")
+            if kind == "line" and lv not in (None, "") and not _unroman(lv):
+                inp[f"{pos},{c1}"] = lv
+            elif kind == "head":
+                vals = BE.calculate(model, inputs).get(osh, {})
+                prev = [(_unroman(vals.get(f"{r},{c1}", (s["cells"].get(f"{r},{c1}") or {}).get("v"))), r) for r in range(1, pos)]
+                prev = [x for x in prev if x[0]]
+                if prev:
+                    n0 = prev[-1][0] + 1
+                    inp[f"{pos},{c1}"] = _roman(n0)
+                    # the sections after it move on by one (XI -> XII ...), as the office renumbers them in Excel
+                    for r in range(pos + 1, s["maxr"] + 2):
+                        k = f"{r},{c1}"
+                        cur = inp.get(k, (s["cells"].get(f"{r - 1},{c1}") or {}).get("v"))
+                        n = _unroman(cur)
+                        if n and n >= n0:
+                            inp[k] = _roman(n + 1)
+        inputs[osh] = inp
+        done.append((osh, pos))
+    return inputs, done
+
+
+def _mirror_repair(fmt, inputs):
+    """Lines and sections added on a bill before 7 Nov 2026 that never reached the Summary: put on it now."""
+    added = []
+    for sh in list(inputs):
+        if sh.startswith("_") or not isinstance(inputs.get(sh), dict):
+            continue
+        rows = BE.added_rows(inputs, sh)
+        if not rows:
+            continue
+        for r in sorted(rows):
+            kind = rows[r][1]
+            if kind not in ("line", "head"):
+                continue
+            model = _bill_model(fmt, inputs)
+            try:
+                _table(model, sh)
+            except HTTPException:
+                continue
+            if not _mirrors(model, sh, inputs):
+                continue
+            inputs, done = _mirror_add(fmt, inputs, sh, r, kind)
+            added += [(sh, r) + d for d in done]
+    return inputs, added
+
+
 @router.post("/store/est/ipa/bill/{bid}/line")
 def add_line(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
     """A line (a new item, a variation) or a section heading put in to a sheet's table, after row `after`:
@@ -1453,6 +1592,7 @@ def add_line(bid: int, payload: dict = Body(...), db: Session = Depends(get_db),
         for k, v in list(inp.items()):
             if isinstance(v, str) and v.startswith("=") and not k.startswith("_"):
                 inp[k] = "=" + BE.grow_ranges(v[1:], osh, sh, at, 1)
+    inputs, _mir = _mirror_add(fmt, inputs, sh, at, kind)    # the Summary takes the new line / section in too
     model = _bill_model(fmt, inputs)
     t = _table(model, sh)
     cell = lambda c: f"{at},{c}"
@@ -1505,6 +1645,17 @@ def remove_line(bid: int, payload: dict = Body(...), db: Session = Depends(get_d
         pv = values.get(sh, {}).get(f"{r},{t['prev_c']}")
         if isinstance(pv, (int, float)) and pv:
             raise HTTPException(400, "This line was billed on an earlier bill - it cannot be taken out. Type 0 or hide it on Sheets.")
+    # its copy on the Summary goes with it
+    for osh, oinp in list(inputs.items()):
+        if osh == sh or osh.startswith("_") or not isinstance(oinp, dict):
+            continue
+        q = re.escape("'" + sh.replace("'", "''") + "'")
+        for orow in sorted(BE.added_rows(inputs, osh), reverse=True):
+            refs = [v for k, v in oinp.items() if not k.startswith("_") and k.split(",")[0] == str(orow) and isinstance(v, str)]
+            if refs and all(re.fullmatch(r"=%s!\$?[A-Z]{1,3}\$?%d" % (q, r), v.strip()) for v in refs if v.startswith("=")) and any(v.startswith("=") for v in refs):
+                nx = BE.drop_added(inputs, osh, orow)
+                if nx is not None:
+                    inputs = nx; oinp = inputs[osh]
     new = BE.drop_added(inputs, sh, r)
     if new is None:
         raise HTTPException(400, "Only a line or section added on the bill can be taken out - the consultant's own lines stay.")
