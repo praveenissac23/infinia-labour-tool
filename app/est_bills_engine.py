@@ -2556,7 +2556,93 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
     res = _xlsx_dates(_drop_calcchain_refs(out.getvalue()))   # DD/MM/YYYY - before the office's own formats
     if any(isinstance(v, dict) and any(v.get(k) for k in FMT_EXTRA) for v in (inputs or {}).values()):
         res = _xlsx_apply_fmt(res, model, inputs)
+    try:
+        res = _xlsx_a4(res, model, inputs)                # printing from Excel matches the app: A4, fit to width ...
+    except Exception as e:                               # never lose the file over its print set-up
+        print("A4 set-up not written to the Excel file:", e)
     return res
+
+
+def _xlsx_a4(data, model, inputs):
+    """Each worksheet's print set-up as the app prints it: A4 (paperSize 9), its orientation, fit to 1 page wide
+    (fitToHeight 0), the margins, centred, the header rows repeated (Print_Titles), the print area, and the footer
+    where the consultant has none."""
+    import est_bills_render as BR
+    zin = zipfile.ZipFile(io.BytesIO(data))
+    paths = _sheet_paths(zin)
+    wb = zin.read("xl/workbook.xml").decode("utf-8")
+    order = [ _unesc(m.group(1)) for m in re.finditer(r'<sheet\b[^>]*\bname="([^"]*)"', wb)]
+    title = model.get("_title") or ""
+    new_sheets, names = {}, []
+    for s in model["sheets"]:
+        p = paths.get(s["name"])
+        if not p or s["name"] not in order or not s.get("visible", True):
+            continue
+        pr = s.get("print") or {}
+        try:
+            pl = BR.page_plan(model, s, inputs, None)
+            land = pl["pw"] > pl["ph"]
+        except Exception:
+            land = bool(pr.get("landscape"))
+        xml = zin.read(p).decode("utf-8")
+        mg = pr.get("m") or [10 / 25.4, 10 / 25.4, 15 / 25.4, 15 / 25.4, 8 / 25.4, 8 / 25.4]
+        fit_w, fit_h = (1, 1) if pr.get("fh") == 1 else (1, 0)
+        po = '<printOptions horizontalCentered="1"/>'
+        pm = f'<pageMargins left="{mg[0]:.4f}" right="{mg[1]:.4f}" top="{mg[2]:.4f}" bottom="{mg[3]:.4f}" header="{mg[4]:.4f}" footer="{mg[5]:.4f}"/>'
+        if pr.get("fit", True):
+            pst = f'<pageSetup paperSize="9" orientation="{"landscape" if land else "portrait"}" fitToWidth="{fit_w}" fitToHeight="{fit_h}"/>'
+        else:
+            pst = f'<pageSetup paperSize="9" orientation="{"landscape" if land else "portrait"}" scale="{int(pr.get("scale") or 100)}"/>'
+        has_hf = bool(re.search(r"<headerFooter\b[^>]*>.*?</headerFooter>", xml, re.S)) and bool(re.search(r"<(oddHeader|oddFooter)>[^<]+", xml))
+        hfx = "" if has_hf else ('<headerFooter><oddFooter>' + _esc(f'&L&8{title}&C&8&A&R&8Page &P of &N  ·  &D') + '</oddFooter></headerFooter>')
+        for tag in ("printOptions", "pageMargins", "pageSetup") + (() if has_hf else ("headerFooter",)):
+            xml = re.sub(r"<%s\b[^>]*?(?:/>|>.*?</%s>)" % (tag, tag), "", xml, flags=re.S)
+        block = po + pm + pst + hfx
+        if has_hf:                                       # his footer stays where it is: ours goes in front of it
+            xml = re.sub(r"(<headerFooter\b)", block.replace("\\", "\\\\") + r"\1", xml, count=1)
+        else:
+            m = re.search(r"<(rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|legacyDrawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b|</worksheet>", xml)
+            xml = xml[:m.start()] + block + xml[m.start():]
+        # fit to page needs the sheet's own switch
+        if pr.get("fit", True):
+            if re.search(r"<pageSetUpPr\b", xml):
+                xml = re.sub(r"<pageSetUpPr\b[^>]*/>", '<pageSetUpPr fitToPage="1"/>', xml, count=1)
+            elif re.search(r"<sheetPr\b[^>]*/>", xml):
+                xml = re.sub(r"<sheetPr\b([^>]*)/>", r'<sheetPr\1><pageSetUpPr fitToPage="1"/></sheetPr>', xml, count=1)
+            elif re.search(r"<sheetPr\b[^>]*>", xml):
+                xml = re.sub(r"(<sheetPr\b[^>]*>)", r"\1", xml, count=1)
+                xml = re.sub(r"(</sheetPr>)", '<pageSetUpPr fitToPage="1"/>' + r"\1", xml, count=1)
+            else:
+                xml = re.sub(r"(<worksheet\b[^>]*>)", r'\1<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>', xml, count=1)
+        new_sheets[p] = xml
+        q = "'" + s["name"].replace("'", "''") + "'"
+        idx = order.index(s["name"])
+        t = pr.get("titles")
+        if t:
+            names.append((idx, "_xlnm.Print_Titles", f"{q}!${int(t[0])}:${int(t[1])}"))
+        a = s.get("print_area") or [1, 1, s.get("maxr", 1), s.get("maxc", 1)]
+        names.append((idx, "_xlnm.Print_Area", f"{q}!${get_column_letter(a[1])}${a[0]}:${get_column_letter(a[3])}${a[2]}"))
+    if names:
+        for idx, nm, ref in names:
+            wb = re.sub(r'<definedName\b[^>]*name="%s"[^>]*localSheetId="%d"[^>]*>.*?</definedName>' % (re.escape(nm), idx), "", wb, flags=re.S)
+            wb = re.sub(r'<definedName\b[^>]*localSheetId="%d"[^>]*name="%s"[^>]*>.*?</definedName>' % (idx, re.escape(nm)), "", wb, flags=re.S)
+        add = "".join(f'<definedName name="{nm}" localSheetId="{idx}">{_esc(ref)}</definedName>' for idx, nm, ref in names)
+        if "<definedNames>" in wb:
+            wb = wb.replace("<definedNames>", "<definedNames>" + add, 1)
+        elif re.search(r"<definedNames\s*/>", wb):
+            wb = re.sub(r"<definedNames\s*/>", "<definedNames>" + add + "</definedNames>", wb, count=1)
+        else:
+            wb = re.sub(r"(</sheets>)", r"\1<definedNames>" + add.replace("\\", "\\\\") + "</definedNames>", wb, count=1)
+    out = io.BytesIO(); zout = zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED)
+    for item in zin.infolist():
+        raw = zin.read(item.filename)
+        if item.filename in new_sheets:
+            raw = new_sheets[item.filename].encode("utf-8")
+        elif item.filename == "xl/workbook.xml":
+            raw = wb.encode("utf-8")
+        zout.writestr(item, raw)
+    zout.close()
+    return out.getvalue()
 
 
 def _xlsx_apply_fmt(data, model, inputs):
@@ -3227,6 +3313,78 @@ def _xlsx_dates(data):
     return out.getvalue()
 
 
+# ---------------------------------------------------------------------------------------- A4 on every sheet (7 Nov 2026)
+A4_MARGINS = {"normal": [10, 10, 15, 15, 8, 8], "narrow": [6, 6, 12, 12, 6, 6], "wide": [20, 20, 20, 20, 10, 10]}   # mm: left right top bottom header footer
+_TOTALISH = re.compile(r"\b(grand\s*total|net\s*total|sub\s*-?\s*total|total|discount|carried\s+to|collection|retention|vat|amount\s+due)\b", re.I)
+_SIGNISH = re.compile(r"\b(prepared\s+by|checked\s+by|approved\s+by|certified\s+by|signature)\b", re.I)
+
+
+def a4_pages(model, inputs=None):
+    """Every sheet of every bill set up for A4 the same way (one place for all - new sheets and bill types get it):
+    A4 paper, the consultant's orientation, margins 15 / 15 / 10 / 10 mm (header / footer 8), all columns on the page
+    width (the height over as many pages as needed), centred, the header rows repeated, manual breaks kept, totals
+    and the signatures never split from each other, footer: the bill left, the sheet centre, Page X of Y and the
+    print date right (the consultant's own header / footer kept where he has one). The office's Page setup on the
+    bill (inputs[sheet]["_ps"]) comes on top."""
+    mp = model.get("map") or {}
+    heads = {}
+    for t in mp.get("progress", []) + mp.get("payments", []) + mp.get("fees", []):
+        heads.setdefault(t["sheet"], t.get("head_row"))
+    m = dict(model); m["sheets"] = []
+    for s in model["sheets"]:
+        pr = dict(s.get("print") or {"landscape": s.get("landscape"), "hf": {}, "breaks": [], "titles": None})
+        ps = ((inputs or {}).get(s["name"]) or {}).get("_ps") or {}
+        pr["paper"] = 9                                   # A4, always
+        if ps.get("orient") in ("portrait", "landscape"):
+            pr["landscape"] = ps["orient"] == "landscape"; pr["orient_set"] = True
+        mg = ps.get("margins")
+        mm = mg if isinstance(mg, list) and len(mg) == 6 else A4_MARGINS.get(mg or "normal", A4_MARGINS["normal"])
+        pr["m"] = [float(x) / 25.4 for x in mm]
+        sc = ps.get("scale") or "width"
+        if sc == "page":
+            pr.update(fit=True, fw=1, fh=1, scale=100)
+        elif isinstance(sc, (int, float)) and 10 <= sc <= 400:
+            pr.update(fit=False, scale=int(sc))
+        else:
+            pr.update(fit=True, fw=1, fh=0, scale=100)
+        pr["hc"] = True
+        pr["minsc"] = 0.5
+        if isinstance(ps.get("titles"), list) and len(ps["titles"]) == 2:
+            pr["titles"] = [int(ps["titles"][0]), int(ps["titles"][1])] if ps["titles"][0] else None
+        elif not pr.get("titles") and heads.get(s["name"]):
+            h = int(heads[s["name"]])
+            pr["titles"] = [h, h + 1]                     # the table's own heading rows on every page
+        hf = dict(pr.get("hf") or {})
+        has_p = any("&P" in str(v) for v in hf.values())   # the consultant numbers his pages already: not twice
+        hf.setdefault("fl", "&B"); hf.setdefault("fc", "&A"); hf.setdefault("fr", "&D" if has_p else "Page &P of &N  ·  &D")
+        pr["hf"] = hf
+        # rows kept together: a run of totals (Total / Discount / GRAND TOTAL) and the signature block
+        cells = s["cells"]
+        words = {}
+        for k, c in cells.items():
+            v = c.get("v")
+            if isinstance(v, str) and v.strip():
+                r = int(k.split(",")[0]); words[r] = words.get(r, "") + " " + v
+        keep, run = [], None
+        for r in sorted(words):
+            t = words[r]
+            if _TOTALISH.search(t) and len(t) < 160:
+                run = [run[0], r] if run and r - run[1] <= 1 else [r, r]
+                if keep and keep[-1][0] == run[0]:
+                    keep[-1] = run
+                else:
+                    keep.append(run)
+            elif _SIGNISH.search(t):
+                keep.append([r, min(r + 4, s.get("maxr", r + 4))]); run = None
+            else:
+                run = None
+        pr["keep"] = [x for x in keep if x[1] > x[0]]
+        if ps.get("area") and isinstance(ps["area"], list) and len(ps["area"]) == 4:
+            s = dict(s, print_area=[int(x) for x in ps["area"]])
+        m["sheets"].append(dict(s, print=pr))
+    return m
+
+
 def remarks_cols(s, styles=None):
     return head_cols(s, styles, r"\s*remarks?\s*:?\s*")
 
@@ -3312,7 +3470,7 @@ def is_remark(s, k, cols=None):
 FMT_KEYS = ("sz", "b", "i", "u")
 ALIGNS = ("left", "center", "right", "dec")             # dec = decimal points under each other (right in Excel)
 VALIGNS = ("top", "center", "bottom")
-FMT_EXTRA = ("_fmt", "_rowh", "_colw", "_merge", "_brk")   # the office's own look on a sheet, kept on the bill
+FMT_EXTRA = ("_fmt", "_rowh", "_colw", "_merge", "_brk", "_ps")   # the office's own look on a sheet, kept on the bill
 BD_W = {"thin": 1, "dashed": 1, "medium": 2, "thick": 3, "double": 3}
 
 

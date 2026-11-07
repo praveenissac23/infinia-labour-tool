@@ -173,7 +173,7 @@ def _looks(model, inputs):
     """The bill as it is drawn: dates DD/MM/YYYY, Description / Remarks wrapping, then the office's own formatting."""
     m = BE.dates_dmy(model)
     w = BE.with_defaults(m, inputs)
-    out = dict(BE.apply_fmt(m, w))
+    out = dict(BE.a4_pages(BE.apply_fmt(m, w), inputs))   # every sheet on A4 (Page setup on the bill on top)
     out["_with"] = w                                     # the same formatting for the Excel file
     return out
 
@@ -2470,6 +2470,7 @@ def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, d
     fname = re.sub(r"[^A-Za-z0-9]+", "_", f"{code}_IPA_{label}").strip("_")
     store = _sig_store(db)
     if format == "excel":
+        model = dict(model, _title=title)
         data = BE.write_xlsx(BE.add_pages_xlsx(fmt.data, inputs), model, model.get("_with") or inputs, values, sign_images(model, _signs(b), store))
         return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                  headers={"Content-Disposition": f"attachment; filename={fname}.xlsx"})

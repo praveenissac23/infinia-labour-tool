@@ -302,10 +302,12 @@ function save(body) {
 let UNDO_T = null;
 function undoRefresh() { clearTimeout(UNDO_T); UNDO_T = setTimeout(async () => { const b = IPA.bill; if (!b) return;
   let h; try { h = await GET(`/store/est/ipa/bill/${b.id}/history`); } catch (e) { return; }
-  const u = $("#ipa-undo"), r = $("#ipa-redo"); if (!u || !r) return; IPA.hist = h;
-  u.disabled = !h.undo; r.disabled = !h.redo;
-  u.title = h.undo ? `Undo: ${h.undo.label}${h.undo.where ? " (" + h.undo.where + ")" : ""} - Ctrl+Z` : (h.blocked || "Nothing to undo");
-  r.title = h.redo ? `Redo: ${h.redo.label}${h.redo.where ? " (" + h.redo.where + ")" : ""} - Ctrl+Y` : "Nothing to redo"; }, 150); }
+  IPA.hist = h;
+  const ut = h.undo ? `Undo: ${h.undo.label}${h.undo.where ? " (" + h.undo.where + ")" : ""} - Ctrl+Z` : (h.blocked || "Nothing to undo");
+  const rt = h.redo ? `Redo: ${h.redo.label}${h.redo.where ? " (" + h.redo.where + ")" : ""} - Ctrl+Y` : "Nothing to redo";
+  // the top bar's pair and the sheet toolbar's pair: the same history
+  $$("#ipa-undo, .ipa-u").forEach(u => { u.disabled = !h.undo; u.title = ut; u.onclick = () => undoBill(false); });
+  $$("#ipa-redo, .ipa-r").forEach(r => { r.disabled = !h.redo; r.title = rt; r.onclick = () => undoBill(true); }); }, 150); }
 async function undoBill(redo, force) {
   const b = IPA.bill; if (!b) return;
   let out;
@@ -1161,6 +1163,7 @@ function nfSec(p, comma, dec) {             // comma: true / false / null (keep)
 function nfDec(nf) { const m = (nf || "").replace(/"[^"]*"/g, "").match(/[#0?][#0?,]*(?:\.([0#?]*))?/); return m && m[1] ? m[1].length : 0; }
 function fmtTools(v, host, b, sh, redraw) {
   const bar = $("#sv-fmt", v); if (!bar) return;
+  undoRefresh();                                   // the toolbar's undo / redo pair, lit as the history stands
   if (!IPA.fsel || IPA.fsel.sh !== sh) IPA.fsel = { sh, a: null, z: null, rows: null, cols: null, add: [] };
   const S = IPA.fsel; S.add = S.add || [];
   // row numbers down the left and column letters along the top, as in Excel; the corner box picks the whole sheet
@@ -1374,7 +1377,7 @@ async function drawSheet(v, i, keep) {
   const FS = [6, 7, 8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24];
   const FONTS = ["Calibri", "Arial", "Arial Narrow", "Times New Roman", "Cambria", "Tahoma", "Verdana", "Century Gothic", "Book Antiqua"];
   const B_ = (fx, t, h, v) => `<button class="btn btn-plain btn-sm" data-fx="${fx}"${v !== undefined ? ` data-v="${v}"` : ""} title="${t}" disabled>${h}</button>`;
-  const fmtBar = locked ? "" : `<span class="sv-sep"></span><span class="sv-fmt" id="sv-fmt" title="Pick cells first: click a cell, Shift+click a range, Ctrl+click to add cells, a row number / column letter for a whole row / column, Ctrl+A for the sheet. Right-click for the same tools.">
+  const fmtBar = locked ? "" : `<span class="sv-sep"></span><span class="sv-ur"><button type="button" class="btn btn-plain btn-sm ipa-u" title="Undo (Ctrl+Z)" disabled>&#8630; Undo</button><button type="button" class="btn btn-plain btn-sm ipa-r" title="Redo (Ctrl+Y)" disabled>&#8631; Redo</button></span><span class="sv-fmt" id="sv-fmt" title="Pick cells first: click a cell, Shift+click a range, Ctrl+click to add cells, a row number / column letter for a whole row / column, Ctrl+A for the sheet. Right-click for the same tools.">
       <select data-fx="font" title="Font" disabled><option value="">Font</option>${FONTS.map(x => `<option value="${x}">${x}</option>`).join("")}</select>
       <select data-fx="sz" title="Font size" disabled><option value="">Size</option>${FS.map(x => `<option value="${x}">${x}</option>`).join("")}</select>
       ${B_("dn", "Smaller", "A&minus;")}${B_("up", "Bigger", "A+")}

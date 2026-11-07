@@ -568,7 +568,7 @@ tr.warnrow td { background: var(--amber-bg) !important; }
   .ipa-main { padding: 12px 10px 60px; }
   .ipa-cv-grid { grid-template-columns: 1fr 1fr; }
   .ipa-bar .q { min-width: 0; flex: 1; }
-  #big[data-ctx="est.ipa"] #b-tools { display: none; }
+  #big[data-ctx="est.ipa"] #b-tools > :not(.ipa-ur) { display: none; }
 }
 @media (max-width: 700px) {
   .ipa-lines { min-width: 0; table-layout: auto; }
@@ -945,3 +945,8 @@ textarea.ipa-cell.rm { resize: none; line-height: 1.3; padding: 3px 5px; font-fa
 .ipa-utoast button { border: 0; background: none; color: #8FB8FF; font: 600 13px inherit; cursor: pointer; }
 td.ipa-flash { animation: ipaflash 1.8s ease; }
 @keyframes ipaflash { 0%, 60% { box-shadow: inset 0 0 0 3px #F5B700 !important; background: #FFF4C2 !important; } 100% { } }
+
+/* undo / redo pair at the front of the sheet toolbar (same history as the top bar's) */
+.sv-ur { display: inline-flex; gap: 2px; flex: none; }
+.sv-ur .btn { padding: 3px 9px; font-weight: 600; color: #2F6FD0; }
+.sv-ur .btn:disabled, .ipa-ur .btn:disabled { opacity: .55; color: inherit; font-weight: 400; cursor: default; }

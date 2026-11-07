@@ -745,7 +745,7 @@ def preview_html(model, values, title, pdf_url, excel_url, inputs=None, embed=Fa
             body, w, hgt = sheet_html(model, sh, values, inputs, rows_only=prow, img_rows=set(prow), stamp=None, grow=pl["grow"])
             hf = []
             for k, t in pl["hf"].items():
-                txt = escape(hf_text(t, pno, total, sh["name"], fname or title))
+                txt = escape(hf_text(t, pno, total, sh["name"], fname or title, title))
                 if not txt:
                     continue
                 pos = (f"top:{pl['mh'] * PX:.1f}px" if k[0] == "h" else f"bottom:{pl['mf'] * PX:.1f}px")
@@ -820,6 +820,14 @@ def page_plan(model, s, inputs=None, values=None):
         sc = (pr.get("scale") or 100) / 100.0
     if cont_w and cont_w * sc > aw + mr * 0.8:         # never cut columns off: shrink to the page width
         sc = aw / cont_w
+    if pr.get("minsc") and sc < pr["minsc"] and not pr.get("landscape") and not pr.get("orient_set"):
+        # too wide for A4 standing up: the sheet goes landscape (the width then fits at a readable size)
+        pr = dict(pr, landscape=True)
+        pw, ph = ph, pw
+        aw, ah = pw - ml - mr, ph - mt - mb
+        if s["name"] in stamp_sheets(model):
+            ah = min(ah, ph - mt - mf - STAMP_PT - 4)
+        sc = min(1.0, aw / cont_w) if cont_w else 1.0
     sc = max(sc, 0.1)
     t = pr.get("titles")
     titles = [r for r in rows if t and t[0] <= r <= t[1]]
@@ -843,10 +851,19 @@ def page_plan(model, s, inputs=None, values=None):
     sc = max(need, sc * 0.88)
     th = tpt * sc
     pages, cur, own, used = [], [], [], 0.0
+    keep = {}                                           # a block kept together: its first row -> its rows shown
+    for k0, k1 in pr.get("keep") or []:
+        blk = [r for r in rows if k0 <= r <= k1]
+        if len(blk) > 1:
+            keep[blk[0]] = blk
     for r in rows:
         if pages and r in tset:
             continue                                    # repeated rows are already at the top of this page
         hgt = rh[r] * px * sc
+        if r in keep and own:                          # totals / signatures: onto the next page whole if they would split
+            bh = sum(rh[x] * px * sc for x in keep[r])
+            if used + bh > ah + 0.5 and bh <= ah - th:
+                pages.append((cur, own)); cur, own, used = list(titles), [], th
         if own and used + hgt > ah + 0.5:
             pages.append((cur, own)); cur, own, used = list(titles), [], th
         cur.append(r); own.append(r); used += hgt
@@ -862,12 +879,13 @@ def page_plan(model, s, inputs=None, values=None):
             "vc": pr.get("vc"), "grow": grow}
 
 
-def hf_text(t, page, pages, sheet, title):
+def hf_text(t, page, pages, sheet, title, bill=""):
     """An Excel header/footer section with its codes filled in: &P page, &N pages, &A sheet, &F / &Z file, &D date."""
     import datetime as _d
     t = re.sub(r'&"[^"]*"', "", t)
     t = re.sub(r"&\d+", "", t)
     t = t.replace("&&", "\x00")
+    t = t.replace("&B", bill or title)                     # the bill: project and bill no. (the app's own code)
     t = (t.replace("&P", str(page)).replace("&N", str(pages)).replace("&A", sheet).replace("&F", title).replace("&Z", "")
           .replace("&D", _d.date.today().strftime("%d/%m/%Y")).replace("&T", ""))
     t = re.sub(r"&[A-Za-z]", "", t).replace("\x00", "&")
@@ -1105,7 +1123,7 @@ def render_pdf(model, values, title, inputs=None, fname=""):
                     pass
             # the sheet's own header and footer (Page 1 of 9, sheet name ...), at the consultant's margins
             for k, t in pl["hf"].items():
-                txt = hf_text(t, pno, total_pages, s["name"], fname or title)
+                txt = hf_text(t, pno, total_pages, s["name"], fname or title, title)
                 if not txt:
                     continue
                 cv.setFont("Helvetica", 8); cv.setFillColorRGB(0, 0, 0)
