@@ -2075,8 +2075,20 @@ def date_input(model, t):
 
 def roll_over(model, prev_inputs, prev_values, today=None):
     """The next month's typed cells from last month's: Previous % = last Total %, Total % stays (to be changed),
-    the bill no. moves on, the issue date is today, last bill goes on the previous payments as a line to complete."""
+    the bill no. moves on, the issue date is today, last bill goes on the previous payments as a line to complete.
+    Remarks are kept, unless last bill was marked "Clear remarks for next bill"."""
     inputs = {k: dict(v) for k, v in (prev_inputs or {}).items()}
+    if ((prev_inputs or {}).get("_opts") or {}).get("clear_remarks"):
+        for s in model["sheets"]:
+            rc = remarks_cols(s, model.get("styles"))
+            for c, (r0, r1) in rc.items():
+                for r in range(r0, r1 + 1):
+                    k = f"{r},{c}"
+                    if k in inputs.get(s["name"], {}) or (s["cells"].get(k) or {}).get("v") not in (None, ""):
+                        inputs.setdefault(s["name"], {})[k] = ""
+        inputs["_opts"] = {kk: vv for kk, vv in (inputs.get("_opts") or {}).items() if kk != "clear_remarks"}
+        if not inputs["_opts"]:
+            inputs.pop("_opts")
     mp = model["map"]
     for t in mp["progress"]:
         sh = t["sheet"]
@@ -3037,6 +3049,49 @@ def _xml_restyle_rows(xml, pairs):
             row = nh + row[len(head):]
         xml = xml[:tm.start()] + row + xml[tm.end():]
     return xml
+
+
+def remarks_cols(s, styles=None):
+    """A sheet's Remarks column(s): {column: (first row, last row)} - every row of the table under the "Remarks"
+    heading (items, section headings, blank rows), down to the last ruled cell of that column (the signature block
+    and the empty page below are not part of it)."""
+    out = {}
+    for k, cell in s["cells"].items():
+        v = cell.get("v")
+        if not isinstance(v, str) or not re.fullmatch(r"\s*remarks?\s*:?\s*", v, re.I):
+            continue
+        r, c = (int(x) for x in k.split(","))
+        def ruled(rr):
+            x = s["cells"].get(f"{rr},{c}")
+            if not x:
+                return False
+            if styles is None:
+                return bool(x.get("s"))
+            st = styles[x.get("s", 0)] if x.get("s", 0) < len(styles) else {}
+            return any(st.get("bd") or [0, 0, 0, 0])
+        def words(rr):
+            return " ".join(str(s["cells"].get(f"{rr},{cc}", {}).get("v") or "") for cc in range(1, s.get("maxc", c) + 1))
+        last, rr, gap = r, r + 1, 0
+        while rr <= s.get("maxr", r) and gap < 2:
+            w = words(rr)
+            if re.search(r"checked\s+by|prepared\s+by|approved\s+by|signature", w, re.I):
+                break                                     # the signature block is not part of the table
+            if ruled(rr):
+                last, gap = rr, 0
+            else:
+                gap += 1
+            if re.search(r"carried\s+to|grand\s+total|total\s+previous|total\s+amount\s+due", w, re.I):
+                break                                     # the table's own total ends it
+            rr += 1
+        if last > r:
+            out[c] = (r + 1, last)
+    return out
+
+
+def is_remark(s, k, cols=None):
+    cols = remarks_cols(s) if cols is None else cols
+    r, c = (int(x) for x in k.split(",")[:2])
+    return c in cols and cols[c][0] <= r <= cols[c][1]
 
 
 FMT_KEYS = ("sz", "b", "i", "u")

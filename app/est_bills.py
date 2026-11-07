@@ -1018,7 +1018,30 @@ def bill_sheet(bid: int, i: int, db: Session = Depends(get_db), user: models.Use
                 mark[f"{ln['r']},{t['tot_c']}"] = "tot"
     sm = signed_model(model, _signs(b), _sig_store(db))
     html, w, h = BR.sheet_html(sm, sm["sheets"][i], values, inputs, edit=b.status not in ("Paid",), mark=mark)
-    return {"html": html, "width": w, "height": h, "name": s["name"], "css": BR.SHEET_CSS}
+    return {"html": html, "width": w, "height": h, "name": s["name"], "css": BR.SHEET_CSS,
+            "remarks": bool(BE.remarks_cols(s, model["styles"])), "clear_remarks": bool((inputs.get("_opts") or {}).get("clear_remarks"))}
+
+
+@router.post("/store/est/ipa/bill/{bid}/opts")
+def bill_opts(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """Choices for the next bill: {"clear_remarks": true} = the next bill starts with the Remarks empty (kept by default)."""
+    b = _get(db, EstBill, bid)
+    if b.status == "Paid" and user.role != "admin":
+        raise HTTPException(400, "A paid bill cannot be changed.")
+    inputs = _inputs(b)
+    o = dict(inputs.get("_opts") or {})
+    if "clear_remarks" in payload:
+        if payload.get("clear_remarks"):
+            o["clear_remarks"] = True
+        else:
+            o.pop("clear_remarks", None)
+    if o:
+        inputs["_opts"] = o
+    else:
+        inputs.pop("_opts", None)
+    b.inputs = json.dumps(inputs); b.updated_by = user.id
+    db.commit()
+    return {"clear_remarks": bool(o.get("clear_remarks"))}
 
 
 # ---------------------------------------------------------------------------------------------------- the format

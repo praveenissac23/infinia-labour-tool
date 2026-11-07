@@ -10,7 +10,7 @@ import math
 import re
 from html import escape
 
-from est_bills_engine import Err, general, EPOCH
+from est_bills_engine import Err, general, EPOCH, remarks_cols
 
 EMU_PX = 9525.0
 
@@ -393,6 +393,7 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
     cols, rows, cw, rh, merges, covered = layout(s, area, shown_rows(model, s["name"], inputs), hidden_extra(inputs, s["name"]), grow)
     cont = {}
     decmax = dec_columns(s, styles, vals, inp)
+    rmc = remarks_cols(s, styles) if edit else {}                 # Remarks: every cell of the column can be typed in
     if rows_only is not None:
         rows = [r for r in rows_only if r in rh]
         # a merged block that started on the page before carries on here as a block of its own - its borders and
@@ -465,11 +466,12 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
             attrs = ""
             # typed in: a cell with something in it, or an empty ruled cell of a table (an empty row to fill); never the
             # blank page around the tables
-            if edit and (v not in (None, "") or (cell and any((st.get("bd") or [0, 0, 0, 0])))) and editable(model, s, k, inputs):
+            rmk = edit and c in rmc and rmc[c][0] <= r <= rmc[c][1] and "#" not in k and "f" not in cell
+            if edit and (rmk or v not in (None, "") or (cell and any((st.get("bd") or [0, 0, 0, 0])))) and editable(model, s, k, inputs):
                 raw = inp.get(k, cell.get("v") if "v" in cell else (("=" + cell["f"]) if "f" in cell else ""))
                 if isinstance(raw, float) and raw.is_integer():
                     raw = int(raw)
-                cls.append("ed" + (" ch" if k in inp else "") + (" n" if num else ""))
+                cls.append("ed" + (" ch" if k in inp else "") + (" n" if num else "") + (" rm" if rmk else ""))
                 attrs = f' data-k="{k}" data-raw="{escape(str(raw if raw is not None else ""), quote=True)}" data-nf="{escape(st.get("nf", "General"), quote=True)}"'
             if mark and k in mark:
                 cls.append(mark[k])

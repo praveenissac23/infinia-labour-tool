@@ -1040,32 +1040,64 @@ async function drawSheet(v, i, keep) {
   // ---- the formatting toolbar: pick cells (click, Shift+click a range, a row number = the whole row), then size / B / I / U
   fmtTools(v, host, b, sh, () => drawSheet(v, i, true));
   // ---- typing in a cell (the sheet may be zoomed: the box is placed in the sheet's own size)
-  $$("td.ed", host).forEach(td => td.addEventListener("click", e => {
-    if (e.shiftKey || $(".ipa-cell", host)) return;
-    const z = fr.zoom();
-    const nf = td.dataset.nf, raw = td.dataset.raw, pc = isPctNf(nf) && raw !== "" && !raw.startsWith("=") && !isNaN(Number(raw));
-    const inp = document.createElement("input");
-    inp.className = "ipa-cell";
-    inp.value = pc ? pct(Number(raw)) : raw;
+  // Remarks: click picks the cell; double-click or start typing to write; Enter saves, Esc cancels, Alt+Enter = a new
+  // line in the cell, Tab saves and goes to the next Remarks cell down. Plain text - never a figure, never a total.
+  const openEd = (td, first) => {
+    if ($(".ipa-cell", host)) return;
+    const z = fr.zoom(), rm = td.classList.contains("rm");
+    const nf = td.dataset.nf, raw = td.dataset.raw, pc = !rm && isPctNf(nf) && raw !== "" && !raw.startsWith("=") && !isNaN(Number(raw));
+    const inp = document.createElement(rm ? "textarea" : "input");
+    inp.className = "ipa-cell" + (rm ? " rm" : "");
+    inp.value = first !== undefined ? first : (pc ? pct(Number(raw)) : raw);
     const hr = host.getBoundingClientRect(), r = td.getBoundingClientRect();
-    Object.assign(inp.style, { left: (r.left - hr.left) / z + "px", top: (r.top - hr.top) / z + "px", width: Math.max(r.width / z, 90) + "px", height: Math.max(r.height / z, 24) + "px", fontSize: getComputedStyle(td).fontSize });
-    host.appendChild(inp); inp.focus(); inp.select();
+    Object.assign(inp.style, { left: (r.left - hr.left) / z + "px", top: (r.top - hr.top) / z + "px", width: Math.max(r.width / z, rm ? 160 : 90) + "px",
+      height: Math.max(r.height / z, rm ? 44 : 24) + "px", fontSize: getComputedStyle(td).fontSize });
+    host.appendChild(inp); inp.focus();
+    if (first === undefined) inp.select(); else inp.setSelectionRange(inp.value.length, inp.value.length);
     let done = false;
-    const commit = async keep => {
+    const commit = async (keep, next) => {
       if (done) return; done = true;
-      const s = inp.value.trim();
-      if (!keep || s === (pc ? pct(Number(raw)) : raw)) { inp.remove(); return; }
-      let val = s === "" ? null : s;
-      if (val !== null && !s.startsWith("=")) {
+      const s = rm ? inp.value.replace(/\s+$/, "") : inp.value.trim();
+      if (!keep || s === (pc ? pct(Number(raw)) : raw)) { inp.remove(); if (keep && next) goNext(td); return; }
+      let val = s === "" ? (rm ? "" : null) : s;
+      if (!rm && val !== null && !s.startsWith("=")) {
         // a figure typed or pasted with commas, AED, or in brackets for a minus is still a figure: 145,841.90 -> 145841.9
         let t = s.replace(/^AED\s*/i, "").replace(/\s+/g, ""); const neg = /^\(.*\)$/.test(t); if (neg) t = t.slice(1, -1);
         const n = Number(t.replace(/,/g, "").replace(/%$/, ""));
         if (!isNaN(n) && /^-?[\d,]*\.?\d+%?$/.test(t)) { const x = neg ? -n : n; val = isPctNf(nf) || t.endsWith("%") ? Math.round(x * 1e4) / 1e6 : x; }
       }
+      if (rm && /^=/.test(val)) val = "\u200B" + val;     // a remark is words: "= done" is not worked out as a formula
       inp.disabled = true;
-      if (await save({ set: { [sh]: { [td.dataset.k]: val } } })) { toast("Saved"); redraw(); } else inp.remove();
+      if (next) IPA.rmNext = nextRm(td);
+      if (await save({ set: { [sh]: { [td.dataset.k]: val } } })) { toast("Saved"); redraw(); } else { inp.remove(); IPA.rmNext = null; }
     };
-    inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); commit(true); } else if (e.key === "Escape") { e.stopPropagation(); commit(false); } };
+    inp.onkeydown = e => {
+      if (e.key === "Enter" && rm && e.altKey) { e.preventDefault(); const a = inp.selectionStart; inp.value = inp.value.slice(0, a) + "\n" + inp.value.slice(inp.selectionEnd); inp.setSelectionRange(a + 1, a + 1); }
+      else if (e.key === "Enter") { e.preventDefault(); commit(true); }
+      else if (e.key === "Tab" && rm) { e.preventDefault(); commit(true, true); }
+      else if (e.key === "Escape") { e.stopPropagation(); commit(false); } };
     inp.onblur = () => commit(true);
-  }));
+  };
+  const rms = () => $$("td.ed.rm", host);
+  const nextRm = td => { const all = rms(), c = td.dataset.c; const k = all.indexOf(td);
+    const n = all.slice(k + 1).find(x => x.dataset.c === c) || all[k + 1]; return n ? n.dataset.k : null; };
+  const goNext = td => { const k = nextRm(td); const n = k && $(`td.ed[data-k="${k}"]`, host); if (n) { n.click(); openEd(n); } };
+  $$("td.ed", host).forEach(td => {
+    td.addEventListener("click", e => { if (e.shiftKey || td.classList.contains("rm")) return; openEd(td); });
+    if (td.classList.contains("rm")) td.addEventListener("dblclick", e => { e.preventDefault(); openEd(td); });
+  });
+  // typing on a picked Remarks cell starts writing in it, as in Excel
+  host.tabIndex = -1;
+  if (!SV.rmkeys) { SV.rmkeys = true;
+    document.addEventListener("keydown", e => {
+      if (e.ctrlKey || e.metaKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || "")) return;
+      const sel = document.querySelectorAll(".sv-in td.xsel"); if (sel.length !== 1 || !sel[0].classList.contains("rm")) return;
+      if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); sel[0].dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); return; }
+      if (e.key.length === 1) { e.preventDefault(); SV.rmOpen && SV.rmOpen(sel[0], e.key); } }); }
+  SV.rmOpen = openEd;
+  if (IPA.rmNext) { const k = IPA.rmNext; IPA.rmNext = null; const n = $(`td.ed[data-k="${k}"]`, host); if (n) { n.scrollIntoView({ block: "nearest" }); n.click(); openEd(n); } }
+  // ---- Remarks: kept for the next bill unless asked
+  if (d.remarks) { const rb = $("#sv-rows", v);
+    if (rb) rb.insertAdjacentHTML("afterend", `<label class="sv-clr"><input type="checkbox" id="sv-clr" ${d.clear_remarks ? "checked" : ""}> Clear remarks for next bill <span class="muted small">- off: the next bill starts with these remarks</span></label>`);
+    const cb = $("#sv-clr", v); if (cb) cb.onchange = async () => { try { const x = await POST(`/store/est/ipa/bill/${b.id}/opts`, { clear_remarks: cb.checked }); toast(x.clear_remarks ? "The next bill starts with empty remarks" : "The next bill keeps these remarks"); } catch (e) { fail(e); cb.checked = !cb.checked; } }; }
 }

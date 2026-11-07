@@ -845,3 +845,9 @@ table.t.boq tr.ghd td[data-boq] { font-weight: 600; }
 .sv-cn { position: absolute; top: 0; height: 16px; display: flex; align-items: center; justify-content: center; font: 600 9px/1 system-ui, sans-serif; color: #8A8178; background: #F4F1EC; border-right: 1px solid #E6E0D8; cursor: pointer; user-select: none; overflow: hidden; }
 .sv-cn:hover { background: #E9F0FB; color: #2F6FD0; }
 .sv-cn.on { background: #2F6FD0; color: #fff; }
+/* Remarks: every cell can be typed in */
+.sv-box .xt td.ed.rm, .ipa-sheet .xt td.ed.rm { box-shadow: inset 0 0 0 1px #9DB8E0; background: #F3F8FF !important; white-space: pre-line; cursor: cell; }
+.sv-box .xt td.ed.rm.ch, .ipa-sheet .xt td.ed.rm.ch { background: #FFF6D6 !important; box-shadow: inset 0 0 0 1px #E5C66A; }
+.sv-box .xt td.ed.rm.xsel, .ipa-sheet .xt td.ed.rm.xsel { box-shadow: inset 0 0 0 2px #2F6FD0 !important; }
+textarea.ipa-cell.rm { resize: none; line-height: 1.3; padding: 3px 5px; font-family: inherit; }
+.sv-clr { display: flex; align-items: center; gap: 8px; margin: 6px 2px 8px; font-size: 13px; cursor: pointer; }
