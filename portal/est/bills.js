@@ -868,6 +868,65 @@ async function setStatus(s) {
   try { await POST(`/store/est/ipa/bill/${IPA.bill.id}/status`, { status: s }); IPA.bill.status = s; toast("Status: " + s); drawBill(); } catch (x) { fail(x); }
 }
 
+// ---- Sheets step formatting: what is picked stays picked across a redraw of the same sheet
+const FSZ = [8, 9, 10, 11, 12, 14, 16, 18];
+function fmtTools(v, host, b, sh, redraw) {
+  const bar = $("#sv-fmt", v); if (!bar) return;
+  if (!IPA.fsel || IPA.fsel.sh !== sh) IPA.fsel = { sh, a: null, z: null, rows: null };
+  const S = IPA.fsel;
+  // row numbers down the left, as in Excel: a click picks the whole row
+  host.style.position = "relative"; host.style.paddingLeft = "30px";
+  const gut = document.createElement("div"); gut.className = "sv-gut"; host.appendChild(gut);
+  const place = () => { gut.innerHTML = ""; const hr = host.getBoundingClientRect(), z = SV.z || 1;
+    $$("tr[data-r]", host).forEach(tr => { const r = tr.getBoundingClientRect(); const d = document.createElement("div"); d.className = "sv-rn"; d.dataset.r = tr.dataset.r; d.textContent = tr.dataset.r;
+      Object.assign(d.style, { top: (r.top - hr.top) / z + "px", height: Math.max(r.height / z, 10) + "px" }); gut.appendChild(d); }); };
+  place();
+  const cellsOf = () => { const out = []; if (S.rows) return out; if (!S.a) return out;
+    const [r1, r2] = [Math.min(S.a[0], (S.z || S.a)[0]), Math.max(S.a[0], (S.z || S.a)[0])], [c1, c2] = [Math.min(S.a[1], (S.z || S.a)[1]), Math.max(S.a[1], (S.z || S.a)[1])];
+    for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) out.push([r, c]); return out; };
+  const tdsOf = () => { if (S.rows) return S.rows.flatMap(r => $$(`tr[data-r="${r}"] td[data-c]`, host));
+    const set = new Set(cellsOf().map(x => x.join(","))); return $$("tr[data-r] td[data-c]", host).filter(td => set.has(td.parentElement.dataset.r + "," + td.dataset.c)); };
+  const paint = () => { $$(".xsel", host).forEach(x => x.classList.remove("xsel")); $$(".sv-rn.on", gut).forEach(x => x.classList.remove("on"));
+    const tds = tdsOf(); tds.forEach(td => td.classList.add("xsel")); (S.rows || []).forEach(r => { const d = $(`.sv-rn[data-r="${r}"]`, gut); if (d) d.classList.add("on"); });
+    const on = tds.length > 0; $$("[data-fx]", bar).forEach(x => x.disabled = !on);
+    const f = tds.find(td => td.textContent.trim()) || tds[0];
+    const st = f ? (f.getAttribute("style") || "") : "", szm = st.match(/font-size:\s*([\d.]+)pt/);
+    const sz = szm ? Math.round(+szm[1] * 2) / 2 : (f ? Math.round(parseFloat(getComputedStyle(f).fontSize) * 0.75 * 2) / 2 : "");
+    const sel = $('[data-fx="sz"]', bar);
+    if (sz && !FSZ.includes(sz) && !$(`option[value="${sz}"]`, sel)) sel.insertAdjacentHTML("beforeend", `<option value="${sz}">${sz}</option>`);
+    sel.value = on && sz ? String(sz) : "";
+    const has = (re) => on && tds.filter(td => td.textContent.trim()).length > 0 && tds.filter(td => td.textContent.trim()).every(td => re.test(td.getAttribute("style") || ""));
+    $('[data-fx="b"]', bar).classList.toggle("on", has(/font-weight:\s*(700|bold)/));
+    $('[data-fx="i"]', bar).classList.toggle("on", has(/font-style:\s*italic/));
+    $('[data-fx="u"]', bar).classList.toggle("on", has(/text-decoration:[^;]*underline/));
+    S.cur = { sz, tds }; };
+  host.addEventListener("click", e => { const td = e.target.closest("td[data-c]"); if (!td || !host.contains(td)) return;
+    const rc = [+td.parentElement.dataset.r, +td.dataset.c];
+    if (e.shiftKey && S.a && !S.rows) { S.z = rc; e.preventDefault(); window.getSelection && window.getSelection().removeAllRanges(); }
+    else { S.a = rc; S.z = null; S.rows = null; }
+    paint(); }, true);
+  gut.addEventListener("click", e => { const d = e.target.closest(".sv-rn"); if (!d) return; e.stopPropagation(); const r = +d.dataset.r;
+    if (e.shiftKey && S.rows && S.rows.length) { const a = S.rows[0], lo = Math.min(a, r), hi = Math.max(a, r);
+      S.rows = $$("tr[data-r]", host).map(t => +t.dataset.r).filter(x => x >= lo && x <= hi); if (!S.rows.includes(a)) S.rows.unshift(a); }
+    else S.rows = [r];
+    S.a = null; S.z = null; paint();
+    const tr = $(`tr[data-r="${r}"]`, host); if (tr) tr.click(); });
+  const send = async body => { const p = Object.assign({ sheet: sh }, S.rows ? { rows: S.rows } : { cells: cellsOf() }, body);
+    if (!(p.rows || p.cells).length) return toast("Pick cells first");
+    try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/fmt`, p); redraw(); } catch (e) { fail(e); } };
+  bar.onclick = e => { const x = e.target.closest("button[data-fx]"); if (!x || x.disabled) return; const a = x.dataset.fx, cur = (S.cur || {}).sz || 11;
+    if (a === "up" || a === "dn") { const nxt = a === "up" ? (FSZ.find(z => z > cur) || Math.min(36, cur + 2)) : ([...FSZ].reverse().find(z => z < cur) || Math.max(6, cur - 1)); send({ set: { sz: nxt } }); }
+    else if (a === "b" || a === "i" || a === "u") send({ set: { [a]: !x.classList.contains("on") } });
+    else if (a === "like") send({ like_above: true });
+    else if (a === "reset") send({ reset: true }); };
+  $('[data-fx="sz"]', bar).onchange = e => { if (e.target.value) send({ set: { sz: +e.target.value } }); };
+  if (!SV.fkeys) { SV.fkeys = true;
+    document.addEventListener("keydown", e => { if (!(e.ctrlKey || e.metaKey) || e.altKey) return; const k = e.key.toLowerCase(); if (!["b", "i", "u"].includes(k)) return;
+      const fb = document.querySelector("#sv-fmt"); if (!fb || /INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || "")) return;
+      const btn = fb.querySelector(`[data-fx="${k}"]`); if (!btn || btn.disabled) return; e.preventDefault(); btn.click(); }); }
+  paint();
+}
+
 // one sheet as the consultant laid it out; typed figures open on a click
 async function drawSheet(v, i, keep) {
   const was = keep && $(".sv-box", v) ? [$(".sv-box", v).scrollLeft, $(".sv-box", v).scrollTop] : null;
@@ -877,7 +936,14 @@ async function drawSheet(v, i, keep) {
   d.i = i;
   const b = IPA.bill, cur = b.sheets.find(x => x.i === i) || {};
   const locked = b.status === "Paid" && !ST.meta.me.admin;
-  const tools = locked ? "" : `<span class="sv-sep"></span><button class="btn btn-ghost btn-sm" data-pg="add" title="A copy of one of the sheets, added after the last one - e.g. a second variations or authority fees page">+ Add page</button>${cur.added ? `<button class="btn btn-plain btn-sm" data-pg="del" title="Take this added page off the bill">Delete page</button>` : ""}`;
+  const FS = [8, 9, 10, 11, 12, 14, 16, 18];
+  const fmtBar = locked ? "" : `<span class="sv-sep"></span><span class="sv-fmt" id="sv-fmt" title="Pick cells first: click a cell, Shift+click for a range, or click a row number">
+      <select data-fx="sz" title="Font size" disabled><option value="">Size</option>${FS.map(x => `<option value="${x}">${x}</option>`).join("")}</select>
+      <button class="btn btn-plain btn-sm" data-fx="dn" title="Smaller" disabled>A&minus;</button><button class="btn btn-plain btn-sm" data-fx="up" title="Bigger" disabled>A+</button>
+      <button class="btn btn-plain btn-sm fx-b" data-fx="b" title="Bold (Ctrl+B)" disabled><b>B</b></button><button class="btn btn-plain btn-sm fx-i" data-fx="i" title="Italic (Ctrl+I)" disabled><i>I</i></button><button class="btn btn-plain btn-sm fx-u" data-fx="u" title="Underline (Ctrl+U)" disabled><u>U</u></button>
+      <button class="btn btn-plain btn-sm" data-fx="like" title="Font, size, bold, alignment and borders of the row above" disabled>Match row above</button>
+      <button class="btn btn-plain btn-sm" data-fx="reset" title="Back to the consultant's look" disabled>Reset</button></span>`;
+  const tools = locked ? "" : fmtBar + `<span class="sv-sep"></span><button class="btn btn-ghost btn-sm" data-pg="add" title="A copy of one of the sheets, added after the last one - e.g. a second variations or authority fees page">+ Add page</button>${cur.added ? `<button class="btn btn-plain btn-sm" data-pg="del" title="Take this added page off the bill">Delete page</button>` : ""}`;
   const below = locked ? "" : `<div class="sv-rows" id="sv-rows"><span class="muted">Click a row of the sheet to add a line or a section next to it, or to hide it.</span>${cur.hidden ? ` <button class="btn btn-plain btn-sm" data-rw="show">Show ${cur.hidden} hidden line${cur.hidden === 1 ? "" : "s"}</button>` : ""}</div>`;
   const fr = sheetFrame(v, d, { sheets: b.sheets, go: j => { IPA.sheet = j; drawSheet(v, j); }, tools, below });
   if (was) { fr.box.scrollLeft = was[0]; fr.box.scrollTop = was[1]; }
@@ -908,16 +974,22 @@ async function drawSheet(v, i, keep) {
     // a row of a table of lines: the same form as on Work done - the new line works like the ones around it
     const tb = b.progress.find(x => x.sheet === sh), lastR = tb ? Math.max(...tb.lines.map(l => l.r), ...(tb.heads || []).map(h => h.r)) : 0;
     const inTable = tb && tb.editable && canEditBill() && r > (tb.lines.length ? Math.min(...tb.lines.map(l => l.r)) - 4 : 1e9) && r <= lastR + 1;
-    $('[data-rw="above"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "line", after: r - 1 }) : add(r, 1, [r]);
-    $('[data-rw="below"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "line", after: r }) : add(r + 1, 1, [r]);
+    // a new line looks like the row above it (Match row above) - never like a bold heading: then the first plain row under it
+    const isHead = t => t && [...t.cells].some(c => /font-weight:\s*(700|bold)/.test(c.getAttribute("style") || "") && c.textContent.trim());
+    const likeAbove = above => { if (!above) return r; if (!isHead(above)) return +above.dataset.r;
+      let n = above.nextElementSibling, k = 0; while (n && k++ < 8) { if (!isHead(n) && [...n.cells].some(c => c.textContent.trim())) return +n.dataset.r; n = n.nextElementSibling; } return +above.dataset.r; };
+    $('[data-rw="above"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "line", after: r - 1 }) : add(r, 1, [likeAbove(tr.previousElementSibling)]);
+    $('[data-rw="below"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "line", after: r }) : add(r + 1, 1, [likeAbove(tr)]);
     $('[data-rw="section"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "head", after: r }) : add(r + 1, 2, [heading(), r]);
     $('[data-rw="hide"]', rowBar).onclick = async () => { try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/hide`, { sheet: sh, rows: [r] }); redraw(); toast("Line hidden"); } catch (e) { fail(e); } };
     $('[data-rw="clear"]', rowBar).onclick = () => { tr.classList.remove("sel"); rowBar.innerHTML = '<span class="muted">Click a row of the sheet to add a line or a section next to it, or to hide it.</span>'; };
   };
-  $$("tr[data-r]", host).forEach(tr => tr.addEventListener("click", () => pickRow(tr)));
+  $$("tr[data-r]", host).forEach(tr => tr.addEventListener("click", e => { if (!e.shiftKey) pickRow(tr); }));
+  // ---- the formatting toolbar: pick cells (click, Shift+click a range, a row number = the whole row), then size / B / I / U
+  fmtTools(v, host, b, sh, () => drawSheet(v, i, true));
   // ---- typing in a cell (the sheet may be zoomed: the box is placed in the sheet's own size)
-  $$("td.ed", host).forEach(td => td.addEventListener("click", () => {
-    if ($(".ipa-cell", host)) return;
+  $$("td.ed", host).forEach(td => td.addEventListener("click", e => {
+    if (e.shiftKey || $(".ipa-cell", host)) return;
     const z = fr.zoom();
     const nf = td.dataset.nf, raw = td.dataset.raw, pc = isPctNf(nf) && raw !== "" && !raw.startsWith("=") && !isNaN(Number(raw));
     const inp = document.createElement("input");

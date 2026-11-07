@@ -826,3 +826,16 @@ table.t.boq tr.ghd td[data-boq] { font-weight: 600; }
   .ipa-lines .brk-t tr { display: table-row; padding: 0; border: 0; }
   .ipa-lines .brk-t td { display: table-cell; }
 }
+/* Bills > Sheets: formatting toolbar, picked cells, row numbers */
+.sv-fmt { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.sv-fmt select { height: 30px; padding: 0 6px; border: 1px solid var(--line, #E2DDD6); border-radius: 8px; font: inherit; font-size: 12.5px; background: #fff; }
+.sv-fmt .btn { min-width: 30px; }
+.sv-fmt .btn.on { background: #FDF4F3; border-color: #D9B8B3; color: #8C2F26; }
+.sv-fmt .btn:disabled, .sv-fmt select:disabled { opacity: .45; cursor: default; }
+.ipa-sheet-in td.xsel { box-shadow: inset 0 0 0 2px #2F6FD0 !important; background-image: linear-gradient(rgba(47,111,208,.10), rgba(47,111,208,.10)); }
+.sv-gut { position: absolute; left: 0; top: 0; width: 26px; height: 100%; }
+.sv-rn { position: absolute; left: 0; width: 26px; display: flex; align-items: center; justify-content: center; font: 600 9px/1 system-ui, sans-serif; color: #8A8178; background: #F4F1EC; border-bottom: 1px solid #E6E0D8; cursor: pointer; overflow: hidden; user-select: none; }
+.sv-rn:hover { background: #E9F0FB; color: #2F6FD0; }
+.sv-rn.on { background: #2F6FD0; color: #fff; }
+@media (max-width: 700px) { .sv-fmt [data-fx="like"], .sv-fmt [data-fx="reset"] { font-size: 11px; } }
+.sv-fmt select[data-fx="sz"] { width: 74px; flex: none; min-width: 0; }

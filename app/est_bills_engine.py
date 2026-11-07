@@ -2541,7 +2541,168 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
             zout.writestr(media, png)
     zout.close()
     # the content types and relationships must not point at the removed calcChain
-    return _drop_calcchain_refs(out.getvalue())
+    res = _drop_calcchain_refs(out.getvalue())
+    if any(isinstance(v, dict) and (v.get("_fmt") or v.get("_rowh")) for v in (inputs or {}).values()):
+        res = _xlsx_apply_fmt(res, model, inputs)
+    return res
+
+
+def _xlsx_apply_fmt(data, model, inputs):
+    """The office's formatting from the Sheets step written into the Excel file: a font made for each new
+    size / bold / italic / underline (styles.xml), the cells pointed at it, row heights set."""
+    zin = zipfile.ZipFile(io.BytesIO(data))
+    paths = _sheet_paths(zin)
+    sty = zin.read("xl/styles.xml").decode("utf-8")
+    fonts_m = re.search(r"<fonts\b[^>]*>(.*?)</fonts>", sty, re.S)
+    xfs_m = re.search(r"<cellXfs\b[^>]*>(.*?)</cellXfs>", sty, re.S)
+    if not fonts_m or not xfs_m:
+        return data
+    fonts = re.findall(r"<font\b[^>]*/>|<font\b[^>]*>.*?</font>", fonts_m.group(1), re.S)
+    xfs = re.findall(r"<xf\b[^>]*/>|<xf\b[^>]*>.*?</xf>", xfs_m.group(1), re.S)
+    n_fonts0, n_xfs0 = len(fonts), len(xfs)
+    made = {}
+    CREF = re.compile(r'<c\b[^>]*?\br="([A-Z]+)(\d+)"[^>]*?(?:/>|>.*?</c>)', re.S)
+    def col_n(a):
+        n = 0
+        for ch in a:
+            n = n * 26 + ord(ch) - 64
+        return n
+    def xf_with(xi, f):
+        xi = xi if 0 <= xi < len(xfs) else 0
+        if not any(a in f for a in FMT_KEYS):
+            return xi
+        k = (xi, tuple((a, f.get(a)) for a in FMT_KEYS))
+        if k in made:
+            return made[k]
+        xf = xfs[xi]
+        fm = re.search(r'\bfontId="(\d+)"', xf)
+        fid = int(fm.group(1)) if fm else 0
+        font = fonts[fid] if fid < len(fonts) else "<font/>"
+        body = re.sub(r"^<font\b[^>]*?/?>|</font>$", "", font, flags=re.S) if not font.endswith("/>") else ""
+        def tag(name, on, body):
+            body = re.sub(r"<%s\b[^>]*/>" % name, "", body)
+            return (f"<{name}/>" + body) if on else body
+        if "b" in f:
+            body = tag("b", f["b"], body)
+        if "i" in f:
+            body = tag("i", f["i"], body)
+        if "u" in f:
+            body = re.sub(r"<u\b[^>]*/>", "", body)
+            if f["u"]:
+                body = "<u/>" + body
+        if "sz" in f:
+            body = re.sub(r'<sz\b[^>]*/>', "", body)
+            body = re.sub(r"(<b/>|<i/>|<u/>|<strike/>)*", lambda m: m.group(0) + f'<sz val="{float(f["sz"]):g}"/>', body, count=1)
+        # Excel wants b, i, strike, ..., u, ..., sz, color, name in that order: put the flags first
+        flags = "".join(t for t in ("<b/>", "<i/>") if t in body)
+        rest = body.replace("<b/>", "").replace("<i/>", "")
+        fonts.append(f"<font>{flags}{rest}</font>")
+        nf = len(fonts) - 1
+        nxf = re.sub(r'\bfontId="\d+"', f'fontId="{nf}"', xf) if fm else xf.replace("<xf ", f'<xf fontId="{nf}" ', 1)
+        nxf = nxf if 'applyFont="' in nxf else nxf.replace("<xf ", '<xf applyFont="1" ', 1)
+        xfs.append(nxf)
+        made[k] = len(xfs) - 1
+        return made[k]
+    mixed = {}
+    def xf_mix(src, own):
+        """The above cell's look (font, alignment, border) with this cell's own number format and fill."""
+        if src == own:
+            return own
+        k = ("mix", src, own)
+        if k in mixed:
+            return mixed[k]
+        a = xfs[src if src < len(xfs) else 0]; o = xfs[own if own < len(xfs) else 0]
+        x = a
+        for attr in ("numFmtId", "fillId", "applyNumberFormat", "applyFill"):
+            ov = re.search(r'\b%s="([^"]*)"' % attr, o)
+            x = re.sub(r'\s%s="[^"]*"' % attr, "", x)
+            if ov:
+                x = x.replace("<xf ", f'<xf {attr}="{ov.group(1)}" ', 1)
+        xfs.append(x); mixed[k] = len(xfs) - 1
+        made[k] = mixed[k]
+        return mixed[k]
+    new_sheets = {}
+    for s in model["sheets"]:
+        inp = (inputs or {}).get(s["name"]) or {}
+        fm_, rh_ = inp.get("_fmt") or {}, inp.get("_rowh") or {}
+        p = paths.get(s["name"])
+        if not p or not (fm_ or rh_):
+            continue
+        xml = zin.read(p).decode("utf-8")
+        cur = {}
+        for m in CREF.finditer(xml):
+            sm = re.search(r'\bs="(\d+)"', re.match(r"<c\b[^>]*>", m.group(0)).group(0))
+            cur[(int(m.group(2)), col_n(m.group(1)))] = int(sm.group(1)) if sm else 0
+        # the format's style -> its place in the file, read off the cells the office did not format
+        sid_xf = {}
+        for k, c in s["cells"].items():
+            r, cc = (int(x) for x in k.split(","))
+            if k not in fm_ and (r, cc) in cur:
+                sid_xf.setdefault(c.get("s", 0), cur[(r, cc)])
+        want = {}
+        for k, f in fm_.items():
+            if not isinstance(f, dict):
+                continue
+            r, c = (int(x) for x in k.split(","))
+            own = cur.get((r, c), 0)
+            base = own
+            if isinstance(f.get("s"), int) and f["s"] in sid_xf:
+                base = xf_mix(sid_xf[f["s"]], own)
+            want[(r, c)] = xf_with(base, f)
+        def fix_row(m):
+            row = m.group(0)
+            rn = int(re.search(r'\br="(\d+)"', row).group(1))
+            if str(rn) in rh_:
+                head = re.match(r"<row\b[^>]*?/?>", row).group(0)
+                h = f'{float(rh_[str(rn)]):g}'
+                nh = re.sub(r'\bht="[\d.]+"', f'ht="{h}"', head) if 'ht="' in head else head.replace("<row ", f'<row ht="{h}" customHeight="1" ', 1)
+                row = nh + row[len(head):]
+            mine = {c: x for (r, c), x in want.items() if r == rn}
+            if not mine:
+                return row
+            seen = set()
+            def cfix(cm):
+                c = col_n(cm.group(1)); seen.add(c)
+                if c not in mine:
+                    return cm.group(0)
+                a = cm.group(0)
+                op = re.match(r"<c\b[^>]*?(?=/?>)", a).group(0)
+                op2 = re.sub(r'\bs="\d+"', f's="{mine[c]}"', op) if re.search(r'\bs="\d+"', op) else op + f' s="{mine[c]}"'
+                return op2 + a[len(op):]
+            row = CREF.sub(cfix, row)
+            missing = sorted(c for c in mine if c not in seen)
+            if missing:                                # empty cells the format had no <c> for: put them in, in order
+                from openpyxl.utils import get_column_letter as gl
+                if row.endswith("/>"):
+                    row = row[:-2] + "></row>"
+                for c in missing:
+                    cell = f'<c r="{gl(c)}{rn}" s="{mine[c]}"/>'
+                    after = [cm for cm in CREF.finditer(row) if col_n(cm.group(1)) > c]
+                    if after:
+                        row = row[:after[0].start()] + cell + row[after[0].start():]
+                    else:
+                        row = row[:row.rindex("</row>")] + cell + "</row>"
+            return row
+        xml = re.sub(r"<row\b[^>]*?/>|<row\b[^>]*>.*?</row>", fix_row, xml, flags=re.S)
+        new_sheets[p] = xml
+    if not made and not new_sheets:
+        return data
+    sty2 = sty[:fonts_m.start(1)] + "".join(fonts) + sty[fonts_m.end(1):]
+    sty2 = re.sub(r'(<fonts\b[^>]*?\bcount=")\d+"', lambda m: f'{m.group(1)}{len(fonts)}"', sty2, count=1)
+    xm = re.search(r"<cellXfs\b[^>]*>(.*?)</cellXfs>", sty2, re.S)
+    sty2 = sty2[:xm.start(1)] + "".join(xfs) + sty2[xm.end(1):]
+    sty2 = re.sub(r'(<cellXfs\b[^>]*?\bcount=")\d+"', lambda m: f'{m.group(1)}{len(xfs)}"', sty2, count=1)
+    out = io.BytesIO()
+    zout = zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED)
+    for item in zin.infolist():
+        raw = zin.read(item.filename)
+        if item.filename == "xl/styles.xml":
+            raw = sty2.encode("utf-8")
+        elif item.filename in new_sheets:
+            raw = new_sheets[item.filename].encode("utf-8")
+        zout.writestr(item, raw)
+    zout.close()
+    return out.getvalue()
 
 
 def _drop_calcchain_refs(data):
@@ -2837,6 +2998,73 @@ def _xml_restyle_rows(xml, pairs):
     return xml
 
 
+FMT_KEYS = ("sz", "b", "i", "u")
+
+
+def apply_fmt(model, inputs):
+    """The bill with the office's own formatting from the Sheets step on top of the consultant's: per cell
+    {"s": a style of the format to take (Match row above), "sz", "b", "i", "u"} in inputs[sheet]["_fmt"], and row
+    heights in inputs[sheet]["_rowh"]. Same object back when there is none; the format is never changed."""
+    todo = {sh: inp for sh, inp in (inputs or {}).items() if isinstance(inp, dict) and (inp.get("_fmt") or inp.get("_rowh"))}
+    if not todo:
+        return model
+    m = dict(model)
+    styles = list(model["styles"]); m["styles"] = styles
+    key = {repr(sorted(st.items())): i for i, st in enumerate(styles)}
+    m["sheets"] = []
+    for s in model["sheets"]:
+        inp = todo.get(s["name"])
+        if not inp:
+            m["sheets"].append(s); continue
+        s2 = dict(s); cells = dict(s["cells"]); rowh = dict(s.get("rowh") or {})
+        for k, f in (inp.get("_fmt") or {}).items():
+            if not isinstance(f, dict):
+                continue
+            cell = dict(cells.get(k) or {})
+            st = dict(styles[cell.get("s", 0)])
+            if isinstance(f.get("s"), int) and 0 <= f["s"] < len(styles):
+                # Match row above: its font, size, bold / italic / underline, colour, alignment and borders - the
+                # cell keeps its own number format and shading (990,000.00 stays 990,000.00)
+                for a, x in styles[f["s"]].items():
+                    if a not in ("nf", "fill"):
+                        st[a] = x
+            for a in FMT_KEYS:
+                if a in f:
+                    st[a] = (float(f[a]) if a == "sz" else (("single" if f[a] else None) if a == "u" else bool(f[a])))
+            kk = repr(sorted(st.items()))
+            if kk not in key:
+                key[kk] = len(styles); styles.append(st)
+            cell["s"] = key[kk]
+            cells[k] = cell
+        for r, h in (inp.get("_rowh") or {}).items():
+            try:
+                rowh[str(int(r))] = float(h)
+            except (TypeError, ValueError):
+                pass
+        s2["cells"] = cells; s2["rowh"] = rowh
+        m["sheets"].append(s2)
+    return m
+
+
+def _fmt_shift(inp, out, fn):
+    """_fmt / _rowh carried along when rows move: fn(row) -> new row, or None when the row went."""
+    f = {}
+    for k, v in (inp.get("_fmt") or {}).items():
+        r, c = (int(x) for x in k.split(","))
+        nr = fn(r)
+        if nr is not None:
+            f[f"{nr},{c}"] = v
+    if f:
+        out["_fmt"] = f
+    h = {}
+    for r, v in (inp.get("_rowh") or {}).items():
+        nr = fn(int(r))
+        if nr is not None:
+            h[str(nr)] = v
+    if h:
+        out["_rowh"] = h
+
+
 def shift_inputs(inp, sheet, at, n):
     """A sheet's typed cells after n rows are put in before row `at`: keys below move down, formulas typed on the
     sheet follow, the hidden-row list too."""
@@ -2851,6 +3079,8 @@ def shift_inputs(inp, sheet, at, n):
     for hk in ("_hide", "_heads"):
         if out.get(hk):
             out[hk] = [r + n if r >= at else r for r in out[hk]]
+    out.pop("_fmt", None); out.pop("_rowh", None)
+    _fmt_shift(inp or {}, out, lambda r: r + n if r >= at else r)
     return out
 
 
@@ -2903,8 +3133,9 @@ def drop_added(inputs, sheet, row):
         if inp.get(hk):
             out[hk] = [r - 1 if r > row else r for r in inp[hk] if r != row]
     for k, v in inp.items():
-        if k.startswith("_") and k not in ("_hide", "_heads", "_rows"):
+        if k.startswith("_") and k not in ("_hide", "_heads", "_rows", "_fmt", "_rowh"):
             out[k] = v
+    _fmt_shift(inp, out, lambda r: None if r == row else (r - 1 if r > row else r))
     if rows:
         out["_rows"] = rows
     res = dict(inputs); res[sheet] = out

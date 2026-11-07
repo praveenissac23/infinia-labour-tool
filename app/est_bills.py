@@ -140,7 +140,7 @@ def _bill_model(fmt, b_or_inputs):
     rows = tuple((sh, json.dumps(inp.get("_rows"))) for sh, inp in sorted(inputs.items()) if isinstance(inp, dict) and inp.get("_rows"))
     pages = json.dumps(BE.pages_of(inputs))
     if not rows and pages == "[]":
-        return BE.restyle_pay_rows(model, inputs)        # previous-payment lines all drawn like the first one
+        return BE.apply_fmt(BE.restyle_pay_rows(model, inputs), inputs)   # payment lines like the first; office formatting
     key = (fmt.id, rows, pages)
     hit = _EXP_CACHE.get(key)
     if hit is None:
@@ -148,7 +148,7 @@ def _bill_model(fmt, b_or_inputs):
         _EXP_CACHE[key] = hit
         if len(_EXP_CACHE) > 24:
             _EXP_CACHE.pop(next(iter(_EXP_CACHE)))
-    return BE.restyle_pay_rows(hit, inputs)
+    return BE.apply_fmt(BE.restyle_pay_rows(hit, inputs), inputs)
 
 
 def _inputs(b):
@@ -1543,6 +1543,83 @@ def hide_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     cur = set(int(x) for x in inp.get("_hide") or [])
     rows = set(int(x) for x in payload.get("rows") or [])
     inp["_hide"] = [] if (payload.get("show") and payload.get("all")) else sorted((cur - rows) if payload.get("show") else (cur | rows))
+    model = _bill_model(fmt, inputs)
+    inputs, values = _calc(model, inputs)
+    b.inputs = json.dumps(inputs); b.updated_by = user.id
+    _save_totals(b, model, values)
+    db.commit()
+    users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
+
+
+@router.post("/store/est/ipa/bill/{bid}/fmt")
+def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """The Sheets step's toolbar: the look of the picked cells changed on this bill, as in Excel.
+    {"sheet", "cells": [[r, c], ...] (or "rows": [r, ...] = every column of those rows),
+     "set": {"sz": 12, "b": true, "i": false, "u": false}  - or "like_above": true (font, size, bold, alignment and
+     borders of the row above, and its height) - or "reset": true (back to the consultant's look)}.
+    Kept on the bill (inputs[sheet]["_fmt"]); the next bill keeps it. Wording and figures are never touched."""
+    b = _get(db, EstBill, bid)
+    if b.status == "Paid" and user.role != "admin":
+        raise HTTPException(400, "A paid bill cannot be changed.")
+    fmt = _get(db, EstBillFormat, b.format_id)
+    inputs = _inputs(b)
+    sh = str(payload.get("sheet") or "")
+    plain = BE.restyle_pay_rows(_bill_model(fmt, {k: ({kk: vv for kk, vv in v.items() if kk not in ("_fmt", "_rowh")} if isinstance(v, dict) else v)
+                                                   for k, v in inputs.items()}), inputs)
+    s = next((x for x in plain["sheets"] if x["name"] == sh), None)
+    if not s:
+        raise HTTPException(400, "Pick a sheet.")
+    cells = set()
+    for x in payload.get("cells") or []:
+        cells.add((int(x[0]), int(x[1])))
+    for r in payload.get("rows") or []:
+        cells.update((int(r), c) for c in range(1, s["maxc"] + 1))
+    cells = {(r, c) for r, c in cells if 1 <= r <= s["maxr"] + 5 and 1 <= c <= s["maxc"]}
+    if not cells or len(cells) > 5000:
+        raise HTTPException(400, "Pick the cells to format.")
+    inp = inputs.setdefault(sh, {})
+    f = dict(inp.get("_fmt") or {})
+    rowh = dict(inp.get("_rowh") or {})
+    if payload.get("reset"):
+        for r, c in cells:
+            f.pop(f"{r},{c}", None)
+        for r in {r for r, _ in cells}:
+            rowh.pop(str(r), None)
+    elif payload.get("like_above"):
+        for r in sorted({r for r, _ in cells}):
+            src = r - 1
+            hid = set(s.get("hidden_rows") or []) | set(int(x) for x in inp.get("_hide") or [])
+            while src > 1 and src in hid:
+                src -= 1                                  # the row above as printed
+            for c in sorted(c for rr, c in cells if rr == r):
+                above = s["cells"].get(f"{src},{c}") or {}
+                own = f.get(f"{src},{c}") or {}           # the row above as it looks on this bill, the office's changes too
+                f[f"{r},{c}"] = dict({"s": int(own.get("s", above.get("s", 0)))}, **{a: own[a] for a in BE.FMT_KEYS if a in own})
+            h = rowh.get(str(src)) or (s.get("rowh") or {}).get(str(src))
+            if h:
+                rowh[str(r)] = h
+    else:
+        st = payload.get("set") or {}
+        new = {}
+        if "sz" in st:
+            sz = float(st["sz"])
+            if not 6 <= sz <= 36:
+                raise HTTPException(400, "Font size 6 to 36.")
+            new["sz"] = sz
+        for a in ("b", "i", "u"):
+            if a in st:
+                new[a] = bool(st[a])
+        if not new:
+            raise HTTPException(400, "Nothing to change.")
+        for r, c in cells:
+            f[f"{r},{c}"] = dict(f.get(f"{r},{c}") or {}, **new)
+    inp["_fmt"] = f
+    inp["_rowh"] = rowh
+    if not f:
+        inp.pop("_fmt")
+    if not rowh:
+        inp.pop("_rowh")
     model = _bill_model(fmt, inputs)
     inputs, values = _calc(model, inputs)
     b.inputs = json.dumps(inputs); b.updated_by = user.id

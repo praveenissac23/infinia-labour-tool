@@ -412,6 +412,8 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
                 mr2 = merges[(r, c)][0] if (r, c) in merges else r
                 room = sum(rh[rr] for rr in rows if r <= rr <= mr2) - 1
                 body_ = f'<div class="cl" style="max-height:{room}px">{body_}</div>'
+            if edit:
+                attrs += f' data-c="{c}"'                  # the toolbar picks cells by row and column
             h.append(f'<td{span}{attrs}{(" class=" + chr(34) + " ".join(cls) + chr(34)) if cls else ""} style="{";".join(css)}">{body_}</td>')
         h.append("</tr>")
     h.append("</table>")
