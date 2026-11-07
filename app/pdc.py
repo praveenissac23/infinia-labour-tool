@@ -296,6 +296,7 @@ def _html(t, pdf_url, excel_url):
     foot = ("<tr><td class='l'>TOTAL (Monthly)</td>" + "".join(f"<td class='n'>{_money(v)}</td>" for v in
             (([t["overdue"]] if t["overdue"] else []) + t["totals"] + [t["grand"]])) + "</tr>")
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
+<!-- a landscape page keeps its width on a phone (scaled to fit), never squeezed into a portrait one --><script>(function(){{function fit(){{var m=document.querySelector('meta[name=viewport]'),el=document.querySelector('.page,.pg,.paper');if(!m||!el)return;var o=el.style.maxWidth;el.style.maxWidth='none';var w=el.offsetWidth;el.style.maxWidth=o;if(w>800)m.setAttribute('content','width='+(w+24)+', minimum-scale=0.2, maximum-scale=4, user-scalable=yes');}}if(document.readyState!=='loading')fit();else document.addEventListener('DOMContentLoaded',fit);}})();</script>
 <title>PDC Tracker - {escape(t['label'])}</title><style>
 *{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#1d1d1d}}
 .bar{{position:sticky;top:0;background:#fff;border-bottom:1px solid #ddd;padding:10px 16px;display:flex;gap:8px;justify-content:flex-end}}

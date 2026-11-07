@@ -554,12 +554,67 @@ def printed_sheets(model):
     return [s for s in model["sheets"] if s["visible"]]
 
 
+def autowrap(model, values, inputs=None):
+    """A copy of the bill where a description inside a ruled table that is longer than its column wraps inside it
+    (its row then grows, as Excel's AutoFit) instead of running across the ruled / shaded cells beside it, where it
+    printed over the borders and disappeared under the shading (7 Nov 2026). Text outside the tables - titles,
+    the project block - still runs over the empty cells beside it as in Excel. Wording and figures unchanged."""
+    import copy
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    st0 = model.get("styles") or []
+    m = copy.copy(model)
+    m["styles"] = list(st0)
+    made = {}
+    sheets = []
+    for s in model["sheets"]:
+        vals = (values or {}).get(s["name"], {})
+        inp = (inputs or {}).get(s["name"], {})
+        cells = None
+        dcw = s.get("dcw", 8.43)
+        for k, cell in s["cells"].items():
+            si = cell.get("s", 0)
+            st = st0[si] if si < len(st0) else {}
+            if st.get("wrap"):
+                continue
+            just = (st.get("ha") or "") in ("justify", "distributed")      # Excel wraps these by itself
+            if not just and (st.get("ha") or "left") not in ("left", "general", ""):
+                continue
+            v = vals.get(k) if k in vals else (inp.get(k) if k in inp else cell.get("v"))
+            if not isinstance(v, str) or not v.strip():
+                continue
+            bd = st.get("bd") or [0, 0, 0, 0]
+            r, c = (int(x) for x in k.split(","))
+            nxt = s["cells"].get(f"{r},{c + 1}") or {}
+            nst = st0[nxt.get("s", 0)] if nxt and nxt.get("s", 0) < len(st0) else {}
+            ruled = just or bd[0] or bd[1] or any(nst.get("bd") or []) or bool(nst.get("fill"))
+            if not ruled:
+                continue
+            text = tidy_text(fmt(v, st.get("nf", "General"))) if "f" in cell else fmt(v, st.get("nf", "General"))
+            wpx = colpx(s["colw"].get(str(c), s["colw"].get(c, dcw)))
+            if any(mr1 == r and mc1 == c for mr1, mc1, mr2, mc2 in s.get("merges", [])):
+                continue
+            fnt, fsz, room_pt = _measure_font(st), st.get("sz") or 11, (wpx - 6) * 0.75
+            if wpx <= 8 or stringWidth(max(text.split("\n"), key=len), fnt, fsz) <= room_pt:
+                continue
+            if max(stringWidth(w_, fnt, fsz) for w_ in text.split()) > room_pt:
+                continue                                    # a word wider than the column: wrapping cannot help
+            if si not in made:
+                made[si] = len(m["styles"]); m["styles"].append(dict(st, wrap=True, va=st.get("va") or "top"))
+            if cells is None:
+                cells = dict(s["cells"])
+            cells[k] = dict(cell, s=made[si])
+        sheets.append(dict(s, cells=cells) if cells is not None else s)
+    m["sheets"] = sheets
+    return m
+
+
 def preview_html(model, values, title, pdf_url, excel_url, inputs=None, embed=False, fname=""):
     """The bill page by page exactly as it prints (and as the PDF comes out): each sheet on its own paper and
     orientation, at its print scale, margins and centring, broken where the consultant broke it, the heading rows
     repeated on every page, his header and footer on each page."""
     PX = 96 / 72
     from est_bills_engine import stamp_sheets, STAMP_PT
+    model = autowrap(model, values, inputs)
     sheets = printed_sheets(model)
     plans = [page_plan(model, sh, inputs, values) for sh in sheets]
     total = sum(len(pl["pages"]) for pl in plans)
@@ -734,6 +789,7 @@ def render_pdf(model, values, title, inputs=None, fname=""):
     buf = io.BytesIO()
     cv = canvas.Canvas(buf, pagesize=A4)
     cv.setTitle(title)
+    model = autowrap(model, values, inputs)
     styles = model["styles"]
     M = 28.0                                         # margin, points
 

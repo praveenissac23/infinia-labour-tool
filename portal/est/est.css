@@ -804,3 +804,7 @@ table.t.boq tr.gin td { background: #FBFAF9; color: #555B61; font-size: 12px; }
 table.t.boq tr.gin td[data-boq] { padding-left: 26px; position: relative; }
 table.t.boq tr.gin td[data-boq]::before { content: ""; position: absolute; left: 12px; top: 0; bottom: 0; border-left: 2px solid #E3D5CE; }
 table.t.boq tr.ghd td[data-boq] { font-weight: 600; }
+
+/* A list inside a window (what an upload found, a schedule, the lines of a variation) uses the height the window has,
+   not a fixed 300px with empty space under it and a second scroll bar (7 Nov 2026). */
+#modal .tw[style*="max-height"], #modal .dcpc, #modal .agsched .tw, #drawer .tw[style*="max-height"] { max-height: max(260px, calc(100vh - 290px)) !important; }

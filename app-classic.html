@@ -984,7 +984,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 .cr-row{display:grid;grid-template-columns:40px minmax(0,1.5fr) minmax(0,1.35fr) minmax(0,1.25fr) 30px;gap:12px;align-items:center;padding:10px 6px;border-top:1px solid #F1ECE5}
 .cr-row:hover{background:#FCF9F4}
 .cr-logo{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:inherit;font-weight:700;font-size:14px;color:#fff;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
-.cr-name{font-weight:600;font-size:14px;color:#1F2429;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cr-name{font-weight:600;font-size:14px;color:#1F2429;white-space:normal;overflow-wrap:anywhere}
 .cr-url{font-size:12px;color:#8A8178;margin-top:1px}
 .cr-url a{color:#8A8178;text-decoration:none}
 .cr-tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#8A8178;background:#F4EFE8;border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:1px}
@@ -992,7 +992,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 .cr-field .lab{font-family:inherit;font-weight:600;font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;color:#A39A90;width:34px}
 .cr-ic{width:26px;height:26px;border-radius:7px;border:0;background:transparent;color:#8A8178;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:14px}
 .cr-ic:hover{background:#F1ECE5;color:#C0392B}
-.cr-dots{letter-spacing:2px}
+.cr-dots{letter-spacing:1px}
 .cr-copied{font-family:inherit;font-weight:600;font-size:11px;color:#2E7D32;background:#E8F5E9;border-radius:5px;padding:2px 7px}
 .cr-add h2{margin:0 0 4px;font-size:16px}
 .cr-add p{margin:0 0 14px;font-size:12px;color:#8A8178}
@@ -1021,7 +1021,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 .cr-lock small{font-size:11.5px;color:#8A8178}
 .cr-tag.lock{background:#FBE9E7;color:#C0392B}
 .cr-row .cr-name{display:flex;align-items:center;min-width:0}
-.cr-row .cr-name .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.cr-row .cr-name .nm{overflow-wrap:anywhere;white-space:normal;min-width:0}
 .cr-row .cr-name .cr-tag{flex-shrink:0}
 .cr-hint{font-size:11.5px;color:#8A8178;margin:-6px 0 10px;min-height:14px}
 @media (max-width: 1000px){.cr-wrap{grid-template-columns:1fr}.cr-row{grid-template-columns:40px minmax(0,1fr) 30px}.cr-row .cr-field{grid-column:2 / 3}}
@@ -1163,7 +1163,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .form-row select { height: 36px; padding: 0 10px; border: 1px solid #D5D9DE; border-radius: 7px; font-size: 13.5px; width: 150px; flex: 0 0 auto; }
   /* Cycle pickers hold a full date range ("26 Aug - 25 Sept 2026"), which
      the 130px default cut off mid-year. */
-  #report-cycle, #adj-cycle, #livecard-cycle, #errcheck-cycle, #combine-cycle { width: 185px; }
+  #report-cycle, #adj-cycle, #livecard-cycle, #errcheck-cycle, #combine-cycle { width: 215px; }   /* the whole cycle shows, 26/10/2026 - 25/11/2026 */
+  #livecard-detail table th:first-child, #livecard-detail table td:first-child { width: 92px; min-width: 92px; white-space: nowrap; overflow: visible; text-overflow: clip; }
   /* inline style="width:.." on a select must win over the 130px default */
   .form-row select[style*="width"], .toolbar select[style*="width"] { flex: 0 0 auto; }
   /* Site / engineer chips - compact, wrap across the card, and the
@@ -1474,6 +1475,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #dash-sky svg{position:absolute;inset:0;width:100%;height:100%}
   /* only moves while it can be seen - off screen, or the tab in the
      background, it stands still and costs nothing while scrolling */
+  #screen-dashboard{padding-bottom:0!important} #dash-sky{margin-bottom:0!important}  /* no floating Save on the dashboard: the picture runs to the foot of the window */
+  @media (min-width:601px){#dash-sky svg{top:auto!important;bottom:0;height:250px!important}}  /* the town keeps its size at the foot; more sky above it */
   #dash-sky{contain:layout paint} #dash-sky.dsk-paused *{animation-play-state:paused!important}
   @media (prefers-reduced-motion:reduce){#dash-sky *{animation:none!important}}
   #dash-sky .txt{position:absolute;left:30px;top:24px;z-index:2}
@@ -5669,6 +5672,7 @@ function switchScreen(name) {
   document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
   const screen = document.getElementById("screen-" + name);
   screen.classList.add("active");
+  if (name === "dashboard") setTimeout(() => { try { dskFit(); } catch (e) {} }, 60);
   // A banner belongs to the moment it was shown. Left alone, "RN-0001
   // settled" stayed green on its panel and read as current every time
   // the screen was opened again, long after the return. Cleared on the
@@ -12632,7 +12636,7 @@ async function exportStore(fmt) {
   const q = ((document.getElementById("store-report-search") || {}).value || "").trim();
   if (q) url += `&q=${encodeURIComponent(q)}`;
   window.open(url, "_blank");
-  showStatus("store-status", "ok", `Downloading ${fmt.toUpperCase()}.`);
+  if (fmt !== "view") showStatus("store-status", "ok", `Downloading ${fmt === "excel" ? "Excel" : fmt.toUpperCase()}.`);
 }
 
 // Picking a named report sets the underlying view and shows the result
@@ -15372,7 +15376,53 @@ function dashQuick() {
   const j = document.getElementById("dash-quick-job");
   if (j) j.textContent = job === "admin" ? "For the administrator" : MY_JOB ? "For the " + MY_JOB : "";
   dqBadges();
+  dskFit(); setTimeout(dskFit, 400);
 }
+// The picture at the foot of the dashboard reaches the bottom of the window: a login with few quick actions no longer
+// leaves it floating half-way down with an empty band under it (7 Nov 2026). Never shorter than it was (250px).
+function dskFit() {
+  const sky = document.getElementById("dash-sky"), scr = document.getElementById("screen-dashboard");
+  if (!sky || !scr || !scr.classList.contains("active")) return;
+  sky.style.height = "";
+  const base = innerWidth <= 600 ? 270 : 250;
+  const sc = document.scrollingElement || document.documentElement;
+  let par = sky.parentElement, scroller = null;
+  for (let e = par; e && e !== document.body; e = e.parentElement) { const o = getComputedStyle(e).overflowY; if ((o === "auto" || o === "scroll") && e.scrollHeight > e.clientHeight + 1) { scroller = e; break; } }
+  const box = scroller || sc, view = scroller ? scroller.clientHeight : innerHeight, off = scroller ? scroller.getBoundingClientRect().top : 0;
+  const r = sky.getBoundingClientRect();
+  const top = r.top - off + box.scrollTop;
+  let h = Math.max(base, Math.floor(view - top - 18));
+  sky.style.setProperty("height", h + "px", "important");
+  const over = box.scrollHeight - view;                          // never so tall the page scrolls for it
+  if (over > 0 && h > base) sky.style.setProperty("height", Math.max(base, h - over) + "px", "important");
+}
+addEventListener("resize", () => { clearTimeout(dskFit._t); dskFit._t = setTimeout(dskFit, 150); });
+// A list in its own scroll box (max-height 38vh, 52vh ...) showed four or five lines and a scroll bar while the window
+// had empty room under it. It now takes the room the window has: the screen fills the window, never more, and a
+// box never gets shorter than it was set (7 Nov 2026).
+function fitScrolls() {
+  const scr = document.querySelector(".screen.active"); if (!scr) return;
+  const sc = document.querySelector(".content") || document.scrollingElement;
+  scr.querySelectorAll(".grid-wrap, .tw").forEach(b => {
+    if (!b.offsetParent) return;
+    if (b.dataset.mh === undefined) { const m = b.style.maxHeight || getComputedStyle(b).maxHeight; if (!m || m === "none") return; b.dataset.mh = m; }
+    b.style.maxHeight = b.dataset.mh;
+    if (b.scrollHeight <= b.clientHeight + 2) return;
+    const r = b.getBoundingClientRect(), sr = scr.getBoundingClientRect();
+    const below = Math.max(0, sr.bottom - parseFloat(getComputedStyle(scr).paddingBottom || 0) - r.bottom);
+    const scTop = sc && sc !== document.scrollingElement ? sc.getBoundingClientRect().top : 0;
+    const top = r.top - scTop + (sc ? sc.scrollTop : 0);
+    const view = sc && sc !== document.scrollingElement ? sc.clientHeight : innerHeight;
+    const room = Math.floor(view - top - below - 24);
+    if (room > r.height + 40) b.style.maxHeight = Math.min(room, b.scrollHeight + 2) + "px";
+  });
+}
+(function () {
+  let t = 0; const later = () => { clearTimeout(t); t = setTimeout(fitScrolls, 180); };
+  addEventListener("resize", later);
+  const go = () => { const c = document.querySelector(".content") || document.body; try { new MutationObserver(later).observe(c, { childList: true, subtree: true }); } catch (e) {} later(); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go();
+})();
 // A red count on Send to Zoho when lines are not in Zoho after 3 days.
 (function dskWatch() {
   const go = () => {

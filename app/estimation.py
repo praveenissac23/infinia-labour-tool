@@ -3160,8 +3160,8 @@ def export(what: str, token: str, format: str = "excel", pid: int = 0, q: str = 
     if q:
         bits.append(f'"{q}"')
     sub = " | ".join(bits)
-    if not rows:
-        rows = [{"": "Nothing to show for these filters"}]
+    if not rows:                                        # a heading over the note, no empty TOTAL line under it
+        rows, money, totals = [{"Note": "Nothing to show for these filters"}], [], []
     if format == "preview":
         url = f"/export/est/{what}?" + urlencode({"token": token, "pid": pid, "q": q, "status": status, "sub_id": sub_id})
         return M._preview_page(full, sub, rows, url + "&format=pdf", url + "&format=excel", money_cols=money, total_cols=totals)

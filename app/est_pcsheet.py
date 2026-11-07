@@ -1404,8 +1404,10 @@ def render_html(doc, pdf_url, toggle_url=""):
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(doc['ref'])}</title><style>
 body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#ECEAE6;margin:0;color:#22262A;font-size:12px}}
-.bar{{position:sticky;top:0;z-index:5;background:#22262A;color:#fff;padding:9px 14px;display:flex;gap:8px;align-items:center}}
-.bar b{{flex:1;font-size:13px}} .bar a,.bar button{{background:#C0392B;color:#fff;border:0;border-radius:6px;padding:7px 12px;font-weight:600;text-decoration:none;font-size:13px;cursor:pointer}}
+.bar{{position:sticky;top:0;z-index:5;background:#fff;color:#1d1d1d;border-bottom:1px solid #E2E0DC;padding:10px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}}
+.bar b{{flex:1;font-size:16px;font-weight:700;min-width:0}}
+.bar a,.bar button{{background:#FDF4F3;color:#8C2F26;border:1px solid #D9B8B3;border-radius:6px;padding:7px 14px;font:600 13px -apple-system,Segoe UI,Roboto,Arial,sans-serif;text-decoration:none;cursor:pointer}}
+.bar a.pdf{{background:#C0392B;border-color:#C0392B;color:#fff}} .bar button.wa{{background:#25D366;border-color:#25D366;color:#fff}}
 .pg{{background:#fff;max-width:800px;margin:14px auto;padding:22px 26px;box-shadow:0 2px 10px rgba(0,0,0,.08);border-top:3px solid #B7322A}}
 .kvt{{border:1px solid #DDE0E3;margin-bottom:6px}} .kvt th{{background:#F7F5F3;text-align:left;padding:5px 8px;font-size:11px;color:#3E434A;white-space:nowrap}} .kvt td{{padding:5px 8px;border-left:1px solid #EEE}}
 .pg.wide{{max-width:1180px}} .top{{display:flex;justify-content:space-between;align-items:flex-start}} .top img{{height:44px}}
@@ -1427,7 +1429,7 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
 @media print{{.bar{{display:none}} body{{background:#fff}} .pg{{box-shadow:none;margin:0;max-width:none;break-after:page}}}}
 @page{{size:A4 portrait;margin:10mm}} @page wide{{size:A4 landscape;margin:10mm}} @media print{{.pg.wide{{page:wide}}}}
 @media (max-width:700px){{.pg{{padding:12px;margin:8px}} .two,.ctr{{grid-template-columns:1fr}} .two>div+div,.ctr>div+div{{border-left:0;border-top:1px solid #C9CDD2}} .sig{{grid-template-columns:1fr 1fr}} .sig div:nth-child(odd){{border-left:0}} .sig div:nth-child(n+3){{border-top:1px solid #C9CDD2}}
-  .top img{{height:34px}} .ref{{font-size:11px;max-width:48%;overflow-wrap:anywhere}} h1{{font-size:15px}} .bar b{{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+  .top img{{height:34px}} .ref{{font-size:11px;max-width:48%;overflow-wrap:anywhere}} h1{{font-size:15px}} .bar b{{font-size:14px;flex:1 1 100%;overflow-wrap:anywhere}}
   .hd>tbody>tr>td,.hd>tr>td{{display:block;width:auto!important}} .hd>tbody>tr>td+td,.hd>tr>td+td{{border-top:1px solid #E3E5E8}} .hd th{{width:40%;white-space:normal}} .hd td{{overflow-wrap:anywhere}}
   .ctr th{{white-space:normal}} .kvt{{display:block;overflow-x:auto}} .ce{{table-layout:auto}} .ce col{{width:auto!important}}}}
 body{{overflow-x:hidden}} .pg{{overflow-x:auto}}
@@ -1435,9 +1437,9 @@ body{{overflow-x:hidden}} .pg{{overflow-x:auto}}
 .t .gone{{display:none}} body.cedit .t .gone{{display:table-cell;background:repeating-linear-gradient(135deg,#F7F7F7 0 6px,#F0F0F0 6px 12px)!important;color:#B0B4B8!important}}
 .t th .tk{{display:none}} body.cedit .t th .tk{{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-right:5px;vertical-align:-2px;border-radius:3px;border:1.5px solid #C0392B;background:#C0392B;color:#fff;font-size:9px;cursor:pointer}}
 body.cedit .t th.gone .tk{{background:#fff;border-color:#B0B4B8;color:transparent}} body.cedit .t th{{cursor:pointer;padding-left:3px;padding-right:3px}}
-.cnote{{display:none;position:sticky;top:44px;z-index:5;background:#FFF8E6;border:1px solid #F0D58A;color:#6B5A1E;border-radius:8px;padding:8px 12px;margin:8px auto;max-width:1100px;font-size:13px}} body.cedit .cnote{{display:block}}
+.cnote{{display:none;position:sticky;top:58px;z-index:5;background:#FFF8E6;border:1px solid #F0D58A;color:#6B5A1E;border-radius:8px;padding:8px 12px;margin:8px auto;max-width:1100px;font-size:13px}} body.cedit .cnote{{display:block}}
 @media print{{.cnote,.t th .tk{{display:none!important}}}}
-</style></head><body><div class="bar"><b>{e(doc['ref'])}</b>{iq_btn}<button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><button onclick="shr()">Share</button></div>
+</style></head><body><div class="bar"><b>{e(doc['ref'])}</b>{iq_btn}<a class="pdf" href="{pdf_url}">Download PDF</a><button onclick="print()">Print</button><button class="wa" onclick="shr()">Share</button></div>
 <div class="cnote">Untick a column heading to leave that column off - on screen, the PDF and Share. Saved on this certificate. Press <b>Done</b> when finished.</div>
 <script>window.PC_HIDE={hide_json};window.PC_SAVE="{toggle_url}";</script>
 <script>async function shr(){{try{{const r=await fetch("{pdf_url}");const b=await r.blob();const f=new File([b],"{fname}.pdf",{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{e(doc['ref'])}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}</script>

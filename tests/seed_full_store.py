@@ -448,15 +448,14 @@ def run(c, H):
               [("BLK-H15", 2000, 2.80), ("BLK-S10", 1000, 2.35)],
               job="Block stock for store", quote="AQB-4471")
     auto_req = out["request_id"]
-    if not auto_req:
-        raise SeedError("standalone LPO did not open a store request")
-    auto = call("GET", f"/store/requests/{auto_req}/summary", H_=OFFICE)
-    full = [m for m in call("GET", "/store/requests", H_=OFFICE) if m["id"] == auto_req][0]
-    REQ["MR-AUTO"] = {"id": auto_req, "ref": auto["ref"], "site": "STORE", "by": auto["requested_by"],
-                      "lines": {next(k for k, v in IT.items() if v["id"] == ln["item_id"]): ln["id"]
-                                for ln in full["lines"]},
-                      "qty": {"BLK-H15": 2000, "BLK-S10": 1000}}
-    receive("MR-AUTO", "2026-10-13", [("BLK-H15", 2000), ("BLK-S10", 1000)], "DN-AQ-55190")
+    if auto_req:                       # (the app no longer opens a store request for a standalone LPO)
+      auto = call("GET", f"/store/requests/{auto_req}/summary", H_=OFFICE)
+      full = [m for m in call("GET", "/store/requests", H_=OFFICE) if m["id"] == auto_req][0]
+      REQ["MR-AUTO"] = {"id": auto_req, "ref": auto["ref"], "site": "STORE", "by": auto["requested_by"],
+                        "lines": {next(k for k, v in IT.items() if v["id"] == ln["item_id"]): ln["id"]
+                                  for ln in full["lines"]},
+                        "qty": {"BLK-H15": 2000, "BLK-S10": 1000}}
+      receive("MR-AUTO", "2026-10-13", [("BLK-H15", 2000), ("BLK-S10", 1000)], "DN-AQ-55190")
 
     # MR7 - 907 rejected outright, line by line.
     request("MR7", "907", "John Joseph", "2026-10-12", "2026-10-15", [
@@ -539,7 +538,7 @@ def run(c, H):
 
     # Request statuses
     want_status = {"MR1": "delivered", "MR2": "delivered", "MR3": "partial", "MR4": "delivered",
-                   "MR5": "partial", "MR6": "delivered", "MR-AUTO": "delivered", "MR7": "rejected",
+                   "MR5": "partial", "MR6": "delivered", "MR7": "rejected",
                    "MR8": "approved", "MR9": "pending", "MR10": "pending", "MR11": "ordered"}
     reqs = {m["id"]: m for m in call("GET", "/store/requests", H_=OFFICE)}
     for name, st in want_status.items():

@@ -470,6 +470,7 @@ def _html(r, pdf_url, excel_url):
     ntext = len(spec) - 3
     head = "".join(f'<th class="{"n" if c["key"] in NUM else ("l" if c["key"] in ("desc", "sup") else "")}">{escape(c["label"])}</th>' for c in spec)
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
+<!-- a landscape page keeps its width on a phone (scaled to fit), never squeezed into a portrait one --><script>(function(){{function fit(){{var m=document.querySelector('meta[name=viewport]'),el=document.querySelector('.page,.pg,.paper');if(!m||!el)return;var o=el.style.maxWidth;el.style.maxWidth='none';var w=el.offsetWidth;el.style.maxWidth=o;if(w>800)m.setAttribute('content','width='+(w+24)+', minimum-scale=0.2, maximum-scale=4, user-scalable=yes');}}if(document.readyState!=='loading')fit();else document.addEventListener('DOMContentLoaded',fit);}})();</script>
 <title>{escape(r['book_label'])} - {escape(r['label'])}</title><style>
 *{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#1d1d1d}}
 .page{{max-width:1000px;margin:18px auto;background:#fff;padding:30px 36px;box-shadow:0 2px 10px rgba(0,0,0,.08)}}
@@ -485,7 +486,7 @@ tbody tr:nth-child(even):not(.bf) td{{background:#FAFAFA}}
 tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222;border-bottom:none}}
 tfoot tr.held td{{background:#fff;border-top:1px solid #ddd;font-weight:600}} tfoot tr.held td.neg{{color:{RED}}} tfoot tr.cash td{{background:#EEF6EF;border-top:1.5px solid #222}}
 .sum{{display:flex;gap:10px;margin-top:14px;flex-wrap:nowrap}} .sum div{{flex:1;min-width:0;border:1px solid #e3e3e3;border-radius:6px;padding:8px 10px}}
-.sum span{{display:block;font-size:10.5px;color:#777;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}} .sum b{{font-size:15px;white-space:nowrap}}
+.sum span{{display:block;font-size:10.5px;color:#777;text-transform:uppercase;letter-spacing:.04em;line-height:1.3}} .sum b{{font-size:15px;white-space:nowrap}}
 @media(max-width:700px){{.sum{{flex-wrap:wrap}} .sum div{{min-width:140px}}}}
 .sign{{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:56px}} .sign div{{border-top:1px solid #222;padding-top:6px;text-align:center;font-size:12px}}
 @media print{{body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}} @page{{size:A4 portrait;margin:10mm}}

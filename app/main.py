@@ -3596,6 +3596,7 @@ def _cards_page(title, subtitle, cards, pdf_url, excel_url):
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{escape(title)}</title>
 <meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
+<!-- a landscape page keeps its width on a phone (scaled to fit), never squeezed into a portrait one --><script>(function(){{function fit(){{var m=document.querySelector('meta[name=viewport]'),el=document.querySelector('.page,.pg,.paper');if(!m||!el)return;var o=el.style.maxWidth;el.style.maxWidth='none';var w=el.offsetWidth;el.style.maxWidth=o;if(w>800)m.setAttribute('content','width='+(w+24)+', minimum-scale=0.2, maximum-scale=4, user-scalable=yes');}}if(document.readyState!=='loading')fit();else document.addEventListener('DOMContentLoaded',fit);}})();</script>
 <style>
   body {{ margin:0; background:#F1EFEA; color:#1F2429;
           font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif; }}
@@ -9985,6 +9986,7 @@ def view_purchase_order(order_id: int, token: str, db: Session = Depends(get_db)
     page = f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{o.ref}</title>
 <meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
+<!-- a landscape page keeps its width on a phone (scaled to fit), never squeezed into a portrait one --><script>(function(){{function fit(){{var m=document.querySelector('meta[name=viewport]'),el=document.querySelector('.page,.pg,.paper');if(!m||!el)return;var o=el.style.maxWidth;el.style.maxWidth='none';var w=el.offsetWidth;el.style.maxWidth=o;if(w>800)m.setAttribute('content','width='+(w+24)+', minimum-scale=0.2, maximum-scale=4, user-scalable=yes');}}if(document.readyState!=='loading')fit();else document.addEventListener('DOMContentLoaded',fit);}})();</script>
 <style>
   body {{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
          background:#F1EFEA; color:#1F2429; }}
@@ -10374,6 +10376,7 @@ def _return_note_html(note: dict, pdf_url: str, excel_url: str):
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{e(note.get('ref') or 'Return Note')}</title>
 <meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
+<!-- a landscape page keeps its width on a phone (scaled to fit), never squeezed into a portrait one --><script>(function(){{function fit(){{var m=document.querySelector('meta[name=viewport]'),el=document.querySelector('.page,.pg,.paper');if(!m||!el)return;var o=el.style.maxWidth;el.style.maxWidth='none';var w=el.offsetWidth;el.style.maxWidth=o;if(w>800)m.setAttribute('content','width='+(w+24)+', minimum-scale=0.2, maximum-scale=4, user-scalable=yes');}}if(document.readyState!=='loading')fit();else document.addEventListener('DOMContentLoaded',fit);}})();</script>
 <style>
   @page {{ size:A4 portrait; margin:10mm; }}
   body {{ margin:0; background:#F1EFEA; color:#1F2429;
@@ -10648,6 +10651,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
     return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
 <title>{escape(title)}</title>
 <meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
+<!-- a landscape page keeps its width on a phone (scaled to fit), never squeezed into a portrait one --><script>(function(){{function fit(){{var m=document.querySelector('meta[name=viewport]'),el=document.querySelector('.page,.pg,.paper');if(!m||!el)return;var o=el.style.maxWidth;el.style.maxWidth='none';var w=el.offsetWidth;el.style.maxWidth=o;if(w>800)m.setAttribute('content','width='+(w+24)+', minimum-scale=0.2, maximum-scale=4, user-scalable=yes');}}if(document.readyState!=='loading')fit();else document.addEventListener('DOMContentLoaded',fit);}})();</script>
 <style>
   body {{ margin:0; background:#F1EFEA; color:#1F2429;
           font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif; }}
@@ -10679,8 +10683,7 @@ def _preview_page(title: str, subtitle: str, rows: list, pdf_url: str, excel_url
   th .arr {{ font-size:7pt; margin-left:3px; opacity:.9; }}
   th.drop-l {{ box-shadow: inset 3px 0 0 #FFD54F; }} th.drop-r {{ box-shadow: inset -3px 0 0 #FFD54F; }}
   th.dragging {{ opacity:.55; }}
-  .hint {{ font-size:11.5px; color:#999; margin-right:6px; flex:1 1 0; min-width:0; text-align:right;
-           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+  .hint {{ font-size:11.5px; color:#999; margin-right:6px; flex:1 1 220px; min-width:0; text-align:right; }}
   @media (max-width:1180px) {{ .hint {{ display:none; }} }}
   @media print {{ .hint {{ display:none; }} th .arr {{ display:none; }} }}
   /* A word only breaks if it cannot fit its column at all - never a
@@ -14772,7 +14775,7 @@ def export_daily_report(token: str, day: date, report: str = "summary", site: st
                         format: str = "pdf", db: Session = Depends(get_db)):
     _daily_reader(token, db)
     d = daily_report_parts(db, day, report, site, trade)
-    rows = d["rows"] or [{"": "Nothing to show for this day."}]
+    rows = d["rows"] or [{"Note": "Nothing to show for this day."}]
     return _hr_file(d["title"], rows, d["sub"], format, [], f"Daily_Report_{day:%Y_%m_%d}")
 
 
@@ -14783,7 +14786,7 @@ def view_daily_report(token: str, day: date, report: str = "summary", site: str 
     d = daily_report_parts(db, day, report, site, trade)
     t = quote(auth.create_view_token(user.username), safe="")
     url = f"/export/attendance/daily?token={t}&day={day.isoformat()}&report={quote(report)}&site={quote(site)}&trade={quote(trade)}"
-    rows = d["rows"] or [{"": "Nothing to show for this day."}]
+    rows = d["rows"] or [{"Note": "Nothing to show for this day."}]
     return _preview_page(d["title"], d["sub"], rows, url, url)
 
 

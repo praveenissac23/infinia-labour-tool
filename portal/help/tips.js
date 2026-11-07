@@ -56,7 +56,7 @@
       i.className = "help-i in-label in-head"; i.tabIndex = 0; i.textContent = "i"; i.dataset.tip = t;
       // a right-aligned heading (figures) gets its (i) in front, so the words end in line with the figures under them
       let al = ""; try { al = getComputedStyle(th).textAlign; } catch (e) {}
-      if (al === "right" || al === "end") { i.classList.add("pre"); lbl.insertBefore(i, lbl.firstChild); }
+      if ((al === "right" || al === "end") && th.closest(".ipa-lines, .ipa-secs")) { i.classList.add("pre"); lbl.insertBefore(i, lbl.firstChild); }
       else lbl.appendChild(i);
     });
     root.querySelectorAll(".frm .f > label, .field > label, label > span:first-child").forEach(lab => {
@@ -82,6 +82,24 @@
       put(el, text);
     });
     try { heads(root); } catch (e) {}      // after the box notes, so a box never gets two
+    try { lonely(); } catch (e) {}
+  }
+  // An (i) put after a box that fills its row dropped onto a line of its own, under the box, by itself - a row of
+  // stray "i"s under search boxes and forms on a phone (7 Nov 2026). It goes into the caption just before the box
+  // when there is one; otherwise it is left off and its note becomes the box's own hover note.
+  function lonely() {
+    document.querySelectorAll(".help-i:not(.in-label):not(.in-head):not([data-placed])").forEach(i => {
+      const box = i.previousElementSibling;
+      if (!box || !/^(INPUT|SELECT|TEXTAREA)$/.test(box.tagName) || !box.getClientRects().length || !i.getClientRects().length) return;
+      i.dataset.placed = "1";
+      const a = box.getBoundingClientRect(), b = i.getBoundingClientRect();
+      if (b.top < a.bottom - 2) return;                           // beside its box, where it should be
+      let cap = box.previousElementSibling;
+      while (cap && cap.classList && cap.classList.contains("help-i")) cap = cap.previousElementSibling;
+      if (cap && /^(LABEL|SPAN|B|STRONG|SMALL)$/.test(cap.tagName) && cap.textContent.trim() && cap.textContent.trim().length < 60) {
+        i.classList.add("in-label"); cap.appendChild(i);
+      } else { box.setAttribute("title", i.dataset.tip || ""); i.remove(); }
+    });
   }
   // One shared note box, placed under (or above) the (i) and kept inside
   // the window on every side.

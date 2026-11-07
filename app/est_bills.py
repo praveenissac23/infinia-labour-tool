@@ -950,7 +950,8 @@ def format_sheet(fid: int, i: int, db: Session = Depends(get_db), user: models.U
         raise HTTPException(404, "This workbook has no sheets to show.")
     i = i if i in shown else shown[0]
     values = BE.calculate(model, {})
-    html, w, h = BR.sheet_html(model, model["sheets"][i], values, {}, edit=False)
+    wm = BR.autowrap(model, values)                      # long table text wraps in its cell, the row grows to show it
+    html, w, h = BR.sheet_html(wm, wm["sheets"][i], values, {}, edit=False, grow=BR.row_fit(wm, wm["sheets"][i], values))
     return {"html": html, "width": w, "height": h, "name": model["sheets"][i]["name"], "i": i, "css": BR.SHEET_CSS,
             "sheets": [{"i": k, "name": model["sheets"][k]["name"]} for k in shown], "file": fmt.filename, "no": _fmt_no(model, fmt.filename)}
 

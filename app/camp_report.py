@@ -94,7 +94,8 @@ def preview(d, pdf_url, excel_url):
   @media print{{.bar{{display:none}} body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none}}}} @page{{size:A4 portrait;margin:0}}
 """
     html = f"""<!doctype html><html><head><meta charset="utf-8"><title>Labour Accommodation Allocation</title>
-<meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes"><style>{css}</style></head><body>
+<meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
+<!-- a landscape page keeps its width on a phone (scaled to fit), never squeezed into a portrait one --><script>(function(){{function fit(){{var m=document.querySelector('meta[name=viewport]'),el=document.querySelector('.page,.pg,.paper');if(!m||!el)return;var o=el.style.maxWidth;el.style.maxWidth='none';var w=el.offsetWidth;el.style.maxWidth=o;if(w>800)m.setAttribute('content','width='+(w+24)+', minimum-scale=0.2, maximum-scale=4, user-scalable=yes');}}if(document.readyState!=='loading')fit();else document.addEventListener('DOMContentLoaded',fit);}})();</script><style>{css}</style></head><body>
 <div class="bar"><h1>Labour Accommodation Allocation</h1>
 <a class="btn dark" href="{escape(pdf_url)}">Download PDF</a><a class="btn" href="{escape(excel_url)}">Download Excel</a>
 {export_web.share_button(pdf_url, "Labour Accommodation Allocation")}</div>

@@ -56,6 +56,7 @@ def html(entries, title, sub, pdf_url, excel_url, who=""):
     table = ("".join(body) if entries else '<tr><td colspan="5" class="none">No logins saved.</td></tr>')
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>{escape(title)}</title>
 <meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
+<!-- a landscape page keeps its width on a phone (scaled to fit), never squeezed into a portrait one --><script>(function(){{function fit(){{var m=document.querySelector('meta[name=viewport]'),el=document.querySelector('.page,.pg,.paper');if(!m||!el)return;var o=el.style.maxWidth;el.style.maxWidth='none';var w=el.offsetWidth;el.style.maxWidth=o;if(w>800)m.setAttribute('content','width='+(w+24)+', minimum-scale=0.2, maximum-scale=4, user-scalable=yes');}}if(document.readyState!=='loading')fit();else document.addEventListener('DOMContentLoaded',fit);}})();</script>
 <style>
  body{{margin:0;background:#F1EFEA;color:#1F2429;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}}
  .page{{width:210mm;max-width:calc(100% - 24px);margin:16px auto;background:#fff;padding:12mm 11mm 14mm;box-sizing:border-box;box-shadow:0 1px 6px rgba(0,0,0,.14)}}

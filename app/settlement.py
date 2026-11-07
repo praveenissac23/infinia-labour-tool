@@ -566,6 +566,7 @@ def _html(s, pdf_url, excel_url):
                    for a, b, c, d, x in _grat_rows(s))
     net = s["net"]
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=820, minimum-scale=0.3, maximum-scale=4, user-scalable=yes">
+<!-- a landscape page keeps its width on a phone (scaled to fit), never squeezed into a portrait one --><script>(function(){{function fit(){{var m=document.querySelector('meta[name=viewport]'),el=document.querySelector('.page,.pg,.paper');if(!m||!el)return;var o=el.style.maxWidth;el.style.maxWidth='none';var w=el.offsetWidth;el.style.maxWidth=o;if(w>800)m.setAttribute('content','width='+(w+24)+', minimum-scale=0.2, maximum-scale=4, user-scalable=yes');}}if(document.readyState!=='loading')fit();else document.addEventListener('DOMContentLoaded',fit);}})();</script>
 <title>Final Settlement - {escape(e['name'])}</title><style>
 :root{{--ink:#1d2433;--mute:#6b7280;--line:#dfe3ea;--head:#1f2d45;--soft:#f5f7fa;--bg:#e9ecf1}}
 *{{box-sizing:border-box}} body{{margin:0;background:var(--bg);font:13px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:var(--ink)}}
