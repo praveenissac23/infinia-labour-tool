@@ -2469,8 +2469,11 @@ def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, d
     title = f"{code} - IPA {label}" + (f" - {b.issue_date:%d/%m/%Y}" if b.issue_date else "")
     fname = re.sub(r"[^A-Za-z0-9]+", "_", f"{code}_IPA_{label}").strip("_")
     store = _sig_store(db)
+    pn = " ".join(str((p.name if p else "") or "").split())
+    if len(pn) > 48:
+        pn = pn[:46].rstrip() + "..."
+    model = dict(model, _title=title, _bill=" - ".join(x for x in (code, pn, f"Interim Bill {label}") if x))   # the footer of every page
     if format == "excel":
-        model = dict(model, _title=title)
         data = BE.write_xlsx(BE.add_pages_xlsx(fmt.data, inputs), model, model.get("_with") or inputs, values, sign_images(model, _signs(b), store))
         return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                  headers={"Content-Disposition": f"attachment; filename={fname}.xlsx"})

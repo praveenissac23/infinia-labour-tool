@@ -2573,12 +2573,14 @@ def _xlsx_a4(data, model, inputs):
     wb = zin.read("xl/workbook.xml").decode("utf-8")
     order = [ _unesc(m.group(1)) for m in re.finditer(r'<sheet\b[^>]*\bname="([^"]*)"', wb)]
     title = model.get("_title") or ""
+    bill = model.get("_bill") or title
     new_sheets, names = {}, []
     for s in model["sheets"]:
         p = paths.get(s["name"])
         if not p or s["name"] not in order or not s.get("visible", True):
             continue
         pr = s.get("print") or {}
+        pl = None
         try:
             pl = BR.page_plan(model, s, inputs, None)
             land = pl["pw"] > pl["ph"]
@@ -2589,22 +2591,31 @@ def _xlsx_a4(data, model, inputs):
         fit_w, fit_h = (1, 1) if pr.get("fh") == 1 else (1, 0)
         po = '<printOptions horizontalCentered="1"/>'
         pm = f'<pageMargins left="{mg[0]:.4f}" right="{mg[1]:.4f}" top="{mg[2]:.4f}" bottom="{mg[3]:.4f}" header="{mg[4]:.4f}" footer="{mg[5]:.4f}"/>'
-        if pr.get("fit", True):
+        fixed = pl is not None and pl.get("fixed")           # his page breaks: the scale that keeps each block on its page
+        if fixed:
+            pst = f'<pageSetup paperSize="9" orientation="{"landscape" if land else "portrait"}" scale="{max(10, min(100, int(round(pl["sc"] * 98))))}"/>'
+        elif pr.get("fit", True):
             pst = f'<pageSetup paperSize="9" orientation="{"landscape" if land else "portrait"}" fitToWidth="{fit_w}" fitToHeight="{fit_h}"/>'
         else:
             pst = f'<pageSetup paperSize="9" orientation="{"landscape" if land else "portrait"}" scale="{int(pr.get("scale") or 100)}"/>'
-        has_hf = bool(re.search(r"<headerFooter\b[^>]*>.*?</headerFooter>", xml, re.S)) and bool(re.search(r"<(oddHeader|oddFooter)>[^<]+", xml))
-        hfx = "" if has_hf else ('<headerFooter><oddFooter>' + _esc(f'&L&8{title}&C&8&A&R&8Page &P of &N  ·  &D') + '</oddFooter></headerFooter>')
-        for tag in ("printOptions", "pageMargins", "pageSetup") + (() if has_hf else ("headerFooter",)):
+        foot = "<oddFooter>" + _esc(f"&L{bill}&C&A&RPage &P of &N") + "</oddFooter>"
+        m_hf = re.search(r"<headerFooter\b[^>]*>(.*?)</headerFooter>", xml, re.S)
+        has_hf = bool(m_hf) and bool(re.search(r"<(oddHeader|firstHeader|evenHeader)>[^<]+", m_hf.group(1)))
+        if has_hf:                                       # his header stays, the footer is the app's on every sheet
+            inner = re.sub(r"<(odd|even|first)Footer>.*?</(odd|even|first)Footer>", "", m_hf.group(1), flags=re.S) + foot
+            hfx = re.sub(r"\s(differentOddEven|differentFirst)=\"[^\"]*\"", "", m_hf.group(0)[:m_hf.start(1) - m_hf.start()]) + inner + "</headerFooter>"
+        else:
+            hfx = "<headerFooter>" + foot + "</headerFooter>"
+        for tag in ("printOptions", "pageMargins", "pageSetup", "headerFooter"):
             xml = re.sub(r"<%s\b[^>]*?(?:/>|>.*?</%s>)" % (tag, tag), "", xml, flags=re.S)
         block = po + pm + pst + hfx
-        if has_hf:                                       # his footer stays where it is: ours goes in front of it
-            xml = re.sub(r"(<headerFooter\b)", block.replace("\\", "\\\\") + r"\1", xml, count=1)
-        else:
+        if True:
             m = re.search(r"<(rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|legacyDrawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b|</worksheet>", xml)
             xml = xml[:m.start()] + block + xml[m.start():]
         # fit to page needs the sheet's own switch
-        if pr.get("fit", True):
+        if fixed:
+            xml = re.sub(r"<pageSetUpPr\b[^>]*/>", "", xml, count=1)
+        elif pr.get("fit", True):
             if re.search(r"<pageSetUpPr\b", xml):
                 xml = re.sub(r"<pageSetUpPr\b[^>]*/>", '<pageSetUpPr fitToPage="1"/>', xml, count=1)
             elif re.search(r"<sheetPr\b[^>]*/>", xml):
@@ -3349,14 +3360,14 @@ def a4_pages(model, inputs=None):
             pr.update(fit=True, fw=1, fh=0, scale=100)
         pr["hc"] = True
         pr["minsc"] = 0.5
+        pr["fill"] = sc == "width"                        # narrow sheets use the page width
         if isinstance(ps.get("titles"), list) and len(ps["titles"]) == 2:
             pr["titles"] = [int(ps["titles"][0]), int(ps["titles"][1])] if ps["titles"][0] else None
         elif not pr.get("titles") and heads.get(s["name"]):
             h = int(heads[s["name"]])
             pr["titles"] = [h, h + 1]                     # the table's own heading rows on every page
-        hf = dict(pr.get("hf") or {})
-        has_p = any("&P" in str(v) for v in hf.values())   # the consultant numbers his pages already: not twice
-        hf.setdefault("fl", "&B"); hf.setdefault("fc", "&A"); hf.setdefault("fr", "&D" if has_p else "Page &P of &N  ·  &D")
+        hf = {k: v for k, v in (pr.get("hf") or {}).items() if k.startswith("h")}   # his header stays; the footer is the app's
+        hf.update(fl="&B", fc="&A", fr="Page &P of &N")
         pr["hf"] = hf
         # rows kept together: a run of totals (Total / Discount / GRAND TOTAL) and the signature block
         cells = s["cells"]

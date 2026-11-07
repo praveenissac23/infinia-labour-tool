@@ -744,13 +744,13 @@ def preview_html(model, values, title, pdf_url, excel_url, inputs=None, embed=Fa
             pno += 1
             body, w, hgt = sheet_html(model, sh, values, inputs, rows_only=prow, img_rows=set(prow), stamp=None, grow=pl["grow"])
             hf = []
-            for k, t in pl["hf"].items():
-                txt = escape(hf_text(t, pno, total, sh["name"], fname or title, title))
-                if not txt:
-                    continue
-                pos = (f"top:{pl['mh'] * PX:.1f}px" if k[0] == "h" else f"bottom:{pl['mf'] * PX:.1f}px")
-                side = {"l": f"left:{pl['ml'] * PX:.1f}px", "r": f"right:{pl['mr'] * PX:.1f}px", "c": "left:0;right:0;text-align:center"}[k[1]]
-                hf.append(f'<div class="hf" style="{pos};{side}">{txt}</div>')
+            bill = model.get("_bill") or title
+            rgt = pl["mr"] + (STAMP_PT + 6 if sh["name"] in stamps else 0)
+            for k, t, fs, up in hf_lines(pl, sh["name"], pno, total, fname or title, bill):
+                txt = escape(t)
+                pos = (f"top:{pl['mh'] * PX:.1f}px" if k[0] == "h" else f"bottom:{(pl['mf'] + up) * PX:.1f}px")
+                side = {"l": f"left:{pl['ml'] * PX:.1f}px", "r": f"right:{(rgt if k[0] == 'f' else pl['mr']) * PX:.1f}px", "c": "left:0;right:0;text-align:center"}[k[1]]
+                hf.append(f'<div class="hf" style="{pos};{side};font-size:{fs}pt">{txt}</div>')
             if sh["name"] in stamps:                   # the company stamp: bottom right of every page, in the footer
                 im = stamps[sh["name"]]
                 hf.append(f'<img class="stp" src="data:{_mime(im)};base64,{im["data"]}" alt="" style="right:{pl["mr"] * PX:.1f}px;bottom:{pl["mf"] * PX:.1f}px;width:{STAMP_PT * PX:.1f}px;height:{STAMP_PT * PX:.1f}px">')
@@ -820,6 +820,13 @@ def page_plan(model, s, inputs=None, values=None):
         sc = (pr.get("scale") or 100) / 100.0
     if cont_w and cont_w * sc > aw + mr * 0.8:         # never cut columns off: shrink to the page width
         sc = aw / cont_w
+    if pr.get("fill") and cont_w and sc >= 1 and cont_w * sc < aw * 0.85 and not pr.get("breaks"):
+        # a narrow sheet (a few columns) printed a little bigger so it uses the page width - but a sheet that
+        # fits on one page stays on one page
+        one = cont_h and cont_h * sc <= ah * 1.25          # (one page, or near enough to be brought onto one)
+        sc = min(1.25, aw / cont_w)
+        if one:
+            sc = min(sc, ah / cont_h)
     if pr.get("minsc") and sc < pr["minsc"] and not pr.get("landscape") and not pr.get("orient_set"):
         # too wide for A4 standing up: the sheet goes landscape (the width then fits at a readable size)
         pr = dict(pr, landscape=True)
@@ -833,6 +840,8 @@ def page_plan(model, s, inputs=None, values=None):
     titles = [r for r in rows if t and t[0] <= r <= t[1]]
     tset = set(titles)
     breaks = set(pr.get("breaks") or [])
+    if breaks and cont_h * sc <= ah:
+        breaks = set()                                  # a sheet that fits on one page is printed on one page
     # The consultant set his page breaks (or a short sheet) to fill whole pages. Excel prints a little smaller than
     # the screen sizes suggest, so a block that comes out only slightly too long is brought onto its page by
     # printing the sheet a touch smaller - never a near-empty extra page with one or two rows on it.
@@ -844,11 +853,14 @@ def page_plan(model, s, inputs=None, values=None):
     segs.append(cur_h)
     tpt = sum(rh[r] for r in titles) * px
     need = sc
+    floor = max(float(pr.get("minsc") or 0.5), 0.3) if breaks else sc * 0.8
     for i, hseg in enumerate(segs):
         full = hseg + (tpt if i and titles else 0)
-        if full * sc > ah and full * sc <= ah * 1.12:
+        if full * sc > ah and ah / full >= floor:
+            # with his page breaks, every block between two breaks is one of his pages: printed small enough to
+            # stay on one page (down to half size); without them a sheet only a little too long for one page
             need = min(need, ah / full)
-    sc = max(need, sc * 0.88)
+    sc = max(need, floor)
     th = tpt * sc
     pages, cur, own, used = [], [], [], 0.0
     keep = {}                                           # a block kept together: its first row -> its rows shown
@@ -876,7 +888,36 @@ def page_plan(model, s, inputs=None, values=None):
     x0 = max(0.0, (pw - cw_pt) / 2)
     return {"pw": pw, "ph": ph, "ml": ml, "mr": mr, "mt": mt, "mb": mb, "mh": mh, "mf": mf, "sc": sc, "x0": x0, "y0": mt,
             "cols": cols, "cw": cw, "rh": rh, "merges": merges, "covered": covered, "pages": pages, "hf": pr.get("hf") or {},
-            "vc": pr.get("vc"), "grow": grow}
+            "vc": pr.get("vc"), "grow": grow, "fixed": bool(breaks)}
+
+
+def hf_lines(pl, sheet, page, pages, title, bill):
+    """The page's header / footer pieces: [(key, text, font pt, raise pt)]. The consultant's header stays. The
+    footer is the app's on every bill: the bill left, the sheet name centre, Page X of Y right, and the print
+    date small; when the bill and the sheet name would run into each other (portrait pages, a long name) the sheet
+    name goes on a second small line with the date."""
+    import datetime as _d
+    out = []
+    for k, t in (pl.get("hf") or {}).items():
+        if k[0] != "h":
+            continue
+        txt = hf_text(t, page, pages, sheet, title, bill)
+        if txt:
+            out.append((k, txt, 8, 0))
+    left, right = str(bill or title), f"Page {page} of {pages}"
+    date = "printed " + _d.date.today().strftime("%d/%m/%Y")
+    aw = pl["pw"] - pl["ml"] - pl["mr"]
+    w = lambda s_, fs: len(s_) * fs * 0.52
+    small = 6.5
+    out.append(("fl", left, 7.5, small + 2))
+    out.append(("fr", right, 7.5, small + 2))
+    if w(left, 7.5) + w(sheet, 7.5) / 2 + 12 < aw / 2 and w(right, 7.5) + w(sheet, 7.5) / 2 + 12 < aw / 2:
+        out.append(("fc", sheet, 7.5, small + 2))
+        out.append(("fr", date, small, 0))
+    else:
+        out.append(("fl", sheet, small, 0))
+        out.append(("fr", date, small, 0))
+    return out
 
 
 def hf_text(t, page, pages, sheet, title, bill=""):
@@ -1121,17 +1162,16 @@ def render_pdf(model, values, title, inputs=None, fname=""):
                     cv.drawImage(img, PW - pl["mr"] - STAMP_PT, pl["mf"], STAMP_PT, STAMP_PT, mask="auto", preserveAspectRatio=True)
                 except Exception:
                     pass
-            # the sheet's own header and footer (Page 1 of 9, sheet name ...), at the consultant's margins
-            for k, t in pl["hf"].items():
-                txt = hf_text(t, pno, total_pages, s["name"], fname or title, title)
-                if not txt:
-                    continue
-                cv.setFont("Helvetica", 8); cv.setFillColorRGB(0, 0, 0)
-                yy = PH - pl["mh"] - 8 if k[0] == "h" else pl["mf"]
+            # the header (the consultant's) and the footer: the bill, the sheet, Page X of Y, the print date small
+            bill = model.get("_bill") or title
+            rgt = pl["mr"] + (STAMP_PT + 6 if s["name"] in stamps else 0)
+            for k, txt, fs, up in hf_lines(pl, s["name"], pno, total_pages, fname or title, bill):
+                cv.setFont("Helvetica", fs); cv.setFillColorRGB(0, 0, 0)
+                yy = PH - pl["mh"] - 8 if k[0] == "h" else pl["mf"] + up
                 if k[1] == "l":
                     cv.drawString(pl["ml"], yy, txt)
                 elif k[1] == "r":
-                    cv.drawRightString(PW - pl["mr"], yy, txt)
+                    cv.drawRightString(PW - (rgt if k[0] == "f" else pl["mr"]), yy, txt)
                 else:
                     cv.drawCentredString(PW / 2, yy, txt)
             cv.showPage()
