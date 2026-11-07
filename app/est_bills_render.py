@@ -803,6 +803,8 @@ def page_plan(model, s, inputs=None, values=None):
     cont_w = sum(cw[c] for c in cols) * px
     cont_h = sum(rh[r] for r in rows) * px
     aw, ah = pw - ml - mr, ph - mt - mb
+    FOOT_GAP = 10                                       # a little air above the footer: the rows never touch it
+    ah -= FOOT_GAP
     from est_bills_engine import stamp_sheets, STAMP_PT
     if s["name"] in stamp_sheets(model):
         ah = min(ah, ph - mt - mf - STAMP_PT - 4)      # the rows stop above the company stamp, never under it
@@ -831,7 +833,7 @@ def page_plan(model, s, inputs=None, values=None):
         # too wide for A4 standing up: the sheet goes landscape (the width then fits at a readable size)
         pr = dict(pr, landscape=True)
         pw, ph = ph, pw
-        aw, ah = pw - ml - mr, ph - mt - mb
+        aw, ah = pw - ml - mr, ph - mt - mb - FOOT_GAP
         if s["name"] in stamp_sheets(model):
             ah = min(ah, ph - mt - mf - STAMP_PT - 4)
         sc = min(1.0, aw / cont_w) if cont_w else 1.0
@@ -865,7 +867,12 @@ def page_plan(model, s, inputs=None, values=None):
     pages, cur, own, used = [], [], [], 0.0
     keep = {}                                           # a block kept together: its first row -> its rows shown
     for k0, k1 in pr.get("keep") or []:
-        blk = [r for r in rows if k0 <= r <= k1]
+        blk = []
+        for r in rows:                                  # a block never runs over one of his page breaks
+            if k0 <= r <= k1:
+                blk.append(r)
+                if r in breaks:
+                    break
         if len(blk) > 1:
             keep[blk[0]] = blk
     for r in rows:

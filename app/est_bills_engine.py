@@ -3327,6 +3327,8 @@ def _xlsx_dates(data):
 # ---------------------------------------------------------------------------------------- A4 on every sheet (7 Nov 2026)
 A4_MARGINS = {"normal": [10, 10, 15, 15, 8, 8], "narrow": [6, 6, 12, 12, 6, 6], "wide": [20, 20, 20, 20, 10, 10]}   # mm: left right top bottom header footer
 _TOTALISH = re.compile(r"\b(grand\s*total|net\s*total|sub\s*-?\s*total|total|discount|carried\s+to|collection|retention|vat|amount\s+due)\b", re.I)
+_TOTAL_LEAD = re.compile(r"\s*(grand\s*total|net\s*total|sub\s*-?\s*total|total\b|less\s+discount|discount|net\s+amount|amount\s+due|"
+                         r"carried\s+to|brought\s+forward|retention|vat\b|less\b|add\b)", re.I)
 _SIGNISH = re.compile(r"\b(prepared\s+by|checked\s+by|approved\s+by|certified\s+by|signature)\b", re.I)
 
 
@@ -3370,16 +3372,19 @@ def a4_pages(model, inputs=None):
         hf.update(fl="&B", fc="&A", fr="Page &P of &N")
         pr["hf"] = hf
         # rows kept together: a run of totals (Total / Discount / GRAND TOTAL) and the signature block
+        # (a row is a total when its first words say so - "TOTAL CARRIED TO COLLECTION", "Less Discount" -
+        # never a column heading row with "Total %" or "Total Work Done" further along it)
         cells = s["cells"]
-        words = {}
-        for k, c in cells.items():
+        words, first = {}, {}
+        for k, c in sorted(cells.items(), key=lambda kv: tuple(int(x) for x in kv[0].split(","))):
             v = c.get("v")
-            if isinstance(v, str) and v.strip():
+            if isinstance(v, str) and v.strip() and not v.strip().startswith("="):
                 r = int(k.split(",")[0]); words[r] = words.get(r, "") + " " + v
+                first.setdefault(r, v.strip())
         keep, run = [], None
         for r in sorted(words):
             t = words[r]
-            if _TOTALISH.search(t) and len(t) < 160:
+            if _TOTAL_LEAD.match(first[r]) and len(t) < 160:
                 run = [run[0], r] if run and r - run[1] <= 1 else [r, r]
                 if keep and keep[-1][0] == run[0]:
                     keep[-1] = run
