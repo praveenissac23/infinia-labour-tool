@@ -50,10 +50,11 @@ for st in ("Certified", "Prepared", "CM approved"):
     r = c.post(f"/store/est/subpcs/{pc}/step", headers=H, json={"step": st})
 ck("CM approved", r.status_code == 200 and r.json()["status"] == "CM approved", r.text)
 h = prev()
-ck("after CM approval: Int. Qty (3) and Contract amt (5) hidden, button says 2 hidden", 'window.PC_HIDE={"A": [3, 5]}' in h and "Hide columns (2 hidden)" in h, re.findall(r"PC_HIDE=[^;]*", h))
+# 7 Nov 2026 (Anoop): the subcontractor's copy shows the quantity and the contract amount too
+ck("after CM approval: nothing hidden by default (Int. Qty and Contract amt stay)", 'window.PC_HIDE={}' in h and "Hide columns (" not in h, re.findall(r"PC_HIDE=[^;]*", h))
 t = pdf_txt()
-ck("PDF after approval: no Int. Qty, no Contract amt column, no 42,900.00 / 21,500.00", "Int. Qty" not in t and "Contract amt" not in t and "42,900.00" not in t and "21,500.00" not in t, t[:2500])
-ck("... but Unit, Rate, Measured and the amounts are there (195 x 150 = 29,250.00)", re.search(r"M3\s+150\.00", t) is not None and "29,250.00" in t, t[:3000])
+ck("PDF after approval: Int. Qty and Contract amt printed (42,900.00 / 21,500.00)", "Int. Qty" in t and "Contract amt" in t and "42,900.00" in t and "21,500.00" in t, t[:2500])
+ck("... but Unit, Rate, Measured and the amounts are there (195 x 150 = 29,250.00)", re.search(r"M3\s+[\d,.]+\s+150\.00", t) is not None and "29,250.00" in t, t[:3000])
 # chosen on the preview: show them again, leave Remarks and Rate off instead; Appendix B's Retention off
 sv = c.post(f"/export/est/pc/{pc}/cols?token={tok()}", json={"hide": {"A": [6, 14], "B": [7], "X": [1], "C": [99]}})
 ck("the choice is saved on the certificate (unknown table / column ignored)", sv.status_code == 200 and sv.json()["hide"] == {"A": [6, 14], "B": [7], "C": []}, sv.text)

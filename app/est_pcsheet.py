@@ -942,14 +942,15 @@ COL_KINDS = {"S": ["Bill", "Description", "Contract", "Previous %", "This %", "T
 
 def hidden_cols(pc, want=None):
     """The columns left off the printed certificate, per table kind: what was saved on it, else the default -
-    Int. Qty and Contract amt (internal) left off once the Contracts manager has approved it."""
+    nothing left off (7 Nov 2026, Anoop via Praveen: the subcontractor sees the quantity and the contract amount;
+    until then Int. Qty and Contract amt were dropped once the Contracts manager approved)."""
     import json as _j
     try:
         h = _j.loads(pc.hide_cols) if (getattr(pc, "hide_cols", "") or "").strip() else None
     except ValueError:
         h = None
     if h is None:
-        h = {} if show_int_qty(pc, want) else {"A": [3, 5]}
+        h = {} if want is None or show_int_qty(pc, want) else {"A": [3, 5]}
     out = {}
     for k, v in (h or {}).items():
         if k in COL_KINDS:
@@ -1310,7 +1311,7 @@ def render_html(doc, pdf_url, toggle_url=""):
     # Hide columns: pressing it puts a tick box in every column heading; untick = left off the screen, the PDF and Share.
     # Saved on the certificate. Done puts the boxes away.
     nh = sum(len(v) for v in (doc.get("hide") or {}).values())
-    iq_btn = (f'<button id="colbtn" type="button" title="Choose the columns to leave off - Int. Qty and Contract amt are internal">'
+    iq_btn = (f'<button id="colbtn" type="button" title="Choose the columns to leave off this certificate">'
               f'{"Hide columns" + (f" ({nh} hidden)" if nh else "")}</button>') if toggle_url else ""
     import export_web
     e = lambda v: X(str(v or ""))
