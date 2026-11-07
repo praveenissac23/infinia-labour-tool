@@ -950,3 +950,40 @@ td.ipa-flash { animation: ipaflash 1.8s ease; }
 .sv-ur { display: inline-flex; gap: 2px; flex: none; }
 .sv-ur .btn { padding: 3px 9px; font-weight: 600; color: #2F6FD0; }
 .sv-ur .btn:disabled, .ipa-ur .btn:disabled { opacity: .55; color: inherit; font-weight: 400; cursor: default; }
+
+/* ---- Sheets: an Excel-like ribbon - one tight band of grouped tools, then the formula line (sheet, cell, fx, zoom) */
+.sv-bar { padding: 3px 4px !important; gap: 0 !important; row-gap: 3px !important; }
+.sv-bar .sv-fmt.rb { order: 0; flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 0; padding: 0; border: 0; }
+.rb-g { display: inline-flex; align-items: center; gap: 1px; padding: 0 5px; border-right: 1px solid #ECE6DF; flex: none; }
+.rb-g:last-child { border-right: 0; }
+.sv-bar .rb .btn-sm, .sv-bar .rb-pg .btn-sm { height: 26px; min-width: 26px; padding: 0 5px; font-size: 12.5px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
+.sv-bar .rb .btn-plain { border-color: transparent; background: transparent; }
+.sv-bar .rb .btn-plain:not(:disabled):hover { background: #F4F0EB; border-color: #E2DDD6; }
+.sv-bar .rb .btn.on { background: #FDECEA; border-color: #E2B7B0; color: #8C2F26; }
+.sv-bar .rb select { height: 26px !important; font-size: 12px; padding: 0 4px; border-radius: 6px; }
+.sv-bar .rb select[data-fx="font"] { width: 104px; } .sv-bar .rb select[data-fx="sz"] { width: 52px; } .sv-bar .rb select[data-fx="nf"] { width: 118px; }
+.sv-bar .rb sup { font-size: 8px; margin-left: 1px; }
+.sv-bar .rb .ipa-u, .sv-bar .rb .ipa-r { font-size: 15px; color: #2F6FD0; font-weight: 600; }
+.sv-bar .rb .ipa-u:disabled, .sv-bar .rb .ipa-r:disabled { color: inherit; font-weight: 400; }
+.sv-bar .rb .sv-fc span { border-bottom: 3px solid currentColor; line-height: 1; }
+.sv-bar .rb [data-rw="show"] { font-size: 11.5px; color: #8C2F26; }
+.sv-fbar .rb-pg { border-right: 0; padding: 0 2px; }
+.sv-fbar .rb-pg .btn-sm { padding: 0 7px; height: 28px; font-size: 12px; }
+.sv-bar > .sv-sep, .sv-bar > .sv-ur { display: none !important; }
+/* the formula line */
+.sv-fbar { gap: 4px; padding: 3px 4px; flex-wrap: wrap; row-gap: 3px; }
+.sv-fbar .sv-nav { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.sv-fbar .sv-nav select { height: 28px; width: clamp(110px, 11vw, 190px); border: 1px solid #D5D9DE; border-radius: 6px; padding: 0 6px; font: inherit; font-size: 12.5px; background: #fff; }
+.sv-fbar .sv-nav .btn-sm { height: 28px; min-width: 24px; padding: 0 5px; }
+.sv-fbar .sv-nav .sv-n { font-size: 11px; color: var(--muted); margin: 0 4px 0 2px; white-space: nowrap; }
+.sv-fbar .nb { min-width: 52px; }
+.sv-fbar .fbw { min-width: 130px; }
+@media (max-width: 1400px) { .sv-fbar .sv-zoom [data-sv="one"] { display: none; } .sv-fbar .sv-nav .sv-n { display: none; } }
+.sv-fbar .btn-sm { height: 28px; padding: 0 8px; font-size: 12px; }
+.sv-fbar .sv-zoom { display: inline-flex; align-items: center; gap: 1px; flex: none; }
+.sv-fbar .sv-zoom .btn-sm { height: 28px; min-width: 26px; padding: 0 6px; }
+.sv-fbar .sv-pc { font-size: 12px; min-width: 38px; text-align: center; }
+.sv-fbar .sv-clr { font-size: 12px; white-space: nowrap; flex: none; }
+.sv-q { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 1px solid #D5D9DE; color: #777; font: 600 12px/20px inherit; text-align: center; cursor: help; }
+.sv-rows { display: none !important; }
+@media (max-width: 900px) { .sv-fbar .sv-nav select { width: 130px; } .sv-fbar .fbw { min-width: 140px; flex-basis: 100%; order: 5; } }

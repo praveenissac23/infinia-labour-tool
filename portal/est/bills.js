@@ -877,8 +877,7 @@ function drawFees(m) {
 function drawSheets(m) {
   const b = IPA.bill;
   if (IPA.sheet === undefined || !b.sheets.some(s => s.i === IPA.sheet)) IPA.sheet = (b.sheets[0] || {}).i;
-  m.innerHTML = `<div class="ipa-sheets-help">As in Excel: click a cell and type (Enter saves) · double-click or F2 to change it · = starts a formula, click cells to put them in · right-click for the tools · blue = filled in each bill, yellow = changed this month</div>
-    <div id="ipa-sheet"></div>${nextBtn("sheets")}`;
+  m.innerHTML = `<div id="ipa-sheet"></div>${nextBtn("sheets")}`;
   bindNext(m);
   drawSheet($("#ipa-sheet"), IPA.sheet);
 }
@@ -1160,6 +1159,19 @@ function nfSec(p, comma, dec) {             // comma: true / false / null (keep)
     const [ip, dp = ""] = num.split("."); const hasC = ip.includes(",");
     const nI = (comma === null ? hasC : comma) ? "#,##0" : "0"; const nD = dec === null ? dp.length : dec;
     return nI + (nD > 0 ? "." + "0".repeat(nD) : ""); }); }
+// the ribbon's small pictures (line drawings, 14px, in the text colour)
+const RBI = d => `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">${d}</svg>`;
+const RB = {
+  left: RBI('<path d="M2 3h12M2 6.5h8M2 10h12M2 13.5h8"/>'), center: RBI('<path d="M2 3h12M4 6.5h8M2 10h12M4 13.5h8"/>'), right: RBI('<path d="M2 3h12M6 6.5h8M2 10h12M6 13.5h8"/>'),
+  top: RBI('<path d="M2 2.5h12M8 5v9M5 8l3-3 3 3"/>'), middle: RBI('<path d="M2 8h12M8 1.5v4M8 10.5v4M6 3.5l2 2 2-2M6 12.5l2-2 2 2"/>'), bottom: RBI('<path d="M2 13.5h12M8 2v9M5 8l3 3 3-3"/>'),
+  outdent: RBI('<path d="M7 3h7M7 6.5h7M7 10h7M2 13.5h12M5 5L2.5 7.5 5 10"/>'), indent: RBI('<path d="M7 3h7M7 6.5h7M7 10h7M2 13.5h12M2.5 5L5 7.5 2.5 10"/>'),
+  wrap: RBI('<path d="M2 3h12M2 7.5h10a2 2 0 010 4H8M9.5 10L8 11.5 9.5 13M2 12h3"/>'),
+  merge: RBI('<rect x="1.5" y="3" width="13" height="10" rx="1"/><path d="M4 8h8M6 6l-2 2 2 2M10 6l2 2-2 2"/>'), border: RBI('<rect x="2" y="2" width="12" height="12"/><path d="M8 2v12M2 8h12" stroke-dasharray="1.5 1.5"/>'),
+  rowUp: RBI('<rect x="1.5" y="9" width="13" height="5" rx="1"/><path d="M8 1.5v5M5.5 4h5"/>'), rowDn: RBI('<rect x="1.5" y="2" width="13" height="5" rx="1"/><path d="M8 9.5v5M5.5 12h5"/>'),
+  sec: RBI('<path d="M2 3h12" stroke-width="2.4"/><path d="M2 7.5h12M2 11h8M12 9.5v5M9.5 12h5"/>'), hide: RBI('<path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><path d="M2.5 13.5l11-11"/>'),
+  like: RBI('<path d="M2 3h12M2 6h12" opacity=".5"/><path d="M8 14V8M5.5 10.5L8 8l2.5 2.5"/>'), clear: RBI('<path d="M3 13.5h10M5 11l6.5-6.5-2-2L3 9l2 2zM7.5 4.5l2 2"/>'),
+  reset: RBI('<path d="M3 8a5 5 0 105-5H5M5 1v4h4" transform="translate(0 .5)"/>'),
+};
 function nfDec(nf) { const m = (nf || "").replace(/"[^"]*"/g, "").match(/[#0?][#0?,]*(?:\.([0#?]*))?/); return m && m[1] ? m[1].length : 0; }
 function fmtTools(v, host, b, sh, redraw) {
   const bar = $("#sv-fmt", v); if (!bar) return;
@@ -1196,6 +1208,7 @@ function fmtTools(v, host, b, sh, redraw) {
     (S.cols || []).forEach(c => { const d = $(`.sv-cn[data-c="${c}"]`, ctop); if (d) d.classList.add("on"); });
     corner.classList.toggle("on", !!S.all);
     const on = tds.length > 0; $$("[data-fx]", bar).forEach(x => x.disabled = !on);
+    const pb = $('[data-fx="paint"]', bar); if (pb) { pb.classList.toggle("on", !!IPA.painter); if (IPA.painter) pb.disabled = false; }
     const f = tds.find(td => td.textContent.trim()) || tds[0], fs = getComputedStyle(f || document.body);
     const szm = st(f).match(/font-size:\s*([\d.]+)pt/);
     const sz = szm ? Math.round(+szm[1] * 2) / 2 : (f ? Math.round(parseFloat(fs.fontSize) * 0.75 * 2) / 2 : "");
@@ -1230,12 +1243,15 @@ function fmtTools(v, host, b, sh, redraw) {
       if (i >= 0) S.add.splice(i, 1); else S.add.push(rc); e.preventDefault(); e.stopPropagation(); }
     else if (e.shiftKey && S.a && !S.rows && !S.cols) { S.z = rc; e.preventDefault(); window.getSelection && window.getSelection().removeAllRanges(); }
     else { clearAll(); S.a = rc; }
-    paint(); }, true);
+    paint();
+    if (IPA.painter && !e.shiftKey && !(e.ctrlKey || e.metaKey)) { const P = IPA.painter; IPA.painter = null; const rows = allRows(), i0 = rows.indexOf(rc[0]), cells = [];
+      for (let k = 0; k <= P.r2 - P.r1; k++) { const r = rows[i0 + k]; if (r === undefined) break; for (let c = rc[1]; c <= rc[1] + P.c2 - P.c1; c++) cells.push([r, c]); }
+      send({ cells, paint: { sheet: P.sheet, r1: P.r1, c1: P.c1, r2: P.r2, c2: P.c2 } }); } }, true);
   gut.addEventListener("click", e => { const d = e.target.closest(".sv-rn"); if (!d) return; e.stopPropagation(); const r = +d.dataset.r;
     if (e.shiftKey && S.rows && S.rows.length) { const a = S.rows[0], lo = Math.min(a, r), hi = Math.max(a, r); S.rows = [a].concat(allRows().filter(x => x >= lo && x <= hi && x !== a)); }
     else if ((e.ctrlKey || e.metaKey) && S.rows) S.rows = S.rows.includes(r) ? S.rows.filter(x => x !== r) : S.rows.concat([r]);
     else { clearAll(); S.rows = [r]; }
-    paint(); const tr = $(`tr[data-r="${r}"]`, host); if (tr && S.rows.length === 1) tr.click(); });
+    paint(); });
   ctop.addEventListener("click", e => { const d = e.target.closest(".sv-cn"); if (!d) return; e.stopPropagation(); const c = +d.dataset.c;
     if (e.shiftKey && S.cols && S.cols.length) { const a = S.cols[0], lo = Math.min(a, c), hi = Math.max(a, c); S.cols = $$(".sv-cn", ctop).map(x => +x.dataset.c).filter(x => x >= lo && x <= hi); }
     else if ((e.ctrlKey || e.metaKey) && S.cols) S.cols = S.cols.includes(c) ? S.cols.filter(x => x !== c) : S.cols.concat([c]);
@@ -1259,6 +1275,13 @@ function fmtTools(v, host, b, sh, redraw) {
     else if (a === "comma") { const on = !x.classList.contains("on"); send({ set: { nf: nfEach(S.cur.nf, p => nfSec(p, on, null)) } }); }
     else if (a === "dless" || a === "dmore") { const d = Math.max(0, Math.min(4, nfDec(S.cur.nf) + (a === "dmore" ? 1 : -1))); send({ set: { nf: nfEach(S.cur.nf, p => nfSec(p, null, d)) } }); }
     else if (a === "like") send({ like_above: true });
+    else if (a === "copy") { if (SV.fk) SV.fk.copy(); }
+    else if (a === "paste") { if (SV.fk) SV.fk.paste(); }
+    else if (a === "paint") { if (IPA.painter) { IPA.painter = null; paint(); return toast("Format painter off"); }
+      const bx = boxOf(); if (!bx) return toast("Pick cells first");
+      IPA.painter = { sheet: sh, r1: bx[0], c1: bx[1], r2: bx[2], c2: bx[3] }; paint(); toast("Now click where this look goes - this sheet or another (Esc cancels)"); }
+    else if (/^r(above|below|sec|hide)$/.test(a)) { const r = S.a ? S.a[0] : (S.rows && S.rows[0]); if (!r) return toast("Pick a cell in the row first");
+      SV.rowAct && SV.rowAct({ rabove: "above", rbelow: "below", rsec: "section", rhide: "hide" }[a], r); }
     else if (a === "menu") openMenu(x.dataset.v, x);
     else if (a === "clear") clearCells();
     else if (a === "reset") send({ reset: true }); };
@@ -1361,6 +1384,7 @@ function fmtTools(v, host, b, sh, redraw) {
       const k = e.key.toLowerCase();
       if ((e.ctrlKey || e.metaKey) && !e.altKey && k === "a" && document.querySelector(".sv-in")) { e.preventDefault(); SV.fx.pickAll(); return; }
       if ((e.ctrlKey || e.metaKey) && !e.altKey && ["b", "i", "u"].includes(k)) { const btn = fb.querySelector(`[data-fx="${k}"]`); if (!btn || btn.disabled) return; e.preventDefault(); btn.click(); return; }
+      if (e.key === "Escape" && IPA.painter) { IPA.painter = null; SV.fx.paint(); toast("Format painter off"); return; }
       if ((e.key === "Delete" || e.key === "Backspace") && document.querySelector(".sv-in td.xsel")) { e.preventDefault(); SV.fx.clearCells(); } }); }
   paint();
 }
@@ -1377,27 +1401,27 @@ async function drawSheet(v, i, keep) {
   const FS = [6, 7, 8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24];
   const FONTS = ["Calibri", "Arial", "Arial Narrow", "Times New Roman", "Cambria", "Tahoma", "Verdana", "Century Gothic", "Book Antiqua"];
   const B_ = (fx, t, h, v) => `<button class="btn btn-plain btn-sm" data-fx="${fx}"${v !== undefined ? ` data-v="${v}"` : ""} title="${t}" disabled>${h}</button>`;
-  const fmtBar = locked ? "" : `<span class="sv-sep"></span><span class="sv-ur"><button type="button" class="btn btn-plain btn-sm ipa-u" title="Undo (Ctrl+Z)" disabled>&#8630; Undo</button><button type="button" class="btn btn-plain btn-sm ipa-r" title="Redo (Ctrl+Y)" disabled>&#8631; Redo</button></span><span class="sv-fmt" id="sv-fmt" title="Pick cells first: click a cell, Shift+click a range, Ctrl+click to add cells, a row number / column letter for a whole row / column, Ctrl+A for the sheet. Right-click for the same tools.">
-      <select data-fx="font" title="Font" disabled><option value="">Font</option>${FONTS.map(x => `<option value="${x}">${x}</option>`).join("")}</select>
-      <select data-fx="sz" title="Font size" disabled><option value="">Size</option>${FS.map(x => `<option value="${x}">${x}</option>`).join("")}</select>
-      ${B_("dn", "Smaller", "A&minus;")}${B_("up", "Bigger", "A+")}
-      ${B_("b", "Bold (Ctrl+B)", "<b>B</b>")}${B_("i", "Italic (Ctrl+I)", "<i>I</i>")}${B_("u", "Underline (Ctrl+U)", "<u>U</u>")}
-      <label class="btn btn-plain btn-sm sv-fc" title="Text colour"><span>A</span><input type="color" data-fx="fc" value="#000000" disabled></label>
-      <span class="sv-sep"></span>
-      ${B_("al", "Align left", "&#8676;", "left")}${B_("al", "Centre", "&#8596;", "center")}${B_("al", "Align right", "&#8677;", "right")}${B_("al", "Align on decimal: the points line up under each other", ".00", "dec")}
-      ${B_("va", "Top", "&#8868;", "top")}${B_("va", "Middle", "&#8801;", "center")}${B_("va", "Bottom", "&#8869;", "bottom")}
-      ${B_("ind", "Outdent", "&#8676;&#8676;", "-1")}${B_("ind", "Indent (B1, B2, B3)", "&#8677;&#8677;", "1")}${B_("wrap", "Wrap text: onto several lines, the row grows", "Wrap")}
-      <span class="sv-sep"></span>
-      <select data-fx="nf" title="Number format" disabled><option value="">Format</option>${NFS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
-      ${B_("comma", "Thousands separator: 1,318,577.14", ",")}${B_("dless", "Fewer decimals", ".0&larr;")}${B_("dmore", "More decimals", ".00&rarr;")}
-      <span class="sv-sep"></span>
-      <span class="sv-dd"><button class="btn btn-plain btn-sm" data-fx="menu" data-v="bd" title="Borders" disabled>&#9638; Borders &#9662;</button></span>
-      <span class="sv-dd"><button class="btn btn-plain btn-sm" data-fx="menu" data-v="mg" title="Merge cells" disabled>&#8862; Merge &#9662;</button></span>
-      <span class="sv-dd"><button class="btn btn-plain btn-sm" data-fx="menu" data-v="fm" title="Row height, column width, autofit, page breaks" disabled>Format &#9662;</button></span>
-      <span class="sv-sep"></span>
-      ${B_("like", "Font, size, bold, alignment and borders of the row above", "Match row above")}${B_("clear", "Clear contents (Delete) - the look stays", "Clear")}${B_("reset", "Back to the consultant's look", "Reset")}</span>`;
-  const tools = locked ? "" : fmtBar + `<span class="sv-sep"></span><button class="btn btn-ghost btn-sm" data-pg="add" title="A copy of one of the sheets, added after the last one - e.g. a second variations or authority fees page">+ Add page</button>${cur.added ? `<button class="btn btn-plain btn-sm" data-pg="del" title="Take this added page off the bill">Delete page</button>` : ""}`;
-  const below = locked ? `<div class="sv-locked">Read only - this bill is ${esc(b.status)}. The sheets can be changed while the bill is a Draft.</div>` : `<div class="sv-rows${cur.hidden ? " on" : ""}" id="sv-rows"><span class="muted">Click a row number to add a line or a section next to it, or to hide it.</span>${cur.hidden ? ` <button class="btn btn-plain btn-sm" data-rw="show">Show ${cur.hidden} hidden line${cur.hidden === 1 ? "" : "s"}</button>` : ""}</div>`;
+  const G = (t, inner) => `<span class="rb-g" title="${t}">${inner}</span>`;
+  const fmtBar = locked ? "" : `<span class="sv-fmt rb" id="sv-fmt">
+      ${G("Undo / Redo", `<button type="button" class="btn btn-plain btn-sm ipa-u" title="Undo (Ctrl+Z)" disabled>&#8630;</button><button type="button" class="btn btn-plain btn-sm ipa-r" title="Redo (Ctrl+Y)" disabled>&#8631;</button>`)}
+      ${G("Clipboard", B_("copy", "Copy (Ctrl+C)", "&#10697;") + B_("paste", "Paste (Ctrl+V)", "&#128203;") + B_("paint", "Format painter: copy the look of the cells picked, then click where it goes (any sheet). Esc cancels.", "&#128396;"))}
+      ${G("Font", `<select data-fx="font" title="Font" disabled><option value="">Font</option>${FONTS.map(x => `<option value="${x}">${x}</option>`).join("")}</select>
+        <select data-fx="sz" title="Font size" disabled><option value="">Size</option>${FS.map(x => `<option value="${x}">${x}</option>`).join("")}</select>
+        ${B_("up", "Bigger", "A<sup>+</sup>")}${B_("dn", "Smaller", "A<sup>&minus;</sup>")}${B_("b", "Bold (Ctrl+B)", "<b>B</b>")}${B_("i", "Italic (Ctrl+I)", "<i>I</i>")}${B_("u", "Underline (Ctrl+U)", "<u>U</u>")}
+        <label class="btn btn-plain btn-sm sv-fc" title="Text colour"><span>A</span><input type="color" data-fx="fc" value="#000000" disabled></label>`)}
+      ${G("Alignment", B_("al", "Align left", RB.left, "left") + B_("al", "Centre", RB.center, "center") + B_("al", "Align right", RB.right, "right") + B_("al", "Align on decimal: the points line up under each other", ".00", "dec")
+        + B_("va", "Top", RB.top, "top") + B_("va", "Middle", RB.middle, "center") + B_("va", "Bottom", RB.bottom, "bottom")
+        + B_("ind", "Outdent", RB.outdent, "-1") + B_("ind", "Indent (B1, B2, B3)", RB.indent, "1") + B_("wrap", "Wrap text: onto several lines, the row grows", RB.wrap)
+        + `<span class="sv-dd"><button class="btn btn-plain btn-sm" data-fx="menu" data-v="mg" title="Merge cells" disabled>${RB.merge}&#9662;</button></span><span class="sv-dd"><button class="btn btn-plain btn-sm" data-fx="menu" data-v="bd" title="Borders" disabled>${RB.border}&#9662;</button></span>`)}
+      ${G("Number", `<select data-fx="nf" title="Number format" disabled><option value="">Format</option>${NFS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>`
+        + B_("comma", "Thousands separator: 1,318,577.14", ",") + B_("dless", "Fewer decimals", ".0&larr;") + B_("dmore", "More decimals", ".00&rarr;"))}
+      ${G("Rows - for the row of the cell picked", B_("rabove", "Insert a line above", RB.rowUp) + B_("rbelow", "Insert a line below", RB.rowDn) + B_("rsec", "Add a section below: a heading line and a line under it", RB.sec)
+        + B_("rhide", "Hide this line (kept in the file, not printed)", RB.hide) + (cur.hidden ? `<button class="btn btn-plain btn-sm" data-rw="show" title="Show the hidden lines again">Show ${cur.hidden} hidden</button>` : ""))}
+      ${G("Cells", B_("like", "Match row above: font, size, bold, alignment and borders of the row above", RB.like) + B_("clear", "Clear contents (Delete) - the look stays", RB.clear) + B_("reset", "Reset: back to the consultant's look", RB.reset)
+        + `<span class="sv-dd"><button class="btn btn-plain btn-sm" data-fx="menu" data-v="fm" title="Row height, column width, autofit, page breaks" disabled>Format&#9662;</button></span>`)}
+    </span>`;
+  const tools = locked ? "" : fmtBar + `<span class="rb-g rb-pg"><button class="btn btn-ghost btn-sm" data-pg="add" title="A copy of one of the sheets, added after the last one - e.g. a second variations or authority fees page">+ Add page</button>${cur.added ? `<button class="btn btn-plain btn-sm" data-pg="del" title="Take this added page off the bill">Delete page</button>` : ""}</span>`;
+  const below = locked ? `<div class="sv-locked">Read only - this bill is ${esc(b.status)}. The sheets can be changed while the bill is a Draft.</div>` : "";
   const fr = sheetFrame(v, d, { sheets: b.sheets, go: j => { IPA.sheet = j; drawSheet(v, j); }, tools, below });
   if (was) { fr.box.scrollLeft = was[0]; fr.box.scrollTop = was[1]; }
   if (locked) return;
@@ -1413,15 +1437,9 @@ async function drawSheet(v, i, keep) {
     try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/pages`, { remove: sh }); IPA.sheet = undefined; drawBill(); toast("Page deleted"); } catch (e) { fail(e); } };
   const sw = $('[data-rw="show"]', v); if (sw) sw.onclick = async () => {
     try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/hide`, { sheet: sh, rows: [], show: true, all: true }); redraw(); toast("Hidden lines shown"); } catch (e) { fail(e); } };
-  // ---- rows: click one -> put a line / a section next to it, or hide it
-  const rowBar = $("#sv-rows", v);
-  const pickRow = tr => {
-    $$("tr.sel", host).forEach(x => x.classList.remove("sel")); tr.classList.add("sel");
+  // ---- rows (the ribbon's Rows buttons, for the row of the cell picked): a line above / below, a section, hide it
+  const rowAct = (kind, tr) => {
     const r = +tr.dataset.r;
-    rowBar.classList.add("on");
-    rowBar.innerHTML = `<b>Row ${r}</b><button class="btn btn-ghost btn-sm" data-rw="above">+ Line above</button><button class="btn btn-ghost btn-sm" data-rw="below">+ Line below</button>
-      <button class="btn btn-ghost btn-sm" data-rw="section" title="A heading line (in the look of the table's headings) and a line under it">+ Section below</button><button class="btn btn-plain btn-sm" data-rw="hide" title="Kept in the file, not printed">Hide line</button>
-      <button class="btn btn-plain btn-sm" data-rw="clear" title="Done">&times;</button>`;
     const heading = () => { let p = tr.previousElementSibling;                       // the nearest heading above: a bold row
       while (p) { if ([...p.cells].some(c => /font-weight:700/.test(c.getAttribute("style") || "") && c.textContent.trim())) return +p.dataset.r; p = p.previousElementSibling; } return r; };
     const add = async (at, n, like) => { try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/rows`, { sheet: sh, at, n, like }); redraw(); toast(n > 1 ? "Section added - type its heading in the first new line" : "Line added - click its cells to type"); } catch (e) { fail(e); } };
@@ -1432,13 +1450,12 @@ async function drawSheet(v, i, keep) {
     const isHead = t => t && [...t.cells].some(c => /font-weight:\s*(700|bold)/.test(c.getAttribute("style") || "") && c.textContent.trim());
     const likeAbove = above => { if (!above) return r; if (!isHead(above)) return +above.dataset.r;
       let n = above.nextElementSibling, k = 0; while (n && k++ < 8) { if (!isHead(n) && [...n.cells].some(c => c.textContent.trim())) return +n.dataset.r; n = n.nextElementSibling; } return +above.dataset.r; };
-    $('[data-rw="above"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "line", after: r - 1 }) : add(r, 1, [likeAbove(tr.previousElementSibling)]);
-    $('[data-rw="below"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "line", after: r }) : add(r + 1, 1, [likeAbove(tr)]);
-    $('[data-rw="section"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "head", after: r }) : add(r + 1, 2, [heading(), r]);
-    $('[data-rw="hide"]', rowBar).onclick = async () => { try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/hide`, { sheet: sh, rows: [r] }); redraw(); toast("Line hidden"); } catch (e) { fail(e); } };
-    $('[data-rw="clear"]', rowBar).onclick = () => { tr.classList.remove("sel"); rowBar.classList.remove("on"); rowBar.innerHTML = ""; };
+    if (kind === "above") return inTable ? lineForm(sh, { kind: "line", after: r - 1 }) : add(r, 1, [likeAbove(tr.previousElementSibling)]);
+    if (kind === "below") return inTable ? lineForm(sh, { kind: "line", after: r }) : add(r + 1, 1, [likeAbove(tr)]);
+    if (kind === "section") return inTable ? lineForm(sh, { kind: "head", after: r }) : add(r + 1, 2, [heading(), r]);
+    if (kind === "hide") return (async () => { try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/hide`, { sheet: sh, rows: [r] }); redraw(); toast("Line hidden"); } catch (e) { fail(e); } })();
   };
-  $$("tr[data-r]", host).forEach(tr => tr.addEventListener("click", e => { if (!e.shiftKey) pickRow(tr); }));
+  SV.rowAct = (kind, r) => { const tr = $(`tr[data-r="${r}"]`, host); if (!tr) return toast("Pick a cell in the row first"); return rowAct(kind, tr); };
   // ---- the formatting toolbar: pick cells (click, Shift+click a range, a row number = the whole row), then size / B / I / U
   SV.pages = d.pages || []; SV.manual = d.manual || [];
   if (IPA.flash && IPA.flash.sheet === sh) { const fl = IPA.flash; IPA.flash = null;
@@ -1529,8 +1546,15 @@ async function drawSheet(v, i, keep) {
   if (IPA.rmNext) { const k = IPA.rmNext; IPA.rmNext = null; const n = $(`td[data-k="${k}"]`, host); if (n) { n.scrollIntoView({ block: "nearest" }); n.click(); openEd(n); } }
   if (IPA.fmove) { const m = IPA.fmove; IPA.fmove = null; const t0 = $(`td[data-k="${m.k}"]`, host); if (t0) FX.move(t0, m.dir); }
   FX.resume(openEd);
+  { const fb = $(".sv-fbar", v), svb = $(".sv-bar", v);
+    if (fb && svb) { const nav = document.createElement("span"); nav.className = "sv-nav";
+      ['[data-sv="prev"]', ".sv-pick", '[data-sv="next"]', ".sv-n"].forEach(q => { const x = $(q, svb); if (x) nav.appendChild(x); }); fb.prepend(nav);
+      const pg = $(".rb-pg", svb); if (pg) nav.appendChild(pg);         // + Add page next to the sheet picker
+      const zm = $(".sv-zoom", svb); if (zm) fb.appendChild(zm);
+      fb.insertAdjacentHTML("beforeend", `<span class="sv-q" title="As in Excel: click a cell and type (Enter saves) - double-click or F2 to change it - = starts a formula, click cells to put them in - right-click for the tools - row number / column letter picks a whole row / column - blue = filled in each bill, yellow = changed this month">?</span>`);
+      $$(".spacer", svb).forEach(x => x.remove()); fr.refit(); } }
   // ---- Remarks: kept for the next bill unless asked
-  if (d.remarks) { const rb = $("#sv-rows", v);
-    if (rb) rb.insertAdjacentHTML("afterend", `<label class="sv-clr"><input type="checkbox" id="sv-clr" ${d.clear_remarks ? "checked" : ""}> Clear remarks for next bill <span class="muted small">- off: the next bill starts with these remarks</span></label>`);
+  if (d.remarks) { const rb = $(".sv-q", v);
+    if (rb) rb.insertAdjacentHTML("beforebegin", `<label class="sv-clr" title="Off: the next bill starts with these remarks"><input type="checkbox" id="sv-clr" ${d.clear_remarks ? "checked" : ""}> Clear remarks next bill</label>`);
     const cb = $("#sv-clr", v); if (cb) cb.onchange = async () => { try { const x = await POST(`/store/est/ipa/bill/${b.id}/opts`, { clear_remarks: cb.checked }); toast(x.clear_remarks ? "The next bill starts with empty remarks" : "The next bill keeps these remarks"); } catch (e) { fail(e); cb.checked = !cb.checked; } }; }
 }

@@ -80,7 +80,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // the sheet view: + Line below on a line of the table opens the same form
   await p.click('#ipa-nav [data-step="sheets"]'); await sleep(1800);
   await p.selectOption('.sv-pick', { label: D }); await sleep(1500);
-  await p.click('.sv-in tr[data-r="9"]'); await sleep(300); await p.click('[data-rw="below"]'); await sleep(500);
+  await p.click('.sv-in tr[data-r="9"] td[data-c]'); await sleep(300); await p.click('#sv-fmt [data-fx="rbelow"]'); await sleep(500);
   ck('Sheets: + Line below on a table line opens the same form', await p.isVisible('#modal:not(.hide) #f-c5'));
   await p.click('#m-cancel'); await sleep(300);
   // phone

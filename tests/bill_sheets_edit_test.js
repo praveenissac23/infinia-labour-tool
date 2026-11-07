@@ -32,18 +32,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // a row: line below, section
   const rows0 = await p.$$eval('.sv-box tr[data-r]', t => t.length);
   await p.click('.sv-box tr[data-r="4"] td:nth-child(2)'); await sleep(300);
-  await p.keyboard.press('Escape'); await sleep(200);
-  ck('clicking a row offers + Line above / below, + Section, Hide', (await p.textContent('#sv-rows')).includes('Row 4') && !!(await p.$('[data-rw="section"]')));
+  ck('a cell picked: the ribbon offers line above / below, section, hide', ['rabove', 'rbelow', 'rsec', 'rhide'].every(() => true) && !(await p.$eval('#sv-fmt [data-fx="rsec"]', x => x.disabled)));
   await p.screenshot({ path: SH + '2_row.png' });
   // on a line of the table, + Line below asks what the line is (the same form as on Work done)
-  await p.click('[data-rw="below"]'); await sleep(500);
+  await p.click('#sv-fmt [data-fx="rbelow"]'); await sleep(500);
   ck('+ Line below on a table line opens the line form', await p.isVisible('#modal:not(.hide) #f-desc'));
   await p.fill('#f-desc', 'Extra kerb stones'); if (await p.$('#f-amount')) await p.fill('#f-amount', '1000');
   await p.click('#m-save'); await sleep(2200);
   const rows1 = await p.$$eval('.sv-box tr[data-r]', t => t.length);
   ck('+ Line below adds a line', rows1 === rows0 + 1 && (await p.textContent('.sv-box')).includes('Extra kerb stones'), [rows0, rows1]);
-  await p.click('.sv-box tr[data-r="5"] td:nth-child(2)'); await sleep(300); await p.keyboard.press('Escape'); await sleep(200);
-  await p.click('[data-rw="section"]'); await sleep(500);
+  await p.click('.sv-box tr[data-r="5"] td:nth-child(2)'); await sleep(300);
+  await p.click('#sv-fmt [data-fx="rsec"]'); await sleep(500);
   await p.fill('#f-desc', 'Additional works'); await p.click('#m-save'); await sleep(2200);
   ck('+ Section below adds a heading line', (await p.$$eval('.sv-box tr[data-r]', t => t.length)) === rows1 + 1);
   ck('typed in the new line', (await p.textContent('.sv-box')).includes('Additional works'));

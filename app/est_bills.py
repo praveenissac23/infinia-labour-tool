@@ -2084,7 +2084,7 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
     b = _get(db, EstBill, bid)
     st_ = payload.get("set") or {}
     lab = ("Borders" if payload.get("borders") else "Merge / unmerge" if payload.get("merge") else "Row height" if "rowh" in payload else "Column width" if "colw" in payload
-           else "Autofit" if payload.get("autofit") else "Page break" if payload.get("brk") else "Match row above" if payload.get("like_above") else "Reset" if payload.get("reset")
+           else "Autofit" if payload.get("autofit") else "Page break" if payload.get("brk") else "Format painter" if payload.get("paint") else "Match row above" if payload.get("like_above") else "Reset" if payload.get("reset")
            else ", ".join({"sz": "Font size", "b": "Bold", "i": "Italic", "u": "Underline", "nf": "Number format", "ha": "Alignment", "va": "Alignment", "font": "Font",
                            "fc": "Text colour", "ind": "Indent", "wrap": "Wrap text"}.get(k, k) for k in st_) or "Format")
     n_ = len(payload.get("cells") or []) or len(payload.get("rows") or []) or len(payload.get("cols") or [])
@@ -2209,6 +2209,25 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
             f.pop(f"{r},{c}", None)
         for r in {r for r, _ in cells}:
             rowh.pop(str(r), None)
+    elif isinstance(payload.get("paint"), dict):          # format painter: the look of the copied cell(s), from any sheet
+        pt = payload["paint"]
+        ssh = str(pt.get("sheet") or sh)
+        src_s = next((x for x in plain["sheets"] if x["name"] == ssh), None)
+        if not src_s:
+            raise HTTPException(400, "The copied cells' sheet is not on this bill.")
+        r1, c1 = int(pt.get("r1") or 0), int(pt.get("c1") or 0)
+        r2, c2 = int(pt.get("r2") or r1), int(pt.get("c2") or c1)
+        if r1 < 1 or c1 < 1:
+            raise HTTPException(400, "Copy a cell's look first.")
+        r1, r2, c1, c2 = min(r1, r2), max(r1, r2), min(c1, c2), max(c1, c2)
+        sf = dict(f) if ssh == sh else dict(((inputs.get(ssh) or {}).get("_fmt") or {}))
+        hh, ww = r2 - r1 + 1, c2 - c1 + 1
+        for r, c in cells:                                # the copied block repeated over the cells picked, as in Excel
+            sr, sc_ = r1 + (r - box[0]) % hh, c1 + (c - box[1]) % ww
+            base = src_s["cells"].get(f"{sr},{sc_}") or {}
+            own = dict(sf.get(f"{sr},{sc_}") or {})
+            own["s"] = int(own.get("s", base.get("s", 0)))
+            f[f"{r},{c}"] = own
     elif payload.get("like_above"):
         for r in sorted({r for r, _ in cells}):
             src = r - 1
