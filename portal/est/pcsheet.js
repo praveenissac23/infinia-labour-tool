@@ -370,6 +370,10 @@ function openCert(sid, pcid) {
 }
 document.addEventListener("keydown", e => { if (e.key === "Escape") { const lv = document.getElementById("leave"), el = document.getElementById("big");
   if (lv && !lv.classList.contains("hide")) return;
+  // on a bill's sheet Esc first lets go of the cells picked (and its menus) - it never closes the bill from there
+  const sel = document.querySelectorAll("#big .sv-in td.xsel, .sv-ddm, .sv-ctx");
+  if (sel.length || document.querySelector("#big .sv-in")) { document.querySelectorAll(".sv-ddm, .sv-ctx").forEach(x => x.remove());
+    if (typeof IPA !== "undefined" && IPA.fsel) { IPA.fsel = { sh: IPA.fsel.sh, a: null, z: null, rows: null, cols: null, add: [] }; if (typeof SV !== "undefined" && SV.fx) SV.fx.paint(); } return; }
   if (el && !el.classList.contains("hide") && $("#modal").classList.contains("hide")) leaveBig(); } });
 // the phone / browser Back button on a full page = the Back button (asks first if something is not saved)
 addEventListener("popstate", async () => {

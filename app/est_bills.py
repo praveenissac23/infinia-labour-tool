@@ -239,9 +239,39 @@ def _progress(model, values, inputs):
         if sd:
             _parts(sd, t, lines, hds, vals)
         out.append({"sheet": sh, "lines": lines, "hidden": not vis, "heads": hds,
-                    "editable": bool(sd) and bool(t.get("item_c") or t.get("desc_c"))})
+                    "editable": bool(sd) and bool(t.get("item_c") or t.get("desc_c")), "final": _final_row(sd, t, lines, vals) if sd else None})
     out.sort(key=lambda t: t["hidden"])                  # sheets the consultant hid (not printed) go last
     return out
+
+
+_FINAL = re.compile(r"grand\s*total|net\s*total|total\s+(after|less)\s+discount|net\s+(amount|value)|total\s+net", re.I)
+
+
+def _final_row(s, t, lines, vals):
+    """The sheet's own last total after a discount (V03: Total 652,950.77, Discount (27,950.77), GRAND TOTAL 625,000.00):
+    {"r", "label", "value", "prev", "now", "todate"} - the section is counted at that figure, not the lines added up
+    (7 Nov 2026). None when the sheet has no such row."""
+    if not lines:
+        return None
+    last = max(ln["r"] for ln in lines)
+    ac = t.get("amount_c")
+    if not ac:
+        return None
+    hit = None
+    for r in range(last + 1, min(last + 15, s.get("maxr", last) + 1)):
+        words = " ".join(str(vals.get(f"{r},{c}", (s["cells"].get(f"{r},{c}") or {}).get("v")) or "") for c in range(1, ac))
+        if _FINAL.search(words):
+            v = vals.get(f"{r},{ac}")
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                hit = (r, words.strip())
+    if not hit:
+        return None
+    r, label = hit
+    num = lambda c: (lambda x: float(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else None)(vals.get(f"{r},{c}"))
+    tc = t["tot_c"]
+    # the amounts done: the three columns after Total % (Previous / Current / Total work done), as the sheet has them
+    prev, now, todate = num(tc + 1), num(tc + 2), num(tc + 3)
+    return {"r": r, "label": label[:40], "value": num(ac), "prev": prev, "now": now, "todate": todate}
 
 
 def _parts(s, t, lines, heads, vals):
@@ -840,7 +870,10 @@ def _save_totals(b, model, values):
         each = lambda v: v
         if model.get("precision_shown"):          # Excel's "precision as displayed": each line's value is kept to the cent the
             each = lambda v: BE._round(v, 2, BE.ROUND_HALF_UP)   # sheet shows, so the total is the sheet's (35,471.07 not .06)
-        b.work_done = round(sum(each((l["amount"] or 0) * (l["total"] or 0)) for t in _progress(model, values, {}) for l in t["lines"]), 2)
+        def k_(t):                                 # a section counted at its GRAND TOTAL after a discount
+            v = sum(l["amount"] or 0 for l in t["lines"])
+            return (t["final"]["value"] / v) if t.get("final") and isinstance(t["final"].get("value"), (int, float)) and v else 1.0
+        b.work_done = round(sum(k_(t) * sum(each((l["amount"] or 0) * (l["total"] or 0)) for l in t["lines"]) for t in _progress(model, values, {})), 2)
     except Exception:
         pass
     b.label = f["label"] or b.label
@@ -1018,15 +1051,18 @@ def bill_sheet(bid: int, i: int, db: Session = Depends(get_db), user: models.Use
     model = _bill_model(fmt, inputs)
     if not (0 <= i < len(model["sheets"])):
         raise HTTPException(404, "No such sheet.")
-    values = BE.calculate(model, inputs)
+    book = BE.Book(model, inputs)
+    values = book.all_values()
     s = model["sheets"][i]
+    typed = inputs.get(s["name"]) or {}               # only a formula typed on the bill is flagged (the consultant's own
+    circ = {f"{r},{c}" for (shn, r, c) in getattr(book, "circ", set()) if shn == s["name"] and f"{r},{c}" in typed}   # loops keep Excel's figures)
     mark = {}
     for t in model.get("map", {}).get("progress", []):
         if t["sheet"] == s["name"]:
             for ln in t["lines"]:
                 mark[f"{ln['r']},{t['tot_c']}"] = "tot"
     sm = signed_model(model, _signs(b), _sig_store(db))
-    html, w, h = BR.sheet_html(sm, sm["sheets"][i], values, inputs, edit=b.status not in ("Paid",), mark=mark)
+    html, w, h = BR.sheet_html(sm, sm["sheets"][i], values, inputs, edit=b.status == "Draft", mark=mark, circ=circ)
     return {"html": html, "width": w, "height": h, "name": s["name"], "css": BR.SHEET_CSS,
             "remarks": bool(BE.remarks_cols(s, model["styles"])), "clear_remarks": bool((inputs.get("_opts") or {}).get("clear_remarks")),
             "pages": _page_starts(model, s, inputs, values), "manual": sorted(int(x) + 1 for x in (s.get("print") or {}).get("breaks") or [])}

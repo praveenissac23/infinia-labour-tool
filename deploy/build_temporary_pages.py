@@ -333,7 +333,8 @@ CSS = """
   body.pg-noside #pg-side-open { display: block; }
   /* Full screen (Trello's button): nothing but the page. */
   body.pg-full .pg-side, body.pg-full .topbar, body.pg-full #pg-tabs, body.pg-full #pg-sub, body.pg-full #pg-side-open { display: none !important; }
-  body.pg-full #screen-pgboards.active { margin: 0; } body.pg-full .content { padding: 0 !important; }
+  body.pg-full #screen-pgboards.active, body.pg-full .screen.active { margin: 0 !important; } body.pg-full .content { padding: 0 !important; }
+  body.pg-full .main, body.pg-full .main-content { margin-left: 0 !important; }
   /* Estimation > Overview */
   .est-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-top: 12px; }
   .est-tile { border-radius: 10px; overflow: hidden; background: #fff; border: 1px solid #E9EBEE; cursor: pointer; transition: box-shadow .15s; }
@@ -787,6 +788,7 @@ window.addEventListener("message", e => {
   }
 
   if (e.data.est === "app" && typeof pgGo === "function") pgGo(e.data.page, e.data.tab);
+  if (e.data.est === "full") pgFull(!!e.data.on);       // a bill open: the whole screen for it
 });
 // A frame whose sign-in has run out asks the app to show its sign-in box.
 window.addEventListener("message", e => { if (e.origin === location.origin && e.data === "pg-signin" && typeof doLogout === "function") doLogout(); });

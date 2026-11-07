@@ -111,8 +111,8 @@ function sheetFrame(el, d, opts = {}) {
   const step = dir => { const z = Math.round(((SV.z || 1) + dir * 0.1) * 10) / 10; set(z); svSave(SV.z); };
   $$("[data-sv]", el).forEach(b => b.onclick = () => { const a = b.dataset.sv;
     if (a === "in") step(1); else if (a === "out") step(-1); else if (a === "fit") { fit(); svSave("fit"); } else if (a === "page") { fitPage(); svSave("page"); } else if (a === "one") { set(1); svSave(1); }
-    else if (a === "prev" && k > 0) opts.go(sheets[k - 1].i); else if (a === "next" && k < sheets.length - 1) opts.go(sheets[k + 1].i); });
-  const pick = $(".sv-pick", el); if (pick) pick.onchange = () => opts.go(+pick.value);
+    else if (a === "prev" && k > 0) { if (SV.stashF) SV.stashF(); opts.go(sheets[k - 1].i); } else if (a === "next" && k < sheets.length - 1) { if (SV.stashF) SV.stashF(); opts.go(sheets[k + 1].i); } });
+  const pick = $(".sv-pick", el); if (pick) pick.onchange = () => { if (SV.stashF) SV.stashF(); opts.go(+pick.value); };
   box.addEventListener("wheel", e => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); set((SV.z || 1) * (e.deltaY < 0 ? 1.08 : 1 / 1.08)); svSave(SV.z); } }, { passive: false });
   if (!SV.bound) { SV.bound = true;
     document.addEventListener("keydown", e => { const fr = document.querySelector(".sv .sv-zoom"); if (!fr || !(e.ctrlKey || e.metaKey)) return;
@@ -213,22 +213,32 @@ const pctTxt = v => v === null || v === undefined ? "" : (Math.round(v * 1e6) / 
 const amt = v => v === null || v === undefined || v === "" ? '<span class="muted">-</span>' : money(v, true);
 let SAVING = Promise.resolve();
 
+// the app around this page (its menu, top bar and tabs) put away while a bill is open, brought back after
+function appFull(on) { if (!window.PG_EMBED) return; try { parent.postMessage({ est: "full", on: !!on }, location.origin); } catch (e) { /* not in the app */ } }
 async function openBill(id, step) {
   try { IPA.bill = await GET(`/store/est/ipa/bill/${id}`); } catch (e) { return fail(e); }
   try { IPA.people = (await GET("/store/est/ipa/signatures")).people; } catch (e) { IPA.people = []; }
   try { IPA.staff = (await GET("/store/est/ipa/people")).people; } catch (e) { IPA.staff = []; }
   IPA.step = step || "work"; IPA.q = ""; IPA.filter = "";
-  big("", `<div class="ipa"><nav class="ipa-nav" id="ipa-nav"></nav><div class="ipa-main" id="ipa-main"></div></div>`, billsRedraw, "est.ipa");
+  big("", `<div class="ipa"><nav class="ipa-nav" id="ipa-nav"></nav><div class="ipa-main" id="ipa-main"></div></div>`, () => { appFull(false); billsRedraw(); }, "est.ipa");
+  appFull(true);                                       // the app's menu and top bar step aside: the bill gets the whole screen
   $("#big .bbody").classList.add("ipa-body");
   drawBill();
 }
 function billNo(b) { return b.bill_no_raw || b.label || b.seq; }
 function lines(b) { return b.progress.flatMap(t => t.lines.map(l => Object.assign({ sheet: t.sheet }, l))); }
 function nowPct(l) { return l.total === null ? null : (l.total || 0) - (l.prev || 0); }
+// a section is counted at its sheet's own last total (V03: GRAND TOTAL 625,000.00 after the discount), so its lines
+// are scaled by that total / the lines added up; a sheet without such a row: factor 1
+function secFactor(t) { const v = t.lines.reduce((n, l) => n + (l.amount || 0), 0);
+  return t.final && typeof t.final.value === "number" && v ? t.final.value / v : 1; }
+function secSum(t) { const k = secFactor(t);
+  const s = f => r2(k * t.lines.reduce((n, l) => n + (l.amount ? l.amount * (f(l) || 0) : 0), 0));
+  return { v: r2(k * t.lines.reduce((n, l) => n + (l.amount || 0), 0)), prev: s(l => l.prev), now: s(nowPct), td: s(l => l.total) }; }
 function billFigs(b) {
   const L = lines(b);
-  const sum = f => r2(L.reduce((n, l) => n + (l.amount ? l.amount * (f(l) || 0) : 0), 0));
-  return { value: r2(L.reduce((n, l) => n + (l.amount || 0), 0)), prev: sum(l => l.prev), now: sum(nowPct), todate: sum(l => l.total),
+  const S = b.progress.map(secSum), add = k => r2(S.reduce((n, x) => n + x[k], 0));
+  return { value: add("v"), prev: add("prev"), now: add("now"), todate: add("td"),
            moved: L.filter(l => Math.abs(nowPct(l) || 0) > 1e-9).length, entry: L.filter(l => l.how).length,
            bad: L.filter(l => (l.total || 0) > 1.00005 || (nowPct(l) || 0) < -1e-9) };
 }
@@ -391,16 +401,10 @@ function bindSigners(m) {
 // ---------------------------------------------------------------- 2. work done
 function drawWork(m) {
   const b = IPA.bill;
-  const secSum = t => {
-    const s = f => r2(t.lines.reduce((n, l) => n + (l.amount ? l.amount * (f(l) || 0) : 0), 0));
-    const v = r2(t.lines.reduce((n, l) => n + (l.amount || 0), 0));
-    return { v, prev: s(l => l.prev), now: s(nowPct), td: s(l => l.total) };
-  };
   m.innerHTML = `
-    <div class="ipa-card ipa-intro"><b>Type this month's progress.</b> For each line type either <b>This month %</b> or the new <b>Total %</b> - the other works itself out.
-      <span class="muted">Enter or &darr; goes to the next line, &uarr; back. Previous % is last bill's Total %. Amounts are worked out by the consultant's formulas.</span></div>
+    <div class="ipa-sheets-help"><b>Type this month's progress</b> - This month % or the new Total % (the other works itself out) · Enter / &darr; next line, &uarr; back · Previous % = last bill's Total %</div>
     <div class="ipa-card"><div class="ipa-tw"><table class="ipa-secs" data-nofreeze><thead><tr><th>Section</th><th class="r">Value</th><th class="r">Previous</th><th class="r">This month</th><th class="r">To date</th><th class="r">Done</th></tr></thead><tbody>
-      ${b.progress.map((t, i) => { const s = secSum(t); return `<tr data-jump="${i}"><td><a>${esc(t.sheet)}</a> <span class="muted small">${t.lines.length} lines${t.hidden ? " · hidden, not printed" : ""}</span></td><td class="r">${money(s.v, false)}</td><td class="r">${money(s.prev, false)}</td><td class="r ${s.now ? "b" : ""}">${amt(s.now)}</td><td class="r">${money(s.td, false)}</td><td class="r">${s.v ? Math.round(100 * s.td / s.v) + "%" : "-"}</td></tr>`; }).join("")}
+      ${b.progress.map((t, i) => { const s = secSum(t); return `<tr data-jump="${i}"><td><a>${esc(t.sheet)}</a> <span class="muted small">${t.lines.length} lines${t.hidden ? " · hidden, not printed" : ""}${secFactor(t) !== 1 ? ` · ${esc((t.final.label || "net").toLowerCase())}` : ""}</span></td><td class="r">${money(s.v, false)}</td><td class="r">${money(s.prev, false)}</td><td class="r ${s.now ? "b" : ""}">${amt(s.now)}</td><td class="r">${money(s.td, false)}</td><td class="r">${s.v ? Math.round(100 * s.td / s.v) + "%" : "-"}</td></tr>`; }).join("")}
       ${(() => { const f = billFigs(b); return `<tr class="tot"><td>All sections</td><td class="r">${money(f.value, false)}</td><td class="r">${money(f.prev, false)}</td><td class="r">${money(f.now, false)}</td><td class="r">${money(f.todate, false)}</td><td class="r">${f.value ? Math.round(100 * f.todate / f.value) + "%" : "-"}</td></tr>`; })()}
     </tbody></table></div></div>
     <div class="ipa-bar"><input class="q" id="ipa-q" placeholder="Search item or description" value="${esc(IPA.q)}">
@@ -833,8 +837,7 @@ function drawFees(m) {
 function drawSheets(m) {
   const b = IPA.bill;
   if (IPA.sheet === undefined || !b.sheets.some(s => s.i === IPA.sheet)) IPA.sheet = (b.sheets[0] || {}).i;
-  m.innerHTML = `<div class="ipa-card ipa-intro"><b>Every sheet of the bill, as the consultant laid it out - and anything this bill needs added.</b>
-      <span class="muted">Blue cells can be typed in; yellow = changed this month. Click a cell, type, press Enter (= works as in Excel). Click a row to put a line or a section next to it, or to hide it. <b>+ Add page</b> copies a sheet (e.g. a second variations page); the next bill keeps it.</span></div>
+  m.innerHTML = `<div class="ipa-sheets-help">As in Excel: click a cell and type (Enter saves) · double-click or F2 to change it · = starts a formula, click cells to put them in · right-click for the tools · blue = filled in each bill, yellow = changed this month</div>
     <div id="ipa-sheet"></div>${nextBtn("sheets")}`;
   bindNext(m);
   drawSheet($("#ipa-sheet"), IPA.sheet);
@@ -866,6 +869,225 @@ async function drawReview(m) {
 }
 async function setStatus(s) {
   try { await POST(`/store/est/ipa/bill/${IPA.bill.id}/status`, { status: s }); IPA.bill.status = s; toast("Status: " + s); drawBill(); } catch (x) { fail(x); }
+}
+
+// ---- formulas as in Excel: the formula bar, coloured references, pointing at cells, F4, the function list, AutoSum,
+// Show formulas, the fill handle and copy / paste with the references moved
+const colName = n => { let t = ""; while (n > 0) { const m = (n - 1) % 26; t = String.fromCharCode(65 + m) + t; n = Math.floor((n - 1) / 26); } return t; };
+const colNum = t => t.toUpperCase().split("").reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0);
+const REF_RE = /((?:'(?:[^']|'')+'|[A-Za-z_][\w.]*)!)?(\$?)([A-Z]{1,3})(\$?)(\d+)(?::(\$?)([A-Z]{1,3})(\$?)(\d+))?(?![\w(!])/g;
+const REF_COLORS = ["#2F6FD0", "#D0342C", "#8E44AD", "#2E8B57", "#E67E22", "#16A085", "#C2185B", "#7F8C2D"];
+const FUNCS = { SUM: "SUM(number1, number2, …)", AVERAGE: "AVERAGE(number1, number2, …)", MIN: "MIN(number1, number2, …)", MAX: "MAX(number1, number2, …)",
+  COUNT: "COUNT(value1, value2, …)", PRODUCT: "PRODUCT(number1, number2, …)", ROUND: "ROUND(number, digits)", ROUNDUP: "ROUNDUP(number, digits)",
+  ROUNDDOWN: "ROUNDDOWN(number, digits)", ABS: "ABS(number)", IF: "IF(test, value if true, value if false)", IFERROR: "IFERROR(value, value if error)",
+  AND: "AND(test1, test2, …)", OR: "OR(test1, test2, …)", SUMIF: "SUMIF(range, criteria, [sum range])", TODAY: "TODAY()" };
+// the references of a formula, outside quoted text: [{start, end, sheet, r1, c1, r2, c2, text}]
+function fRefs(f) { const out = []; let m; const qs = []; f.replace(/"[^"]*"/g, (x, at) => { qs.push([at, at + x.length]); return x; });
+  REF_RE.lastIndex = 0;
+  while ((m = REF_RE.exec(f))) { const at = m.index; if (qs.some(([a, z]) => at >= a && at < z)) continue;
+    const prev = f[at - 1] || ""; if (/[A-Za-z0-9_$.]/.test(prev)) continue;
+    const sheet = m[1] ? m[1].slice(0, -1).replace(/^'|'$/g, "").replace(/''/g, "'") : null;
+    out.push({ start: at, end: at + m[0].length, sheet, r1: +m[5], c1: colNum(m[3]), r2: m[9] ? +m[9] : +m[5], c2: m[7] ? colNum(m[7]) : colNum(m[3]), text: m[0] }); }
+  return out; }
+// a formula copied to another cell: relative references move with it, $ ones stay (as Excel's fill and paste)
+function shiftF(f, dr, dc) { return f.replace(/"[^"]*"|((?:'(?:[^']|'')+'|[A-Za-z_][\w.]*)!)?(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\w(!])/g, (m, sh, dc1, col, dr1, row, at, all) => {
+  if (m.startsWith('"')) return m; const prev = all[at - 1] || ""; if (/[A-Za-z0-9_$.]/.test(prev)) return m;
+  const c = dc1 ? colNum(col) : colNum(col) + dc, r = dr1 ? +row : +row + dr;
+  if (c < 1 || r < 1) return (sh || "") + "#REF!";
+  return (sh || "") + dc1 + colName(c) + dr1 + r; }); }
+function formulaKit(v, host, b, sh, fr, redraw) {
+  const S = () => IPA.fsel || {};
+  const td = (r, c) => $(`tr[data-r="${r}"] td[data-c="${c}"]`, host) || [...$$(`tr[data-r="${r}"] td[data-c]`, host)].find(t => +t.dataset.c <= c && c < +t.dataset.c + (t.colSpan || 1));
+  const qname = n => /^[A-Za-z_][\w.]*$/.test(n) ? n : "'" + n.replace(/'/g, "''") + "'";
+  const boxes = document.createElement("div"); boxes.className = "sv-refs"; host.appendChild(boxes);
+  // ---- the formula bar: the cell's address, its formula (or value), Σ AutoSum and Show formulas
+  const bar = document.createElement("div"); bar.className = "sv-fbar";
+  bar.innerHTML = `<span class="nb" title="The cell picked">&nbsp;</span><span class="fxl">fx</span><div class="fbw"><input class="fbx" spellcheck="false" placeholder="Pick a cell - its value or formula shows here; type = for a formula" disabled><div class="fbc"></div></div>
+    <button type="button" class="btn btn-plain btn-sm" data-fb="sum" title="AutoSum: =SUM( ) of the figures above (or to the left)" disabled>&Sigma;</button>
+    <button type="button" class="btn btn-plain btn-sm" data-fb="show" title="Show formulas (Ctrl+\`)">Show formulas</button>`;
+  const svb = $(".sv-bar", v); svb.insertAdjacentElement("afterend", bar);
+  const nb = $(".nb", bar), fbx = $(".fbx", bar), fbc = $(".fbc", bar);
+  const cur = () => { const s = S(); if (!s.a) return null; return td(s.a[0], s.a[1]); };
+  const show = () => { const t = cur(); const s = S();
+    if (IPA.fpend) { nb.textContent = (IPA.fpend.sheet !== sh ? IPA.fpend.sheet + "!" : "") + addr(IPA.fpend.k); return; }
+    nb.textContent = t ? addr(t.dataset.k || (t.parentElement.dataset.r + "," + t.dataset.c)) + (s.z ? ":" + colName(s.z[1]) + s.z[0] : "") : "";
+    fbx.value = t && t.dataset.k !== undefined ? (t.dataset.raw || "") : ""; fbx.disabled = !(t && t.dataset.k); $('[data-fb="sum"]', bar).disabled = !(t && t.dataset.k); paintText(fbx, fbc); };
+  const addr = k => { const [r, c] = String(k).split(",").map(Number); return colName(c) + r; };
+  // coloured references: in the text and as boxes round the cells
+  const paintText = (inp, mirror) => { const f = inp.value; if (!f.startsWith("=")) { mirror.textContent = mirror.classList.contains("fbc") ? f : ""; return []; }
+    const refs = fRefs(f); let html = "", at = 0, k = 0; const keyCol = {};
+    refs.forEach(x => { const key = (x.sheet || "") + x.text.replace(/\$/g, "").replace(/^.*!/, ""); if (!(key in keyCol)) keyCol[key] = REF_COLORS[k++ % REF_COLORS.length]; x.color = keyCol[key];
+      html += esc(f.slice(at, x.start)) + `<span style="color:${x.color};font-weight:600">${esc(x.text)}</span>`; at = x.end; });
+    mirror.innerHTML = html + esc(f.slice(at)); return refs; };
+  const drawBoxes = refs => { boxes.innerHTML = ""; const hr = host.getBoundingClientRect(), z = SV.z || 1;
+    (refs || []).forEach(x => { if (x.sheet && x.sheet !== sh) return; const a = td(x.r1, x.c1), z2 = td(x.r2, x.c2); if (!a || !z2) return;
+      const ra = a.getBoundingClientRect(), rz = z2.getBoundingClientRect(); const d = document.createElement("div"); d.className = "sv-refbox";
+      Object.assign(d.style, { left: (Math.min(ra.left, rz.left) - hr.left) / z + "px", top: (Math.min(ra.top, rz.top) - hr.top) / z + "px",
+        width: (Math.max(ra.right, rz.right) - Math.min(ra.left, rz.left)) / z + "px", height: (Math.max(ra.bottom, rz.bottom) - Math.min(ra.top, rz.top)) / z + "px", borderColor: x.color, background: x.color + "14" });
+      boxes.appendChild(d); }); };
+  let live = null;                                     // the editor being typed in (in the cell or the formula bar)
+  // ---- an editor with formula help
+  const attach = (inp, cell, onEnter) => {
+    const mirror = document.createElement("div"); mirror.className = "sv-fpre"; host.appendChild(mirror);
+    const pos = () => { const z = SV.z || 1; mirror.style.left = inp.style.left; mirror.style.top = (parseFloat(inp.style.top) + parseFloat(inp.style.height) + 2) + "px"; mirror.style.minWidth = inp.style.width; };
+    if (inp.classList.contains("ipa-cell")) pos(); else mirror.style.display = "none";
+    const list = document.createElement("div"); list.className = "sv-fn"; document.body.appendChild(list);
+    let point = null;                                  // the reference being pointed at: {start, end, anchor:[r,c]}
+    const st = { inp, cell, point: () => point };
+    const refresh = () => { const refs = paintText(inp, inp === fbx ? fbc : mirror); if (inp !== fbx) { fbx.value = inp.value; paintText(fbx, fbc); }
+      mirror.style.display = inp.value.startsWith("=") && inp !== fbx ? "block" : "none"; drawBoxes(refs); hint(); };
+    const canPoint = () => { if (!inp.value.startsWith("=")) return false; const a = inp.selectionStart; const before = inp.value.slice(0, a);
+      if (point && a === point.end) return true; return /[=+\-*/^(,:<>&;]\s*$/.test(before); };
+    const insertRef = (text, extend) => { const v0 = inp.value; let a = inp.selectionStart, e = inp.selectionEnd;
+      if (point && (a === point.end || extend)) { a = point.start; e = point.end; }
+      inp.value = v0.slice(0, a) + text + v0.slice(e); point = { start: a, end: a + text.length, anchor: point && extend ? point.anchor : null };
+      inp.setSelectionRange(point.end, point.end); refresh(); };
+    const refText = (r1, c1, r2, c2, other) => (other ? qname(other) + "!" : "") + colName(c1) + r1 + (r2 !== undefined && (r2 !== r1 || c2 !== c1) ? ":" + colName(c2) + r2 : "");
+    const hint = () => { list.innerHTML = ""; list.style.display = "none"; const f = inp.value; if (!f.startsWith("=")) return; const a = inp.selectionStart, before = f.slice(0, a);
+      const m = before.match(/(?:^=|[=+\-*/^(,:<>&;\s])([A-Za-z]{1,12})$/); const box = inp.getBoundingClientRect();
+      Object.assign(list.style, { left: box.left + "px", top: box.bottom + (inp === fbx ? 2 : 26) + "px" });
+      if (m) { const names = Object.keys(FUNCS).filter(n => n.startsWith(m[1].toUpperCase())); if (!names.length) return;
+        list.innerHTML = names.map((n, k) => `<div class="it${k ? "" : " on"}" data-n="${n}"><b>${n}</b><small>${esc(FUNCS[n])}</small></div>`).join(""); list.style.display = "block"; return; }
+      // inside a function: its hint
+      let depth = 0, name = null; for (let k = before.length - 1; k >= 0; k--) { const ch = before[k]; if (ch === ")") depth++; else if (ch === "(") { if (depth) depth--; else { const n = before.slice(0, k).match(/([A-Za-z]+)$/); name = n && n[1].toUpperCase(); break; } } }
+      if (name && FUNCS[name]) { list.innerHTML = `<div class="hn">${esc(FUNCS[name])}</div>`; list.style.display = "block"; } };
+    const pick = n => { const f = inp.value, a = inp.selectionStart, before = f.slice(0, a).replace(/[A-Za-z]{1,12}$/, ""); inp.value = before + n + "(" + f.slice(a);
+      inp.setSelectionRange(before.length + n.length + 1, before.length + n.length + 1); refresh(); };
+    list.addEventListener("mousedown", e => { const it = e.target.closest("[data-n]"); if (!it) return; e.preventDefault(); pick(it.dataset.n); });
+    inp.addEventListener("input", () => { point = null; refresh(); });
+    inp.addEventListener("click", () => { point = null; hint(); });
+    // pointing with the mouse: a click (Shift+click / drag for a range) puts the cell in at the cursor
+    const down = e => { if (!canPoint()) return; const t = e.target.closest("td[data-c]"); if (!t || !host.contains(t)) return;
+      e.preventDefault(); e.stopPropagation(); const r = +t.parentElement.dataset.r, c = +t.dataset.c;
+      const other = IPA.fpend && IPA.fpend.sheet !== sh ? sh : null;
+      if (e.shiftKey && point && point.anchor) insertRef(refText(point.anchor[0], point.anchor[1], r, c, other), true);
+      else { insertRef(refText(r, c, undefined, undefined, other)); point.anchor = [r, c]; }
+      const mv = ev => { const t2 = ev.target.closest && ev.target.closest("td[data-c]"); if (!t2 || !host.contains(t2)) return; const r2 = +t2.parentElement.dataset.r, c2 = +t2.dataset.c;
+        const [ar, ac] = point.anchor; insertRef(refText(Math.min(ar, r2), Math.min(ac, c2), Math.max(ar, r2), Math.max(ac, c2), other), true); point.anchor = [ar, ac]; };
+      const up = () => { host.removeEventListener("mouseover", mv); document.removeEventListener("mouseup", up); setTimeout(() => inp.focus(), 0); };
+      host.addEventListener("mouseover", mv); document.addEventListener("mouseup", up); };
+    host.addEventListener("mousedown", down, true);
+    const blockClick = e => { if (inp.value.startsWith("=") && e.target.closest("td[data-c]") && document.activeElement === inp) { e.stopPropagation(); e.preventDefault(); } };
+    host.addEventListener("click", blockClick, true);
+    const key = e => {
+      if (list.style.display === "block" && $(".it", list) && ["ArrowDown", "ArrowUp", "Tab", "Enter"].includes(e.key) && !e.altKey) {
+        const its = $$(".it", list), k = its.findIndex(x => x.classList.contains("on"));
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") { its[k].classList.remove("on"); its[(k + (e.key === "ArrowDown" ? 1 : its.length - 1)) % its.length].classList.add("on"); }
+        else pick($(".it.on", list).dataset.n);
+        e.preventDefault(); return true; }
+      if (e.key === "F4" && inp.value.startsWith("=")) {     // E11 -> $E$11 -> E$11 -> $E11 -> E11
+        e.preventDefault(); const a = inp.selectionStart, x = fRefs(inp.value).find(y => a >= y.start && a <= y.end); if (!x) return true;
+        const m = x.text.match(/^(.*!)?(\$?)([A-Z]+)(\$?)(\d+)(.*)$/); const st4 = (m[2] ? 1 : 0) * 2 + (m[4] ? 1 : 0);
+        const nx = { 0: ["$", "$"], 3: ["", "$"], 1: ["$", ""], 2: ["", ""] }[st4];
+        const t2 = (m[1] || "") + nx[0] + m[3] + nx[1] + m[5] + (m[6] || "").replace(/\$/g, "").replace(/:([A-Z]+)(\d+)/, (q, cc, rr) => ":" + nx[0] + cc + nx[1] + rr);
+        inp.value = inp.value.slice(0, x.start) + t2 + inp.value.slice(x.end); inp.setSelectionRange(x.start + t2.length, x.start + t2.length); refresh(); return true; }
+      if (/^Arrow/.test(e.key) && canPoint() && !e.altKey) {   // the arrow keys pick the cell for the formula
+        e.preventDefault(); const base = point && point.anchor ? point.anchor : [+cell.parentElement.dataset.r, +cell.dataset.c];
+        const rows = $$("tr[data-r]", host).map(t => +t.dataset.r), ri = rows.indexOf(base[0]);
+        let r = base[0], c = base[1];
+        if (e.key === "ArrowDown") r = rows[Math.min(rows.length - 1, ri + 1)]; else if (e.key === "ArrowUp") r = rows[Math.max(0, ri - 1)];
+        else if (e.key === "ArrowRight") c = c + 1; else c = Math.max(1, c - 1);
+        if (e.shiftKey && point && point.anchor) { const a0 = point.a0 || point.anchor; insertRef(refText(Math.min(a0[0], r), Math.min(a0[1], c), Math.max(a0[0], r), Math.max(a0[1], c)), true); point.a0 = a0; point.anchor = [r, c]; }
+        else { insertRef(refText(r, c)); point.anchor = [r, c]; }
+        return true; }
+      return false; };
+    live = st;
+    refresh();
+    return { key, formula: () => inp.value.startsWith("="), pointing: () => !!point && inp.value.startsWith("="),
+      close: () => { host.removeEventListener("mousedown", down, true); host.removeEventListener("click", blockClick, true); mirror.remove(); list.remove(); boxes.innerHTML = ""; live = null; } };
+  };
+  // ---- the formula bar itself: click it to edit there (Enter saves to the cell picked)
+  let barEd = null;
+  fbx.addEventListener("focus", () => { const t = IPA.fpend ? null : cur(); if (!t && !IPA.fpend) return; if (barEd) return;
+    barEd = attach(fbx, t || host); const rawWas = fbx.value; let done = false;
+    const end = async keep => { if (done) return; done = true; const val = fbx.value.trim(); barEd.close(); barEd = null;
+      const tgt = IPA.fpend ? { sheet: IPA.fpend.sheet, k: IPA.fpend.k, si: IPA.fpend.si } : { sheet: sh, k: t.dataset.k };
+      const back = IPA.fpend && IPA.fpend.sheet !== sh ? IPA.fpend.si : null; IPA.fpend = null;
+      if (!keep || (val === rawWas && back === null)) { show(); if (back !== null) { IPA.sheet = back; drawSheet(v, back); } return; }
+      let x = val; const n = Number(val.replace(/,/g, "")); if (!val.startsWith("=") && val !== "" && !isNaN(n)) x = n;
+      if (await save({ set: { [tgt.sheet]: { [tgt.k]: x === "" ? null : x } } })) { toast("Saved"); if (back !== null) { IPA.sheet = back; drawSheet(v, back); } else redraw(); } };
+    fbx.onkeydown = e => { if (barEd && barEd.key(e)) return; if (e.key === "Enter") { e.preventDefault(); end(true); } else if (e.key === "Escape") { e.preventDefault(); end(false); } };
+    fbx.onblur = () => setTimeout(() => { if (!barEd) return; if (barEd.pointing()) { fbx.focus(); return; } if (document.activeElement && document.activeElement.closest && document.activeElement.closest(".sv-bar")) return; end(true); }, 0); });
+  // ---- Σ AutoSum: the run of figures straight above (or to the left)
+  $('[data-fb="sum"]', bar).onclick = () => { const t = cur(); if (!t) return; const r = +t.parentElement.dataset.r, c = +t.dataset.c;
+    const rows = $$("tr[data-r]", host).map(x => +x.dataset.r); let k = rows.indexOf(r) - 1; const up = [];
+    while (k >= 0) { const x = td(rows[k], c); if (x && x.dataset.num) up.push(rows[k]); else if (up.length || (x && x.textContent.trim())) break; k--; }
+    let f;
+    if (up.length) f = `=SUM(${colName(c)}${Math.min(...up)}:${colName(c)}${Math.max(...up)})`;
+    else { let cc = c - 1, lf = []; while (cc >= 1) { const x = td(r, cc); if (x && x.dataset.num) lf.push(cc); else if (lf.length) break; cc--; }
+      f = lf.length ? `=SUM(${colName(Math.min(...lf))}${r}:${colName(Math.max(...lf))}${r})` : "=SUM()"; }
+    const ed = $(".ipa-cell", host);
+    if (ed) { ed.value = f; ed.dispatchEvent(new Event("input")); ed.focus(); ed.setSelectionRange(f.length - 1, f.length - 1); return; }
+    SV.openEd(t, f); };
+  $('[data-fb="sum"]', bar).addEventListener("mousedown", e => e.preventDefault());       // the cell being typed in stays open
+  // ---- Show formulas (Ctrl+`)
+  const showF = on => { SV.showF = on; $('[data-fb="show"]', bar).classList.toggle("on", on);
+    $$("td[data-raw]", host).forEach(t => { if (!(t.dataset.raw || "").startsWith("=")) return;
+      if (on) { if (t.dataset.shown === undefined) t.dataset.shown = t.innerHTML; t.innerHTML = `<span class="sv-ftxt">${esc(t.dataset.raw)}</span>`; }
+      else if (t.dataset.shown !== undefined) { t.innerHTML = t.dataset.shown; delete t.dataset.shown; } }); };
+  $('[data-fb="show"]', bar).onclick = () => showF(!SV.showF);
+  if (SV.showF) showF(true);
+  // ---- the fill handle: drag the square at the corner of the picked cells down / across - formulas move with it
+  const fh = document.createElement("div"); fh.className = "sv-fh"; fh.title = "Drag to fill (formulas are copied with their references moved)"; host.appendChild(fh);
+  const placeFh = () => { const s = S(); fh.style.display = "none"; if (!s.a || s.rows || s.cols || (s.add && s.add.length)) return;
+    const z2 = s.z || s.a, t = td(Math.max(s.a[0], z2[0]), Math.max(s.a[1], z2[1])); if (!t || !t.dataset.k) return;
+    const hr = host.getBoundingClientRect(), r = t.getBoundingClientRect(), z = SV.z || 1;
+    Object.assign(fh.style, { display: "block", left: (r.right - hr.left) / z - 4 + "px", top: (r.bottom - hr.top) / z - 4 + "px" }); };
+  fh.addEventListener("mousedown", e => { e.preventDefault(); e.stopPropagation(); const s = S(); const z2 = s.z || s.a;
+    const src = { r1: Math.min(s.a[0], z2[0]), c1: Math.min(s.a[1], z2[1]), r2: Math.max(s.a[0], z2[0]), c2: Math.max(s.a[1], z2[1]) }; let to = null;
+    const mv = ev => { const t = document.elementFromPoint(ev.clientX, ev.clientY); const c = t && t.closest && t.closest("td[data-c]"); if (!c || !host.contains(c)) return;
+      const r = +c.parentElement.dataset.r, cc = +c.dataset.c; to = r > src.r2 ? { r, c: src.c2, dir: "down" } : cc > src.c2 ? { r: src.r2, c: cc, dir: "right" } : null;
+      $$(".sv-fillto", host).forEach(x => x.classList.remove("sv-fillto"));
+      if (to) $$("tr[data-r] td[data-c]", host).forEach(x => { const rr = +x.parentElement.dataset.r, c3 = +x.dataset.c;
+        if (to.dir === "down" ? (rr > src.r2 && rr <= to.r && c3 >= src.c1 && c3 <= src.c2) : (c3 > src.c2 && c3 <= to.c && rr >= src.r1 && rr <= src.r2)) x.classList.add("sv-fillto"); }); };
+    const up = async () => { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); $$(".sv-fillto", host).forEach(x => x.classList.remove("sv-fillto")); if (!to) return;
+      const set = {}, rows = $$("tr[data-r]", host).map(x => +x.dataset.r);
+      const srcRows = rows.filter(r => r >= src.r1 && r <= src.r2);
+      if (to.dir === "down") { const tgt = rows.filter(r => r > src.r2 && r <= to.r);
+        tgt.forEach((r, k) => { const sr = srcRows[k % srcRows.length]; for (let c = src.c1; c <= src.c2; c++) { const s0 = td(sr, c), t0 = td(r, c); if (!s0 || !t0 || !t0.dataset.k || t0.dataset.c != c) continue;
+          const raw = s0.dataset.raw || ""; set[t0.dataset.k] = raw.startsWith("=") ? shiftF(raw, r - sr, 0) : (raw === "" ? null : (isNaN(Number(raw)) ? raw : Number(raw))); } }); }
+      else { for (let c = src.c2 + 1; c <= to.c; c++) { const sc = src.c1 + (c - src.c2 - 1) % (src.c2 - src.c1 + 1);
+        srcRows.forEach(r => { const s0 = td(r, sc), t0 = td(r, c); if (!s0 || !t0 || !t0.dataset.k) return; const raw = s0.dataset.raw || "";
+          set[t0.dataset.k] = raw.startsWith("=") ? shiftF(raw, 0, c - sc) : (raw === "" ? null : (isNaN(Number(raw)) ? raw : Number(raw))); }); } }
+      if (Object.keys(set).length && await save({ set: { [sh]: set } })) { toast(`${Object.keys(set).length} cells filled`); redraw(); } };
+    document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up); });
+  // ---- copy / paste: within the app the formulas move with the cells; from elsewhere the text is read (145,841.90 = a figure)
+  if (!SV.clipKeys) { SV.clipKeys = true;
+    document.addEventListener("keydown", async e => { if (!SV.fk) return; const k = e.key.toLowerCase();
+      if (/INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || "") || document.querySelector(".ipa-cell, #cfm:not(.hide), #modal:not(.hide)")) return;
+      if ((e.ctrlKey || e.metaKey) && (e.key === "`" || e.code === "Backquote")) { e.preventDefault(); SV.fk.showF(!SV.showF); return; }
+      if (!(e.ctrlKey || e.metaKey) || !["c", "v"].includes(k) || !document.querySelector(".sv-in td.xsel")) return;
+      e.preventDefault(); if (k === "c") SV.fk.copy(); else SV.fk.paste(); }); }
+  const copy = () => { const s = S(); const z2 = s.z || s.a; if (!s.a) return; const r1 = Math.min(s.a[0], z2[0]), r2 = Math.max(s.a[0], z2[0]), c1 = Math.min(s.a[1], z2[1]), c2 = Math.max(s.a[1], z2[1]);
+    const rows = $$("tr[data-r]", host).map(x => +x.dataset.r).filter(r => r >= r1 && r <= r2), cells = [];
+    rows.forEach((r, ri) => { for (let c = c1; c <= c2; c++) { const t = td(r, c); if (t && +t.dataset.c === c) cells.push({ ri, dc: c - c1, r, c, raw: t.dataset.raw || "", text: t.textContent.trim() }); } });
+    SV.clip = { sheet: sh, cells, r1, c1 };
+    const tsv = rows.map((r, ri) => cells.filter(x => x.ri === ri).map(x => x.text).join("\t")).join("\n");
+    try { navigator.clipboard.writeText(tsv); } catch (e) { /* the app's own copy is kept either way */ }
+    toast(`${cells.length} cell${cells.length === 1 ? "" : "s"} copied`); };
+  const paste = async () => { const s = S(); if (!s.a) return; const r0 = s.a[0], c0 = s.a[1]; const rows = $$("tr[data-r]", host).map(x => +x.dataset.r); const i0 = rows.indexOf(r0); const set = {};
+    let ext = null; try { ext = await navigator.clipboard.readText(); } catch (e) { ext = null; }
+    const own = SV.clip && (!ext || ext === SV.clip.cells.length && ext) || (SV.clip && ext !== null && ext.replace(/\s+/g, "") === SV.clip.cells.map(x => x.text).join("").replace(/\s+/g, ""));
+    if (SV.clip && (own || ext === null)) {
+      SV.clip.cells.forEach(x => { const r = rows[i0 + x.ri], c = c0 + x.dc; const t = r && td(r, c); if (!t || !t.dataset.k) return;
+        set[t.dataset.k] = x.raw.startsWith("=") ? shiftF(x.raw, r - x.r, c - x.c) : (x.raw === "" ? null : (isNaN(Number(x.raw)) ? x.raw : Number(x.raw))); }); }
+    else if (ext) { ext.replace(/\r/g, "").replace(/\n$/, "").split("\n").forEach((line, ri) => line.split("\t").forEach((txt, dc) => { const r = rows[i0 + ri], c = c0 + dc; const t = r && td(r, c); if (!t || !t.dataset.k) return;
+        let t2 = txt.trim().replace(/^AED\s*/i, ""); const neg = /^\(.*\)$/.test(t2); if (neg) t2 = t2.slice(1, -1); const n = Number(t2.replace(/,/g, "").replace(/%$/, ""));
+        set[t.dataset.k] = txt.trim() === "" ? null : (/^-?[\d,]*\.?\d+%?$/.test(t2) && !isNaN(n) ? (neg ? -n : n) / (t2.endsWith("%") ? 100 : 1) : txt); })); }
+    if (Object.keys(set).length && await save({ set: { [sh]: set } })) { toast(`${Object.keys(set).length} cell${Object.keys(set).length === 1 ? "" : "s"} pasted`); redraw(); } };
+  SV.fk = { showF, copy, paste };
+  // the formula bar and the fill handle follow the cells picked
+  const obs = new MutationObserver(() => { show(); placeFh(); }); obs.observe(host, { subtree: true, attributes: true, attributeFilter: ["class"] });
+  show(); placeFh();
+  return {
+    attach: (inp, cell) => attach(inp, cell),
+    busy: () => !!live && live.inp.value.startsWith("="),
+    move: (t, dir) => { const r = +t.parentElement.dataset.r, c = +t.dataset.c, rows = $$("tr[data-r]", host).map(x => +x.dataset.r), k = rows.indexOf(r);
+      const nr = dir === "down" ? rows[k + 1] : dir === "up" ? rows[k - 1] : r, nc = dir === "right" ? c + (t.colSpan || 1) : dir === "left" ? c - 1 : c; const n = nr && nc >= 1 && td(nr, nc);
+      if (n) { n.scrollIntoView({ block: "nearest", inline: "nearest" }); IPA.fsel = Object.assign(IPA.fsel || {}, { sh, a: [nr, +n.dataset.c], z: null, rows: null, cols: null, add: [] }); SV.fx && SV.fx.paint(); } },
+    resume: () => { if (IPA.fpend) { fbx.disabled = false; fbx.value = IPA.fpend.text; show(); fbx.focus(); fbx.setSelectionRange(fbx.value.length, fbx.value.length);
+      toast(IPA.fpend.sheet !== sh ? `Click a cell here to put it in the formula of ${IPA.fpend.sheet}!${addr(IPA.fpend.k)} - Enter saves` : "Enter saves the formula"); } },
+  };
 }
 
 // ---- Sheets step formatting: what is picked stays picked across a redraw of the same sheet
@@ -961,6 +1183,7 @@ function fmtTools(v, host, b, sh, redraw) {
     const ind = +((st(f).match(/padding-left:\s*(\d+)px/) || [])[1] || 3); S.cur = { sz, tds, nf, ind: Math.max(0, Math.round((ind - 3) / 9)) }; };
   const clearAll = () => { S.a = null; S.z = null; S.rows = null; S.cols = null; S.add = []; S.all = false; };
   host.addEventListener("click", e => { const td = e.target.closest("td[data-c]"); if (!td || !host.contains(td)) return;
+    const ae = document.activeElement; if (ae && /ipa-cell|fbx/.test(ae.className || "") && String(ae.value || "").startsWith("=")) return;   // pointing at a cell for a formula
     const rc = [+td.parentElement.dataset.r, +td.dataset.c];
     if ((e.ctrlKey || e.metaKey) && !S.rows && !S.cols) { const k = rc.join(","), i = S.add.findIndex(x => x.join(",") === k);
       if (i >= 0) S.add.splice(i, 1); else S.add.push(rc); e.preventDefault(); e.stopPropagation(); }
@@ -1133,7 +1356,7 @@ async function drawSheet(v, i, keep) {
       <span class="sv-sep"></span>
       ${B_("like", "Font, size, bold, alignment and borders of the row above", "Match row above")}${B_("clear", "Clear contents (Delete) - the look stays", "Clear")}${B_("reset", "Back to the consultant's look", "Reset")}</span>`;
   const tools = locked ? "" : fmtBar + `<span class="sv-sep"></span><button class="btn btn-ghost btn-sm" data-pg="add" title="A copy of one of the sheets, added after the last one - e.g. a second variations or authority fees page">+ Add page</button>${cur.added ? `<button class="btn btn-plain btn-sm" data-pg="del" title="Take this added page off the bill">Delete page</button>` : ""}`;
-  const below = locked ? `<div class="sv-locked">Read only - this bill is ${esc(b.status)}. The sheets can be changed while the bill is a Draft.</div>` : `<div class="sv-rows" id="sv-rows"><span class="muted">Click a row of the sheet to add a line or a section next to it, or to hide it.</span>${cur.hidden ? ` <button class="btn btn-plain btn-sm" data-rw="show">Show ${cur.hidden} hidden line${cur.hidden === 1 ? "" : "s"}</button>` : ""}</div>`;
+  const below = locked ? `<div class="sv-locked">Read only - this bill is ${esc(b.status)}. The sheets can be changed while the bill is a Draft.</div>` : `<div class="sv-rows${cur.hidden ? " on" : ""}" id="sv-rows"><span class="muted">Click a row number to add a line or a section next to it, or to hide it.</span>${cur.hidden ? ` <button class="btn btn-plain btn-sm" data-rw="show">Show ${cur.hidden} hidden line${cur.hidden === 1 ? "" : "s"}</button>` : ""}</div>`;
   const fr = sheetFrame(v, d, { sheets: b.sheets, go: j => { IPA.sheet = j; drawSheet(v, j); }, tools, below });
   if (was) { fr.box.scrollLeft = was[0]; fr.box.scrollTop = was[1]; }
   if (locked) return;
@@ -1154,6 +1377,7 @@ async function drawSheet(v, i, keep) {
   const pickRow = tr => {
     $$("tr.sel", host).forEach(x => x.classList.remove("sel")); tr.classList.add("sel");
     const r = +tr.dataset.r;
+    rowBar.classList.add("on");
     rowBar.innerHTML = `<b>Row ${r}</b><button class="btn btn-ghost btn-sm" data-rw="above">+ Line above</button><button class="btn btn-ghost btn-sm" data-rw="below">+ Line below</button>
       <button class="btn btn-ghost btn-sm" data-rw="section" title="A heading line (in the look of the table's headings) and a line under it">+ Section below</button><button class="btn btn-plain btn-sm" data-rw="hide" title="Kept in the file, not printed">Hide line</button>
       <button class="btn btn-plain btn-sm" data-rw="clear" title="Done">&times;</button>`;
@@ -1171,21 +1395,22 @@ async function drawSheet(v, i, keep) {
     $('[data-rw="below"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "line", after: r }) : add(r + 1, 1, [likeAbove(tr)]);
     $('[data-rw="section"]', rowBar).onclick = () => inTable ? lineForm(sh, { kind: "head", after: r }) : add(r + 1, 2, [heading(), r]);
     $('[data-rw="hide"]', rowBar).onclick = async () => { try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/hide`, { sheet: sh, rows: [r] }); redraw(); toast("Line hidden"); } catch (e) { fail(e); } };
-    $('[data-rw="clear"]', rowBar).onclick = () => { tr.classList.remove("sel"); rowBar.innerHTML = '<span class="muted">Click a row of the sheet to add a line or a section next to it, or to hide it.</span>'; };
+    $('[data-rw="clear"]', rowBar).onclick = () => { tr.classList.remove("sel"); rowBar.classList.remove("on"); rowBar.innerHTML = ""; };
   };
   $$("tr[data-r]", host).forEach(tr => tr.addEventListener("click", e => { if (!e.shiftKey) pickRow(tr); }));
   // ---- the formatting toolbar: pick cells (click, Shift+click a range, a row number = the whole row), then size / B / I / U
   SV.pages = d.pages || []; SV.manual = d.manual || [];
   fmtTools(v, host, b, sh, () => drawSheet(v, i, true));
-  // ---- typing in a cell (the sheet may be zoomed: the box is placed in the sheet's own size)
-  // Remarks: click picks the cell; double-click or start typing to write; Enter saves, Esc cancels, Alt+Enter = a new
-  // line in the cell, Tab saves and goes to the next Remarks cell down. Plain text - never a figure, never a total.
+  // ---- typing in a cell (the sheet may be zoomed: the box is placed in the sheet's own size). A figure, words, a date,
+  // or a formula: "=" starts one - its cell references coloured, with a matching box on the sheet; a click on a cell
+  // (Shift+click / drag for a range, arrow keys, even on another sheet) puts its reference in; F4 fixes it with $.
+  const FX = formulaKit(v, host, b, sh, fr, () => drawSheet(v, i, true));
   const openEd = (td, first) => {
     if ($(".ipa-cell", host)) return;
     const z = fr.zoom(), rm = td.classList.contains("rm");
-    const nf = td.dataset.nf, raw = td.dataset.raw, pc = !rm && isPctNf(nf) && raw !== "" && !raw.startsWith("=") && !isNaN(Number(raw));
+    const nf = td.dataset.nf, raw = td.dataset.raw || "", pc = !rm && isPctNf(nf) && raw !== "" && !raw.startsWith("=") && !isNaN(Number(raw));
     const inp = document.createElement(rm ? "textarea" : "input");
-    inp.className = "ipa-cell" + (rm ? " rm" : "");
+    inp.className = "ipa-cell" + (rm ? " rm" : ""); inp.spellcheck = false;
     inp.value = first !== undefined ? first : (pc ? pct(Number(raw)) : raw);
     const hr = host.getBoundingClientRect(), r = td.getBoundingClientRect();
     Object.assign(inp.style, { left: (r.left - hr.left) / z + "px", top: (r.top - hr.top) / z + "px", width: Math.max(r.width / z, rm ? 160 : 90) + "px",
@@ -1193,10 +1418,13 @@ async function drawSheet(v, i, keep) {
     host.appendChild(inp); inp.focus();
     if (first === undefined) inp.select(); else inp.setSelectionRange(inp.value.length, inp.value.length);
     let done = false;
-    const commit = async (keep, next) => {
-      if (done) return; done = true;
+    const fx = rm ? null : FX.attach(inp, td);
+    const commit = async (keep, next, move) => {
+      if (done) return; done = true; if (fx) fx.close();
       const s = rm ? inp.value.replace(/\s+$/, "") : inp.value.trim();
-      if (!keep || s === (pc ? pct(Number(raw)) : raw)) { inp.remove(); if (keep && next) goNext(td); return; }
+      if (!keep || s === (pc ? pct(Number(raw)) : raw)) { inp.remove(); if (keep && next) goNext(td); if (keep && move) FX.move(td, move); return; }
+      if (!rm && raw.startsWith("=") && !s.startsWith("=") && !(await confirmDelete("This cell has a formula. Replace it with a value?", `${esc(td.dataset.k ? colName(+td.dataset.k.split(",")[1]) + td.dataset.k.split(",")[0] : "")}: ${esc(raw)}`, "Replace", "The formula goes; Reset of the cell is by typing it again."))) {
+        done = false; inp.focus(); return; }
       let val = s === "" ? (rm ? "" : null) : s;
       let asDate = false;
       if (!rm && val !== null && !s.startsWith("=") && (isDateNf(nf) || /^\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}$|^\d{1,2}(st|nd|rd|th)?[\s\-]+[A-Za-z]{3,9}\.?,?[\s\-]+\d{2,4}$/.test(s))) {
@@ -1208,41 +1436,55 @@ async function drawSheet(v, i, keep) {
         // a figure typed or pasted with commas, AED, or in brackets for a minus is still a figure: 145,841.90 -> 145841.9
         let t = s.replace(/^AED\s*/i, "").replace(/\s+/g, ""); const neg = /^\(.*\)$/.test(t); if (neg) t = t.slice(1, -1);
         const n = Number(t.replace(/,/g, "").replace(/%$/, ""));
-        if (!isNaN(n) && /^-?[\d,]*\.?\d+%?$/.test(t)) { const x = neg ? -n : n; val = isPctNf(nf) || t.endsWith("%") ? Math.round(x * 1e4) / 1e6 : x; }
+        if (!isNaN(n) && /^-?[\d,]*\.?\d+%?$/.test(t)) { const x = neg ? -n : n;
+          // a % cell: "45%" or 45 -> 0.45, and 0.45 typed as it is
+          val = t.endsWith("%") || (isPctNf(nf) && Math.abs(x) > 1) ? Math.round(x * 1e4) / 1e6 : x; }
       }
-      if (rm && /^=/.test(val)) val = "\u200B" + val;     // a remark is words: "= done" is not worked out as a formula
+      if (rm && /^=/.test(val)) val = "​" + val;     // a remark is words: "= done" is not worked out as a formula
+      if (!rm && typeof val === "string" && val.startsWith("=")) val = "=" + val.slice(1).replace(/^\s+/, "");
       inp.disabled = true;
       if (next) IPA.rmNext = nextRm(td);
+      if (move) IPA.fmove = { k: td.dataset.k, dir: move };
       if (await save({ set: { [sh]: { [td.dataset.k]: val } } })) {
         if (asDate && !isDateNf(nf)) { const [r_, c_] = td.dataset.k.split(",").map(Number);     // a date typed in a figure cell: shown as a date
           try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/fmt`, { sheet: sh, cells: [[r_, c_]], set: { nf: NF.date } }); } catch (e) { /* the date is saved either way */ } }
-        toast("Saved"); redraw(); } else { inp.remove(); IPA.rmNext = null; }
+        toast("Saved"); redraw(); } else { inp.remove(); IPA.rmNext = null; IPA.fmove = null; }
     };
     inp.onkeydown = e => {
+      if (fx && fx.key(e)) return;                       // the formula's own keys (pick a cell with the arrows, F4, the function list)
       if (e.key === "Enter" && rm && e.altKey) { e.preventDefault(); const a = inp.selectionStart; inp.value = inp.value.slice(0, a) + "\n" + inp.value.slice(inp.selectionEnd); inp.setSelectionRange(a + 1, a + 1); }
-      else if (e.key === "Enter") { e.preventDefault(); commit(true); }
+      else if (e.key === "Enter") { e.preventDefault(); commit(true, false, rm ? null : (e.shiftKey ? "up" : "down")); }
       else if (e.key === "Tab" && rm) { e.preventDefault(); commit(true, true); }
+      else if (e.key === "Tab") { e.preventDefault(); commit(true, false, e.shiftKey ? "left" : "right"); }
       else if (e.key === "Escape") { e.stopPropagation(); commit(false); } };
-    inp.onblur = () => commit(true);
+    SV.stashF = () => { if (done || !fx || !fx.formula()) return false; IPA.fpend = { sheet: sh, si: i, k: td.dataset.k, text: inp.value, raw }; done = true; fx.close(); return true; };
+    inp.onblur = () => setTimeout(() => {
+      if (done) return;
+      // the formula goes on while a cell of another sheet is picked for it
+      if (fx && fx.formula() && (document.activeElement || {}).classList && document.activeElement.closest && document.activeElement.closest(".sv-bar")) {
+        IPA.fpend = { sheet: sh, si: i, k: td.dataset.k, text: inp.value, raw }; done = true; fx.close(); return; }
+      if (fx && fx.pointing()) { inp.focus(); return; }
+      commit(true); }, 0);
   };
+  SV.openEd = openEd;
   const rms = () => $$("td.ed.rm", host);
   const nextRm = td => { const all = rms(), c = td.dataset.c; const k = all.indexOf(td);
     const n = all.slice(k + 1).find(x => x.dataset.c === c) || all[k + 1]; return n ? n.dataset.k : null; };
-  const goNext = td => { const k = nextRm(td); const n = k && $(`td.ed[data-k="${k}"]`, host); if (n) { n.click(); openEd(n); } };
-  $$("td.ed", host).forEach(td => {
-    td.addEventListener("click", e => { if (e.shiftKey || td.classList.contains("rm")) return; openEd(td); });
-    if (td.classList.contains("rm")) td.addEventListener("dblclick", e => { e.preventDefault(); openEd(td); });
+  const goNext = td => { const k = nextRm(td); const n = k && $(`td[data-k="${k}"]`, host); if (n) { n.click(); openEd(n); } };
+  $$("td.ed, td.xe", host).forEach(td => {
+    td.addEventListener("dblclick", e => { if (FX.busy()) return; e.preventDefault(); openEd(td); });
   });
-  // typing on a picked Remarks cell starts writing in it, as in Excel
+  // typing on a picked cell starts writing in it (Enter / F2 opens what is there), as in Excel
   host.tabIndex = -1;
   if (!SV.rmkeys) { SV.rmkeys = true;
     document.addEventListener("keydown", e => {
-      if (e.ctrlKey || e.metaKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || "")) return;
-      const sel = document.querySelectorAll(".sv-in td.xsel"); if (sel.length !== 1 || !sel[0].classList.contains("rm")) return;
-      if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); sel[0].dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); return; }
-      if (e.key.length === 1) { e.preventDefault(); SV.rmOpen && SV.rmOpen(sel[0], e.key); } }); }
-  SV.rmOpen = openEd;
-  if (IPA.rmNext) { const k = IPA.rmNext; IPA.rmNext = null; const n = $(`td.ed[data-k="${k}"]`, host); if (n) { n.scrollIntoView({ block: "nearest" }); n.click(); openEd(n); } }
+      if (e.ctrlKey || e.metaKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || "") || document.querySelector(".ipa-cell, #cfm:not(.hide), #modal:not(.hide)")) return;
+      const sel = document.querySelectorAll(".sv-in td.xsel"); if (!sel.length || !sel[0].dataset.k) return;
+      if (e.key === "F2" || (e.key === "Enter" && sel.length === 1)) { e.preventDefault(); SV.openEd && SV.openEd(sel[0]); return; }
+      if ((e.key.length === 1 && e.key !== " ") || (e.key === " " && sel[0].classList.contains("rm"))) { e.preventDefault(); SV.openEd && SV.openEd(sel[0], e.key); } }); }
+  if (IPA.rmNext) { const k = IPA.rmNext; IPA.rmNext = null; const n = $(`td[data-k="${k}"]`, host); if (n) { n.scrollIntoView({ block: "nearest" }); n.click(); openEd(n); } }
+  if (IPA.fmove) { const m = IPA.fmove; IPA.fmove = null; const t0 = $(`td[data-k="${m.k}"]`, host); if (t0) FX.move(t0, m.dir); }
+  FX.resume(openEd);
   // ---- Remarks: kept for the next bill unless asked
   if (d.remarks) { const rb = $("#sv-rows", v);
     if (rb) rb.insertAdjacentHTML("afterend", `<label class="sv-clr"><input type="checkbox" id="sv-clr" ${d.clear_remarks ? "checked" : ""}> Clear remarks for next bill <span class="muted small">- off: the next bill starts with these remarks</span></label>`);

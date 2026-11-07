@@ -406,7 +406,7 @@ def row_fit(model, s, values, inputs=None):
     return need
 
 
-def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, rows_only=None, img_rows=None, stamp="below", grow=None):
+def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, rows_only=None, img_rows=None, stamp="below", grow=None, circ=None):
     """The sheet as an HTML table at its own sizes, with its pictures. edit=True marks the cells staff can type in.
     rows_only: just these rows, in this order (one printed page: the rows repeated at the top, then the page's own);
     img_rows: the rows whose pictures belong on it."""
@@ -496,6 +496,20 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
                     raw = int(raw)
                 cls.append("ed" + (" ch" if k in inp else "") + (" n" if num else "") + (" rm" if rmk else ""))
                 attrs = f' data-k="{k}" data-raw="{escape(str(raw if raw is not None else ""), quote=True)}" data-nf="{escape(st.get("nf", "General"), quote=True)}"'
+            elif edit and "#" not in k:
+                # every other cell can be changed too, as in Excel - a formula (the consultant's or typed) shows in the
+                # formula bar and can be edited; not blue: the blue cells are the ones a bill is filled in by
+                raw = inp.get(k, cell.get("v") if "v" in cell else (("=" + cell["f"]) if "f" in cell else ""))
+                if isinstance(raw, float) and raw.is_integer():
+                    raw = int(raw)
+                cls.append("xe" + (" ch" if k in inp else ""))
+                attrs = f' data-k="{k}" data-raw="{escape(str(raw if raw is not None else ""), quote=True)}" data-nf="{escape(st.get("nf", "General"), quote=True)}"'
+            if isinstance(v, Err) or (circ and k in circ):
+                why = {"#DIV/0!": "Divided by zero (or by an empty cell)", "#VALUE!": "Text where a number is needed", "#NAME?": "A function or name that does not exist",
+                       "#REF!": "Points at a cell that is no longer there", "#N/A": "Not found", "#NUM!": "A number that cannot be worked out"}
+                css.append("color:#C00000")
+                attrs += f' title="{escape(why.get(v.code, "Error") if isinstance(v, Err) else "This cell depends on itself (a circular reference)", quote=True)}"'
+                cls.append("err")
             if mark and k in mark:
                 cls.append(mark[k])
             body_ = f"<span>{escape(text)}</span>" if "ov" in cls else escape(text)
