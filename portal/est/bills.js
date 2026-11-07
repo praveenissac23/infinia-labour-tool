@@ -262,7 +262,9 @@ function drawBill() {
   const b = IPA.bill, f = billFigs(b), ck = checks(b);
   const p = ST.b.project;
   $("#b-title").innerHTML = `<span class="ipa-ttl">Interim Bill ${esc(billNo(b))}</span> <span class="muted small">${esc(p.code)}${p.name ? " · " + esc(p.name) : ""}</span> ${st(b.status)}`;
-  $("#b-tools").innerHTML = xpButtons("ipa", { id: b.id, name: `${p.code} IPA ${billNo(b)}` });
+  $("#b-tools").innerHTML = `<span class="ipa-ur"><button class="btn btn-plain btn-sm" id="ipa-undo" title="Undo (Ctrl+Z)" disabled>&#8630; Undo</button><button class="btn btn-plain btn-sm" id="ipa-redo" title="Redo (Ctrl+Y)" disabled>&#8631; Redo</button></span>` + xpButtons("ipa", { id: b.id, name: `${p.code} IPA ${billNo(b)}` });
+  $("#ipa-undo").onclick = () => undoBill(false); $("#ipa-redo").onclick = () => undoBill(true);
+  undoRefresh();
   IPA_STEPS = IPA_ALL_STEPS.filter(([k]) => k !== "fees" || (b.fees && b.fees.length));
   if (!IPA_STEPS.some(x => x[0] === IPA.step)) IPA.step = "work";
   const signed = (b.signers || []).filter(x => x.signed_at).length, nsign = (b.signers || []).length;
@@ -287,13 +289,47 @@ function bindNext(m) { $$("[data-go]", m).forEach(x => x.onclick = () => { IPA.s
 // saving: one at a time, in the order typed
 function save(body) {
   const job = SAVING.then(async () => {
-    try { IPA.bill = await PUT(`/store/est/ipa/bill/${IPA.bill.id}`, body); return true; }
+    if (!body.why) body.why = { page: IPA.step, sheet: IPA.step === "sheets" && IPA.bill.sheets ? ((IPA.bill.sheets.find(x => x.i === IPA.sheet) || {}).name || "") : "" };
+    try { IPA.bill = await PUT(`/store/est/ipa/bill/${IPA.bill.id}`, body); undoRefresh(); return true; }
     catch (e) { fail(e); return false; }
   });
   SAVING = job.catch(() => {});
   return job;
 }
+// ---- undo / redo: one history per bill (the server keeps it), the same buttons on every step and sheet
+let UNDO_T = null;
+function undoRefresh() { clearTimeout(UNDO_T); UNDO_T = setTimeout(async () => { const b = IPA.bill; if (!b) return;
+  let h; try { h = await GET(`/store/est/ipa/bill/${b.id}/history`); } catch (e) { return; }
+  const u = $("#ipa-undo"), r = $("#ipa-redo"); if (!u || !r) return; IPA.hist = h;
+  u.disabled = !h.undo; r.disabled = !h.redo;
+  u.title = h.undo ? `Undo: ${h.undo.label}${h.undo.where ? " (" + h.undo.where + ")" : ""} - Ctrl+Z` : (h.blocked || "Nothing to undo");
+  r.title = h.redo ? `Redo: ${h.redo.label}${h.redo.where ? " (" + h.redo.where + ")" : ""} - Ctrl+Y` : "Nothing to redo"; }, 150); }
+async function undoBill(redo, force) {
+  const b = IPA.bill; if (!b) return;
+  let out;
+  try { out = await POST(`/store/est/ipa/bill/${b.id}/undo`, { redo: !!redo, force: !!force }); }
+  catch (e) { if (/anyway\?$/.test(e.message || "") && await confirmDelete(e.message, "", redo ? "Redo" : "Undo", "")) return undoBill(redo, true); return fail(e); }
+  IPA.bill = out; const x = out.undone || {};
+  // back to where the change was, the cell lit up for a moment
+  if (x.page && IPA_STEPS.some(s_ => s_[0] === x.page)) IPA.step = x.page;
+  if (x.sheet) { const sx = out.sheets.find(s_ => s_.name === x.sheet); if (sx && (x.page === "sheets" || !x.page)) { IPA.step = "sheets"; IPA.sheet = sx.i; } }
+  IPA.flash = x.cell ? { sheet: x.sheet, k: x.cell } : null;
+  drawBill();
+  undoToast(`${redo ? "Redone" : "Undone"}: ${x.label || "change"}${x.sheet ? " - " + x.sheet : ""}`, redo);
+}
+function undoToast(msg, redo) { let t = $("#ipa-utoast"); if (t) t.remove();
+  t = document.createElement("div"); t.id = "ipa-utoast"; t.className = "ipa-utoast"; t.innerHTML = `<span>${esc(msg)}</span><button type="button">${redo ? "Undo" : "Redo"}</button>`;
+  document.body.appendChild(t); $("button", t).onclick = () => { t.remove(); undoBill(!redo); }; setTimeout(() => t.remove(), 6000); }
+if (!window.__ipaUndoKeys) { window.__ipaUndoKeys = true;
+  document.addEventListener("keydown", e => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return; const k = e.key.toLowerCase();
+    if (!(k === "z" || k === "y")) return;
+    const big = document.getElementById("big"); if (!big || big.classList.contains("hide") || big.dataset.ctx !== "est.ipa") return;
+    // typing in a box: the browser's own undo of the typing first
+    if (/INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || "") || document.querySelector("#modal:not(.hide), #cfm:not(.hide)")) return;
+    e.preventDefault(); undoBill(k === "y" || (k === "z" && e.shiftKey)); }); }
 function refreshNav() {           // the side panel's figures, without touching what is being typed
+  undoRefresh();
   const b = IPA.bill, f = billFigs(b);
   const due = $("#ipa-nav .ipa-due"); if (due) due.innerHTML = `<small>Total due this bill</small><b>AED ${money(b.total_due, false)}</b><small>work this month ${money(f.now, false)}</small>`;
   const w = $('#ipa-nav [data-step="work"] small'); if (w) w.textContent = `${f.moved} of ${f.entry} lines moved`;
@@ -1400,6 +1436,8 @@ async function drawSheet(v, i, keep) {
   $$("tr[data-r]", host).forEach(tr => tr.addEventListener("click", e => { if (!e.shiftKey) pickRow(tr); }));
   // ---- the formatting toolbar: pick cells (click, Shift+click a range, a row number = the whole row), then size / B / I / U
   SV.pages = d.pages || []; SV.manual = d.manual || [];
+  if (IPA.flash && IPA.flash.sheet === sh) { const fl = IPA.flash; IPA.flash = null;
+    setTimeout(() => { const t = $(`td[data-k="${fl.k}"]`, fr.inner); if (t) { t.scrollIntoView({ block: "center", inline: "center" }); t.classList.add("ipa-flash"); setTimeout(() => t.classList.remove("ipa-flash"), 1800); } }, 60); }
   fmtTools(v, host, b, sh, () => drawSheet(v, i, true));
   // ---- typing in a cell (the sheet may be zoomed: the box is placed in the sheet's own size). A figure, words, a date,
   // or a formula: "=" starts one - its cell references coloured, with a matching box on the sheet; a click on a cell

@@ -164,6 +164,7 @@ def summary_mirror(SessionLocal):
             if not added:
                 continue
             due0, wd0 = b.total_due, b.work_done
+            EB._undo_skip()                          # a fix at the deploy is not anyone's step to undo
             model = EB._bill_model(fmt, new)
             new, values = EB._calc(model, new)
             b.inputs = json.dumps(new)

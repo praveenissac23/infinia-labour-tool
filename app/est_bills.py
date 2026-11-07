@@ -76,9 +76,27 @@ class EstSignature(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class EstBillHist(Base):
+    """Undo / redo: one row per change of a bill's typed cells and look (inputs), with what it was and became.
+    Signatures are kept apart (est_bills.signs) and are never part of it."""
+    __tablename__ = "est_bill_hist"
+    id = Column(Integer, primary_key=True)
+    bill_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, nullable=True)
+    label = Column(String, default="")
+    page = Column(String, default="")              # the bill's step: cover / work / pay / fees / sheets / review
+    sheet = Column(String, default="")
+    cell = Column(String, default="")
+    before = Column(Text, default="{}")
+    after = Column(Text, default="{}")
+    state = Column(String, default="done")         # done | undone | dead (a redo no longer possible)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    moved_at = Column(DateTime(timezone=True), nullable=True)
+
+
 def create_tables(engine):
     from sqlalchemy import inspect, text
-    for t in (EstBillFormat, EstBill, EstSignature):
+    for t in (EstBillFormat, EstBill, EstSignature, EstBillHist):
         t.__table__.create(bind=engine, checkfirst=True)
     for tb, col, typ in (("est_bills", "signs", "TEXT"), ("est_bills", "contract_id", "INTEGER"), ("est_bill_formats", "contract_id", "INTEGER")):
         try:                                       # columns added after the tables were made
@@ -157,6 +175,186 @@ def _looks(model, inputs):
     w = BE.with_defaults(m, inputs)
     out = dict(BE.apply_fmt(m, w))
     out["_with"] = w                                     # the same formatting for the Excel file
+    return out
+
+
+import contextvars
+_WHY = contextvars.ContextVar("est_bill_why", default=None)
+
+
+def _why(label, page="", sheet="", cell=""):
+    """What the change about to be saved is called in the undo history ("Bold on 3 cells - V03")."""
+    _WHY.set({"label": str(label)[:120], "page": page, "sheet": str(sheet)[:80], "cell": str(cell)[:20]})
+
+
+def _undo_skip():
+    _WHY.set({"skip": True})
+
+
+from sqlalchemy import event as _sa_event, inspect as _sa_inspect
+
+
+@_sa_event.listens_for(Session, "before_flush")
+def _record_bill_change(session, ctx, instances):
+    for obj in list(session.dirty):
+        if not isinstance(obj, EstBill):
+            continue
+        h = _sa_inspect(obj).attrs.inputs.history
+        if not h.has_changes() or not h.deleted:
+            continue
+        old, new = h.deleted[0] or "{}", obj.inputs or "{}"
+        if old == new:
+            continue
+        w = _WHY.get() or {}
+        if w.get("skip"):
+            continue
+        uid = obj.updated_by
+        # a new change: the steps this person undid can no longer be redone
+        session.query(EstBillHist).filter(EstBillHist.bill_id == obj.id, EstBillHist.user_id == uid, EstBillHist.state == "undone").update({"state": "dead"}, synchronize_session=False)
+        session.add(EstBillHist(bill_id=obj.id, user_id=uid, label=w.get("label") or "Change", page=w.get("page") or "", sheet=w.get("sheet") or "",
+                                cell=w.get("cell") or "", before=old, after=new, state="done"))
+
+
+def _diff(before, after):
+    """What one change did: {(sheet or None, key): (was, became)} - a sheet's typed cell / look, or a bill-wide entry."""
+    out = {}
+    for k in set(before) | set(after):
+        a, b = before.get(k), after.get(k)
+        if isinstance(a, dict) or isinstance(b, dict):
+            a, b = a or {}, b or {}
+            if not (isinstance(a, dict) and isinstance(b, dict)):
+                out[(None, k)] = (before.get(k), after.get(k)); continue
+            for kk in set(a) | set(b):
+                if a.get(kk, "__none__") != b.get(kk, "__none__"):
+                    out[(k, kk)] = (a.get(kk, "__none__"), b.get(kk, "__none__"))
+        elif a != b:
+            out[(None, k)] = (before.get(k, "__none__"), after.get(k, "__none__"))
+    return out
+
+
+def _apply(inputs, d, side):
+    """inputs with a change taken back (side 0) or put in again (side 1) - only the cells that change touched."""
+    out = json.loads(json.dumps(inputs))
+    for (sh, k), pair in d.items():
+        v = pair[side]
+        if sh is None:
+            if v == "__none__":
+                out.pop(k, None)
+            else:
+                out[k] = v
+        else:
+            box = out.setdefault(sh, {})
+            if v == "__none__":
+                box.pop(k, None)
+            else:
+                box[k] = v
+            if not box:
+                out.pop(sh, None)
+    return out
+
+
+def _signed_at(b):
+    """The last signing on the bill: (when, who) - undo never goes back past it."""
+    last = None
+    for x in (_signs(b) or {}).values():
+        if isinstance(x, dict) and x.get("signed_at"):
+            # the exact time when kept; a signing from before that: the end of its day (nothing that day undone)
+            t = x.get("signed_ts") or (str(x["signed_at"]) + ("T23:59:59" if len(str(x["signed_at"])) == 10 else ""))
+            if not last or _as_utc(t) > _as_utc(last[0]):
+                last = (t, x.get("signed_by_name") or x.get("name") or "")
+    return last
+
+
+def _as_utc(t):
+    """A time from the database or a signing (naive = UTC) as an aware UTC time, to compare."""
+    from datetime import timezone as _tz
+    try:
+        d = t if isinstance(t, datetime) else datetime.fromisoformat(str(t).replace("Z", "+00:00").replace(" ", "T", 1))
+    except Exception:
+        return datetime.min.replace(tzinfo=_tz.utc)
+    return d.replace(tzinfo=_tz.utc) if d.tzinfo is None else d.astimezone(_tz.utc)
+
+
+def _dmy_hm(t):
+    try:
+        d = datetime.fromisoformat(str(t).replace("Z", "+00:00"))
+        try:
+            from zoneinfo import ZoneInfo
+            d = d.astimezone(ZoneInfo("Asia/Dubai")) if d.tzinfo else d
+        except Exception:
+            pass
+        return d.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return str(t)[:16]
+
+
+def _hist_state(db, b, user):
+    """The Undo / Redo buttons: what each would do now, or why it cannot."""
+    q = db.query(EstBillHist).filter(EstBillHist.bill_id == b.id, EstBillHist.user_id == user.id)
+    u = q.filter(EstBillHist.state == "done").order_by(EstBillHist.id.desc()).first()
+    r = q.filter(EstBillHist.state == "undone").order_by(EstBillHist.moved_at.desc(), EstBillHist.id.desc()).first()
+    pg = {"cover": "Cover & details", "work": "Work done", "pay": "Payments received", "fees": "Authority fees", "sheets": "Sheets", "review": "Approve & send"}
+    where = lambda h: (h.sheet if h.sheet else pg.get(h.page, ""))
+    out = {"undo": None, "redo": None, "blocked": ""}
+    if b.status != "Draft":
+        out["blocked"] = f"This bill is {b.status} - nothing can be undone."
+        return out
+    sg = _signed_at(b)
+    if u:
+        if sg and _as_utc(u.created_at) < _as_utc(sg[0]):
+            out["blocked"] = f"Can't undo - bill was signed by {sg[1]} on {_dmy_hm(sg[0])}."
+        else:
+            out["undo"] = {"id": u.id, "label": u.label, "where": where(u)}
+    if r:
+        out["redo"] = {"id": r.id, "label": r.label, "where": where(r)}
+    return out
+
+
+@router.get("/store/est/ipa/bill/{bid}/history")
+def bill_history(bid: int, db: Session = Depends(get_db), user: models.User = E.VIEW):
+    return _hist_state(db, _get(db, EstBill, bid), user)
+
+
+@router.post("/store/est/ipa/bill/{bid}/undo")
+def bill_undo(bid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """Undo ({"redo": true} = redo) this person's last change on this bill - only the cells it changed; the bill's
+    totals worked out again. Signatures are never touched; never past a signing; Draft bills only."""
+    b = _get(db, EstBill, bid)
+    redo = bool(payload.get("redo"))
+    st = _hist_state(db, b, user)
+    if st["blocked"] and not redo:
+        raise HTTPException(400, st["blocked"])
+    if b.status != "Draft":
+        raise HTTPException(400, f"This bill is {b.status} - nothing can be undone.")
+    pick = st["redo"] if redo else st["undo"]
+    if not pick:
+        raise HTTPException(400, "Nothing to redo." if redo else "Nothing to undo.")
+    h = db.get(EstBillHist, pick["id"])
+    d = _diff(json.loads(h.before or "{}"), json.loads(h.after or "{}"))
+    # someone else changed the same cells since: ask first
+    later = db.query(EstBillHist).filter(EstBillHist.bill_id == b.id, EstBillHist.id > h.id, EstBillHist.user_id != user.id, EstBillHist.state == "done").all()
+    clash = [x for x in later if set(_diff(json.loads(x.before or "{}"), json.loads(x.after or "{}"))) & set(d)]
+    if clash and not payload.get("force"):
+        who = db.get(models.User, clash[-1].user_id)
+        raise HTTPException(409, f"{(who.full_name or who.username) if who else 'Someone'} changed this after you. {'Redo' if redo else 'Undo'} anyway?")
+    fmt = _get(db, EstBillFormat, b.format_id)
+    inputs = _apply(_inputs(b), d, 1 if redo else 0)
+    model = _bill_model(fmt, inputs)
+    inputs, values = _calc(model, inputs)
+    _undo_skip()
+    b.inputs = json.dumps(inputs); b.updated_by = user.id
+    _save_totals(b, model, values)
+    h.state = "done" if redo else "undone"
+    from datetime import timezone as _tz
+    h.moved_at = datetime.now(_tz.utc)                 # to the microsecond: redo takes the last one undone
+    db.commit()
+    p = db.get(E.EstProject, b.project_id)
+    E.M.log_action(db, user.id, "est_bill_redo" if redo else "est_bill_undo",
+                   f"{p.code if p else ''} bill {b.label or b.seq}: {'redone' if redo else 'undone'} - {h.label}{(' (' + (h.sheet or h.page) + ')') if (h.sheet or h.page) else ''}")
+    users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    out = _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
+    out["undone"] = {"label": h.label, "page": h.page, "sheet": h.sheet, "cell": h.cell, "redo": redo}
+    out["hist"] = _hist_state(db, b, user)
     return out
 
 
@@ -1081,6 +1279,7 @@ def _page_starts(model, s, inputs, values):
 def bill_opts(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
     """Choices for the next bill: {"clear_remarks": true} = the next bill starts with the Remarks empty (kept by default)."""
     b = _get(db, EstBill, bid)
+    _why("Clear remarks for next bill", "sheets")
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
     inputs = _inputs(b)
@@ -1287,6 +1486,16 @@ def _parse(v):
 def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
     """Typed cells changed: {"set": {sheet: {"r,c": value or null (back to the format's)}}, "notes": ...}."""
     b = _get(db, EstBill, bid)
+    w = payload.get("why") or {}
+    cells_ = [(sh_, k_) for sh_, cs in (payload.get("set") or {}).items() for k_ in (cs or {})]
+    if cells_:
+        sh0, k0 = cells_[0]
+        try:
+            r0, c0 = (int(x) for x in k0.split(","))
+            a0 = BE.get_column_letter(c0) + str(r0)
+        except Exception:
+            a0 = k0
+        _why(w.get("label") or (f"Typing in {a0}" if len(cells_) == 1 else f"{len(cells_)} cells changed"), w.get("page") or "", w.get("sheet") or sh0, k0)
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
     fmt = _get(db, EstBillFormat, b.format_id)
@@ -1366,6 +1575,8 @@ def bill_status(bid: int, payload: dict = Body(...), db: Session = Depends(get_d
     if st not in STATUSES:
         raise HTTPException(400, "Pick a status.")
     b.status, b.updated_by = st, user.id
+    if st != "Draft":                                  # approved / submitted: read-only, its undo history goes
+        db.query(EstBillHist).filter(EstBillHist.bill_id == b.id).delete(synchronize_session=False)
     db.commit()
     E.M.log_action(db, user.id, "est_bill_status", f"bill #{bid} {b.label}: {st}")
     return {"ok": True}
@@ -1390,6 +1601,7 @@ def add_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db),
     """Lines put into a table of the bill, as the office would insert rows in Excel: {"sheet", "at": row, "n": 1}.
     Everything below moves down and every formula follows; the new rows have the ruled look of the row at `at`."""
     b = _get(db, EstBill, bid)
+    _why(f"+ {int(payload.get('n') or 1)} row(s) at {payload.get('at')}", "sheets", str(payload.get("sheet") or ""))
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
     fmt = _get(db, EstBillFormat, b.format_id)
@@ -1594,6 +1806,7 @@ def add_line(bid: int, payload: dict = Body(...), db: Session = Depends(get_db),
     A new line takes the row-by-row formulas of the line it is modelled on (Amount = QTY x RATE, this month = Total -
     Previous, the amounts), starts at 0%, and the section's totals take it in. The next bill keeps it."""
     b = _get(db, EstBill, bid)
+    _why(f"{'+ Section' if payload.get('kind') == 'head' else '+ Line'} '{str((payload.get('values') or {}).get('desc') or '')[:40]}'", payload.get("page") or "work", str(payload.get("sheet") or ""))
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
     fmt = _get(db, EstBillFormat, b.format_id)
@@ -1679,6 +1892,7 @@ def add_line(bid: int, payload: dict = Body(...), db: Session = Depends(get_db),
 def remove_line(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
     """A line or heading put in on a bill taken out again: {"sheet", "r"}. Not a line billed before (Previous % > 0)."""
     b = _get(db, EstBill, bid)
+    _why(f"Delete line (row {payload.get('r')})", payload.get("page") or "work", str(payload.get("sheet") or ""))
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
     fmt = _get(db, EstBillFormat, b.format_id)
@@ -1721,6 +1935,7 @@ def bill_pages(bid: int, payload: dict = Body(...), db: Session = Depends(get_db
     """A page added to the bill - a copy of one of its sheets ({"from", "name"}) - or taken off ({"remove": name}).
     The copy is added after the last sheet; its lines and figures are typed like any sheet's; the next bill keeps it."""
     b = _get(db, EstBill, bid)
+    _why(f"Delete page {payload.get('remove')}" if payload.get("remove") else f"+ Add page {payload.get('name') or ''}", "sheets", str(payload.get("from") or payload.get("remove") or ""))
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
     fmt = _get(db, EstBillFormat, b.format_id)
@@ -1769,6 +1984,7 @@ def bill_pages(bid: int, payload: dict = Body(...), db: Session = Depends(get_db
 def hide_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
     """Rows of a table hidden on this bill (kept in the file, not printed) or shown again: {"sheet", "rows": [..], "show": bool}."""
     b = _get(db, EstBill, bid)
+    _why("Show hidden lines" if payload.get("show") else f"Hide line {', '.join(str(x) for x in payload.get('rows') or [])}", "sheets", str(payload.get("sheet") or ""))
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
     sh = str(payload.get("sheet") or "")
@@ -1866,6 +2082,13 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
      borders of the row above, and its height) - or "reset": true (back to the consultant's look)}.
     Kept on the bill (inputs[sheet]["_fmt"]); the next bill keeps it. Wording and figures are never touched."""
     b = _get(db, EstBill, bid)
+    st_ = payload.get("set") or {}
+    lab = ("Borders" if payload.get("borders") else "Merge / unmerge" if payload.get("merge") else "Row height" if "rowh" in payload else "Column width" if "colw" in payload
+           else "Autofit" if payload.get("autofit") else "Page break" if payload.get("brk") else "Match row above" if payload.get("like_above") else "Reset" if payload.get("reset")
+           else ", ".join({"sz": "Font size", "b": "Bold", "i": "Italic", "u": "Underline", "nf": "Number format", "ha": "Alignment", "va": "Alignment", "font": "Font",
+                           "fc": "Text colour", "ind": "Indent", "wrap": "Wrap text"}.get(k, k) for k in st_) or "Format")
+    n_ = len(payload.get("cells") or []) or len(payload.get("rows") or []) or len(payload.get("cols") or [])
+    _why(f"{lab} on {n_} {'cell' if payload.get('cells') else 'row' if payload.get('rows') else 'column'}{'s' if n_ != 1 else ''}", "sheets", str(payload.get("sheet") or ""))
     if b.status != "Draft":
         raise HTTPException(400, f"This bill is {b.status} - the sheets can be changed while it is a Draft.")
     fmt = _get(db, EstBillFormat, b.format_id)
@@ -2078,7 +2301,7 @@ def sign_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     if payload.get("undo"):
         if not (user.role == "admin" or same_person(cur.get("signed_by_name") or "", user.full_name or "") or can_sign(user, x)):
             raise HTTPException(403, "Only the person who signed (or an admin) can take it back.")
-        cur.pop("signed_at", None); cur.pop("signed_by", None); cur.pop("signed_by_name", None)
+        cur.pop("signed_at", None); cur.pop("signed_ts", None); cur.pop("signed_by", None); cur.pop("signed_by_name", None)
         later = [y for y in signers if y["step"] > x["step"] and y["signed_at"]]
         for y in later:                                   # the ones after them sign again
             c2 = dict(sg.get(y["key"]) or {}); c2.pop("signed_at", None); c2.pop("signed_by", None); c2.pop("signed_by_name", None); sg[y["key"]] = c2
@@ -2095,7 +2318,8 @@ def sign_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         raise HTTPException(400, f"Not yet - {waiting['name']} ({waiting['labels'][0]}) signs first." if waiting else "Nothing to sign.")
     if not can_sign(user, x):
         raise HTTPException(403, f"Only {x['name']} can sign here (the login's full name must match), or an admin.")
-    cur.update({"signed_at": E.today().isoformat(), "signed_by": user.id, "signed_by_name": user.full_name or user.username})
+    from datetime import timezone as _tz
+    cur.update({"signed_at": E.today().isoformat(), "signed_ts": datetime.now(_tz.utc).isoformat(), "signed_by": user.id, "signed_by_name": user.full_name or user.username})
     sg[x["key"]] = cur
     for i, y in enumerate(signers):                       # everyone in the chain kept with the bill, in order (for the bell)
         d = dict(sg.get(y["key"]) or {})

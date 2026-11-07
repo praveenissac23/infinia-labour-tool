@@ -939,3 +939,9 @@ textarea.ipa-cell.rm { resize: none; line-height: 1.3; padding: 3px 5px; font-fa
 .sv-bar > .sv-sep:first-of-type { display: none; }
 .sv-bar .sv-fmt { order: 10; flex: 1 1 100%; padding-top: 4px; border-top: 1px solid #F0ECE7; }
 .sv-bar .sv-fmt .sv-sep { height: 18px; }
+.ipa-ur { display: inline-flex; gap: 4px; margin-right: 8px; }
+.ipa-ur .btn:disabled { opacity: .4; }
+.ipa-utoast { position: fixed; z-index: 6000; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; background: #222; color: #fff; padding: 9px 14px; border-radius: 9px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.ipa-utoast button { border: 0; background: none; color: #8FB8FF; font: 600 13px inherit; cursor: pointer; }
+td.ipa-flash { animation: ipaflash 1.8s ease; }
+@keyframes ipaflash { 0%, 60% { box-shadow: inset 0 0 0 3px #F5B700 !important; background: #FFF4C2 !important; } 100% { } }
