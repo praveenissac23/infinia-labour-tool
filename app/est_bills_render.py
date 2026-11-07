@@ -320,12 +320,23 @@ def _style_css(st, num):
     return css
 
 
-def _border_css(bd):
+def _border_css(bd, st=None):
+    """Each side as Excel draws it: thin 1px, medium 2px, thick 3px, dashed, double; in its colour (black)."""
     names = ("left", "right", "top", "bottom")
+    bds = (st or {}).get("bds") or [None] * 4
+    col = "#" + ((st or {}).get("bdc") or "000")
     out = []
-    for n, w in zip(names, bd or [0, 0, 0, 0]):
-        if w:
-            out.append(f"border-{n}:{'1px' if w == 1 else ('2px' if w == 2 else '3px')} {'double' if w == 3 else 'solid'} #000")
+    for n, w, nm in zip(names, bd or [0, 0, 0, 0], bds):
+        if not w:
+            continue
+        if nm == "dashed":
+            out.append(f"border-{n}:1px dashed {col}")
+        elif nm == "double":
+            out.append(f"border-{n}:3px double {col}")
+        elif nm == "thick":
+            out.append(f"border-{n}:3px solid {col}")
+        else:
+            out.append(f"border-{n}:{'1px' if w == 1 else ('2px' if w == 2 else '3px')} {'double' if w == 3 else 'solid'} {col}")
     return out
 
 
@@ -467,7 +478,7 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
                 lead, text, red = num_look(v, st.get("nf", "General"))
                 if st.get("ha") == "dec":
                     pad_ = dec_pad(text, decmax.get(c, 0))
-            css = _style_css(st, num) + _border_css(bd)
+            css = _style_css(st, num) + _border_css(bd, st)
             if red:
                 css.append("color:#C00000")
             cls = []
@@ -1042,15 +1053,19 @@ def render_pdf(model, values, title, inputs=None, fname=""):
                             continue
                         if blk and ((side == "l" and c != blk[1]) or (side == "r" and c != blk[3]) or (side == "t" and r != blk[0]) or (side == "b" and r != blk[2])):
                             continue
-                        cv.setLineWidth({1: 0.5, 2: 1.1, 3: 1.6}.get(wd, 0.5) * max(sc, 0.6))
-                        if side == "l":
-                            cv.line(x0, top, x0, top - hgt)
-                        elif side == "r":
-                            cv.line(x0 + w, top, x0 + w, top - hgt)
-                        elif side == "t":
-                            cv.line(x0, top, x0 + w, top)
+                        stl = styles[cell.get("s", 0)] if styles else {}
+                        nm = (stl.get("bds") or [None] * 4)["lrtb".index(side)]
+                        cv.setStrokeColorRGB(*(rgb(stl["bdc"]) if stl.get("bdc") else (0, 0, 0)))
+                        cv.setDash(2 * max(sc, 0.6), 2 * max(sc, 0.6)) if nm == "dashed" else cv.setDash()
+                        seg = {"l": (x0, top, x0, top - hgt), "r": (x0 + w, top, x0 + w, top - hgt), "t": (x0, top, x0 + w, top), "b": (x0, top - hgt, x0 + w, top - hgt)}[side]
+                        if nm == "double":                   # two thin lines
+                            cv.setLineWidth(0.45 * max(sc, 0.6)); d = 1.0 * max(sc, 0.6)
+                            dx, dy = (d, 0) if side in "lr" else (0, d)
+                            cv.line(seg[0] - dx, seg[1] - dy, seg[2] - dx, seg[3] - dy); cv.line(seg[0] + dx, seg[1] + dy, seg[2] + dx, seg[3] + dy)
                         else:
-                            cv.line(x0, top - hgt, x0 + w, top - hgt)
+                            cv.setLineWidth({1: 0.5, 2: 1.1, 3: 1.6}.get(wd, 0.5) * max(sc, 0.6))
+                            cv.line(*seg)
+                        cv.setDash()
             # pictures
             pxcolx = {c: colx[c] / (px * sc) for c in cols}
             for im in s.get("images", []):

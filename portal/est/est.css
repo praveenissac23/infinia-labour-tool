@@ -864,3 +864,18 @@ textarea.ipa-cell.rm { resize: none; line-height: 1.3; padding: 3px 5px; font-fa
 .sv-ctx hr { border: 0; border-top: 1px solid #EFEAE4; margin: 4px 0; }
 .sv-locked { margin: 6px 2px 8px; font-size: 13px; color: #8C2F26; }
 .ipa-cell.bad { outline: 2px solid #C00000 !important; background: #FFF0F0 !important; }
+.sv-ddm { position: fixed; z-index: 3000; min-width: 230px; background: #fff; border: 1px solid #E2DDD6; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.14); padding: 6px; }
+.sv-ddm button { display: block; width: 100%; border: 0; background: none; padding: 7px 10px; border-radius: 6px; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.sv-ddm button:hover { background: #FDF4F3; color: #8C2F26; }
+.sv-ddm hr { border: 0; border-top: 1px solid #EFEAE4; margin: 4px 0; }
+.sv-ddrow { display: flex; gap: 10px; padding: 4px 8px 8px; font-size: 12.5px; align-items: center; }
+.sv-ddrow select { height: 26px; }
+.sv-ddrow input[type=color] { width: 32px; height: 24px; padding: 0; border: 1px solid #ddd; }
+.sv-pgl { position: absolute; left: 0; top: 0; right: 0; height: 0; pointer-events: none; }
+.sv-pg { position: absolute; left: 28px; right: 0; border-top: 1px solid #C9C4BD; }
+.sv-pg.man { border-top: 2px dashed #2F6FD0; }
+.sv-rz { position: absolute; z-index: 2; }
+.sv-rz.y { left: 0; right: 0; bottom: -3px; height: 6px; cursor: row-resize; }
+.sv-rz.x { top: 0; bottom: 0; right: -3px; width: 6px; cursor: col-resize; }
+.sv-rn, .sv-cn { overflow: visible !important; }
+.sv-tip { position: fixed; z-index: 4000; display: none; background: #222; color: #fff; font-size: 11.5px; padding: 3px 7px; border-radius: 5px; pointer-events: none; }

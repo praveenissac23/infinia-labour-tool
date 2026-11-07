@@ -1028,7 +1028,17 @@ def bill_sheet(bid: int, i: int, db: Session = Depends(get_db), user: models.Use
     sm = signed_model(model, _signs(b), _sig_store(db))
     html, w, h = BR.sheet_html(sm, sm["sheets"][i], values, inputs, edit=b.status not in ("Paid",), mark=mark)
     return {"html": html, "width": w, "height": h, "name": s["name"], "css": BR.SHEET_CSS,
-            "remarks": bool(BE.remarks_cols(s, model["styles"])), "clear_remarks": bool((inputs.get("_opts") or {}).get("clear_remarks"))}
+            "remarks": bool(BE.remarks_cols(s, model["styles"])), "clear_remarks": bool((inputs.get("_opts") or {}).get("clear_remarks")),
+            "pages": _page_starts(model, s, inputs, values), "manual": sorted(int(x) + 1 for x in (s.get("print") or {}).get("breaks") or [])}
+
+
+def _page_starts(model, s, inputs, values):
+    """The first row of every printed page after the first (for the A4 lines on the screen)."""
+    try:
+        pl = BR.page_plan(model, s, inputs, values)
+        return [own[0] for _, own in pl["pages"][1:] if own]
+    except Exception:
+        return []
 
 
 @router.post("/store/est/ipa/bill/{bid}/opts")
@@ -1739,6 +1749,79 @@ def hide_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
 
 
+def _fit_rows(model, s, values, inp, rows=None):
+    """Each row's height for its text as Excel's AutoFit works it out (points): the tallest cell - its lines (wrapped
+    to the column, or one) x its font size - never below the sheet's own row height."""
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    styles = model["styles"]; vals = values.get(s["name"], {})
+    merged = {(m[0], m[1]): m for m in s.get("merges") or []}
+    covered = {(r, c) for m in s.get("merges") or [] for r in range(m[0], m[2] + 1) for c in range(m[1], m[3] + 1) if (r, c) != (m[0], m[1])}
+    dcw, drh = s.get("dcw", 8.43), s.get("drh", 15.0)
+    width = lambda c: BR.colpx(float((s.get("colw") or {}).get(str(c), dcw))) * 0.75
+    need = {}
+    for r in (rows or range(1, s["maxr"] + 1)):
+        h = 0
+        for c in range(1, s["maxc"] + 1):
+            if (r, c) in covered:
+                continue
+            k = f"{r},{c}"
+            cell = s["cells"].get(k) or {}
+            v = vals.get(k, inp.get(k, cell.get("v")))
+            if v in (None, ""):
+                continue
+            st = styles[cell.get("s", 0)]
+            txt = BR.fmt(v, st.get("nf", "General"))
+            sz = st.get("sz") or 11
+            m = merged.get((r, c))
+            if m and m[0] != m[2]:
+                continue                                 # a block over several rows keeps its rows
+            w = sum(width(cc) for cc in range(c, (m[3] if m else c) + 1)) - 4
+            fn = BR._measure_font(st)
+            lines = 0
+            for part in str(txt).split("\n"):
+                if st.get("wrap") and w > 10:
+                    words, cur = part.split(" "), ""
+                    n = 1
+                    for wd in words:
+                        t2 = (cur + " " + wd).strip()
+                        if stringWidth(t2, fn, sz) > w and cur:
+                            n += 1; cur = wd
+                        else:
+                            cur = t2
+                    lines += n
+                else:
+                    lines += 1
+            h = max(h, lines * sz * 1.25 + 3)
+        need[r] = round(max(h, drh if not h else min(drh, h)), 2) if h else drh
+    return need
+
+
+def _fit_cols(model, s, values, cols=None):
+    """Each column's width for its widest unwrapped text (Excel characters)."""
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    styles = model["styles"]; vals = values.get(s["name"], {})
+    inmerge = {(r, c) for m in s.get("merges") or [] for r in range(m[0], m[2] + 1) for c in range(m[1], m[3] + 1)}
+    out = {}
+    for c in (cols or range(1, s["maxc"] + 1)):
+        wmax = 0
+        for r in range(1, s["maxr"] + 1):
+            if (r, c) in inmerge:
+                continue
+            k = f"{r},{c}"
+            cell = s["cells"].get(k) or {}
+            v = vals.get(k, cell.get("v"))
+            if v in (None, ""):
+                continue
+            st = styles[cell.get("s", 0)]
+            if st.get("wrap"):
+                continue
+            t = BR.fmt(v, st.get("nf", "General"))
+            wmax = max(wmax, max(stringWidth(x, BR._measure_font(st), st.get("sz") or 11) for x in str(t).split("\n")))
+        if wmax:
+            out[c] = round(min(255, (wmax / 0.75 + 10 - 5) / 7), 2)
+    return out
+
+
 @router.post("/store/est/ipa/bill/{bid}/fmt")
 def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
     """The Sheets step's toolbar: the look of the picked cells changed on this bill, as in Excel.
@@ -1752,7 +1835,7 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
     sh = str(payload.get("sheet") or "")
-    plain = BE.restyle_pay_rows(_bill_model(fmt, {k: ({kk: vv for kk, vv in v.items() if kk not in ("_fmt", "_rowh")} if isinstance(v, dict) else v)
+    plain = BE.restyle_pay_rows(_bill_model(fmt, {k: ({kk: vv for kk, vv in v.items() if kk not in BE.FMT_EXTRA} if isinstance(v, dict) else v)
                                                    for k, v in inputs.items()}), inputs)
     s = next((x for x in plain["sheets"] if x["name"] == sh), None)
     if not s:
@@ -1770,7 +1853,99 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
     inp = inputs.setdefault(sh, {})
     f = dict(inp.get("_fmt") or {})
     rowh = dict(inp.get("_rowh") or {})
-    if payload.get("reset"):
+    rows_ = sorted({r for r, _ in cells}); cols_ = sorted({c for _, c in cells})
+    box = [rows_[0], cols_[0], rows_[-1], cols_[-1]]
+    handled = True
+    if isinstance(payload.get("borders"), dict):         # {"r,c": {"l": "thin", "b": "double", "t": ""}}, "bdc": "000000"
+        bdc = str(payload.get("bdc") or "").lstrip("#").upper()
+        if bdc and not re.fullmatch(r"[0-9A-F]{6}", bdc):
+            raise HTTPException(400, "Pick a line colour.")
+        for k, sides in payload["borders"].items():
+            r, c = (int(x) for x in str(k).split(","))
+            if not isinstance(sides, dict):
+                continue
+            ok = {sd: (v if v in BE.BD_W else "") for sd, v in sides.items() if sd in ("l", "r", "t", "b")}
+            cur = dict(f.get(f"{r},{c}") or {})
+            cur["bd"] = dict(cur.get("bd") or {}, **ok)
+            if bdc:
+                cur["bdc"] = bdc
+            f[f"{r},{c}"] = cur
+    elif payload.get("merge"):                           # "center" | "across" | "merge" | "unmerge"
+        mg = list(inp.get("_merge") or [])
+        how = payload["merge"]
+        if how == "unmerge":
+            hit = [m for m in s.get("merges") or [] if not (m[2] < box[0] or m[0] > box[2] or m[3] < box[1] or m[1] > box[3])]
+            for m in hit:
+                mg.append(["del"] + list(m))
+            for m in [x for x in mg if x[0] == "add"]:
+                if not (m[3] < box[0] or m[1] > box[2] or m[4] < box[1] or m[2] > box[3]):
+                    mg.append(["del"] + m[1:5])
+        else:
+            blocks = [[r, box[1], r, box[3]] for r in range(box[0], box[2] + 1)] if how == "across" else [box]
+            for bx in blocks:
+                if bx[0] == bx[2] and bx[1] == bx[3]:
+                    continue
+                mg.append(["add"] + bx)
+                if how == "center":
+                    k0 = f"{bx[0]},{bx[1]}"
+                    f[k0] = dict(f.get(k0) or {}, ha="center")
+        inp["_merge"] = mg
+    elif isinstance(payload.get("rowh"), (int, float)):  # exact height (points) for every picked row
+        h = float(payload["rowh"])
+        if not 2 <= h <= 409:
+            raise HTTPException(400, "Row height 2 to 409.")
+        for r in rows_:
+            rowh[str(r)] = h
+    elif isinstance(payload.get("colw"), (int, float)):  # exact width (characters) for every picked column
+        w = float(payload["colw"])
+        if not 0.5 <= w <= 255:
+            raise HTTPException(400, "Column width 0.5 to 255.")
+        inp["_colw"] = dict(inp.get("_colw") or {}, **{str(c): w for c in cols_})
+    elif payload.get("autofit") in ("rows", "cols"):
+        targets = [sh] if not payload.get("all_sheets") else [x["name"] for x in plain["sheets"] if x.get("visible", True)]
+        whole = payload.get("all_sheets") or payload.get("whole")
+        full = _bill_model(fmt, inputs)
+        vals = BE.calculate(full, inputs)
+        for nm in targets:
+            sx = next(x for x in full["sheets"] if x["name"] == nm)
+            ix = inputs.setdefault(nm, {})
+            if payload["autofit"] == "rows":
+                want = _fit_rows(full, sx, vals, ix, None if whole else rows_)
+                rh_ = dict(ix.get("_rowh") or {}); rh_.update({str(r): h for r, h in want.items()})
+                if nm == sh:
+                    rowh = rh_
+                else:
+                    ix["_rowh"] = rh_
+            else:
+                want = _fit_cols(full, sx, vals, None if whole else cols_)
+                ix["_colw"] = dict(ix.get("_colw") or {}, **{str(c): w for c, w in want.items()})
+    elif isinstance(payload.get("brk"), dict):           # {"above": row, "on": true} - a page break above that row
+        r = int(payload["brk"].get("above") or 0)
+        if r < 2:
+            raise HTTPException(400, "Pick the row the new page starts with.")
+        b_ = {k: list(v) for k, v in (inp.get("_brk") or {}).items()}
+        add, dele = set(b_.get("add") or []), set(b_.get("del") or [])
+        if payload["brk"].get("on"):
+            add.add(r - 1); dele.discard(r - 1)
+        else:
+            add.discard(r - 1); dele.add(r - 1)
+        inp["_brk"] = {"add": sorted(add), "del": sorted(dele)}
+    else:
+        handled = False
+    if handled:
+        pass
+    elif payload.get("reset"):
+        mg = [m for m in inp.get("_merge") or [] if m[3] < box[0] or m[1] > box[2] or m[4] < box[1] or m[2] > box[3]]
+        if mg:
+            inp["_merge"] = mg
+        else:
+            inp.pop("_merge", None)
+        if payload.get("cols") or payload.get("whole"):
+            cw_ = {k: v for k, v in (inp.get("_colw") or {}).items() if int(k) not in cols_}
+            if cw_:
+                inp["_colw"] = cw_
+            else:
+                inp.pop("_colw", None)
         for r, c in cells:
             f.pop(f"{r},{c}", None)
         for r in {r for r, _ in cells}:
@@ -1835,6 +2010,9 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
         inp.pop("_fmt")
     if not rowh:
         inp.pop("_rowh")
+    if payload.get("reset") and payload.get("whole"):   # the whole sheet back to the consultant's look
+        for k_ in BE.FMT_EXTRA:
+            inp.pop(k_, None)
     model = _bill_model(fmt, inputs)
     inputs, values = _calc(model, inputs)
     b.inputs = json.dumps(inputs); b.updated_by = user.id

@@ -122,4 +122,24 @@ ck("font / colour / wrap / indent / top", st5["font"] == "Arial" and st5["fc"] =
 x5 = BE.write_xlsx(d4, m5, inp5, v4); a5 = load_workbook(io.BytesIO(x5))["APP A"]["B2"]
 ck("Excel: font / colour / wrap / indent / top / dd-mmm-yyyy", a5.font.name == "Arial" and str(a5.font.color.rgb).endswith("1F4E79") and a5.alignment.wrap_text and a5.alignment.indent == 2 and a5.alignment.vertical == "top" and a5.number_format == "dd-mmm-yyyy",
    (a5.font.name, a5.font.color.rgb if a5.font.color else None, a5.alignment.wrap_text, a5.alignment.indent, a5.alignment.vertical, a5.number_format))
+# ---- part 2: borders, merges, column widths, row heights, page breaks
+inp6 = {"Breakdown": {"_fmt": {"4,3": {"bd": {"b": "double", "t": "dashed"}, "bdc": "1F4E79"}, "3,2": {"bd": {"l": "thick"}}},
+                      "_merge": [["add", 2, 2, 2, 3], ["del", 9, 9, 9, 9]], "_colw": {"3": 30}, "_rowh": {"4": 40}, "_brk": {"add": [3], "del": []}}}
+m6 = BE.apply_fmt(model, inp6); s6 = next(x for x in m6["sheets"] if x["name"] == sh); st6 = m6["styles"][s6["cells"]["4,3"]["s"]]
+ck("border styles kept per side (double bottom, dashed top, colour)", st6["bds"][3] == "double" and st6["bds"][2] == "dashed" and st6["bdc"] == "1F4E79", st6)
+ck("merge B2:C2, column C 30 wide, row 4 40 high, a break after row 3", [2, 2, 2, 3] in s6["merges"] and s6["colw"]["3"] == 30 and s6["rowh"]["4"] == 40 and 3 in s6["print"]["breaks"], (s6["merges"], s6["colw"].get("3"), s6["print"].get("breaks")))
+h6, _, _ = BR.sheet_html(m6, s6, BE.calculate(m6, inp6), inp6, edit=True)
+ck("screen: double / dashed borders in their colour, the merged block", "border-bottom:3px double #1F4E79" in h6 and "border-top:1px dashed #1F4E79" in h6 and 'colspan="2"' in h6)
+v6 = BE.calculate(m6, inp6)
+x6 = BE.write_xlsx(data, m6, inp6, v6); w6 = load_workbook(io.BytesIO(x6)); a6 = w6[sh]
+ck("Excel: double bottom / dashed top in colour, thick left", a6["C4"].border.bottom.style == "double" and a6["C4"].border.top.style == "dashed" and str(a6["C4"].border.bottom.color.rgb).endswith("1F4E79") and a6["B3"].border.left.style == "thick",
+   (a6["C4"].border.bottom.style, a6["C4"].border.top.style, a6["B3"].border.left.style))
+ck("Excel: merged B2:C2, column C width 30, row 4 height 40, page break after row 3", "B2:C2" in [str(r) for r in a6.merged_cells.ranges] and a6.column_dimensions["C"].width == 30 and a6.row_dimensions[4].height == 40 and [b.id for b in a6.row_breaks.brk] == [3],
+   ([str(r) for r in a6.merged_cells.ranges], a6.column_dimensions["C"].width, a6.row_dimensions[4].height, [b.id for b in a6.row_breaks.brk]))
+pdf6 = BR.render_pdf(m6, v6, "t", inp6); pdf6 = pdf6.getvalue() if hasattr(pdf6, "getvalue") else pdf6
+import pdfplumber
+pg = pdfplumber.open(io.BytesIO(pdf6)).pages
+ck("PDF: a new page after the break (row 4 on page 2)", len(pg) >= 2 and "Milestone" in (pg[1].extract_text() or "") and "Milestone" not in (pg[0].extract_text() or ""), [p.extract_text() for p in pg])
+sft2 = BE.shift_inputs(inp6[sh], sh, 2, 1)
+ck("a row put in: the merge, height and break move with their rows", ["add", 3, 2, 3, 3] in sft2["_merge"] and sft2["_rowh"] == {"5": 40} and sft2["_brk"]["add"] == [4], (sft2.get("_merge"), sft2.get("_rowh"), sft2.get("_brk")))
 print("ALL PASS" if not bad else f"{bad} FAILED")

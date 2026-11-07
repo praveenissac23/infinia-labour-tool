@@ -2554,7 +2554,7 @@ def write_xlsx(data: bytes, model, inputs, values, signs=None):
     zout.close()
     # the content types and relationships must not point at the removed calcChain
     res = _xlsx_dates(_drop_calcchain_refs(out.getvalue()))   # DD/MM/YYYY - before the office's own formats
-    if any(isinstance(v, dict) and (v.get("_fmt") or v.get("_rowh")) for v in (inputs or {}).values()):
+    if any(isinstance(v, dict) and any(v.get(k) for k in FMT_EXTRA) for v in (inputs or {}).values()):
         res = _xlsx_apply_fmt(res, model, inputs)
     return res
 
@@ -2570,6 +2570,8 @@ def _xlsx_apply_fmt(data, model, inputs):
     if not fonts_m or not xfs_m:
         return data
     fonts = re.findall(r"<font\b[^>]*/>|<font\b[^>]*>.*?</font>", fonts_m.group(1), re.S)
+    bds_m = re.search(r"<borders\b[^>]*>(.*?)</borders>", sty, re.S)
+    borders = re.findall(r"<border\b[^>]*/>|<border\b[^>]*>.*?</border>", bds_m.group(1), re.S) if bds_m else ["<border><left/><right/><top/><bottom/><diagonal/></border>"]
     xfs = re.findall(r"<xf\b[^>]*/>|<xf\b[^>]*>.*?</xf>", xfs_m.group(1), re.S)
     n_fonts0, n_xfs0 = len(fonts), len(xfs)
     made = {}
@@ -2618,9 +2620,10 @@ def _xlsx_apply_fmt(data, model, inputs):
         if "wrap" in f:
             al["wrapText"] = "1" if f["wrap"] else ""
         fk = [a for a in FONT_KEYS if a in f]
-        if not fk and not nf_ and not al:
+        bdf = f.get("bd") if isinstance(f.get("bd"), dict) else None
+        if not fk and not nf_ and not al and not bdf:
             return xi
-        k = (xi, tuple((a, f.get(a)) for a in FONT_KEYS), nf_, tuple(sorted(al.items())))
+        k = (xi, tuple((a, f.get(a)) for a in FONT_KEYS), nf_, tuple(sorted(al.items())), tuple(sorted((bdf or {}).items())), f.get("bdc"))
         if k in made:
             return made[k]
         xf = xfs[xi]
@@ -2628,6 +2631,20 @@ def _xlsx_apply_fmt(data, model, inputs):
             xf = re.sub(r'\s(numFmtId|applyNumberFormat)="[^"]*"', "", xf).replace("<xf ", f'<xf numFmtId="{numfmt_id(nf_)}" applyNumberFormat="1" ', 1)
         if al:
             xf = set_align(xf, al)
+        if bdf:                                        # borders: the sides set on the bill, the others as they were
+            bm = re.search(r'\bborderId="(\d+)"', xf)
+            old_b = borders[int(bm.group(1))] if bm and int(bm.group(1)) < len(borders) else "<border/>"
+            sides = {}
+            for nm in ("left", "right", "top", "bottom", "diagonal"):
+                mm_ = re.search(r"<%s\b[^>]*/>|<%s\b[^>]*>.*?</%s>" % (nm, nm, nm), old_b, re.S)
+                sides[nm] = mm_.group(0) if mm_ else f"<{nm}/>"
+            col = f.get("bdc") or "000000"
+            for key_, nm in zip("lrtb", ("left", "right", "top", "bottom")):
+                if key_ in bdf:
+                    st_ = bdf[key_]
+                    sides[nm] = f'<{nm} style="{st_}"><color rgb="FF{col}"/></{nm}>' if st_ else f"<{nm}/>"
+            borders.append("<border>" + "".join(sides[n] for n in ("left", "right", "top", "bottom", "diagonal")) + "</border>")
+            xf = re.sub(r'\s(borderId|applyBorder)="[^"]*"', "", xf).replace("<xf ", f'<xf borderId="{len(borders) - 1}" applyBorder="1" ', 1)
         if not fk:
             xfs.append(xf); made[k] = len(xfs) - 1
             return made[k]
@@ -2682,9 +2699,45 @@ def _xlsx_apply_fmt(data, model, inputs):
         inp = (inputs or {}).get(s["name"]) or {}
         fm_, rh_ = inp.get("_fmt") or {}, inp.get("_rowh") or {}
         p = paths.get(s["name"])
-        if not p or not (fm_ or rh_):
+        if not p or not any(inp.get(k) for k in FMT_EXTRA):
             continue
         xml = zin.read(p).decode("utf-8")
+        if inp.get("_merge"):                          # merged blocks as the bill has them
+            mc = "".join(f'<mergeCell ref="{get_column_letter(m[1])}{m[0]}:{get_column_letter(m[3])}{m[2]}"/>' for m in s.get("merges") or [])
+            mcx = f'<mergeCells count="{len(s.get("merges") or [])}">{mc}</mergeCells>' if mc else ""
+            if re.search(r"<mergeCells\b", xml):
+                xml = re.sub(r"<mergeCells\b[^>]*?(?:/>|>.*?</mergeCells>)", mcx, xml, count=1, flags=re.S)
+            elif mcx:
+                xml = re.sub(r"(</sheetData>)", r"\1" + mcx.replace("\\", "\\\\"), xml, count=1)
+        if inp.get("_colw"):                           # column widths: each column set on the bill on its own <col>
+            cm = re.search(r"<cols>(.*?)</cols>", xml, re.S)
+            cols_x = re.findall(r"<col\b[^>]*/>", cm.group(1)) if cm else []
+            want_c = {int(c): float(w) for c, w in inp["_colw"].items()}
+            out_c = []
+            for cx in cols_x:
+                a = int(re.search(r'\bmin="(\d+)"', cx).group(1)); z = int(re.search(r'\bmax="(\d+)"', cx).group(1))
+                run = [c for c in range(a, z + 1) if c not in want_c]
+                # split the range around the columns set on the bill
+                start = None
+                for c in range(a, z + 2):
+                    if c <= z and c in run:
+                        start = c if start is None else start
+                    elif start is not None:
+                        out_c.append(re.sub(r'\bmax="\d+"', f'max="{c - 1}"', re.sub(r'\bmin="\d+"', f'min="{start}"', cx))); start = None
+            for c, w in want_c.items():
+                out_c.append(f'<col min="{c}" max="{c}" width="{w:g}" customWidth="1"/>')
+            out_c.sort(key=lambda x: int(re.search(r'\bmin="(\d+)"', x).group(1)))
+            cx_all = "<cols>" + "".join(out_c) + "</cols>"
+            xml = xml.replace(cm.group(0), cx_all) if cm else re.sub(r"(<sheetData\b)", cx_all + r"\1", xml, count=1)
+        if inp.get("_brk"):                            # page breaks: Excel's own rowBreaks
+            br = sorted((s.get("print") or {}).get("breaks") or [])
+            rbx = (f'<rowBreaks count="{len(br)}" manualBreakCount="{len(br)}">' + "".join(f'<brk id="{x}" max="16383" man="1"/>' for x in br) + "</rowBreaks>") if br else ""
+            if re.search(r"<rowBreaks\b", xml):
+                xml = re.sub(r"<rowBreaks\b[^>]*?(?:/>|>.*?</rowBreaks>)", rbx, xml, count=1, flags=re.S)
+            elif rbx:
+                # after pageSetup / headerFooter, before drawing etc. (Excel's order)
+                mm_ = re.search(r"(<headerFooter\b.*?(?:/>|</headerFooter>)|<pageSetup\b[^>]*/>|<pageMargins\b[^>]*/>|<printOptions\b[^>]*/>)(?!.*(<headerFooter\b|<pageSetup\b|<pageMargins\b|<printOptions\b))", xml, re.S)
+                xml = (xml[:mm_.end()] + rbx + xml[mm_.end():]) if mm_ else xml.replace("</worksheet>", rbx + "</worksheet>")
         cur = {}
         for m in CREF.finditer(xml):
             sm = re.search(r'\bs="(\d+)"', re.match(r"<c\b[^>]*>", m.group(0)).group(0))
@@ -2744,6 +2797,10 @@ def _xlsx_apply_fmt(data, model, inputs):
     if not made and not new_sheets:
         return data
     sty2 = sty[:fonts_m.start(1)] + "".join(fonts) + sty[fonts_m.end(1):]
+    bm2 = re.search(r"<borders\b[^>]*>(.*?)</borders>", sty2, re.S)
+    if bm2:
+        sty2 = sty2[:bm2.start(1)] + "".join(borders) + sty2[bm2.end(1):]
+        sty2 = re.sub(r'(<borders\b[^>]*?\bcount=")\d+"', lambda m: f'{m.group(1)}{len(borders)}"', sty2, count=1)
     if new_nf:
         add = "".join(f'<numFmt numFmtId="{i}" formatCode="{_esc(c)}"/>' for i, c in new_nf)
         nm2 = re.search(r"<numFmts\b[^>]*>(.*?)</numFmts>", sty2, re.S)
@@ -3256,13 +3313,15 @@ def is_remark(s, k, cols=None):
 FMT_KEYS = ("sz", "b", "i", "u")
 ALIGNS = ("left", "center", "right", "dec")             # dec = decimal points under each other (right in Excel)
 VALIGNS = ("top", "center", "bottom")
+FMT_EXTRA = ("_fmt", "_rowh", "_colw", "_merge", "_brk")   # the office's own look on a sheet, kept on the bill
+BD_W = {"thin": 1, "dashed": 1, "medium": 2, "thick": 3, "double": 3}
 
 
 def apply_fmt(model, inputs):
     """The bill with the office's own formatting from the Sheets step on top of the consultant's: per cell
     {"s": a style of the format to take (Match row above), "sz", "b", "i", "u"} in inputs[sheet]["_fmt"], and row
     heights in inputs[sheet]["_rowh"]. Same object back when there is none; the format is never changed."""
-    todo = {sh: inp for sh, inp in (inputs or {}).items() if isinstance(inp, dict) and (inp.get("_fmt") or inp.get("_rowh"))}
+    todo = {sh: inp for sh, inp in (inputs or {}).items() if isinstance(inp, dict) and any(inp.get(k) for k in FMT_EXTRA)}
     if not todo:
         return model
     m = dict(model)
@@ -3302,6 +3361,15 @@ def apply_fmt(model, inputs):
                 st["font"] = str(f["font"])[:40]
             if "fc" in f:
                 st["fc"] = str(f["fc"] or "").upper()
+            if isinstance(f.get("bd"), dict):            # borders: each side "thin" / "medium" / "thick" / "dashed" / "double" / ""
+                bd = list(st.get("bd") or [0, 0, 0, 0]); bds = list(st.get("bds") or [None] * 4)
+                for i, side in enumerate("lrtb"):
+                    if side in f["bd"]:
+                        nm = f["bd"][side] or ""
+                        bd[i] = BD_W.get(nm, 0); bds[i] = nm or None
+                st["bd"] = bd; st["bds"] = bds
+                if f.get("bdc") is not None:
+                    st["bdc"] = str(f["bdc"] or "").upper()
             kk = repr(sorted(st.items()))
             if kk not in key:
                 key[kk] = len(styles); styles.append(st)
@@ -3312,7 +3380,28 @@ def apply_fmt(model, inputs):
                 rowh[str(int(r))] = float(h)
             except (TypeError, ValueError):
                 pass
-        s2["cells"] = cells; s2["rowh"] = rowh
+        colw = dict(s.get("colw") or {})
+        for c, w in (inp.get("_colw") or {}).items():
+            try:
+                colw[str(int(c))] = float(w)
+            except (TypeError, ValueError):
+                pass
+        merges = [list(x) for x in s.get("merges") or []]
+        for op in inp.get("_merge") or []:
+            kind, box = op[0], [int(x) for x in op[1:5]]
+            # anything overlapping the block comes apart first; "add" then puts the block together
+            merges = [m for m in merges if m[2] < box[0] or m[0] > box[2] or m[3] < box[1] or m[1] > box[3]]
+            if kind == "add" and (box[0] != box[2] or box[1] != box[3]):
+                merges.append(box)
+        if inp.get("_brk"):
+            pr = dict(s.get("print") or {"paper": 9, "landscape": s.get("landscape"), "fit": s.get("fit"), "fw": 1, "fh": 0, "scale": 100,
+                                         "m": [.7, .7, .75, .75, .3, .3], "hc": False, "vc": False, "titles": None, "breaks": [], "hf": {}})
+            br = set(int(x) for x in pr.get("breaks") or [])
+            br |= set(int(x) for x in inp["_brk"].get("add") or [])
+            br -= set(int(x) for x in inp["_brk"].get("del") or [])
+            pr["breaks"] = sorted(br)
+            s2["print"] = pr
+        s2["cells"] = cells; s2["rowh"] = rowh; s2["colw"] = colw; s2["merges"] = merges
         m["sheets"].append(s2)
     return m
 
@@ -3334,6 +3423,26 @@ def _fmt_shift(inp, out, fn):
             h[str(nr)] = v
     if h:
         out["_rowh"] = h
+    if inp.get("_colw"):
+        out["_colw"] = dict(inp["_colw"])
+    mg = []
+    for op in inp.get("_merge") or []:
+        r1, r2 = int(op[1]), int(op[3])
+        n1 = fn(r1)
+        n2 = fn(r2)
+        if n1 is None and n2 is None:
+            continue
+        if n1 is None:
+            n1 = fn(r1 + 1) if fn(r1 + 1) is not None else n2
+        if n2 is None:
+            n2 = fn(r2 - 1) if fn(r2 - 1) is not None else n1
+        # a block a row is put into grows (fn moves the rows below; the block's last row follows)
+        mg.append([op[0], n1, op[2], n2, op[4]])
+    if mg:
+        out["_merge"] = mg
+    if inp.get("_brk"):
+        b = {k: [fn(int(x)) for x in v if fn(int(x)) is not None] for k, v in inp["_brk"].items()}
+        out["_brk"] = b
 
 
 def shift_inputs(inp, sheet, at, n):
@@ -3350,7 +3459,8 @@ def shift_inputs(inp, sheet, at, n):
     for hk in ("_hide", "_heads"):
         if out.get(hk):
             out[hk] = [r + n if r >= at else r for r in out[hk]]
-    out.pop("_fmt", None); out.pop("_rowh", None)
+    for k_ in FMT_EXTRA:
+        out.pop(k_, None)
     _fmt_shift(inp or {}, out, lambda r: r + n if r >= at else r)
     return out
 
@@ -3404,7 +3514,7 @@ def drop_added(inputs, sheet, row):
         if inp.get(hk):
             out[hk] = [r - 1 if r > row else r for r in inp[hk] if r != row]
     for k, v in inp.items():
-        if k.startswith("_") and k not in ("_hide", "_heads", "_rows", "_fmt", "_rowh"):
+        if k.startswith("_") and k not in ("_hide", "_heads", "_rows") + FMT_EXTRA:
             out[k] = v
     _fmt_shift(inp, out, lambda r: None if r == row else (r - 1 if r > row else r))
     if rows:

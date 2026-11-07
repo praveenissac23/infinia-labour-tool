@@ -979,7 +979,7 @@ function fmtTools(v, host, b, sh, redraw) {
     paint(); });
   const pickAll = () => { clearAll(); S.rows = allRows(); S.all = true; paint(); };
   corner.addEventListener("click", e => { e.stopPropagation(); pickAll(); });
-  const send = async body => { const p = Object.assign({ sheet: sh }, S.rows ? { rows: S.rows } : S.cols ? { cols: S.cols } : { cells: cellsOf() }, body);
+  const send = async body => { const p = Object.assign({ sheet: sh }, (body.rows || body.cols || body.cells) ? {} : S.rows ? { rows: S.rows } : S.cols ? { cols: S.cols } : { cells: cellsOf() }, body);
     if (!(p.rows || p.cols || p.cells).length) return toast("Pick cells first");
     try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/fmt`, p); redraw(); } catch (e) { fail(e); } };
   // Delete: the contents go, the look stays (only cells that can be typed in; formulas that work things out are kept)
@@ -995,6 +995,7 @@ function fmtTools(v, host, b, sh, redraw) {
     else if (a === "comma") { const on = !x.classList.contains("on"); send({ set: { nf: nfEach(S.cur.nf, p => nfSec(p, on, null)) } }); }
     else if (a === "dless" || a === "dmore") { const d = Math.max(0, Math.min(4, nfDec(S.cur.nf) + (a === "dmore" ? 1 : -1))); send({ set: { nf: nfEach(S.cur.nf, p => nfSec(p, null, d)) } }); }
     else if (a === "like") send({ like_above: true });
+    else if (a === "menu") openMenu(x.dataset.v, x);
     else if (a === "clear") clearCells();
     else if (a === "reset") send({ reset: true }); };
   bar.onclick = e => { const x = e.target.closest("button[data-fx]"); if (!x || x.disabled) return; act(x.dataset.fx, x); };
@@ -1016,6 +1017,78 @@ function fmtTools(v, host, b, sh, redraw) {
       if (a === "nf") send({ set: { nf: NF[val] } }); else if (a === "al") send({ set: { ha: val } });
       else { const btn = $(`[data-fx="${a}"]`, bar); act(a, btn || x); } };
     setTimeout(() => document.addEventListener("click", () => m.remove(), { once: true }), 0); });
+  // ---- the box picked: rows / columns covered (a merged cell counts all its columns)
+  const boxOf = () => { const tds = tdsOf(); if (!tds.length) return null; let r1 = 1e9, c1 = 1e9, r2 = 0, c2 = 0;
+    tds.forEach(td => { const r = +td.parentElement.dataset.r, c = +td.dataset.c, ce = c + (td.colSpan || 1) - 1;
+      r1 = Math.min(r1, r); r2 = Math.max(r2, r); c1 = Math.min(c1, c); c2 = Math.max(c2, ce); }); return [r1, c1, r2, c2]; };
+  const rowsIn = (r1, r2) => allRows().filter(r => r >= r1 && r <= r2);
+  const borders = (how, stl, col) => { const bx = boxOf(); if (!bx) return toast("Pick cells first"); const [r1, c1, r2, c2] = bx, rows = rowsIn(r1, r2), out = {};
+    const put = (r, c, side, v) => { const k = r + "," + c; (out[k] = out[k] || {})[side] = v; };
+    const thick = how === "thickout" ? "thick" : stl;
+    for (const r of rows) for (let c = c1; c <= c2; c++) {
+      const top = r === rows[0], bot = r === rows[rows.length - 1], lf = c === c1, rt = c === c2;
+      if (how === "all") ["l", "r", "t", "b"].forEach(sd => put(r, c, sd, stl));
+      else if (how === "outside" || how === "thickout") { if (top) put(r, c, "t", thick); if (bot) put(r, c, "b", thick); if (lf) put(r, c, "l", thick); if (rt) put(r, c, "r", thick); }
+      else if (how === "inside") { if (!bot) put(r, c, "b", stl); if (!rt) put(r, c, "r", stl); }
+      else if (how === "top" && top) put(r, c, "t", stl); else if (how === "bottom" && bot) put(r, c, "b", stl);
+      else if (how === "left" && lf) put(r, c, "l", stl); else if (how === "right" && rt) put(r, c, "r", stl);
+      else if (how === "thickbot" && bot) put(r, c, "b", "thick"); else if (how === "dblbot" && bot) put(r, c, "b", "double");
+      else if (how === "none") ["l", "r", "t", "b"].forEach(sd => put(r, c, sd, "")); }
+    if (how === "none") {                                // the cells around share those lines: theirs go too
+      const all = allRows(), ia = all.indexOf(rows[0]), ib = all.indexOf(rows[rows.length - 1]);
+      for (let c = c1; c <= c2; c++) { if (ia > 0) put(all[ia - 1], c, "b", ""); if (ib >= 0 && ib < all.length - 1) put(all[ib + 1], c, "t", ""); }
+      for (const r of rows) { if (c1 > 1) put(r, c1 - 1, "r", ""); put(r, c2 + 1, "l", ""); } }
+    send({ borders: out, bdc: (col || "#000000").replace("#", ""), cells: [[r1, c1]] }); };
+  const menu = (btn, html, bind) => { $$(".sv-ddm").forEach(x => x.remove()); const m = document.createElement("div"); m.className = "sv-ddm"; m.innerHTML = html;
+    document.body.appendChild(m); const r = btn.getBoundingClientRect(); m.style.left = Math.min(r.left, innerWidth - m.offsetWidth - 8) + "px"; m.style.top = (r.bottom + 4) + "px";
+    m.addEventListener("click", e => e.stopPropagation()); bind(m); setTimeout(() => document.addEventListener("click", () => m.remove(), { once: true }), 0); return m; };
+  const BDS = [["all", "All borders"], ["outside", "Outside"], ["inside", "Inside"], ["top", "Top"], ["bottom", "Bottom"], ["left", "Left"], ["right", "Right"], ["thickout", "Thick outside"], ["thickbot", "Thick bottom"], ["dblbot", "Double bottom (totals)"], ["none", "No border"]];
+  const openMenu = (kind, btn) => {
+    if (kind === "bd") menu(btn, `<div class="sv-ddrow"><label>Line <select id="bd-st"><option value="thin">Thin</option><option value="medium">Medium</option><option value="thick">Thick</option><option value="dashed">Dashed</option><option value="double">Double</option></select></label>
+        <label>Colour <input type="color" id="bd-c" value="${SV.bdc || "#000000"}"></label></div>${BDS.map(([k, l]) => `<button type="button" data-b="${k}">${l}</button>`).join("")}`,
+      m => { const st_ = $("#bd-st", m); st_.value = SV.bds || "thin"; m.onclick = e => { const x = e.target.closest("[data-b]"); if (!x) return; SV.bds = st_.value; SV.bdc = $("#bd-c", m).value; m.remove(); borders(x.dataset.b, st_.value, SV.bdc); }; });
+    else if (kind === "mg") menu(btn, `<button type="button" data-m="center">Merge &amp; centre</button><button type="button" data-m="across">Merge across (each row)</button><button type="button" data-m="merge">Merge cells</button><button type="button" data-m="unmerge">Unmerge</button>`,
+      m => { m.onclick = async e => { const x = e.target.closest("[data-m]"); if (!x) return; m.remove(); const how = x.dataset.m;
+        if (how !== "unmerge") { const full = tdsOf().filter(td => td.textContent.trim()); const bx = boxOf();
+          const many = how === "across" ? rowsIn(bx[0], bx[2]).some(r => full.filter(td => +td.parentElement.dataset.r === r).length > 1) : full.length > 1;
+          if (many && !(await confirmDelete("Merge these cells?", "Merging keeps only the top-left value - the others are hidden.", "Merge", "Unmerge brings the cells back."))) return; }
+        const bx = boxOf(); send({ merge: how, cells: [[bx[0], bx[1]], [bx[2], bx[3]]] }); }; });
+    else if (kind === "fm") menu(btn, `<button type="button" data-f="rowh">Row height…</button><button type="button" data-f="colw">Column width…</button><hr>
+        <button type="button" data-f="fitr">Autofit rows picked</button><button type="button" data-f="fitc">Autofit columns picked</button><button type="button" data-f="fitall">Autofit all rows - this sheet</button><button type="button" data-f="fitbook">Autofit all rows - all sheets</button><hr>
+        <button type="button" data-f="brkon">Insert page break above</button><button type="button" data-f="brkoff">Remove page break above</button><hr><button type="button" data-f="resetall">Reset the whole sheet to the consultant's look</button>`,
+      m => { m.onclick = async e => { const x = e.target.closest("[data-f]"); if (!x) return; m.remove(); const a = x.dataset.f, bx = boxOf();
+        if (a === "rowh" || a === "colw") { const tr = $(`tr[data-r="${bx[0]}"]`, host), z = SV.z || 1;
+          const cur = a === "rowh" ? Math.round(tr.getBoundingClientRect().height / z * 0.75 * 4) / 4 : Math.round(((($(`.sv-cn[data-c="${bx[1]}"]`, ctop) || {}).offsetWidth || 64) - 5) / 7 * 100) / 100;
+          modal(a === "rowh" ? "Row height" : "Column width", [{ k: "v", label: a === "rowh" ? `Height in points (rows ${bx[0]}-${bx[2]})` : `Width in characters (columns ${colL(bx[1])}-${colL(bx[3])})`, type: "num", value: cur, focus: true }],
+            async v => { send({ [a]: +v.v }); }, { save: "Set" }); }
+        else if (a === "fitr") send({ autofit: "rows" }); else if (a === "fitc") send({ autofit: "cols" });
+        else if (a === "fitall") send({ autofit: "rows", whole: true });
+        else if (a === "fitbook") { if (await confirmDelete("Autofit every row on every sheet?", "Each row takes the height its text needs.", "Autofit", "Reset brings a sheet back.")) send({ autofit: "rows", all_sheets: true }); }
+        else if (a === "brkon" || a === "brkoff") send({ brk: { above: bx[0], on: a === "brkon" } });
+        else if (a === "resetall") { if (await confirmDelete("Reset the whole sheet?", "Every change of look made on this bill goes; the figures and words stay.", "Reset", "")) send({ reset: true, whole: true, rows: allRows() }); } }; });
+  };
+  // ---- page breaks on the screen: the printed A4 pages (grey) and the breaks put in (dashed blue)
+  const lines = document.createElement("div"); lines.className = "sv-pgl"; host.appendChild(lines);
+  const placeLines = () => { lines.innerHTML = ""; const hr = host.getBoundingClientRect(), z = SV.z || 1, man = new Set(SV.manual || []);
+    (SV.pages || []).concat([...man]).forEach(r => { const tr = $(`tr[data-r="${r}"]`, host); if (!tr) return; const y = (tr.getBoundingClientRect().top - hr.top) / z;
+      const d = document.createElement("div"); d.className = "sv-pg" + (man.has(r) ? " man" : ""); d.style.top = y + "px"; d.title = man.has(r) ? "Page break put in above row " + r : "A4 page " + ((SV.pages || []).indexOf(r) + 2) + " starts here"; lines.appendChild(d); }); };
+  placeLines();
+  // ---- drag a row's bottom edge / a column's right edge to resize; double-click it to autofit
+  const tip = document.createElement("div"); tip.className = "sv-tip"; document.body.appendChild(tip);
+  const drag = (el, axis, id) => { const hd = document.createElement("div"); hd.className = "sv-rz " + axis; el.appendChild(hd);
+    hd.addEventListener("dblclick", e => { e.stopPropagation(); send(axis === "y" ? { autofit: "rows", rows: [id] } : { autofit: "cols", cols: [id] }); });
+    hd.addEventListener("mousedown", e => { e.preventDefault(); e.stopPropagation(); const z = SV.z || 1, start = axis === "y" ? e.clientY : e.clientX;
+      const base = axis === "y" ? $(`tr[data-r="${id}"]`, host).getBoundingClientRect().height / z : el.offsetWidth;
+      const mv = ev => { const px = Math.max(4, base + ((axis === "y" ? ev.clientY : ev.clientX) - start) / z);
+        tip.textContent = axis === "y" ? `Height: ${(px * 0.75).toFixed(2)} pt (${Math.round(px)} px)` : `Width: ${Math.max(0.5, (px - 5) / 7).toFixed(2)} (${Math.round(px)} px)`;
+        Object.assign(tip.style, { display: "block", left: ev.clientX + 14 + "px", top: ev.clientY + 14 + "px" });
+        if (axis === "y") { const tr = $(`tr[data-r="${id}"]`, host); if (tr) tr.style.height = px + "px"; } else el.style.width = px + "px"; };
+      const up = ev => { document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); tip.style.display = "none";
+        const px = Math.max(4, base + ((axis === "y" ? ev.clientY : ev.clientX) - start) / z); if (Math.abs(px - base) < 1) return;
+        if (axis === "y") send({ rowh: Math.round(px * 0.75 * 4) / 4, rows: [id] }); else send({ colw: Math.round(Math.max(0.5, (px - 5) / 7) * 100) / 100, cols: [id] }); };
+      document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up); }); };
+  $$(".sv-rn", gut).forEach(d => drag(d, "y", +d.dataset.r));
+  $$(".sv-cn", ctop).forEach(d => drag(d, "x", +d.dataset.c));
   SV.fx = { paint, pickAll, clearCells, act, bar };
   if (!SV.fkeys) { SV.fkeys = true;
     document.addEventListener("keydown", e => { const fb = document.querySelector("#sv-fmt"); if (!fb || !SV.fx) return;
@@ -1053,6 +1126,10 @@ async function drawSheet(v, i, keep) {
       <span class="sv-sep"></span>
       <select data-fx="nf" title="Number format" disabled><option value="">Format</option>${NFS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
       ${B_("comma", "Thousands separator: 1,318,577.14", ",")}${B_("dless", "Fewer decimals", ".0&larr;")}${B_("dmore", "More decimals", ".00&rarr;")}
+      <span class="sv-sep"></span>
+      <span class="sv-dd"><button class="btn btn-plain btn-sm" data-fx="menu" data-v="bd" title="Borders" disabled>&#9638; Borders &#9662;</button></span>
+      <span class="sv-dd"><button class="btn btn-plain btn-sm" data-fx="menu" data-v="mg" title="Merge cells" disabled>&#8862; Merge &#9662;</button></span>
+      <span class="sv-dd"><button class="btn btn-plain btn-sm" data-fx="menu" data-v="fm" title="Row height, column width, autofit, page breaks" disabled>Format &#9662;</button></span>
       <span class="sv-sep"></span>
       ${B_("like", "Font, size, bold, alignment and borders of the row above", "Match row above")}${B_("clear", "Clear contents (Delete) - the look stays", "Clear")}${B_("reset", "Back to the consultant's look", "Reset")}</span>`;
   const tools = locked ? "" : fmtBar + `<span class="sv-sep"></span><button class="btn btn-ghost btn-sm" data-pg="add" title="A copy of one of the sheets, added after the last one - e.g. a second variations or authority fees page">+ Add page</button>${cur.added ? `<button class="btn btn-plain btn-sm" data-pg="del" title="Take this added page off the bill">Delete page</button>` : ""}`;
@@ -1098,6 +1175,7 @@ async function drawSheet(v, i, keep) {
   };
   $$("tr[data-r]", host).forEach(tr => tr.addEventListener("click", e => { if (!e.shiftKey) pickRow(tr); }));
   // ---- the formatting toolbar: pick cells (click, Shift+click a range, a row number = the whole row), then size / B / I / U
+  SV.pages = d.pages || []; SV.manual = d.manual || [];
   fmtTools(v, host, b, sh, () => drawSheet(v, i, true));
   // ---- typing in a cell (the sheet may be zoomed: the box is placed in the sheet's own size)
   // Remarks: click picks the cell; double-click or start typing to write; Enter saves, Esc cancels, Alt+Enter = a new
