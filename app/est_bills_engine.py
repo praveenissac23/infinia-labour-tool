@@ -3245,16 +3245,15 @@ def with_defaults(model, inputs):
                 if "f" in cell:
                     continue
                 st = styles[cell.get("s", 0)] if styles else {}
-                w = {} if st.get("wrap") else {"wrap": True}
+                typed = ((inputs or {}).get(s["name"]) or {}).get(f"{r},{c}")
+                # a remark typed on the bill wraps (Alt+Enter lines); the consultant's own keep his layout
+                w = {} if st.get("wrap") or not isinstance(typed, str) or not typed.strip() else {"wrap": True}
                 if (st.get("fc") or "").upper() not in ("", "000000"):
                     w["fc"] = ""
                 if w:
                     want[f"{r},{c}"] = w
-        for c, (r0, r1) in head_cols(s, styles, r"\s*(item\s+)?description(\s+of\s+works?)?\s*").items():
-            for r in range(r0, r1 + 1):
-                cell = s["cells"].get(f"{r},{c}") or {}
-                if isinstance(cell.get("v"), str) and not (styles[cell.get("s", 0)] if styles else {}).get("wrap"):
-                    want.setdefault(f"{r},{c}", {})["wrap"] = True
+        # (Description is left as the consultant laid it out: wrapping it by default made the printed pages run
+        # longer than his and cut rows off - 7 Nov 2026; Wrap on the toolbar does it where wanted)
         if not want:
             continue
         if out is None:
