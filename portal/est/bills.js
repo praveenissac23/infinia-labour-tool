@@ -870,6 +870,23 @@ async function setStatus(s) {
 
 // ---- Sheets step formatting: what is picked stays picked across a redraw of the same sheet
 const FSZ = [8, 9, 10, 11, 12, 14, 16, 18];
+// number formats (real Excel formats - the value itself never changes, only how it shows)
+const NF = { general: "General", num: "#,##0.00", num0: "#,##0", pct: "0%", pct2: "0.00%",
+  acc: '_("AED "* #,##0.00_);_("AED "* (#,##0.00);_("AED "* "-"??_);_(@_)', neg: "#,##0.00;[Red](#,##0.00)" };
+const NFS = [["general", "General 1318577.14"], ["num", "Number 1,318,577.14"], ["num0", "Number (0 dp) 1,318,577"], ["pct", "Percentage 45%"], ["pct2", "Percentage 45.00%"],
+  ["acc", "Accounting AED 1,318,577.14"], ["neg", "Negative in ( ) (1,234.56)"]];
+// one section of a format at a time: commas on / off, decimals 0-4 (text sections and dates left alone)
+function nfEach(nf, f) { const out = [], parts = []; let cur = "", q = false;
+  for (const ch of nf || "General") { if (ch === '"') q = !q; if (ch === ";" && !q) { parts.push(cur); cur = ""; } else cur += ch; } parts.push(cur);
+  for (const p of parts) out.push(/@/.test(p.replace(/"[^"]*"/g, "")) ? p : f(p)); return out.join(";"); }
+function nfSec(p, comma, dec) {             // comma: true / false / null (keep); dec: number / null (keep)
+  if (/^\s*general\s*$/i.test(p)) p = "0.00";
+  let done = false;
+  return p.replace(/(?:"[^"]*")|(?:_.)|([#0][#0?,]*(?:\.[0#?]*)?)/g, (m, num) => { if (!num || done) return m; done = true;
+    const [ip, dp = ""] = num.split("."); const hasC = ip.includes(",");
+    const nI = (comma === null ? hasC : comma) ? "#,##0" : "0"; const nD = dec === null ? dp.length : dec;
+    return nI + (nD > 0 ? "." + "0".repeat(nD) : ""); }); }
+function nfDec(nf) { const m = (nf || "").replace(/"[^"]*"/g, "").match(/[#0?][#0?,]*(?:\.([0#?]*))?/); return m && m[1] ? m[1].length : 0; }
 function fmtTools(v, host, b, sh, redraw) {
   const bar = $("#sv-fmt", v); if (!bar) return;
   if (!IPA.fsel || IPA.fsel.sh !== sh) IPA.fsel = { sh, a: null, z: null, rows: null };
@@ -881,13 +898,26 @@ function fmtTools(v, host, b, sh, redraw) {
     $$("tr[data-r]", host).forEach(tr => { const r = tr.getBoundingClientRect(); const d = document.createElement("div"); d.className = "sv-rn"; d.dataset.r = tr.dataset.r; d.textContent = tr.dataset.r;
       Object.assign(d.style, { top: (r.top - hr.top) / z + "px", height: Math.max(r.height / z, 10) + "px" }); gut.appendChild(d); }); };
   place();
-  const cellsOf = () => { const out = []; if (S.rows) return out; if (!S.a) return out;
+  // column letters along the top: a click picks the whole column
+  const colL = n => { let t = ""; while (n > 0) { const m = (n - 1) % 26; t = String.fromCharCode(65 + m) + t; n = Math.floor((n - 1) / 26); } return t; };
+  const ctop = document.createElement("div"); ctop.className = "sv-cgut"; host.appendChild(ctop);
+  host.style.paddingTop = "18px";
+  const placeCols = () => { ctop.innerHTML = ""; const hr = host.getBoundingClientRect(), z = SV.z || 1, span = {};
+    $$("td[data-c]", host).forEach(td => { if (td.colSpan > 1) return; const c = +td.dataset.c, r = td.getBoundingClientRect();
+      if (!span[c]) span[c] = [r.left, r.right]; });
+    Object.keys(span).forEach(c => { const d = document.createElement("div"); d.className = "sv-cn"; d.dataset.c = c; d.textContent = colL(+c);
+      Object.assign(d.style, { left: (span[c][0] - hr.left) / z + "px", width: Math.max((span[c][1] - span[c][0]) / z, 8) + "px" }); ctop.appendChild(d); }); };
+  placeCols(); place();
+  const cellsOf = () => { const out = []; if (S.rows || S.cols) return out; if (!S.a) return out;
     const [r1, r2] = [Math.min(S.a[0], (S.z || S.a)[0]), Math.max(S.a[0], (S.z || S.a)[0])], [c1, c2] = [Math.min(S.a[1], (S.z || S.a)[1]), Math.max(S.a[1], (S.z || S.a)[1])];
     for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) out.push([r, c]); return out; };
   const tdsOf = () => { if (S.rows) return S.rows.flatMap(r => $$(`tr[data-r="${r}"] td[data-c]`, host));
+    if (S.cols) return $$("td[data-c]", host).filter(td => S.cols.includes(+td.dataset.c));
     const set = new Set(cellsOf().map(x => x.join(","))); return $$("tr[data-r] td[data-c]", host).filter(td => set.has(td.parentElement.dataset.r + "," + td.dataset.c)); };
   const paint = () => { $$(".xsel", host).forEach(x => x.classList.remove("xsel")); $$(".sv-rn.on", gut).forEach(x => x.classList.remove("on"));
+    $$(".sv-cn.on", ctop).forEach(x => x.classList.remove("on"));
     const tds = tdsOf(); tds.forEach(td => td.classList.add("xsel")); (S.rows || []).forEach(r => { const d = $(`.sv-rn[data-r="${r}"]`, gut); if (d) d.classList.add("on"); });
+    (S.cols || []).forEach(c => { const d = $(`.sv-cn[data-c="${c}"]`, ctop); if (d) d.classList.add("on"); });
     const on = tds.length > 0; $$("[data-fx]", bar).forEach(x => x.disabled = !on);
     const f = tds.find(td => td.textContent.trim()) || tds[0];
     const st = f ? (f.getAttribute("style") || "") : "", szm = st.match(/font-size:\s*([\d.]+)pt/);
@@ -899,27 +929,43 @@ function fmtTools(v, host, b, sh, redraw) {
     $('[data-fx="b"]', bar).classList.toggle("on", has(/font-weight:\s*(700|bold)/));
     $('[data-fx="i"]', bar).classList.toggle("on", has(/font-style:\s*italic/));
     $('[data-fx="u"]', bar).classList.toggle("on", has(/text-decoration:[^;]*underline/));
-    S.cur = { sz, tds }; };
+    // the number format and alignment of the first figure picked
+    const nt = tds.find(td => td.dataset.num) || f, nf = nt ? nt.dataset.nf || "General" : "";
+    const key = Object.keys(NF).find(k => NF[k] === nf) || "";
+    const ns = $('[data-fx="nf"]', bar); ns.value = on ? key : "";
+    $('[data-fx="comma"]', bar).classList.toggle("on", on && /#,##0/.test(nf));
+    const ha = nt ? (nt.dataset.ha || "") : "";
+    $$('[data-fx="al"]', bar).forEach(x => x.classList.toggle("on", on && x.dataset.v === ha));
+    S.cur = { sz, tds, nf }; };
   host.addEventListener("click", e => { const td = e.target.closest("td[data-c]"); if (!td || !host.contains(td)) return;
     const rc = [+td.parentElement.dataset.r, +td.dataset.c];
-    if (e.shiftKey && S.a && !S.rows) { S.z = rc; e.preventDefault(); window.getSelection && window.getSelection().removeAllRanges(); }
-    else { S.a = rc; S.z = null; S.rows = null; }
+    if (e.shiftKey && S.a && !S.rows && !S.cols) { S.z = rc; e.preventDefault(); window.getSelection && window.getSelection().removeAllRanges(); }
+    else { S.a = rc; S.z = null; S.rows = null; S.cols = null; }
     paint(); }, true);
   gut.addEventListener("click", e => { const d = e.target.closest(".sv-rn"); if (!d) return; e.stopPropagation(); const r = +d.dataset.r;
     if (e.shiftKey && S.rows && S.rows.length) { const a = S.rows[0], lo = Math.min(a, r), hi = Math.max(a, r);
       S.rows = $$("tr[data-r]", host).map(t => +t.dataset.r).filter(x => x >= lo && x <= hi); if (!S.rows.includes(a)) S.rows.unshift(a); }
     else S.rows = [r];
-    S.a = null; S.z = null; paint();
+    S.a = null; S.z = null; S.cols = null; paint();
     const tr = $(`tr[data-r="${r}"]`, host); if (tr) tr.click(); });
-  const send = async body => { const p = Object.assign({ sheet: sh }, S.rows ? { rows: S.rows } : { cells: cellsOf() }, body);
-    if (!(p.rows || p.cells).length) return toast("Pick cells first");
+  ctop.addEventListener("click", e => { const d = e.target.closest(".sv-cn"); if (!d) return; e.stopPropagation(); const c = +d.dataset.c;
+    if (e.shiftKey && S.cols && S.cols.length) { const a = S.cols[0], lo = Math.min(a, c), hi = Math.max(a, c);
+      S.cols = $$(".sv-cn", ctop).map(x => +x.dataset.c).filter(x => x >= lo && x <= hi); }
+    else S.cols = [c];
+    S.a = null; S.z = null; S.rows = null; paint(); });
+  const send = async body => { const p = Object.assign({ sheet: sh }, S.rows ? { rows: S.rows } : S.cols ? { cols: S.cols } : { cells: cellsOf() }, body);
+    if (!(p.rows || p.cols || p.cells).length) return toast("Pick cells first");
     try { IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/fmt`, p); redraw(); } catch (e) { fail(e); } };
   bar.onclick = e => { const x = e.target.closest("button[data-fx]"); if (!x || x.disabled) return; const a = x.dataset.fx, cur = (S.cur || {}).sz || 11;
     if (a === "up" || a === "dn") { const nxt = a === "up" ? (FSZ.find(z => z > cur) || Math.min(36, cur + 2)) : ([...FSZ].reverse().find(z => z < cur) || Math.max(6, cur - 1)); send({ set: { sz: nxt } }); }
     else if (a === "b" || a === "i" || a === "u") send({ set: { [a]: !x.classList.contains("on") } });
+    else if (a === "al") send({ set: { ha: x.dataset.v } });
+    else if (a === "comma") { const on = !x.classList.contains("on"); send({ set: { nf: nfEach(S.cur.nf, p => nfSec(p, on, null)) } }); }
+    else if (a === "dless" || a === "dmore") { const d = Math.max(0, Math.min(4, nfDec(S.cur.nf) + (a === "dmore" ? 1 : -1))); send({ set: { nf: nfEach(S.cur.nf, p => nfSec(p, null, d)) } }); }
     else if (a === "like") send({ like_above: true });
     else if (a === "reset") send({ reset: true }); };
   $('[data-fx="sz"]', bar).onchange = e => { if (e.target.value) send({ set: { sz: +e.target.value } }); };
+  $('[data-fx="nf"]', bar).onchange = e => { if (e.target.value) send({ set: { nf: NF[e.target.value] } }); };
   if (!SV.fkeys) { SV.fkeys = true;
     document.addEventListener("keydown", e => { if (!(e.ctrlKey || e.metaKey) || e.altKey) return; const k = e.key.toLowerCase(); if (!["b", "i", "u"].includes(k)) return;
       const fb = document.querySelector("#sv-fmt"); if (!fb || /INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || "")) return;
@@ -941,6 +987,12 @@ async function drawSheet(v, i, keep) {
       <select data-fx="sz" title="Font size" disabled><option value="">Size</option>${FS.map(x => `<option value="${x}">${x}</option>`).join("")}</select>
       <button class="btn btn-plain btn-sm" data-fx="dn" title="Smaller" disabled>A&minus;</button><button class="btn btn-plain btn-sm" data-fx="up" title="Bigger" disabled>A+</button>
       <button class="btn btn-plain btn-sm fx-b" data-fx="b" title="Bold (Ctrl+B)" disabled><b>B</b></button><button class="btn btn-plain btn-sm fx-i" data-fx="i" title="Italic (Ctrl+I)" disabled><i>I</i></button><button class="btn btn-plain btn-sm fx-u" data-fx="u" title="Underline (Ctrl+U)" disabled><u>U</u></button>
+      <span class="sv-sep"></span>
+      <button class="btn btn-plain btn-sm" data-fx="al" data-v="left" title="Align left" disabled>&#8676;</button><button class="btn btn-plain btn-sm" data-fx="al" data-v="center" title="Centre" disabled>&#8596;</button><button class="btn btn-plain btn-sm" data-fx="al" data-v="right" title="Align right" disabled>&#8677;</button><button class="btn btn-plain btn-sm" data-fx="al" data-v="dec" title="Align on decimal: the points line up under each other" disabled>.00</button>
+      <span class="sv-sep"></span>
+      <select data-fx="nf" title="Number format" disabled><option value="">Format</option>${NFS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
+      <button class="btn btn-plain btn-sm" data-fx="comma" title="Thousands separator: 1,318,577.14" disabled>,</button><button class="btn btn-plain btn-sm" data-fx="dless" title="Fewer decimals" disabled>.0&larr;</button><button class="btn btn-plain btn-sm" data-fx="dmore" title="More decimals" disabled>.00&rarr;</button>
+      <span class="sv-sep"></span>
       <button class="btn btn-plain btn-sm" data-fx="like" title="Font, size, bold, alignment and borders of the row above" disabled>Match row above</button>
       <button class="btn btn-plain btn-sm" data-fx="reset" title="Back to the consultant's look" disabled>Reset</button></span>`;
   const tools = locked ? "" : fmtBar + `<span class="sv-sep"></span><button class="btn btn-ghost btn-sm" data-pg="add" title="A copy of one of the sheets, added after the last one - e.g. a second variations or authority fees page">+ Add page</button>${cur.added ? `<button class="btn btn-plain btn-sm" data-pg="del" title="Take this added page off the bill">Delete page</button>` : ""}`;
@@ -1005,8 +1057,10 @@ async function drawSheet(v, i, keep) {
       if (!keep || s === (pc ? pct(Number(raw)) : raw)) { inp.remove(); return; }
       let val = s === "" ? null : s;
       if (val !== null && !s.startsWith("=")) {
-        const n = Number(s.replace(/,/g, "").replace(/%$/, ""));
-        if (!isNaN(n) && /^-?[\d,]*\.?\d+%?$/.test(s)) val = isPctNf(nf) || s.endsWith("%") ? Math.round(n * 1e4) / 1e6 : n;
+        // a figure typed or pasted with commas, AED, or in brackets for a minus is still a figure: 145,841.90 -> 145841.9
+        let t = s.replace(/^AED\s*/i, "").replace(/\s+/g, ""); const neg = /^\(.*\)$/.test(t); if (neg) t = t.slice(1, -1);
+        const n = Number(t.replace(/,/g, "").replace(/%$/, ""));
+        if (!isNaN(n) && /^-?[\d,]*\.?\d+%?$/.test(t)) { const x = neg ? -n : n; val = isPctNf(nf) || t.endsWith("%") ? Math.round(x * 1e4) / 1e6 : x; }
       }
       inp.disabled = true;
       if (await save({ set: { [sh]: { [td.dataset.k]: val } } })) { toast("Saved"); redraw(); } else inp.remove();

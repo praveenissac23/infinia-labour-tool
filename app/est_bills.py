@@ -1518,6 +1518,10 @@ def bill_pages(bid: int, payload: dict = Body(...), db: Session = Depends(get_db
         if any(x["name"].lower() == nm.lower() for x in model["sheets"]):
             raise HTTPException(400, f"There is a page called {nm} already.")
         pages.append({"name": nm, "from": src})
+        if isinstance(inputs.get(src), dict):            # the copy starts with the office's formatting of its sheet
+            for kk in ("_fmt", "_rowh"):
+                if inputs[src].get(kk):
+                    inputs.setdefault(nm, {})[kk] = json.loads(json.dumps(inputs[src][kk]))
         what = f"page {nm} added (a copy of {src})"
     inputs["_pages"] = {"list": pages}
     if not pages:
@@ -1575,6 +1579,8 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
         cells.add((int(x[0]), int(x[1])))
     for r in payload.get("rows") or []:
         cells.update((int(r), c) for c in range(1, s["maxc"] + 1))
+    for c in payload.get("cols") or []:                  # a column header: the whole column
+        cells.update((r, int(c)) for r in range(1, s["maxr"] + 1))
     cells = {(r, c) for r, c in cells if 1 <= r <= s["maxr"] + 5 and 1 <= c <= s["maxc"]}
     if not cells or len(cells) > 5000:
         raise HTTPException(400, "Pick the cells to format.")
@@ -1610,6 +1616,15 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
         for a in ("b", "i", "u"):
             if a in st:
                 new[a] = bool(st[a])
+        if "nf" in st:
+            nf = str(st["nf"] or "").strip()
+            if not nf or len(nf) > 120 or "\n" in nf:
+                raise HTTPException(400, "Pick a number format.")
+            new["nf"] = nf
+        if "ha" in st:
+            if st["ha"] not in BE.ALIGNS:
+                raise HTTPException(400, "Pick left, centre, right or decimal.")
+            new["ha"] = st["ha"]
         if not new:
             raise HTTPException(400, "Nothing to change.")
         for r, c in cells:

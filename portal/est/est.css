@@ -839,3 +839,9 @@ table.t.boq tr.ghd td[data-boq] { font-weight: 600; }
 .sv-rn.on { background: #2F6FD0; color: #fff; }
 @media (max-width: 700px) { .sv-fmt [data-fx="like"], .sv-fmt [data-fx="reset"] { font-size: 11px; } }
 .sv-fmt select[data-fx="sz"] { width: 74px; flex: none; min-width: 0; }
+.sv-fmt select[data-fx="nf"] { width: 120px; flex: none; min-width: 0; }
+.sv-fmt .sv-sep { width: 1px; height: 20px; background: var(--line, #E2DDD6); margin: 0 2px; }
+.sv-cgut { position: absolute; left: 0; top: 0; right: 0; height: 16px; }
+.sv-cn { position: absolute; top: 0; height: 16px; display: flex; align-items: center; justify-content: center; font: 600 9px/1 system-ui, sans-serif; color: #8A8178; background: #F4F1EC; border-right: 1px solid #E6E0D8; cursor: pointer; user-select: none; overflow: hidden; }
+.sv-cn:hover { background: #E9F0FB; color: #2F6FD0; }
+.sv-cn.on { background: #2F6FD0; color: #fff; }

@@ -147,6 +147,63 @@ def fmt(v, nf="General"):
     return txt
 
 
+def num_look(v, nf):
+    """How a number is laid out beyond its text: (lead, text, red) - an accounting format ("AED "* #,##0.00) puts its
+    currency at the left of the cell and the figure at the right; [Red] colours a negative figure."""
+    text = fmt(v, nf)
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        return "", text, False
+    secs = _sections(nf or "")
+    sec = secs[0]
+    if v < 0 and len(secs) > 1 and secs[1].strip():
+        sec = secs[1]
+    elif v == 0 and len(secs) > 2 and secs[2].strip():
+        sec = secs[2]
+    red = v < 0 and bool(re.search(r"\[red\]", sec, re.I))
+    lead = ""
+    q, star = False, -1
+    for i, ch in enumerate(sec):
+        if ch == '"':
+            q = not q
+        elif ch == "*" and not q:
+            star = i; break
+    if star > 0:
+        lead = _literals(re.sub(r"\[[^\]]*\]", "", sec[:star])).strip()
+        if lead and text.lstrip().startswith(lead):
+            text = text.lstrip()[len(lead):].strip()
+        else:
+            lead = ""
+    return lead, text, red
+
+
+def dec_places(text):
+    """Digits shown after the decimal point (1,318,577.14 -> 2; 45% -> 0)."""
+    m = re.search(r"\.(\d+)", text or "")
+    return len(m.group(1)) if m else 0
+
+
+def dec_columns(s, styles, vals, inp):
+    """Per column, the most decimals shown by its decimal-aligned figures."""
+    out = {}
+    for k, cell in s["cells"].items():
+        st = styles[cell.get("s", 0)] if styles else {}
+        if st.get("ha") != "dec":
+            continue
+        v = vals.get(k) if k in vals else (inp.get(k) if k in inp else cell.get("v"))
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            c = int(k.split(",")[1])
+            out[c] = max(out.get(c, 0), dec_places(num_look(v, st.get("nf", "General"))[1]))
+    return out
+
+
+def dec_pad(text, most):
+    """What a figure with fewer decimals than the column's most needs after it (blank, not zeros): '.00', '0'."""
+    d = dec_places(text)
+    if most <= d:
+        return ""
+    return ("." if d == 0 else "") + "0" * (most - d)
+
+
 def _literals(t):
     """The fixed text of a format: quoted text, \\x, spaces for _x, no fills."""
     out, i = "", 0
@@ -238,6 +295,9 @@ def _style_css(st, num):
     ha = {"centerContinuous": "center", "general": "", "fill": "left", "justify": "left", "distributed": "center"}.get(ha, ha)
     if not ha:
         ha = "right" if num else "left"
+    if ha == "dec":                                      # decimal points under each other: right, every digit one width
+        css.append("font-variant-numeric:tabular-nums")
+        ha = "right"
     css.append(f"text-align:{ha}")
     va = {"center": "middle", "top": "top", "bottom": "bottom"}.get(st.get("va") or "", "bottom")
     css.append(f"vertical-align:{va}")
@@ -332,6 +392,7 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
     inp = (inputs or {}).get(s["name"], {})
     cols, rows, cw, rh, merges, covered = layout(s, area, shown_rows(model, s["name"], inputs), hidden_extra(inputs, s["name"]), grow)
     cont = {}
+    decmax = dec_columns(s, styles, vals, inp)
     if rows_only is not None:
         rows = [r for r in rows_only if r in rh]
         # a merged block that started on the page before carries on here as a block of its own - its borders and
@@ -388,7 +449,14 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
             text = fmt(v, st.get("nf", "General")) if v is not None else ""
             if isinstance(v, str) and "f" in cell:
                 text = tidy_text(text)
+            lead, red, pad_ = "", False, ""
+            if num:
+                lead, text, red = num_look(v, st.get("nf", "General"))
+                if st.get("ha") == "dec":
+                    pad_ = dec_pad(text, decmax.get(c, 0))
             css = _style_css(st, num) + _border_css(bd)
+            if red:
+                css.append("color:#C00000")
             cls = []
             if text and not num and not st.get("wrap") and (r, c) not in merges and (st.get("ha") or "left") in ("left", "general", ""):
                 nxt = next((cc for cc in cols if cc > c), None)
@@ -406,6 +474,11 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
             if mark and k in mark:
                 cls.append(mark[k])
             body_ = f"<span>{escape(text)}</span>" if "ov" in cls else escape(text)
+            if pad_:                                      # fewer decimals: blank space after, so the points line up
+                body_ += f'<span class="dp" style="visibility:hidden">{pad_}</span>'
+            if lead:                                      # accounting: AED at the left, the figure at the right
+                body_ = f'<span class="acc" style="display:flex;justify-content:space-between;gap:4px"><span>{escape(lead)}</span><span>{body_}</span></span>'
+
             if not edit and text and st.get("wrap") and not num:
                 # wrapped text stays inside the height the consultant gave the row(s): the page then prints exactly
                 # as planned (shrunk a little to fit, as the PDF does, never pushing rows into the footer)
@@ -414,6 +487,9 @@ def sheet_html(model, s, values, inputs=None, edit=False, area=None, mark=None, 
                 body_ = f'<div class="cl" style="max-height:{room}px">{body_}</div>'
             if edit:
                 attrs += f' data-c="{c}"'                  # the toolbar picks cells by row and column
+                if "data-nf" not in attrs:
+                    attrs += f' data-nf="{escape(st.get("nf", "General"), quote=True)}"'
+                attrs += f' data-ha="{escape(st.get("ha") or "", quote=True)}"' + (' data-num="1"' if num else "")
             h.append(f'<td{span}{attrs}{(" class=" + chr(34) + " ".join(cls) + chr(34)) if cls else ""} style="{";".join(css)}">{body_}</td>')
         h.append("</tr>")
     h.append("</table>")
@@ -820,6 +896,7 @@ def render_pdf(model, values, title, inputs=None, fname=""):
     pno = 0
     for s, pl in zip(printed_sheets(model), plans):
         vals = values.get(s["name"], {})
+        decmax_pg = dec_columns(s, styles, vals, (inputs or {}).get(s["name"], {}))
         cols, cw, rh, merges, covered = pl["cols"], pl["cw"], pl["rh"], pl["merges"], pl["covered"]
         if not cols or not pl["pages"]:
             continue
@@ -862,12 +939,17 @@ def render_pdf(model, values, title, inputs=None, fname=""):
                     text = fmt(v, st.get("nf", "General"))
                     if isinstance(v, str) and "f" in cell:
                         text = tidy_text(text)
+                    lead, red, pad_ = "", False, ""
+                    if num:
+                        lead, text, red = num_look(v, st.get("nf", "General"))
+                        if st.get("ha") == "dec":
+                            pad_ = dec_pad(text, decmax_pg.get(c, 0))
                     if not text:
                         continue
                     fs = max(4.0, (st.get("sz") or 11) * sc)
                     fn = font(st)
-                    cv.setFillColorRGB(*(rgb(st["fc"]) if st.get("fc") else (0, 0, 0)))
-                    ha = {"centerContinuous": "center", "general": ""}.get(st.get("ha") or "", st.get("ha") or "") or ("right" if num else "left")
+                    cv.setFillColorRGB(*((0.75, 0, 0) if red else (rgb(st["fc"]) if st.get("fc") else (0, 0, 0))))
+                    ha = {"centerContinuous": "center", "general": "", "dec": "right"}.get(st.get("ha") or "", st.get("ha") or "") or ("right" if num else "left")
                     pad = 2.0 * sc + (st.get("ind") or 0) * 6 * sc
                     if st.get("wrap") and not num:
                         lines = _wrap(text, fn, fs, w - 2 * pad, stringWidth)
@@ -898,11 +980,14 @@ def render_pdf(model, values, title, inputs=None, fname=""):
                             if f"{r},{nxt}" in vals or (s["cells"].get(f"{r},{nxt}") or {}).get("v") not in (None, "") or (r, nxt) in covered:
                                 break
                             room += cw[nxt] * px * sc
-                    if num and lines and stringWidth(lines[0], fn, fs) > w - 2 * pad and w > 4:
-                        fs = max(3.5, fs * (w - 2 * pad) / stringWidth(lines[0], fn, fs))   # a figure always shows whole
+                    need = (lambda f_: stringWidth(lines[0], fn, f_) + (stringWidth(lead + "  ", fn, f_) if lead else 0) + (stringWidth(pad_, fn, f_) if pad_ else 0)) if lines else None
+                    if num and lines and need(fs) > w - 2 * pad and w > 4:
+                        fs = max(3.5, fs * (w - 2 * pad) / need(fs))   # a figure always shows whole (with its AED)
                         cv.setFont(fn, fs)
+                    if lead:                                   # accounting: AED at the left of the cell
+                        cv.drawString(x0 + pad, ty, lead)
                     for ln in lines:
-                        tw = stringWidth(ln, fn, fs)
+                        tw = stringWidth(ln, fn, fs) + (stringWidth(pad_, fn, fs) if pad_ else 0)
                         if ha == "right":
                             tx = x0 + w - pad - tw
                         elif ha in ("center", "distributed"):

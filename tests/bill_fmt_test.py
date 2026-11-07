@@ -56,4 +56,44 @@ ins = {sh: dict(inputs[sh], _rows=[[3, 1, [3]]])}
 ins[sh] = BE.shift_inputs(inputs[sh], sh, 3, 1); ins[sh]["_rows"] = [[3, 1, [3], {"kind": "line"}]]
 back = BE.drop_added(ins, sh, 3)
 ck("the added row taken out again: formatting back on 3 / 4", back and set(back[sh]["_fmt"]) == {"3,3", "3,2", "4,4"}, back and back[sh].get("_fmt"))
+# ---- number formats and decimal alignment (7 / 8)
+ACC = '_("AED "* #,##0.00_);_("AED "* (#,##0.00);_("AED "* "-"??_);_(@_)'
+ck("General 1318577.14", BR.fmt(1318577.14, "General") == "1318577.14")
+ck("Number 1,318,577.14", BR.fmt(1318577.14, "#,##0.00") == "1,318,577.14")
+ck("Number 0 dp 1,318,577", BR.fmt(1318577.14, "#,##0") == "1,318,577")
+ck("Percentage 45% / 45.00%", BR.fmt(0.45, "0%") == "45%" and BR.fmt(0.45, "0.00%") == "45.00%")
+lead, t, red = BR.num_look(1318577.14, ACC)
+ck("Accounting: AED at the left, figure apart", lead == "AED" and t.strip() == "1,318,577.14", (lead, t))
+lead, t, red = BR.num_look(-1234.56, "#,##0.00;[Red](#,##0.00)")
+ck("Negative in ( ) and red", t == "(1,234.56)" and red, (t, red))
+ck("145841.9 shows 145,841.90", BR.fmt(145841.9, "#,##0.00") == "145,841.90")
+ck("decimal padding: 8,250.5 under 2 decimals gets one blank place", BR.dec_pad("8,250.5", 2) == "0" and BR.dec_pad("45%", 2) == ".00" and BR.dec_pad("1.25", 2) == "")
+wb2 = Workbook(); w = wb2.active; w.title = "Pay"
+for i, v in enumerate([124936.19, 1318577.14, 8250.5, -1234.56], 2):
+    w.cell(i, 2, v)
+w["A1"] = "Amounts"
+buf2 = io.BytesIO(); wb2.save(buf2); d2 = buf2.getvalue()
+m0 = BE.read_format(d2, "p.xlsx")
+inp2 = {"Pay": {"_fmt": {"2,2": {"nf": "#,##0.00", "ha": "dec"}, "3,2": {"nf": ACC}, "4,2": {"nf": "#,##0.0", "ha": "dec"}, "5,2": {"nf": "#,##0.00;[Red](#,##0.00)"}}}}
+m3 = BE.apply_fmt(m0, inp2); v3 = BE.calculate(m3, inp2)
+h3, _, _ = BR.sheet_html(m3, m3["sheets"][0], v3, inp2, edit=True)
+ck("screen: 124,936.19 decimal-aligned (tabular figures)", re.search(r'tabular-nums[^"]*"[^>]*>124,936\.19', h3) is not None, h3[:200])
+ck("screen: 8,250.5 padded with a hidden 0 after it", re.search(r'>8,250\.5<span class="dp" style="visibility:hidden">0</span>', h3) is not None)
+ck("screen: accounting AED left / figure right", 'class="acc"' in h3 and ">AED<" in h3)
+ck("screen: negative red in brackets", "color:#C00000" in h3 and "(1,234.56)" in h3)
+x3 = BE.write_xlsx(d2, m3, inp2, v3)
+a3 = load_workbook(io.BytesIO(x3))["Pay"]
+ck("Excel: real number formats", a3["B2"].number_format == "#,##0.00" and a3["B3"].number_format == ACC and a3["B5"].number_format == "#,##0.00;[Red](#,##0.00)",
+   (a3["B2"].number_format, a3["B3"].number_format, a3["B5"].number_format))
+ck("Excel: values stay numbers, full figure kept", a3["B2"].value == 124936.19 and a3["B4"].value == 8250.5 and isinstance(a3["B3"].value, float))
+ck("Excel: decimal-aligned = right", a3["B2"].alignment.horizontal == "right" and a3["B4"].alignment.horizontal == "right")
+pdf = BR.render_pdf(m3, v3, "t", inp2)
+pdf = pdf.getvalue() if hasattr(pdf, "getvalue") else pdf
+ck("PDF builds with the formats", len(pdf) > 500)
+try:
+    import pdfplumber
+    txt = pdfplumber.open(io.BytesIO(pdf)).pages[0].extract_text()
+    ck("PDF: 1,318,577.14 with AED, (1,234.56)", "1,318,577.14" in txt and "AED" in txt and "(1,234.56)" in txt and "124,936.19" in txt, txt)
+except ImportError:
+    pass
 print("ALL PASS" if not bad else f"{bad} FAILED")

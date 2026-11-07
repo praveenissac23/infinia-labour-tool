@@ -2561,6 +2561,20 @@ def _xlsx_apply_fmt(data, model, inputs):
     xfs = re.findall(r"<xf\b[^>]*/>|<xf\b[^>]*>.*?</xf>", xfs_m.group(1), re.S)
     n_fonts0, n_xfs0 = len(fonts), len(xfs)
     made = {}
+    # number formats: Excel's own built-in ids, else one added to <numFmts> (164 and up)
+    BUILTIN = {"General": 0, "0": 1, "0.00": 2, "#,##0": 3, "#,##0.00": 4, "0%": 9, "0.00%": 10}
+    nfs_m = re.search(r"<numFmts\b[^>]*>(.*?)</numFmts>", sty, re.S)
+    have_nf = {_unesc(m.group(2)): int(m.group(1)) for m in re.finditer(r'<numFmt\b[^>]*numFmtId="(\d+)"[^>]*formatCode="([^"]*)"', nfs_m.group(1) if nfs_m else "")}
+    have_nf.update({_unesc(m.group(1)): int(m.group(2)) for m in re.finditer(r'<numFmt\b[^>]*formatCode="([^"]*)"[^>]*numFmtId="(\d+)"', nfs_m.group(1) if nfs_m else "")})
+    new_nf = []
+    def numfmt_id(code):
+        if code in BUILTIN:
+            return BUILTIN[code]
+        if code in have_nf:
+            return have_nf[code]
+        i = max([163] + list(have_nf.values())) + 1
+        have_nf[code] = i; new_nf.append((i, code))
+        return i
     CREF = re.compile(r'<c\b[^>]*?\br="([A-Z]+)(\d+)"[^>]*?(?:/>|>.*?</c>)', re.S)
     def col_n(a):
         n = 0
@@ -2569,12 +2583,29 @@ def _xlsx_apply_fmt(data, model, inputs):
         return n
     def xf_with(xi, f):
         xi = xi if 0 <= xi < len(xfs) else 0
-        if not any(a in f for a in FMT_KEYS):
+        nf_, ha_ = f.get("nf") if isinstance(f.get("nf"), str) and f.get("nf") else None, f.get("ha") if f.get("ha") in ALIGNS else None
+        if not any(a in f for a in FMT_KEYS) and not nf_ and not ha_:
             return xi
-        k = (xi, tuple((a, f.get(a)) for a in FMT_KEYS))
+        k = (xi, tuple((a, f.get(a)) for a in FMT_KEYS), nf_, ha_)
         if k in made:
             return made[k]
         xf = xfs[xi]
+        if nf_:
+            xf = re.sub(r'\s(numFmtId|applyNumberFormat)="[^"]*"', "", xf).replace("<xf ", f'<xf numFmtId="{numfmt_id(nf_)}" applyNumberFormat="1" ', 1)
+        if ha_:
+            h = "right" if ha_ == "dec" else ha_
+            xf = re.sub(r'\sapplyAlignment="[^"]*"', "", xf).replace("<xf ", '<xf applyAlignment="1" ', 1)
+            if "<alignment" in xf:
+                al = re.search(r"<alignment\b[^>]*/>", xf).group(0)
+                al2 = re.sub(r'\shorizontal="[^"]*"', "", al).replace("<alignment", f'<alignment horizontal="{h}"', 1)
+                xf = xf.replace(al, al2)
+            elif xf.endswith("/>"):
+                xf = xf[:-2] + f'><alignment horizontal="{h}"/></xf>'
+            else:
+                xf = xf.replace("</xf>", f'<alignment horizontal="{h}"/></xf>')
+        if not any(a in f for a in FMT_KEYS):
+            xfs.append(xf); made[k] = len(xfs) - 1
+            return made[k]
         fm = re.search(r'\bfontId="(\d+)"', xf)
         fid = int(fm.group(1)) if fm else 0
         font = fonts[fid] if fid < len(fonts) else "<font/>"
@@ -2688,6 +2719,16 @@ def _xlsx_apply_fmt(data, model, inputs):
     if not made and not new_sheets:
         return data
     sty2 = sty[:fonts_m.start(1)] + "".join(fonts) + sty[fonts_m.end(1):]
+    if new_nf:
+        add = "".join(f'<numFmt numFmtId="{i}" formatCode="{_esc(c)}"/>' for i, c in new_nf)
+        nm2 = re.search(r"<numFmts\b[^>]*>(.*?)</numFmts>", sty2, re.S)
+        if nm2:
+            sty2 = sty2[:nm2.end(1)] + add + sty2[nm2.end(1):]
+            sty2 = re.sub(r'(<numFmts\b[^>]*?\bcount=")\d+"', lambda m: f'{m.group(1)}{len(re.findall("<numFmt ", sty2))}"', sty2, count=1)
+        elif re.search(r"<numFmts\b[^>]*/>", sty2):
+            sty2 = re.sub(r"<numFmts\b[^>]*/>", lambda m: f'<numFmts count="{len(new_nf)}">{add}</numFmts>', sty2, count=1)
+        else:
+            sty2 = re.sub(r"(<styleSheet\b[^>]*>)", lambda m: m.group(1) + f'<numFmts count="{len(new_nf)}">{add}</numFmts>', sty2, count=1)
     sty2 = re.sub(r'(<fonts\b[^>]*?\bcount=")\d+"', lambda m: f'{m.group(1)}{len(fonts)}"', sty2, count=1)
     xm = re.search(r"<cellXfs\b[^>]*>(.*?)</cellXfs>", sty2, re.S)
     sty2 = sty2[:xm.start(1)] + "".join(xfs) + sty2[xm.end(1):]
@@ -2999,6 +3040,7 @@ def _xml_restyle_rows(xml, pairs):
 
 
 FMT_KEYS = ("sz", "b", "i", "u")
+ALIGNS = ("left", "center", "right", "dec")             # dec = decimal points under each other (right in Excel)
 
 
 def apply_fmt(model, inputs):
@@ -3031,6 +3073,10 @@ def apply_fmt(model, inputs):
             for a in FMT_KEYS:
                 if a in f:
                     st[a] = (float(f[a]) if a == "sz" else (("single" if f[a] else None) if a == "u" else bool(f[a])))
+            if isinstance(f.get("nf"), str) and f["nf"]:
+                st["nf"] = f["nf"]                        # how a number shows - the value itself is never changed
+            if f.get("ha") in ALIGNS:
+                st["ha"] = f["ha"]
             kk = repr(sorted(st.items()))
             if kk not in key:
                 key[kk] = len(styles); styles.append(st)
