@@ -808,3 +808,21 @@ table.t.boq tr.ghd td[data-boq] { font-weight: 600; }
 /* A list inside a window (what an upload found, a schedule, the lines of a variation) uses the height the window has,
    not a fixed 300px with empty space under it and a second scroll bar (7 Nov 2026). */
 #modal .tw[style*="max-height"], #modal .dcpc, #modal .agsched .tw, #drawer .tw[style*="max-height"] { max-height: max(260px, calc(100vh - 290px)) !important; }
+/* Bills > Work done: the consultant's unpriced break-up under a lump-sum line */
+.ipa-lines .brk-btn { display: inline-flex; align-items: center; gap: 4px; margin: 4px 0 0; padding: 2px 8px; border: 1px solid #D9B8B3; border-radius: 999px; background: #FDF4F3; color: #8C2F26; font: 600 11.5px/1.5 inherit; cursor: pointer; }
+.ipa-lines td.ds .brk-btn { display: flex; width: max-content; }
+.ipa-lines .brk-btn .ar { display: inline-block; transition: transform .15s; }
+.ipa-lines .brk-btn[aria-expanded="true"] .ar { transform: rotate(90deg); }
+.ipa-lines tr.brk-row[hidden] { display: none !important; }
+.ipa-lines tr.brk-row > td { background: #FBF9F6; padding: 4px 8px 10px 80px; border-bottom: 1px solid #F0ECE7; }
+.ipa-lines .brk-t { max-width: 820px; }
+.ipa-lines .brk-t { width: 100%; border-collapse: collapse; font-size: 12.5px; color: var(--ink2); }
+.ipa-lines .brk-t td { padding: 3px 6px; border: 0; border-bottom: 1px dashed #ECE6DF; vertical-align: top; line-height: 1.35; white-space: normal; }
+.ipa-lines .brk-t td:first-child { width: 44px; color: var(--muted); font-weight: 600; }
+.ipa-lines .brk-t tr.sub td { font-weight: 700; color: var(--ink); padding-top: 7px; }
+@media (max-width: 700px) {
+  .ipa-lines tr.brk-row:not([hidden]) { display: block; padding: 0 4px 8px; }
+  .ipa-lines tr.brk-row > td { display: block; padding: 4px 6px; }
+  .ipa-lines .brk-t tr { display: table-row; padding: 0; border: 0; }
+  .ipa-lines .brk-t td { display: table-cell; }
+}

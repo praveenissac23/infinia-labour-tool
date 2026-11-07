@@ -465,20 +465,37 @@ function lineRow(sh, l, ed, hd) {
   const edit = l.how && !paid;
   const inp = (k, v) => edit ? `<input class="ipa-in" data-noclear data-row="${esc(id)}" data-w="${k}" value="${k === "now" ? pnow(v) : pnum(v)}" placeholder="0" inputmode="decimal" autocomplete="off"><span class="pc">%</span>` : `<span class="ro">${v === null ? "" : pctTxt(v)}</span>`;
   if (hd) return `<tr class="${c.cls} one" data-line="${esc(id)}" data-head="${esc(sh + "|" + hd.r)}"><td class="it"><b>${esc(hd.item)}</b></td>
-    <td class="ds" title="${esc([l.item, l.desc].filter(Boolean).join(" "))}"><b>${esc(hd.desc)}</b>${l.added ? ' <span class="new-tag">added</span>' : ""}${!l.how && l.follows ? followsLink(sh, l) : ""}</td>
+    <td class="ds" title="${esc([l.item, l.desc].filter(Boolean).join(" "))}"><b>${esc(hd.desc)}</b>${l.added ? ' <span class="new-tag">added</span>' : ""}${!l.how && l.follows ? followsLink(sh, l) : ""}${brkBtn(id, l, hd)}</td>
     <td class="r" data-l="Amount">${l.amount !== null ? money(l.amount, false) : `<span class="muted small">${esc(l.amount_text || "-")}</span>`}</td>
     <td class="c muted" data-c="prev" data-l="Previous">${c.prev}</td>
     <td class="c in" data-c="now" data-l="This month %">${inp("now", c.now)}</td>
     <td class="c in" data-c="tot" data-l="Total %">${inp("tot", l.total)}</td>
     <td class="r" data-c="nowAmt" data-l="This month">${c.nowAmt}</td><td class="r" data-c="td" data-l="To date">${c.td}</td>
-    ${ed ? `<td class="act"><button class="ln-menu" data-menu="${esc(id)}" data-kind="line" title="Line: edit its details, add a line or section below">&#8942;</button></td>` : ""}</tr>`;
+    ${ed ? `<td class="act"><button class="ln-menu" data-menu="${esc(id)}" data-kind="line" title="Line: edit its details, add a line or section below">&#8942;</button></td>` : ""}</tr>${brkRow(id, l, hd, ed)}`;
   return `<tr class="${c.cls}" data-line="${esc(id)}"><td class="it">${esc(l.item)}</td>
-    <td class="ds">${esc(l.desc) || '<span class="muted">(no description)</span>'}${l.added ? ' <span class="new-tag">added</span>' : ""}${l.unit && !/^(item|ls|l\.s\.?|lump ?sum)$/i.test(l.unit.trim()) ? ` <span class="muted small">(${esc(l.unit)})</span>` : ""}${!l.how && l.follows ? followsLink(sh, l) : ""}</td>
+    <td class="ds">${esc(l.desc) || '<span class="muted">(no description)</span>'}${l.added ? ' <span class="new-tag">added</span>' : ""}${l.unit && !/^(item|ls|l\.s\.?|lump ?sum)$/i.test(l.unit.trim()) ? ` <span class="muted small">(${esc(l.unit)})</span>` : ""}${!l.how && l.follows ? followsLink(sh, l) : ""}${brkBtn(id, l)}</td>
     <td class="r" data-l="Amount">${l.amount !== null ? money(l.amount, false) : `<span class="muted small">${esc(l.amount_text || "-")}</span>`}</td>
     <td class="c muted" data-c="prev" data-l="Previous">${c.prev}</td>
     <td class="c in" data-c="now" data-l="This month %">${inp("now", c.now)}</td><td class="c in" data-c="tot" data-l="Total %">${inp("tot", l.total)}</td>
     <td class="r" data-c="nowAmt" data-l="This month">${c.nowAmt}</td><td class="r" data-c="td" data-l="To date">${c.td}</td>
-    ${ed ? `<td class="act"><button class="ln-menu" data-menu="${esc(id)}" data-kind="line" title="Line: edit its details, add a line or section below">&#8942;</button></td>` : ""}</tr>`;
+    ${ed ? `<td class="act"><button class="ln-menu" data-menu="${esc(id)}" data-kind="line" title="Line: edit its details, add a line or section below">&#8942;</button></td>` : ""}</tr>${brkRow(id, l, null, ed)}`;
+}
+// the break-up the consultant lists under a lump-sum line without pricing it (SITE WORKS = 1 Clearance of site,
+// 2 Density test ...): shown on a click, for reading only - the line is still billed by its own %
+function brkList(l, hd) {
+  const own = hd && (l.item || l.desc) ? [{ item: l.item, desc: l.desc, sub: false }] : [];
+  const p = own.concat(l.parts || []);
+  return (l.parts || []).length >= (hd ? 1 : 2) ? p : [];
+}
+function brkBtn(id, l, hd) {
+  const p = brkList(l, hd); if (!p.length) return "";
+  const n = p.filter(x => !x.sub).length || p.length;
+  return `<button type="button" class="brk-btn" data-brk="${esc(id)}" aria-expanded="false"><span class="ar">&#9656;</span> Break-up &middot; ${n} item${n === 1 ? "" : "s"}</button>`;
+}
+function brkRow(id, l, hd, ed) {
+  const p = brkList(l, hd); if (!p.length) return "";
+  return `<tr class="brk-row" data-brkof="${esc(id)}" hidden><td colspan="${ed ? 9 : 8}"><table class="brk-t">${p.map(x => x.sub
+    ? `<tr class="sub"><td></td><td>${esc(x.desc)}</td></tr>` : `<tr><td>${esc(x.item)}</td><td>${esc(x.desc)}</td></tr>`).join("")}</table></td></tr>`;
 }
 function followsLink(sh, l) {     // "follows the line on row 21" -> a link that takes you to that line
   const m = l.follows.match(/row (\d+)$/), o = l.follows.match(/^set on the (.+) sheet$/);
@@ -519,6 +536,8 @@ function bindWork(m) {
     const mb = e.target.closest("[data-menu]"); if (mb) { e.stopPropagation(); return lineMenu(mb); }
     const al = e.target.closest("[data-addln]"); if (al) return lineForm(al.dataset.addln, { kind: "line" });
     const as = e.target.closest("[data-addsec]"); if (as) return lineForm(as.dataset.addsec, { kind: "head" });
+    const bk = e.target.closest("[data-brk]");
+    if (bk) { const r = secs.querySelector(`tr[data-brkof="${CSS.escape(bk.dataset.brk)}"]`); if (r) { r.hidden = !r.hidden; bk.setAttribute("aria-expanded", String(!r.hidden)); } return; }
     const a = e.target.closest("a[data-goto], a[data-gosec]"); if (!a) return;
     e.preventDefault();
     if (a.dataset.goto) return gotoLine(a.dataset.goto);

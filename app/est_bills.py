@@ -226,10 +226,43 @@ def _progress(model, values, inputs):
                 a = added.get(ln["r"])
                 ln["added"] = bool(a)
                 ln["can_remove"] = bool(a) and not (ln["prev"] or 0)        # never billed: may be taken out again
-        out.append({"sheet": sh, "lines": lines, "hidden": not vis, "heads": _heads(model, sd, t, vals, inputs, added) if sd else [],
+        hds = _heads(model, sd, t, vals, inputs, added) if sd else []
+        if sd:
+            _parts(sd, t, lines, hds, vals)
+        out.append({"sheet": sh, "lines": lines, "hidden": not vis, "heads": hds,
                     "editable": bool(sd) and bool(t.get("item_c") or t.get("desc_c"))})
     out.sort(key=lambda t: t["hidden"])                  # sheets the consultant hid (not printed) go last
     return out
+
+
+def _parts(s, t, lines, heads, vals):
+    """The break-up the consultant lists under a lump-sum line without pricing it (SITE WORKS 287,497 = 1 Clearance
+    of site, 2 Density test, ... 9 Filling): the unpriced rows after the line, up to the next line, heading or the
+    section's TOTAL. Shown only, never billed: ln["parts"] = [{"item", "desc", "sub"}]."""
+    ic, dc = t.get("item_c"), t.get("desc_c")
+    if not dc:
+        return
+    taken = {ln["r"] for ln in lines} | {h["r"] for h in heads}
+    ends = sorted(taken)
+    for ln in lines:
+        nxt = next((r for r in ends if r > ln["r"]), (t.get("last_r") or s.get("maxr") or ln["r"]) + 1)
+        parts = []
+        for r in range(ln["r"] + 1, min(nxt, ln["r"] + 80)):
+            it = vals.get(f"{r},{ic}") if ic and ic != dc else None
+            it = BE.general(it).strip() if it not in (None, "") else ""
+            ds = vals.get(f"{r},{dc}")
+            ds = BE.general(ds).strip() if ds not in (None, "") else ""
+            if not (it or ds):
+                continue
+            both = f"{it} {ds}"
+            if re.search(r"\b(total|carried|brought\s+forward|collection|sub\s*-?\s*total)\b", both, re.I):
+                break                                     # the section's total: the break-up ends there
+            if re.search(r"cont'?d|\(cont|continued", both, re.I):
+                continue                                  # a page's repeated title
+            if not ds:
+                ds, it = it, ""
+            parts.append({"item": it, "desc": ds[:400], "sub": not it and ds.upper() == ds and len(ds) <= 80})
+        ln["parts"] = parts
 
 
 def _head_text(s, t, c):
