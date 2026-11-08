@@ -409,6 +409,18 @@ CSS = """
   body:has(#screen-dashboard.active) #dash-calendar { color: rgba(255,255,255,.75); }
   body:has(#screen-dashboard.active) #dash-sky { background: linear-gradient(180deg, rgba(10,8,10,.55) 0%, rgba(42,10,17,.55) 62%, rgba(86,14,28,.6) 100%) !important; border: 1px solid rgba(255,255,255,.10) !important; }
   body:has(#screen-dashboard.active) #dash-sky .txt b { color: #fff !important; text-shadow: none !important; } body:has(#screen-dashboard.active) #dash-sky .txt span { color: rgba(255,255,255,.75) !important; text-shadow: none !important; } body:has(#screen-dashboard.active) #dash-sky .txt em { color: #FFC2C8 !important; }
+  /* the Dubai skyline on the dark Dashboard: a solid black silhouette against the red, the Infinia tower and truck in red */
+  body:has(#screen-dashboard.active) #dash-sky .dsk-L { fill: #120609 !important; stroke: #120609 !important; }
+  body:has(#screen-dashboard.active) #dash-sky .dsk-far { fill: #2A0A11 !important; }
+  body:has(#screen-dashboard.active) #dash-sky .dsk-R { fill: #120609 !important; stroke: #E8463A !important; }
+  body:has(#screen-dashboard.active) #dash-sky .dsk-top { fill: #120609 !important; }
+  body:has(#screen-dashboard.active) #dash-sky g[fill="#fff"] > rect, body:has(#screen-dashboard.active) #dash-sky .dsk-win { fill: #E8463A !important; }
+  body:has(#screen-dashboard.active) #dash-sky [class^="dsk-cloud"] path { fill: rgba(0,0,0,.25) !important; }
+  body:has(#screen-dashboard.active) #dash-sky rect[fill="#E6EEF0"] { fill: #1A1418 !important; }
+  body:has(#screen-dashboard.active) #dash-sky rect[fill="#EADBD6"] { fill: #0A0405 !important; }
+  body:has(#screen-dashboard.active) #dash-sky rect[fill="#F3E7E3"] { fill: #0E0507 !important; }
+  body:has(#screen-dashboard.active) #dash-sky .dsk-metro rect { fill: #120609 !important; }
+  body:has(#screen-dashboard.active) #dash-sky .dsk-sun { fill: #FFD9B0 !important; opacity: .9; }
   #screen-pgstaff.active, #screen-pgaccess.active, #screen-pglogins.active, #screen-pgboards.active, #screen-pgestdash.active, #screen-pgestproj.active, #screen-pgesttend.active, #screen-pgsubpay.active { margin: -20px -24px -20px; }
   /* Rights are given through Access roles on these pages: no per-login screen picker. */
   #user-mgmt-card button[onclick^="openPerms"] { display: none !important; }
