@@ -474,7 +474,7 @@ function renderProjectShell() {
   // The app's own pattern: one row of main tabs (pill group), the sub-tabs under it (underlined), the page below at full width.
   $("#app").innerHTML = `<div class="wrap">
     <div class="ptop"><select class="pick" id="pick" title="Project">${list.map(p => `<option value="${p.id}">${esc(p.code)}</option>`).join("")}</select>
-      <div class="pills" id="pnav"></div><span class="pname" id="pname"></span><span class="spacer"></span><button class="btn btn-ghost" id="p-new">+ New project</button></div>
+      <div class="pills" id="pnav"></div><span class="spacer"></span><button class="btn btn-ghost" id="p-new">+ New project</button></div>
     <div class="utabs" id="psub"></div>
     <div id="pbody"></div></div>`;
   ST.picker = true;
@@ -486,7 +486,7 @@ async function openProject(pid, keep) {
   ST.pid = pid;
   try { localStorage.setItem("est_pid", pid); } catch (e) {}
   const p = ST.meta.projects.find(x => x.id === pid);
-  if (p && $("#pick")) { $("#pick").value = String(pid); $("#pname").textContent = [p.name, p.client].filter(Boolean).join(" · "); }
+  if (p && $("#pick")) { $("#pick").value = String(pid); $("#pick").title = [p.code, p.name, p.client].filter(Boolean).join(" · "); }   // the name in the picker's tooltip, not next to the tabs
   // A project opened before shows at once from memory, then catches up.
   ST.cache = ST.cache || {};
   if (ST.early) { const e = ST.early; ST.early = null; await e; }       // the first project was already on its way
