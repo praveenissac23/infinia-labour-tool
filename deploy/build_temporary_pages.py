@@ -375,29 +375,39 @@ CSS = """
   #hr-doc-mode { display: none !important; }
   #monthly-cycle, #report-cycle { min-width: 190px; }
   .pg-embed { display: block; width: 100%; border: 0; background: transparent; min-height: 480px; }
-  /* The dashboards (main Dashboard, Estimation > Dashboard, a project's Dashboard): slate-blue to maroon, dark glass */
-  html:has(body.est-glass #screen-pgestproj.active), html:has(#screen-pgestdash.active), html:has(#screen-dashboard.active) { background: #5C1C25 !important; }
-  body.est-glass:has(#screen-pgestproj.active), body:has(#screen-pgestdash.active), body:has(#screen-dashboard.active) { background: linear-gradient(170deg, #3A4766 0%, #2A3048 28%, #3B2433 60%, #5C1C25 85%, #6E1F28 100%) fixed !important; }
-  body.est-glass:has(#screen-pgestproj.active) .main, body.est-glass:has(#screen-pgestproj.active) .content, body.est-glass:has(#screen-pgestproj.active) .shell, body:has(#screen-pgestdash.active) .main, body:has(#screen-pgestdash.active) .content, body:has(#screen-pgestdash.active) .shell, body:has(#screen-dashboard.active) .main, body:has(#screen-dashboard.active) .content, body:has(#screen-dashboard.active) .shell { background: transparent !important; }
-  body.est-glass:has(#screen-pgestproj.active) .pg-side, body:has(#screen-pgestdash.active) .pg-side, body:has(#screen-dashboard.active) .pg-side { background: rgba(20,24,38,.35) !important; backdrop-filter: blur(20px); border-right: 1px solid rgba(255,255,255,.08) !important; }
-  body.est-glass:has(#screen-pgestproj.active) .topbar, body:has(#screen-pgestdash.active) .topbar, body:has(#screen-dashboard.active) .topbar { background: rgba(20,24,38,.30) !important; backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,.08) !important; }
-  body.est-glass:has(#screen-pgestproj.active) .topbar h1, body.est-glass:has(#screen-pgestproj.active) .topbar .title, body.est-glass:has(#screen-pgestproj.active) .topbar .user-name, body:has(#screen-pgestdash.active) .topbar h1, body:has(#screen-pgestdash.active) .topbar .title, body:has(#screen-pgestdash.active) .topbar .user-name, body:has(#screen-dashboard.active) .topbar h1, body:has(#screen-dashboard.active) .topbar .title, body:has(#screen-dashboard.active) .topbar .user-name { color: #fff !important; }
-  body.est-glass:has(#screen-pgestproj.active) .topbar, body.est-glass:has(#screen-pgestproj.active) .topbar span, body:has(#screen-pgestdash.active) .topbar, body:has(#screen-pgestdash.active) .topbar span, body:has(#screen-dashboard.active) .topbar, body:has(#screen-dashboard.active) .topbar span { color: rgba(255,255,255,.85) !important; }
-  body.est-glass:has(#screen-pgestproj.active) .topbar .btn, body.est-glass:has(#screen-pgestproj.active) .topbar button:not(.help-btn), body:has(#screen-pgestdash.active) .topbar .btn, body:has(#screen-pgestdash.active) .topbar button:not(.help-btn), body:has(#screen-dashboard.active) .topbar .btn, body:has(#screen-dashboard.active) .topbar button:not(.help-btn) { color: #fff !important; border-color: rgba(255,255,255,.5) !important; background: transparent !important; }
-  body.est-glass:has(#screen-pgestproj.active) #pg-tabs, body:has(#screen-pgestdash.active) #pg-tabs, body:has(#screen-dashboard.active) #pg-tabs { background: rgba(255,255,255,.06) !important; border: 1px solid rgba(255,255,255,.12) !important; }
-  body.est-glass:has(#screen-pgestproj.active) #pg-tabs .pg-tab, body:has(#screen-pgestdash.active) #pg-tabs .pg-tab, body:has(#screen-dashboard.active) #pg-tabs .pg-tab { color: rgba(255,255,255,.65) !important; }
-  body.est-glass:has(#screen-pgestproj.active) #pg-tabs .pg-tab.on, body.est-glass:has(#screen-pgestproj.active) #pg-tabs .pg-tab.active, body:has(#screen-pgestdash.active) #pg-tabs .pg-tab.on, body:has(#screen-pgestdash.active) #pg-tabs .pg-tab.active, body:has(#screen-dashboard.active) #pg-tabs .pg-tab.on, body:has(#screen-dashboard.active) #pg-tabs .pg-tab.active { color: #fff !important; background: rgba(255,255,255,.14) !important; box-shadow: none !important; }
-  body.est-glass:has(#screen-pgestproj.active) .pg-embed, body:has(#screen-pgestdash.active) .pg-embed, body:has(#screen-dashboard.active) .pg-embed { background: transparent !important; }
+  /* The dashboards (main Dashboard, Estimation > Dashboard, a project's Dashboard): black to red, dark glass */
+  body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(170deg, #08080A 0%, #120D10 30%, #2A0A11 60%, #560E1C 85%, #761424 100%); opacity: 0; transition: opacity .9s ease; }
+  html.est-glass body:has(#screen-pgestproj.active)::before, body:has(#screen-pgestdash.active)::before, body:has(#screen-dashboard.active)::before { opacity: 1; }
+  .pg-side, .topbar, .topbar *, .main, .content, .shell, #pg-tabs, #pg-tabs .pg-tab, .pg-embed, #screen-dashboard .card, .dash-clock-card, .dash-clock, .dash-clock-ampm, .dq-tile, .dq-ico, .dq-t, .dq-s, .dq-job, #screen-dashboard h2 {
+    transition: background-color .9s ease, color .9s ease, border-color .9s ease, box-shadow .9s ease; }
+  .pg-embed { background: transparent !important; }
+  /* going between a dashboard (dark) and a light page: the page itself fades in, so nothing bright or dark lands at once */
+  /* the pointer over something: a soft red tint, never strong */
+  .pg-side .pg-item:not(.active):hover { background: rgba(232,25,47,.16) !important; color: #fff; transition-duration: .2s; }
+  #pg-tabs .pg-tab:not(.on):not(.active):hover { background: rgba(232,25,47,.07) !important; transition-duration: .2s; }
+  .dq-tile:hover, .dq-tile:focus-visible { background: #FDF0F1 !important; border-color: #EBB3B9 !important; transition-duration: .2s; }
+  html.est-glass body:has(#screen-pgestproj.active) #pg-tabs .pg-tab:not(.on):not(.active):hover, body:has(#screen-pgestdash.active) #pg-tabs .pg-tab:not(.on):not(.active):hover, body:has(#screen-dashboard.active) #pg-tabs .pg-tab:not(.on):not(.active):hover { background: rgba(255,80,95,.14) !important; color: #fff !important; }
+  html.est-glass body:has(#screen-pgestproj.active) .dq-tile:hover, body:has(#screen-pgestdash.active) .dq-tile:hover, body:has(#screen-dashboard.active) .dq-tile:hover { background: rgba(255,80,95,.12) !important; border-color: rgba(255,110,125,.45) !important; }
+  html.est-glass body:has(#screen-pgestproj.active) .main, html.est-glass body:has(#screen-pgestproj.active) .content, html.est-glass body:has(#screen-pgestproj.active) .shell, body:has(#screen-pgestdash.active) .main, body:has(#screen-pgestdash.active) .content, body:has(#screen-pgestdash.active) .shell, body:has(#screen-dashboard.active) .main, body:has(#screen-dashboard.active) .content, body:has(#screen-dashboard.active) .shell { background: transparent !important; }
+  html.est-glass body:has(#screen-pgestproj.active) .pg-side, body:has(#screen-pgestdash.active) .pg-side, body:has(#screen-dashboard.active) .pg-side { background: rgba(8,6,8,.40) !important; backdrop-filter: blur(20px); border-right: 1px solid rgba(255,255,255,.08) !important; }
+  html.est-glass body:has(#screen-pgestproj.active) .topbar, body:has(#screen-pgestdash.active) .topbar, body:has(#screen-dashboard.active) .topbar { background: rgba(8,6,8,.35) !important; backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,.08) !important; }
+  html.est-glass body:has(#screen-pgestproj.active) .topbar h1, html.est-glass body:has(#screen-pgestproj.active) .topbar .title, html.est-glass body:has(#screen-pgestproj.active) .topbar .user-name, body:has(#screen-pgestdash.active) .topbar h1, body:has(#screen-pgestdash.active) .topbar .title, body:has(#screen-pgestdash.active) .topbar .user-name, body:has(#screen-dashboard.active) .topbar h1, body:has(#screen-dashboard.active) .topbar .title, body:has(#screen-dashboard.active) .topbar .user-name { color: #fff !important; }
+  html.est-glass body:has(#screen-pgestproj.active) .topbar, html.est-glass body:has(#screen-pgestproj.active) .topbar span, body:has(#screen-pgestdash.active) .topbar, body:has(#screen-pgestdash.active) .topbar span, body:has(#screen-dashboard.active) .topbar, body:has(#screen-dashboard.active) .topbar span { color: rgba(255,255,255,.85) !important; }
+  html.est-glass body:has(#screen-pgestproj.active) .topbar .btn, html.est-glass body:has(#screen-pgestproj.active) .topbar button:not(.help-btn), body:has(#screen-pgestdash.active) .topbar .btn, body:has(#screen-pgestdash.active) .topbar button:not(.help-btn), body:has(#screen-dashboard.active) .topbar .btn, body:has(#screen-dashboard.active) .topbar button:not(.help-btn) { color: #fff !important; border-color: rgba(255,255,255,.5) !important; background: transparent !important; }
+  html.est-glass body:has(#screen-pgestproj.active) #pg-tabs, body:has(#screen-pgestdash.active) #pg-tabs, body:has(#screen-dashboard.active) #pg-tabs { background: rgba(255,255,255,.06) !important; border: 1px solid rgba(255,255,255,.12) !important; }
+  html.est-glass body:has(#screen-pgestproj.active) #pg-tabs .pg-tab, body:has(#screen-pgestdash.active) #pg-tabs .pg-tab, body:has(#screen-dashboard.active) #pg-tabs .pg-tab { color: rgba(255,255,255,.65) !important; }
+  html.est-glass body:has(#screen-pgestproj.active) #pg-tabs .pg-tab.on, html.est-glass body:has(#screen-pgestproj.active) #pg-tabs .pg-tab.active, body:has(#screen-pgestdash.active) #pg-tabs .pg-tab.on, body:has(#screen-pgestdash.active) #pg-tabs .pg-tab.active, body:has(#screen-dashboard.active) #pg-tabs .pg-tab.on, body:has(#screen-dashboard.active) #pg-tabs .pg-tab.active { color: #fff !important; background: rgba(255,255,255,.14) !important; box-shadow: none !important; }
+  html.est-glass body:has(#screen-pgestproj.active) .pg-embed, body:has(#screen-pgestdash.active) .pg-embed, body:has(#screen-dashboard.active) .pg-embed { background: transparent !important; }
   body:has(#screen-dashboard.active) #screen-dashboard .card, body:has(#screen-dashboard.active) .dash-clock-card { background: rgba(255,255,255,.05) !important; backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%); border: 1px solid rgba(255,255,255,.10) !important; border-radius: 16px !important; box-shadow: 0 20px 50px rgba(0,0,0,.22) !important; }
   body:has(#screen-dashboard.active) .dash-clock { color: #fff !important; } body:has(#screen-dashboard.active) .dash-clock-ampm, body:has(#screen-dashboard.active) .dq-job { color: rgba(255,255,255,.65) !important; }
   body:has(#screen-dashboard.active) #screen-dashboard h2, body:has(#screen-dashboard.active) #dash-calendar-title { color: #fff !important; font-weight: 500; }
   body:has(#screen-dashboard.active) .dq-tile { background: rgba(255,255,255,.06) !important; border: 1px solid rgba(255,255,255,.13) !important; border-radius: 14px !important; box-shadow: 0 10px 28px rgba(0,0,0,.18); }
-  body:has(#screen-dashboard.active) .dq-tile:hover, body:has(#screen-dashboard.active) .dq-tile:focus-visible { background: rgba(255,255,255,.12) !important; border-color: rgba(255,255,255,.35) !important; }
+  body:has(#screen-dashboard.active) .dq-tile:focus-visible { background: rgba(255,255,255,.12) !important; border-color: rgba(255,255,255,.35) !important; }
   body:has(#screen-dashboard.active) .dq-ico { background: rgba(255,255,255,.10) !important; border: 1px solid rgba(255,255,255,.22) !important; color: #FFC2C8 !important; }
   body:has(#screen-dashboard.active) .dq-t { color: #fff !important; } body:has(#screen-dashboard.active) .dq-s, body:has(#screen-dashboard.active) .dq-empty { color: rgba(255,255,255,.65) !important; }
   body:has(#screen-dashboard.active) .dash-cal-card .btn { background: rgba(255,255,255,.08) !important; color: #fff !important; border: 1px solid rgba(255,255,255,.25) !important; }
   body:has(#screen-dashboard.active) #dash-calendar { color: rgba(255,255,255,.75); }
-  body:has(#screen-dashboard.active) #dash-sky { background: linear-gradient(180deg, rgba(20,24,38,.55) 0%, rgba(59,36,51,.55) 62%, rgba(92,28,37,.6) 100%) !important; border: 1px solid rgba(255,255,255,.10) !important; }
+  body:has(#screen-dashboard.active) #dash-sky { background: linear-gradient(180deg, rgba(10,8,10,.55) 0%, rgba(42,10,17,.55) 62%, rgba(86,14,28,.6) 100%) !important; border: 1px solid rgba(255,255,255,.10) !important; }
   body:has(#screen-dashboard.active) #dash-sky .txt b { color: #fff !important; text-shadow: none !important; } body:has(#screen-dashboard.active) #dash-sky .txt span { color: rgba(255,255,255,.75) !important; text-shadow: none !important; } body:has(#screen-dashboard.active) #dash-sky .txt em { color: #FFC2C8 !important; }
   #screen-pgstaff.active, #screen-pgaccess.active, #screen-pglogins.active, #screen-pgboards.active, #screen-pgestdash.active, #screen-pgestproj.active, #screen-pgesttend.active, #screen-pgsubpay.active { margin: -20px -24px -20px; }
   /* Rights are given through Access roles on these pages: no per-login screen picker. */
@@ -813,8 +823,28 @@ window.addEventListener("message", e => {
 
   if (e.data.est === "app" && typeof pgGo === "function") pgGo(e.data.page, e.data.tab);
   if (e.data.est === "full") pgFull(!!e.data.on);       // a bill open: the whole screen for it
-  if (e.data.est === "glass") document.body.classList.toggle("est-glass", !!e.data.on);   // the project dashboard's dark glass look
+  if (e.data.est === "glass") document.documentElement.classList.toggle("est-glass", !!e.data.on);   // the project dashboard's dark glass look (on <html>: the app rewrites the body's classes); the frame fades its own page
 });
+// Dark (a dashboard) to light (any other page) or back: the page fades in while the background eases across.
+(function () {
+  const DARK = "html.est-glass body:has(#screen-pgestproj.active), body:has(#screen-pgestdash.active), body:has(#screen-dashboard.active)";
+  let was = null, wasScr = null, t = null;
+  const check = () => {
+    let now; try { now = document.body.matches(DARK); } catch (e) { return; }
+    const scr = (document.querySelector(".content > .screen.active") || {}).id || "";
+    const quiet = scr === wasScr && scr === "screen-pgestproj";      // the same Projects page, only its own page changed: it fades itself
+    if (was !== null && now !== was && !quiet) {
+      const c = document.querySelector(".content");
+      if (c && c.animate) { if (t) t.cancel(); t = c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1100, easing: "ease-in-out" }); }
+    }
+    was = now; wasScr = scr;
+  };
+  // before the project frame has said which page it shows, go by the page it last showed (no light flash first)
+  try { document.documentElement.classList.toggle("est-glass", /^home\./.test(localStorage.getItem("est_sec") || "home.dash")); } catch (e) {}
+  new MutationObserver(check).observe(document.body, { attributes: true, attributeFilter: ["class"], subtree: true });
+  new MutationObserver(check).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  check();
+})();
 // A frame whose sign-in has run out asks the app to show its sign-in box.
 window.addEventListener("message", e => { if (e.origin === location.origin && e.data === "pg-signin" && typeof doLogout === "function") doLogout(); });
 window.addEventListener("resize", () => ["pg-staff-frame", "pg-access-frame", "pg-logins-frame", "pg-boards-frame", "pg-estdash-frame", "pg-estproj-frame", "pg-esttend-frame", "pg-subpay-frame"].forEach(id => { const f = document.getElementById(id); if (f && f.offsetParent) { const top = f.getBoundingClientRect().top; f.style.height = Math.max(480, window.innerHeight - top) + "px"; } }));

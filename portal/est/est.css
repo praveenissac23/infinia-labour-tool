@@ -988,9 +988,9 @@ td.ipa-flash { animation: ipaflash 1.8s ease; }
 .sv-rows { display: none !important; }
 @media (max-width: 900px) { .sv-fbar .sv-nav select { width: 130px; } .sv-fbar .fbw { min-width: 140px; flex-basis: 100%; order: 5; } }
 
-/* ===== Project dashboard: slate-blue to maroon, dark glass (body.glass - set only on the project's Dashboard) ===== */
+/* ===== Project dashboard: black to red, dark glass (body.glass - set only on the project's Dashboard) ===== */
 body.glass { background: transparent !important; color: #fff; }
-body.glass:not(.embed) { background: linear-gradient(170deg, #3A4766 0%, #2A3048 28%, #3B2433 60%, #5C1C25 85%, #6E1F28 100%) fixed !important; }
+body.glass:not(.embed) { background: linear-gradient(170deg, #08080A 0%, #120D10 30%, #2A0A11 60%, #560E1C 85%, #761424 100%) fixed !important; }
 body.glass .wrap { background: transparent !important; }
 body.glass .pick { background: rgba(255,255,255,.06) !important; color: #fff !important; border: 1px solid rgba(255,255,255,.18) !important; }
 body.glass .pick option { color: #111; }
@@ -1022,3 +1022,17 @@ body.glass .wrap a, body.glass .wrap .lnk, body.glass .wrap button.link, body.gl
 body.glass .wrap .muted, body.glass .wrap .small, body.glass .wrap .kpi .l, body.glass .wrap .kpi .s, body.glass .wrap .empty, body.glass .wrap dt, body.glass .wrap th, body.glass .wrap .k { color: rgba(255,255,255,.72) !important; }
 body.glass .wrap h3 .go, body.glass .wrap .go { color: #FFC2C8 !important; }
 body.glass .wrap div > span:not(.st):not(.go):not(.v) { color: rgba(255,255,255,.72); }
+
+/* the dashboards' dark look and the light pages ease into each other - no sudden dark-to-white */
+body { transition: background-color .7s ease, color .7s ease; }
+html.glass-pre body, body.glass { background-color: transparent !important; }
+.wrap .card, .wrap .panel, .kpi, .tw, table.t th, table.t td, #pnav, #pnav button, .pick, .ptop .btn, .wrap h3, .wrap .st, .wrap .btn {
+  transition: background-color .7s ease, color .7s ease, border-color .7s ease, box-shadow .7s ease; }
+/* the pointer over something: a soft red tint, never strong */
+.kpi:hover { border-color: #EDBBC0 !important; background-color: #FFF8F8 !important; transition-duration: .2s; }
+table.t tbody tr:hover td { background-color: #FFF6F7 !important; transition-duration: .2s; }
+#pnav button:not(.on):hover, .pills button:not(.on):hover { background-color: #FDF0F1 !important; transition-duration: .2s; }
+body.glass .kpi:hover { border-color: rgba(255,110,125,.45) !important; background-color: rgba(255,80,95,.10) !important; }
+body.glass table.t tbody tr:hover td { background-color: rgba(255,80,95,.08) !important; }
+body.glass #pnav button:not(.on):hover { background-color: rgba(255,80,95,.12) !important; color: #fff !important; }
+body.glass .wrap .btn:hover { background-color: rgba(255,80,95,.14) !important; }

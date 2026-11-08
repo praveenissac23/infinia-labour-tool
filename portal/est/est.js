@@ -6,6 +6,7 @@
 try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infinia_keep")) sessionStorage.setItem("infinia_token", localStorage.getItem("infinia_keep")); } catch (e) {}
 let TOKEN = sessionStorage.getItem("infinia_token") || null;
 const VIEW = (location.search.match(/[?&]view=(\w+)/) || [])[1] || "dash";
+try { if (document.documentElement.classList.contains("glass-pre") && document.body) document.body.classList.add("glass"); } catch (e) {}   // a dashboard is coming: dark from the first paint
 const ST = { meta: null, pid: null, b: null, group: "home", sec: "dash", q: {}, filt: {}, dash: null, tenders: null };
 if (window.PG_EMBED) document.body.classList.add("embed");
 
@@ -356,7 +357,7 @@ async function start() {
   if (VIEW === "pay") { $("#app").classList.remove("hide"); return loadPay(); }      // Accounts: needs only the Bank right
   // The page's own data is asked for at the same time as the lists, not after them.
   let early = null;
-  if (VIEW === "dash") { early = GET("/store/est/dash").catch(() => null); document.body.classList.add("glass"); }   // the Estimation dashboard: dark glass
+  if (VIEW === "dash") { early = GET("/store/est/dash").catch(() => null); document.body.classList.add("glass"); document.documentElement.classList.remove("glass-pre"); }   // the Estimation dashboard: dark glass
   else if (VIEW === "projects") {
     let ep = +((location.hash.match(/p(\d+)/) || [])[1] || 0);
     try { ep = ep || +(localStorage.getItem("est_pid") || 0); } catch (e) {}
@@ -592,9 +593,15 @@ function renderProject() {
   glassTheme(ST.group === "home");                  // the project dashboard: dark glass; every other page stays as it is
   try { fn($("#sec")); } catch (e) { console.error(e); $("#sec").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
-// The project dashboard's look: slate-blue to maroon, dark glass panels. This frame and the app around it
+// The project dashboard's look: black to red, dark glass panels. This frame and the app around it
 // (menu, top bar) both take it, only while the dashboard is the page shown.
 function glassTheme(on) {
+  const H = document.documentElement; H.classList.remove("glass-pre");
+  if (document.body.classList.contains("glass") !== !!on && glassTheme.seen) {   // dark to light or back: this page fades in
+    const pb = $("#pbody");
+    if (pb && pb.animate) { if (glassTheme.a) glassTheme.a.cancel(); glassTheme.a = pb.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 1100, easing: "ease-in-out" }); }
+  }
+  glassTheme.seen = true;
   document.body.classList.toggle("glass", !!on);
   if (window.parent !== window) { try { window.parent.postMessage({ est: "glass", on: !!on }, location.origin); } catch (e) {} }
 }
