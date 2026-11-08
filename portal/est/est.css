@@ -1036,3 +1036,6 @@ body.glass .kpi:hover { border-color: rgba(255,110,125,.45) !important; backgrou
 body.glass table.t tbody tr:hover td { background-color: rgba(255,80,95,.08) !important; }
 body.glass #pnav button:not(.on):hover { background-color: rgba(255,80,95,.12) !important; color: #fff !important; }
 body.glass .wrap .btn:hover { background-color: rgba(255,80,95,.14) !important; }
+/* the heading row that stays at the top while a table scrolls (help/freeze.js): dark on the dashboards */
+body.glass .freeze-head { background: #1B0D11 !important; box-shadow: 0 6px 16px rgba(0,0,0,.45) !important; border-bottom: 1px solid rgba(255,255,255,.12); }
+body.glass .freeze-head th, body.glass .freeze-head td { background: transparent !important; color: rgba(255,255,255,.72) !important; border-color: rgba(255,255,255,.12) !important; }
