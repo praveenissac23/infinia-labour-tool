@@ -589,7 +589,14 @@ function renderProject() {
   $$("#pnav [data-g]").forEach(x => x.onclick = () => { ST.group = x.dataset.g; ST.sec = GROUPS[ST.group].secs[0][0]; saveSec(); renderProject(); });
   $$("#psub [data-s]").forEach(x => x.onclick = () => { ST.sec = x.dataset.s; saveSec(); renderProject(); });
   const fn = SECTIONS[ST.group + "." + ST.sec];
+  glassTheme(ST.group === "home");                  // the project dashboard: dark glass; every other page stays as it is
   try { fn($("#sec")); } catch (e) { console.error(e); $("#sec").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+// The project dashboard's look: slate-blue to maroon, dark glass panels. This frame and the app around it
+// (menu, top bar) both take it, only while the dashboard is the page shown.
+function glassTheme(on) {
+  document.body.classList.toggle("glass", !!on);
+  if (window.parent !== window) { try { window.parent.postMessage({ est: "glass", on: !!on }, location.origin); } catch (e) {} }
 }
 // ---------------- the project's own dashboard ----------------
 function kpi(l, v, sub, cls = "", extra = "") { return `<div class="kpi ${cls}" ${extra}><div class="l">${l}</div><div class="v">${v}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>`; }

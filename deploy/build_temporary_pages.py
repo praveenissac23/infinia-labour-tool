@@ -375,6 +375,18 @@ CSS = """
   #hr-doc-mode { display: none !important; }
   #monthly-cycle, #report-cycle { min-width: 190px; }
   .pg-embed { display: block; width: 100%; border: 0; background: transparent; min-height: 480px; }
+  /* Estimation > Projects > a project's Dashboard: slate-blue to maroon, the menu and top bar as dark glass (only while it is shown) */
+  body.est-glass:has(#screen-pgestproj.active) { background: linear-gradient(170deg, #3A4766 0%, #2A3048 28%, #3B2433 60%, #5C1C25 85%, #6E1F28 100%) fixed !important; }
+  body.est-glass:has(#screen-pgestproj.active) .main, body.est-glass:has(#screen-pgestproj.active) .content, body.est-glass:has(#screen-pgestproj.active) .shell { background: transparent !important; }
+  body.est-glass:has(#screen-pgestproj.active) .pg-side { background: rgba(20,24,38,.35) !important; backdrop-filter: blur(20px); border-right: 1px solid rgba(255,255,255,.08) !important; }
+  body.est-glass:has(#screen-pgestproj.active) .topbar { background: rgba(20,24,38,.30) !important; backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,.08) !important; }
+  body.est-glass:has(#screen-pgestproj.active) .topbar h1, body.est-glass:has(#screen-pgestproj.active) .topbar .title, body.est-glass:has(#screen-pgestproj.active) .topbar .user-name { color: #fff !important; }
+  body.est-glass:has(#screen-pgestproj.active) #pg-tabs { background: rgba(255,255,255,.06) !important; border: 1px solid rgba(255,255,255,.12) !important; }
+  body.est-glass:has(#screen-pgestproj.active) #pg-tabs .pg-tab { color: rgba(255,255,255,.65) !important; }
+  body.est-glass:has(#screen-pgestproj.active) #pg-tabs .pg-tab.on, body.est-glass:has(#screen-pgestproj.active) #pg-tabs .pg-tab.active { color: #fff !important; background: rgba(255,255,255,.14) !important; box-shadow: none !important; }
+  body.est-glass:has(#screen-pgestproj.active) .pg-embed { background: transparent !important; }
+  body.est-glass:has(#screen-pgestproj.active) .topbar .btn, body.est-glass:has(#screen-pgestproj.active) .topbar button:not(.help-btn) { color: #fff !important; border-color: rgba(255,255,255,.5) !important; background: transparent !important; }
+  body.est-glass:has(#screen-pgestproj.active) .topbar, body.est-glass:has(#screen-pgestproj.active) .topbar span { color: rgba(255,255,255,.85) !important; }
   #screen-pgstaff.active, #screen-pgaccess.active, #screen-pglogins.active, #screen-pgboards.active, #screen-pgestdash.active, #screen-pgestproj.active, #screen-pgesttend.active, #screen-pgsubpay.active { margin: -20px -24px -20px; }
   /* Rights are given through Access roles on these pages: no per-login screen picker. */
   #user-mgmt-card button[onclick^="openPerms"] { display: none !important; }
@@ -789,6 +801,7 @@ window.addEventListener("message", e => {
 
   if (e.data.est === "app" && typeof pgGo === "function") pgGo(e.data.page, e.data.tab);
   if (e.data.est === "full") pgFull(!!e.data.on);       // a bill open: the whole screen for it
+  if (e.data.est === "glass") document.body.classList.toggle("est-glass", !!e.data.on);   // the project dashboard's dark glass look
 });
 // A frame whose sign-in has run out asks the app to show its sign-in box.
 window.addEventListener("message", e => { if (e.origin === location.origin && e.data === "pg-signin" && typeof doLogout === "function") doLogout(); });
