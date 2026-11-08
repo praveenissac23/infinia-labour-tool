@@ -356,7 +356,7 @@ async function start() {
   if (VIEW === "pay") { $("#app").classList.remove("hide"); return loadPay(); }      // Accounts: needs only the Bank right
   // The page's own data is asked for at the same time as the lists, not after them.
   let early = null;
-  if (VIEW === "dash") early = GET("/store/est/dash").catch(() => null);
+  if (VIEW === "dash") { early = GET("/store/est/dash").catch(() => null); document.body.classList.add("glass"); }   // the Estimation dashboard: dark glass
   else if (VIEW === "projects") {
     let ep = +((location.hash.match(/p(\d+)/) || [])[1] || 0);
     try { ep = ep || +(localStorage.getItem("est_pid") || 0); } catch (e) {}
