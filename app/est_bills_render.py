@@ -84,6 +84,16 @@ def tidy_text(t):
     return _RAWNUM.sub(lambda m: f"{float(m.group(1)):,.2f}", t)
 
 
+def _xl_round(x, nd):
+    """Excel's rounding for display: to 15 significant digits first, then halves away from zero (Python's round()
+    sends halves to the even number: 0.125 -> 0.12, 40.5 -> 40)."""
+    from decimal import Decimal, ROUND_HALF_UP
+    if x != x or x in (float("inf"), float("-inf")):
+        return x
+    d = Decimal(f"{x:.15g}").quantize(Decimal(1).scaleb(-nd), rounding=ROUND_HALF_UP)
+    return float(d)
+
+
 def fmt(v, nf="General"):
     """A value as Excel shows it with that number format."""
     if v is None:
@@ -136,7 +146,8 @@ def fmt(v, nf="General"):
     tail = re.search(r"([#0?])(,+)(?:\.|$|[^#0?,])", num_pat + " ")
     if tail and not num_pat.split(".")[0].rstrip(",").count(","):
         pass
-    s = f"{round(x + 0.0, nd):,.{nd}f}" if comma else f"{round(x + 0.0, nd):.{nd}f}"
+    xr = _xl_round(x, nd)                               # as Excel rounds: halves up (40.5% shows 41%, not 40%)
+    s = f"{xr:,.{nd}f}" if comma else f"{xr:.{nd}f}"
     if nd > mind and "." in s:
         s = s.rstrip("0")
         if len(s.split(".")[1]) < mind:
@@ -900,7 +911,8 @@ def page_plan(model, s, inputs=None, values=None):
     # width): printed at the full page width instead, as long as it takes no more pages than his breaks did - its
     # pages then end after a blank row (between two items), never in the middle of an item.
     soft = None
-    if pr.get("fill") and breaks and cont_w and not pr.get("landscape") and not pr.get("carried") and not pr.get("keep"):
+    staff_brk = (((inputs or {}).get(s["name"]) or {}).get("_brk") or {}).get("add")   # a break the office put in stays
+    if pr.get("fill") and breaks and cont_w and not pr.get("landscape") and not pr.get("carried") and not pr.get("keep") and not staff_brk:
         wsc = min(1.25, aw / cont_w)
         if sc < wsc * 0.92:
             cells = s.get("cells") or {}
