@@ -74,6 +74,8 @@ def push(db, o):
 def _body(db, o):
     """The Zoho purchase order for this LPO - the same for a first send and for an update."""
     import zohoapi as Z
+    if M.lpo_open(o):
+        raise Z.ZohoError(400, "An open LPO has rates only, no amount - nothing to send to Zoho (each delivery's own LPO goes)")
     vendor = _vendor(db, o)
     if not vendor:
         raise Z.ZohoError(400, f"Link {o.supplier_name or 'the supplier'} to its Zoho vendor first (Suppliers in Zoho) - a PO needs one")
@@ -269,6 +271,8 @@ def pos(db: Session = Depends(get_db), user: models.User = ZG):
         nt = note_of(o)
         fresh = bool(nt.get("items")) and not nt.get("seen", True)
         if o.status == "cancelled" and st not in ("sent", "changed") and not fresh:
+            continue
+        if M.lpo_open(o) and st not in ("sent", "changed") and not fresh:      # rates only - no PO for Zoho
             continue
         if st == "sent" and not (o.zoho_err or "") and not fresh:
             continue

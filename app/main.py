@@ -8778,10 +8778,25 @@ def lpo_qty(q):
     return f"{whole}.{dec.ljust(2, '0')}"
 
 
+def lpo_open(o):
+    """An open LPO: rates for the whole project, no amount - every amount and the total are 0."""
+    return bool(o.get("open_lpo") if isinstance(o, dict) else getattr(o, "open_lpo", None))
+
+
+def lpo_amt(o, l):
+    """A line's amount before discount and VAT: qty x rate - 0 on an open LPO."""
+    if lpo_open(o):
+        return 0.0
+    g = (lambda k: l.get(k)) if isinstance(l, dict) else (lambda k: getattr(l, k, None))
+    return float(g("qty") or 0) * float(g("rate") or 0)
+
+
 def _lpo_net_vat(o):
     """An order's amount after discount, and its VAT: each line's own VAT rate on that line's discounted
     amount - the one rule the register, the report, the printed order, the PDF, the Excel and Zoho all use
-    (a 0% line - authority fees - carries no VAT, discount or not)."""
+    (a 0% line - authority fees - carries no VAT, discount or not). An open LPO comes to 0."""
+    if lpo_open(o):
+        return 0.0, 0.0
     keep = 1 - (o.discount_pct or 0) / 100.0
     net = sum((l.qty or 0) * (l.rate or 0) for l in o.lines) * keep
     vat = sum((l.qty or 0) * (l.rate or 0) * keep * (l.tax_pct or 0) / 100.0 for l in o.lines)
@@ -8791,7 +8806,7 @@ def _lpo_net_vat(o):
 def lpo_round_off(o):
     """The order's round off (Zoho's "Adjustment"): 2 decimals, 0 when none. No VAT is charged on it."""
     try:
-        return round(float(getattr(o, "round_off", 0) or 0), 2)
+        return 0.0 if lpo_open(o) else round(float(getattr(o, "round_off", 0) or 0), 2)
     except (TypeError, ValueError):
         return 0.0
 
@@ -8979,14 +8994,14 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
         # line's amount incl. VAT - so totalled by material the parts still add up to it exactly.
         _keep = 1 - (o.discount_pct or 0) / 100.0
         ro_part = dict(zip((id(l) for l in o.lines), split_round_off(lpo_round_off(o), [
-            (l.qty or 0) * (l.rate or 0) * _keep * (1 + (l.tax_pct or 0) / 100.0) for l in o.lines])))
+            lpo_amt(o, l) * _keep * (1 + (l.tax_pct or 0) / 100.0) for l in o.lines])))
         if mat_q:
             lines = [l for l in lines if mat_q in (l.description or "").lower()]
             if not lines:
                 continue
         for l in lines:
             counted_orders.add(o.po_no)
-            amount = (l.qty or 0) * (l.rate or 0) * (1 - (o.discount_pct or 0) / 100.0)
+            amount = lpo_amt(o, l) * (1 - (o.discount_pct or 0) / 100.0)
             vat = amount * (l.tax_pct or 0) / 100.0
             ro = ro_part.get(id(l), 0.0)
             key = {
@@ -9158,7 +9173,7 @@ def lpo_plain(t):
     return re.sub(r"\[/?(?:" + "|".join(LPO_COLOURS) + r")\]", "", t)
 
 
-def lpo_banner(notes):
+def lpo_banner(notes, open_lpo=False):
     """'OPEN LPO' written on its own line in the notes -> (["OPEN LPO"], the other notes). It prints as a row of its
     own under the items, centred and bold, not in the notes (6 Nov 2026, purchaser)."""
     ban, rest = [], []
@@ -9168,6 +9183,8 @@ def lpo_banner(notes):
                 ban.append("OPEN LPO")
         else:
             rest.append(ln)
+    if open_lpo and "OPEN LPO" not in ban:                   # ticked Open LPO: the band prints by itself
+        ban.append("OPEN LPO")
     return ban, "\n".join(rest)
 
 
@@ -9268,6 +9285,7 @@ def _lpo_dict(o):
         "superseded_by": getattr(o, "superseded_by", "") or "",
         # Rental LPO: rental_set = what was ticked by hand (None = by itself); rental = what it is now
         "rental_set": getattr(o, "rental", None), "rental": _lpo_is_rental(o),
+        "open_lpo": lpo_open(o),
         "lines": [{"id": l.id, "item_id": l.item_id, "description": l.description,
                    "description2": l.description2, "qty": l.qty, "unit": l.unit,
                    "rate": l.rate, "tax_pct": l.tax_pct, "cost_to": getattr(l, "cost_to", "") or "",
@@ -9357,6 +9375,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
         terms_text=(payload.terms_text or DEFAULT_LPO_TERMS),
         combined=bool(payload.combined),
         rental=getattr(payload, "rental", None),
+        open_lpo=bool(getattr(payload, "open_lpo", None)) or None,
         created_by=user.id,
     )
     db.add(o)
@@ -9552,8 +9571,8 @@ def _lpo_snap(o):
             "delivery": o.delivery_date.strftime("%d/%m/%Y") if o.delivery_date else (getattr(o, "delivery_note", "") or ""),
             "discount": round(o.discount_pct or 0, 2), "supplier_ref": o.supplier_ref or "", "site": o.project_location or "",
             "terms": o.terms or "", "lines": lines,
-            "round_off": lpo_round_off(o), "total": round(tot(lines, o.discount_pct) + lpo_round_off(o), 2),
-            "combined": bool(getattr(o, "combined", False)), "rental": getattr(o, "rental", None)}
+            "round_off": lpo_round_off(o), "total": lpo_total(o) if lpo_open(o) else round(tot(lines, o.discount_pct) + lpo_round_off(o), 2),
+            "combined": bool(getattr(o, "combined", False)), "rental": getattr(o, "rental", None), "open_lpo": lpo_open(o)}
 
 
 def _to_word(v):
@@ -9570,7 +9589,7 @@ def lpo_split(o, with_ro=False):
     disc, acc = float(o.discount_pct or 0), {}
     for l in o.lines:
         k = (getattr(l, "cost_to", "") or "").strip() or "?"
-        net = float(l.qty or 0) * float(l.rate or 0) * (1 - disc / 100.0)
+        net = lpo_amt(o, l) * (1 - disc / 100.0)
         a = acc.setdefault(k, [0.0, 0.0]); a[0] += net; a[1] += net * float(l.tax_pct or 0) / 100.0
     out = [(k, round(v[0], 2), round(v[1], 2)) for k, v in sorted(acc.items(), key=lambda kv: (kv[0] != "STORE", kv[0]))]
     if not with_ro:
@@ -9590,6 +9609,8 @@ def _lpo_changes(a, b):
             out.append(f"{lab}: {a[k] or '-'} -> {b[k] or '-'}")
     if a["discount"] != b["discount"]:
         out.append(f"Discount: {n(a['discount'])}% -> {n(b['discount'])}%")
+    if bool(a.get("open_lpo")) != bool(b.get("open_lpo")):
+        out.append("Open LPO (amounts 0): " + ("yes" if b.get("open_lpo") else "no") + " (was " + ("yes" if a.get("open_lpo") else "no") + ")")
     if (a.get("round_off") or 0) != (b.get("round_off") or 0):
         ro = lambda v: f"{v:+.2f}" if v else "none"
         out.append(f"Round off: {ro(a.get('round_off') or 0)} -> {ro(b.get('round_off') or 0)}")
@@ -9694,6 +9715,8 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     o.terms_text = payload.terms_text or DEFAULT_LPO_TERMS
     o.combined = bool(payload.combined)
     o.rental = getattr(payload, "rental", None)
+    if getattr(payload, "open_lpo", None) is not None:
+        o.open_lpo = bool(payload.open_lpo) or None
 
     # Lines are replaced wholesale rather than matched and patched - the
     # same as any other document correction, and simpler than reconciling
@@ -10204,7 +10227,7 @@ def _lpo_html(o):
 
     rows, sub, vat = [], 0.0, 0.0
     for i, l in enumerate(o.lines, start=1):
-        amount = (l.qty or 0) * (l.rate or 0)
+        amount = lpo_amt(o, l)
         tax = amount * (l.tax_pct or 0) / 100.0
         sub += amount
         vat += tax
@@ -10268,7 +10291,7 @@ def _lpo_html(o):
     right = "".join(pair(k, v) for k, v in right_rows)
     addr = ""          # the address is no longer printed on an order
     terms = "".join(f"<div>{esc(x)}</div>" for x in (o.terms_text or "").splitlines() if x.strip())
-    banner, notes_left = lpo_banner(o.notes)
+    banner, notes_left = lpo_banner(o.notes, lpo_open(o))
     notes = ("".join(f"<div>{lpo_bold(esc(x))}</div>" for x in notes_left.splitlines() if x.strip()))
     ban_html = "".join(f'<tr class="banrow"><td colspan="7" class="ban">{b}</td></tr>' for b in banner)
 

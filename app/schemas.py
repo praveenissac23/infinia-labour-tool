@@ -512,4 +512,5 @@ class PurchaseOrderIn(BaseModel):
     combined: bool = False       # items for different sites - the split is not printed
     # Rental LPO: None = decided by the supplier (shown ticked when it is one we rent from); True / False = by hand
     rental: bool | None = None
+    open_lpo: bool | None = None     # rates only - every amount and the total 0 (None on an edit = keep it)
     lines: list[PurchaseOrderLineIn] = []

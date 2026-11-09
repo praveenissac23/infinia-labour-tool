@@ -2352,7 +2352,7 @@ def build_lpo_pdf(po: dict):
     for i, l in enumerate(po.get("lines", []), start=1):
         qty = float(l.get("qty") or 0)
         rate = float(l.get("rate") or 0)
-        amount = qty * rate
+        amount = 0.0 if po.get("open_lpo") else qty * rate     # open LPO: rates only, every amount 0
         taxpc = float(l.get("tax_pct") or 0)
         sub += amount
         import main as _Mf
@@ -2369,7 +2369,7 @@ def build_lpo_pdf(po: dict):
                      P(f"{taxpc:,.2f}", 8.5, align=TA_RIGHT),
                      P(f"{amount:,.2f}", 8.5, align=TA_RIGHT)])
     import main as _Mb
-    _banner, _notes_left = _Mb.lpo_banner(po.get("notes"))
+    _banner, _notes_left = _Mb.lpo_banner(po.get("notes"), po.get("open_lpo"))
     # OPEN LPO: a band of its own across the whole table at its foot (just above the totals), centred, bold
     ban_rows = [[P(f"<b>{b}</b>", 10, align=TA_CENTER), "", "", "", "", "", ""] for b in _banner]
 
@@ -2399,10 +2399,10 @@ def build_lpo_pdf(po: dict):
     discount = sub * disc / 100.0
     net = sub - discount
     # each line's own VAT on its discounted amount (main._lpo_net_vat)
-    vat = sum(float(l.get("qty") or 0) * float(l.get("rate") or 0) * (1 - disc / 100.0) *
+    vat = 0.0 if po.get("open_lpo") else sum(float(l.get("qty") or 0) * float(l.get("rate") or 0) * (1 - disc / 100.0) *
               float(l.get("tax_pct") or 0) / 100.0 for l in po.get("lines", []))
     # the round off squaring it with the supplier's invoice - after VAT, no VAT on it (main.lpo_total)
-    ro = round(float(po.get("round_off") or 0), 2)
+    ro = 0.0 if po.get("open_lpo") else round(float(po.get("round_off") or 0), 2)
     total = net + vat + ro
 
     money = [[P("Sub Total", 8.5, align=TA_RIGHT), P(f"{sub:,.2f}", 8.5, align=TA_RIGHT)]]
@@ -2613,7 +2613,7 @@ def build_lpo_excel(po: dict):
                 ws.cell(row=r, column=2).value = CellRichText(*blocks)
             except Exception:
                 pass
-        ws.cell(row=r, column=7).value = f"=ROUND(C{r}*E{r},2)"
+        ws.cell(row=r, column=7).value = 0 if po.get("open_lpo") else f"=ROUND(C{r}*E{r},2)"   # open LPO: rates only
         # the quantity as typed (9.091 stays 9.091): at least 2 decimals, more when typed
         dq = len(f"{qty:.6f}".rstrip("0").partition(".")[2])
         ws.cell(row=r, column=3).number_format = "#,##0." + "0" * max(2, dq)
@@ -2623,7 +2623,7 @@ def build_lpo_excel(po: dict):
                                        if (l.get("description2") or "").strip() else 17)
     last_line = r
     import main as _Mb2
-    _xban, _xnotes = _Mb2.lpo_banner(po.get("notes"))
+    _xban, _xnotes = _Mb2.lpo_banner(po.get("notes"), po.get("open_lpo"))
     for b in _xban:                      # OPEN LPO: its own row under the items, centred, bold (outside the sums)
         r += 1
         for col in range(1, 8):
@@ -2651,10 +2651,10 @@ def build_lpo_excel(po: dict):
     disc = float(po.get("discount_pct") or 0)
     if disc:
         money(f"Discount({disc:g}%)", f"=-SUM(G{first_line}:G{last_line})*{disc}/100")
-    money(f"Standard Rate ({po.get('tax_pct', 5):g}%)",
+    money(f"Standard Rate ({po.get('tax_pct', 5):g}%)", 0 if po.get("open_lpo") else
           f"=SUMPRODUCT(C{first_line}:C{last_line},E{first_line}:E{last_line},F{first_line}:F{last_line})/100" if not disc
           else f"=SUMPRODUCT(C{first_line}:C{last_line},E{first_line}:E{last_line},F{first_line}:F{last_line})/100*(1-{disc}/100)")
-    ro = round(float(po.get("round_off") or 0), 2)
+    ro = 0.0 if po.get("open_lpo") else round(float(po.get("round_off") or 0), 2)
     if ro:
         money("Round off", ro)               # after VAT, no VAT on it - the Total below adds it in
     money("Total", f"=SUM(G{money_start}:G{r-1})", bold=True, size=11)

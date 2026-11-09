@@ -497,6 +497,9 @@ class PurchaseOrder(Base):
     # rest - so the tracker says which, not just "Part". Set by the store keeper with the delivery; cleared when
     # everything has come.
     part_why = Column(String, default="")
+    # Open LPO (9 Nov 2026, purchaser): one order for the whole project at agreed rates - the rates print, every
+    # amount and the total are 0 (each delivery comes on an LPO of its own at these rates). Prints "OPEN LPO".
+    open_lpo = Column(Boolean, nullable=True)
     part_note = Column(String, default="")
     rental = Column(Boolean, nullable=True)
 

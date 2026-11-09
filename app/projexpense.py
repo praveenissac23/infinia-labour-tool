@@ -153,10 +153,10 @@ def _lpos(db, match, d1, d2):
         req = db.get(models.MaterialRequest, o.request_id) if o.request_id else None
         req_site = (req.site or "").strip() if req else ""
         lines = db.query(models.PurchaseOrderLine).filter(models.PurchaseOrderLine.order_id == o.id).all()
-        gross = sum(float(l.qty or 0) * float(l.rate or 0) for l in lines)
+        gross = sum(M.lpo_amt(o, l) for l in lines)              # an open LPO: rates only, 0
         disc = float(o.discount_pct or 0)
         net = gross * (1 - disc / 100.0)
-        vat = sum(float(l.qty or 0) * float(l.rate or 0) * float(l.tax_pct or 0) / 100.0 for l in lines) * (1 - disc / 100.0)
+        vat = sum(M.lpo_amt(o, l) * float(l.tax_pct or 0) / 100.0 for l in lines) * (1 - disc / 100.0)
         items = lambda ls: ", ".join((l.description or "")[:40] for l in ls[:4]) + (" ..." if len(ls) > 4 else "")
         if getattr(o, "combined", False):
             # Combined LPO: each site pays for its own lines; the store's lines are stock

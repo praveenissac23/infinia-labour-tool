@@ -3205,6 +3205,14 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <span class="cmb-sub" id="lpo-rent-hint">Tick when the material is rented from the supplier - it stays theirs and goes into Rentals.</span>
                 <span class="note">Not printed on the LPO</span></label>
             </div>
+            <!-- Open LPO: agreed rates for the whole project - the rates print, every amount and the total are 0;
+                 each delivery then comes on an LPO of its own at these rates -->
+            <div class="cmb" id="lpo-open-box">
+              <label class="cmb-h" title="An open LPO gives the supplier our rates for the whole project. The rates print; every amount and the total are 0, and OPEN LPO is printed under the items. Nothing goes to Zoho or the site costs - each delivery comes on an LPO of its own at these rates.">
+                <input type="checkbox" id="lpo-open" onchange="renderLpoTotals(); lpoAmtsDraw()">
+                <span class="tg"></span><b>Open LPO</b>
+                <span class="cmb-sub">Rates only - every amount and the total are 0. Prints OPEN LPO.</span></label>
+            </div>
 
             <div class="form-row" style="margin-top:10px; gap:10px; flex-wrap:wrap;">
               <div class="field" style="flex:1; min-width:260px;"><label>Notes</label>
@@ -14143,6 +14151,7 @@ async function newLpo() {
   lpoRequestLineIds = [];
   lpoCmbReset(false);
   lpoRentalSet = null; lpoRentalDraw();
+  { const oc = document.getElementById("lpo-open"); if (oc) oc.checked = false; lpoOpenOn(); }
   addLpoLine();
   window.scrollTo(0, 0);
 }
@@ -14208,6 +14217,7 @@ async function editLpo(id) {
     if (!lpoLines.length) addLpoLine();
     lpoCmbReset(!!o.combined); if (o.combined) renderLpoCombined();
     lpoRentalSet = (o.rental_set === true || o.rental_set === false) ? o.rental_set : null; lpoRentalDraw();
+    { const oc = document.getElementById("lpo-open"); if (oc) { oc.checked = !!o.open_lpo; renderLpoTotals(); lpoAmtsDraw(); } }
     window.scrollTo(0, 0);
   } catch (e) {
     showStatus("lpo-status", "err", errText(e));
@@ -14550,7 +14560,7 @@ function paintLpoLine(i) {
       </div>`;
   }
   const amt = row.querySelector(".lpo-amt"), last = row.querySelector(".lpo-last");
-  if (amt) amt.textContent = money(qty * rate);
+  if (amt) amt.textContent = money(lpoOpenOn() ? 0 : qty * rate);
   if (last) last.innerHTML = lastCell;
 }
 
@@ -14729,7 +14739,7 @@ function renderLpoLines() {
       <td><input type="text" value="${esc(l.unit)}" class="lpo-unit" oninput="onLpoLineField(${i}, 'unit', this.value)" style="width:100%;"></td>
       <td><input type="text" inputmode="decimal" value="${esc(l.rate)}" oninput="onLpoLineField(${i}, 'rate', this.value)" style="width:100%; text-align:right;"></td>
       <td><input type="text" inputmode="decimal" value="${esc(l.tax_pct)}" oninput="onLpoLineField(${i}, 'tax_pct', this.value)" style="width:100%; text-align:right;"></td>
-      <td class="lpo-amt" style="text-align:right;">${money(qty * rate)}</td>
+      <td class="lpo-amt" style="text-align:right;">${money(lpoOpenOn() ? 0 : qty * rate)}</td>
       <td class="lpo-last" style="text-align:left;"></td>
       <td style="text-align:center;"><input type="checkbox" class="lpo-svc" title="Service - no stock, cost to the site"${lpoLineService(l) ? " checked" : ""} onchange="lpoLines[${i}].service = this.checked"></td>
       <td><button class="btn btn-gray" onclick="removeLpoLine(${i})">&times;</button></td>
@@ -15034,16 +15044,22 @@ function lpoSplitRoundOff(ro, weights) {
   return parts.map(p => p / 100);
 }
 
+function lpoOpenOn() { const c = document.getElementById("lpo-open"), on = !!(c && c.checked);
+  const b = document.getElementById("lpo-open-box"); if (b) b.classList.toggle("on", on); return on; }
+// an open LPO: the rates stay, every amount on the lines shows 0
+function lpoAmtsDraw() {
+  document.querySelectorAll(".lpo-amt").forEach((td, i) => { const l = lpoLines[i]; if (l) td.textContent = money(lpoOpenOn() ? 0 : (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0)); }); }
 function renderLpoTotals() {
-  const sub = lpoLines.reduce((s, l) => s + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0), 0);
+  const open = lpoOpenOn();
+  const sub = open ? 0 : lpoLines.reduce((s, l) => s + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0), 0);
   const disc = parseFloat(document.getElementById("lpo-discount").value) || 0;
   const discount = sub * disc / 100;
   const net = sub - discount;
   // Each line's own VAT rate on its discounted amount - the rule the saved LPO, its PDF and Zoho use
   // (a flat 5% of the net here put VAT on a 0% line, e.g. an authority fee, whenever there was a discount).
-  const vat = lpoLines.reduce((s, l) => s + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0) * (1 - disc / 100) * (parseFloat(l.tax_pct) || 0) / 100, 0);
+  const vat = open ? 0 : lpoLines.reduce((s, l) => s + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0) * (1 - disc / 100) * (parseFloat(l.tax_pct) || 0) / 100, 0);
   // Round off: after VAT, no VAT on it - the total then matches the supplier's invoice (and Zoho's Adjustment)
-  const ro = lpoRoundOff();
+  const ro = open ? { v: 0 } : lpoRoundOff();
   const box = document.getElementById("lpo-roundoff");
   if (box) { box.style.borderColor = ro.err ? "#C0392B" : ""; box.title = ro.err || ""; }
   document.getElementById("lpo-totals").innerHTML = `
@@ -15113,6 +15129,7 @@ async function saveLpo() {
     request_line_ids: lpoRequestLineIds,
     combined: lpoCmbOn(),
     rental: lpoRentalOn(),          // saved as ticked / not ticked, so the LPO never changes by itself later
+    open_lpo: lpoOpenOn(),          // rates only - every amount and the total 0
     lines,
   };
   try {
