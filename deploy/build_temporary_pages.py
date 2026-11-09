@@ -860,8 +860,14 @@ window.addEventListener("message", e => {
   };
   // before the project frame has said which page it shows, go by the page it last showed (no light flash first)
   try { document.documentElement.classList.toggle("est-glass", /^home\./.test(localStorage.getItem("est_sec") || "home.dash")); } catch (e) {}
-  new MutationObserver(check).observe(document.body, { attributes: true, attributeFilter: ["class"], subtree: true });
-  new MutationObserver(check).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  // watched lightly: only the screens being switched and the page's own class, once per frame at most
+  // (watching every element made the app slow while it filled its tables after signing in)
+  let queued = false;
+  const later = () => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; check(); }); };
+  const mo = new MutationObserver(later);
+  const watch = () => { const c = document.querySelector(".content"); if (c) [].forEach.call(c.children, el => { if (el.classList.contains("screen")) mo.observe(el, { attributes: true, attributeFilter: ["class"] }); }); };
+  watch(); document.addEventListener("DOMContentLoaded", watch);
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
   check();
 })();
 // A frame whose sign-in has run out asks the app to show its sign-in box.

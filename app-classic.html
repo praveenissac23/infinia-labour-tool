@@ -5560,6 +5560,11 @@ async function doLogin() {
   const password = document.getElementById("login-password").value;
   const errEl = document.getElementById("login-error");
   errEl.textContent = "";
+  // one press is enough: the button says it is working and does not take a second press meanwhile
+  const btn = document.querySelector("#login-screen button[type=submit]");
+  if (btn && btn.disabled) return;
+  if (btn) { btn.disabled = true; btn.dataset.t = btn.dataset.t || btn.textContent; btn.textContent = "Signing in..."; }
+  const done = () => { if (btn) { btn.disabled = false; btn.textContent = btn.dataset.t || "Sign In"; } };
   try {
     const res = await fetch(API + "/auth/login", {
       method: "POST",
@@ -5583,7 +5588,9 @@ async function doLogin() {
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("app-screen").style.display = "block";
     await initApp();
+    done();
   } catch (e) {
+    done();
     errEl.textContent = e.message || "Login failed.";
   }
 }
