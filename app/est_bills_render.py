@@ -788,6 +788,29 @@ addEventListener("resize",fit);addEventListener("DOMContentLoaded",function(){{f
 PAPER = {9: (595.28, 841.89), 8: (841.89, 1190.55), 1: (612.0, 792.0), 5: (612.0, 1008.0), 11: (419.53, 595.28)}
 
 
+def _soft_pages(rows, rh, px, sc, ah, titles, tset, blank):
+    """Rows onto pages at scale sc; a page that runs full ends after its last blank row (when that keeps at least
+    half the page used), so an item is never split across two pages. [own rows of each page]"""
+    th = sum(rh[r] for r in titles) * px * sc
+    pages, own, used, first = [], [], 0.0, True
+    for r in rows:
+        if pages and r in tset:
+            continue
+        hgt = rh[r] * px * sc
+        if own and used + hgt > ah + 0.5:
+            cut = max((i for i, x in enumerate(own) if x in blank), default=-1)
+            top = th if pages else 0.0
+            if cut >= 0 and top + sum(rh[x] for x in own[:cut + 1]) * px * sc >= (ah - top) * 0.5 + top:
+                pages.append(own[:cut + 1]); own = own[cut + 1:]
+            else:
+                pages.append(own); own = []
+            used = th + sum(rh[x] for x in own) * px * sc
+        own.append(r); used += hgt
+    if own:
+        pages.append(own)
+    return pages
+
+
 def page_plan(model, s, inputs=None, values=None):
     """The sheet's printed pages as Excel prints them: its paper and orientation, its scale (or fit to page),
     margins and centring, the rows repeated at the top of every page, its manual page breaks, and new pages where
@@ -873,7 +896,31 @@ def page_plan(model, s, inputs=None, values=None):
                 cand = min(cand, ah / full)
         if cand > sc:
             sc = cand
+    # A narrow sheet whose own page breaks keep it small (919's Percentage breakdown printed at 60% of the page
+    # width): printed at the full page width instead, as long as it takes no more pages than his breaks did - its
+    # pages then end after a blank row (between two items), never in the middle of an item.
+    soft = None
+    if pr.get("fill") and breaks and cont_w and not pr.get("landscape") and not pr.get("carried") and not pr.get("keep"):
+        wsc = min(1.25, aw / cont_w)
+        if sc < wsc * 0.92:
+            cells = s.get("cells") or {}
+            filled = {int(k.split(",")[0]) for k, v in cells.items() if (v.get("v") not in (None, "") or v.get("f"))}
+            blank = {r for r in rows if r not in filled and r not in tset}
+            cand = wsc
+            while cand > sc * 1.08:                     # the biggest print that still takes no more pages than his
+                trial = _soft_pages(rows, rh, px, cand, ah, titles, tset, blank)
+                if trial and len(trial) <= len(segs):
+                    sc, soft, breaks = cand, trial, set()
+                    break
+                cand -= 0.02
     th = tpt * sc
+    if soft:
+        pages = [((list(titles) + own) if i else own, own) for i, own in enumerate(soft)]
+        cw_pt = cont_w * sc
+        x0 = max(0.0, (pw - cw_pt) / 2)
+        return {"pw": pw, "ph": ph, "ml": ml, "mr": mr, "mt": mt, "mb": mb, "mh": mh, "mf": mf, "sc": sc, "x0": x0, "y0": mt,
+                "cols": cols, "cw": cw, "rh": rh, "merges": merges, "covered": covered, "pages": pages, "hf": pr.get("hf") or {},
+                "vc": pr.get("vc"), "grow": grow, "fixed": True, "soft": [own[-1] for own in soft[:-1]]}
     pages, cur, own, used = [], [], [], 0.0
     keep = {}                                           # a block kept together: its first row -> its rows shown
     for k0, k1 in pr.get("keep") or []:

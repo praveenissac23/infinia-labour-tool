@@ -2621,6 +2621,13 @@ def _xlsx_a4(data, model, inputs):
             else:
                 m2 = re.search(r"<(colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|legacyDrawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b|</worksheet>", xml)
                 xml = xml[:m2.start()] + rbx + xml[m2.start():]
+        if pl is not None and pl.get("soft") is not None:   # printed full width: the pages end where the app's do
+            rbx = f'<rowBreaks count="{len(pl["soft"])}" manualBreakCount="{len(pl["soft"])}">' + "".join(f'<brk id="{x}" max="16383" man="1"/>' for x in pl["soft"]) + "</rowBreaks>"
+            if re.search(r"<rowBreaks\b", xml):
+                xml = re.sub(r"<rowBreaks\b[^>]*?(?:/>|>.*?</rowBreaks>)", rbx, xml, count=1, flags=re.S)
+            else:
+                m2 = re.search(r"<(colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|legacyDrawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b|</worksheet>", xml)
+                xml = xml[:m2.start()] + rbx + xml[m2.start():]
         # fit to page needs the sheet's own switch
         if fixed:
             xml = re.sub(r"<pageSetUpPr\b[^>]*/>", "", xml, count=1)
