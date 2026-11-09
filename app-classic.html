@@ -3085,7 +3085,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           <!-- Raise / view one order -->
           <div class="card" id="lpo-form-card" style="display:none;">
             <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;"><h2 id="lpo-form-title" style="margin:0;">New Purchase Order</h2>
-              <button type="button" class="btn btn-plain btn-sm" id="lpo-copy-btn" style="display:none;" onclick="lpoCopyAsNew()" title="A new LPO with everything on this one - supplier, lines, rates, terms. Only the project location and plot no are left for you to fill in. This LPO stays as it is.">Copy as new LPO</button></div>
+              <button type="button" class="btn btn-sm" id="lpo-copy-btn" style="display:none; background:#FBEFED; color:#A93226; border:1px solid #E6B8B1;" onclick="lpoCopyAsNew()" title="A new LPO with everything on this one - supplier, lines, rates, terms. Only the project location and plot no are left for you to fill in. This LPO stays as it is.">Copy as new LPO</button></div>
 
             <div class="form-row" style="gap:10px; flex-wrap:wrap;">
               <div class="field"><label>LPO No</label><input type="text" id="lpo-ref" style="width:150px;" title="Filled in with the next number - type over it if this order needs a different one"></div>
@@ -13949,7 +13949,7 @@ async function loadLpoReport() {
       if (r.group_by === "order") {
         cells.push(`<td style="text-align:right; white-space:nowrap;">${row.status === "cancelled" ? "" :
           `<button class="btn btn-gray btn-sm lpr-dlv" title="What came against it - booking, bill and cancel are on the Order tracker" onclick="event.stopPropagation(); lpoDlvOpen(${row.id}, null, true)">Deliveries</button>${
-            otCanDo("purchaser") ? ` <button class="btn btn-gray btn-sm lpr-edit" title="Change the LPO - quantities, rates, lines. It keeps its number; Accounts are told what changed." onclick="event.stopPropagation(); lprEdit(${row.id})">Edit</button> <button class="btn btn-gray btn-sm" title="A new LPO with the same supplier, lines and rates - fill in the other plot" onclick="event.stopPropagation(); lprCopy(${row.id})">Copy</button>` : ""}`}</td>`);
+            otCanDo("purchaser") ? ` <button class="btn btn-gray btn-sm lpr-edit" title="Change the LPO - quantities, rates, lines. It keeps its number; Accounts are told what changed." onclick="event.stopPropagation(); lprEdit(${row.id})">Edit</button> <button class="btn btn-sm" style="background:#FBEFED; color:#A93226; border:1px solid #E6B8B1;" title="A new LPO with the same supplier, lines and rates - fill in the other plot" onclick="event.stopPropagation(); lprCopy(${row.id})">Copy</button>` : ""}`}</td>`);
       }
       // The tab is claimed in the click itself - asking for it after the
       // token fetch makes it a pop-up, which the browser blocks.
