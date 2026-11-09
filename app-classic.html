@@ -3084,7 +3084,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 
           <!-- Raise / view one order -->
           <div class="card" id="lpo-form-card" style="display:none;">
-            <h2 id="lpo-form-title">New Purchase Order</h2>
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;"><h2 id="lpo-form-title" style="margin:0;">New Purchase Order</h2>
+              <button type="button" class="btn btn-plain btn-sm" id="lpo-copy-btn" style="display:none;" onclick="lpoCopyAsNew()" title="A new LPO with everything on this one - supplier, lines, rates, terms. Only the project location and plot no are left for you to fill in. This LPO stays as it is.">Copy as new LPO</button></div>
 
             <div class="form-row" style="gap:10px; flex-wrap:wrap;">
               <div class="field"><label>LPO No</label><input type="text" id="lpo-ref" style="width:150px;" title="Filled in with the next number - type over it if this order needs a different one"></div>
@@ -13876,6 +13877,9 @@ function lprParams() {
 function lprEdit(id) {
   xlGo("store", "purchasing", "purchase", () => xlOn("purchase") && typeof editLpo === "function" && (lpoRegister || []).length, () => editLpo(id));
 }
+function lprCopy(id) {
+  xlGo("store", "purchasing", "purchase", () => xlOn("purchase") && typeof editLpo === "function" && (lpoRegister || []).length, async () => { await editLpo(id); if (lpoEditingId === id) lpoCopyAsNew(); });
+}
 function lprDrill(group, label) {
   const box = document.getElementById({ supplier: "lpr-supplier", site: "lpr-site", material: "lpr-material" }[group]);
   if (!box) return;
@@ -13945,7 +13949,7 @@ async function loadLpoReport() {
       if (r.group_by === "order") {
         cells.push(`<td style="text-align:right; white-space:nowrap;">${row.status === "cancelled" ? "" :
           `<button class="btn btn-gray btn-sm lpr-dlv" title="What came against it - booking, bill and cancel are on the Order tracker" onclick="event.stopPropagation(); lpoDlvOpen(${row.id}, null, true)">Deliveries</button>${
-            otCanDo("purchaser") ? ` <button class="btn btn-gray btn-sm lpr-edit" title="Change the LPO - quantities, rates, lines. It keeps its number; Accounts are told what changed." onclick="event.stopPropagation(); lprEdit(${row.id})">Edit</button>` : ""}`}</td>`);
+            otCanDo("purchaser") ? ` <button class="btn btn-gray btn-sm lpr-edit" title="Change the LPO - quantities, rates, lines. It keeps its number; Accounts are told what changed." onclick="event.stopPropagation(); lprEdit(${row.id})">Edit</button> <button class="btn btn-gray btn-sm" title="A new LPO with the same supplier, lines and rates - fill in the other plot" onclick="event.stopPropagation(); lprCopy(${row.id})">Copy</button>` : ""}`}</td>`);
       }
       // The tab is claimed in the click itself - asking for it after the
       // token fetch makes it a pop-up, which the browser blocks.
@@ -14133,6 +14137,7 @@ async function newLpo() {
   document.getElementById("lpo-form-card").style.display = "block";
   document.getElementById("lpo-form-title").textContent = "New Purchase Order";
   document.getElementById("lpo-save-btn").textContent = "Save & Generate";
+  { const cb = document.getElementById("lpo-copy-btn"); if (cb) cb.style.display = "none"; }
   document.getElementById("lpo-ref").value = n.ref;
   document.getElementById("lpo-date").value = isoLocal(new Date());
   document.getElementById("lpo-delivery").value = isoLocal(new Date());
@@ -14154,6 +14159,25 @@ async function newLpo() {
   { const oc = document.getElementById("lpo-open"); if (oc) oc.checked = false; lpoOpenOn(); }
   addLpoLine();
   window.scrollTo(0, 0);
+}
+
+// Copy as new LPO (9 Nov 2026, purchaser): the same LPO for another plot - an open LPO sent to two plots. What is
+// in the form becomes a new order with the next number; project location and plot no are left empty to fill in.
+async function lpoCopyAsNew() {
+  const from = document.getElementById("lpo-ref").value;
+  let n; try { n = await apiCall("/store/purchase/next-no"); } catch (e) { showStatus("lpo-status", "err", errText(e)); return; }
+  lpoDefaults = Object.assign({}, lpoDefaults, n);
+  lpoEditingId = null;
+  lpoRequestLineIds = [];
+  document.getElementById("lpo-form-title").textContent = `New Purchase Order - copy of ${from}`;
+  document.getElementById("lpo-save-btn").textContent = "Save & Generate";
+  document.getElementById("lpo-copy-btn").style.display = "none";
+  document.getElementById("lpo-ref").value = n.ref;
+  document.getElementById("lpo-date").value = isoLocal(new Date());
+  ["lpo-location", "lpo-plot"].forEach(id => { const x = document.getElementById(id); x.value = ""; x.style.borderColor = "#C0392B"; x.addEventListener("input", () => x.style.borderColor = "", { once: true }); });
+  window.scrollTo(0, 0);
+  showStatus("lpo-status", "ok", `Copied from ${from} - fill in the project location and plot no, then Save & Generate. ${from} is unchanged.`);
+  setTimeout(() => document.getElementById("lpo-location").focus(), 200);
 }
 
 function closeLpoForm() {
@@ -14182,6 +14206,7 @@ async function editLpo(id) {
     document.getElementById("lpo-form-title").textContent = `Edit ${o.ref}`;
     // Not "Generate" - this order already exists and keeps its number.
     document.getElementById("lpo-save-btn").textContent = "Save changes";
+    { const cb = document.getElementById("lpo-copy-btn"); if (cb) cb.style.display = ""; }
     document.getElementById("lpo-ref").value = o.ref;
     document.getElementById("lpo-date").value = o.order_date || isoLocal(new Date());
     document.getElementById("lpo-terms").value = o.terms || "Due on Receipt";
