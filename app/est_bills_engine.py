@@ -2612,6 +2612,15 @@ def _xlsx_a4(data, model, inputs):
         if True:
             m = re.search(r"<(rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|legacyDrawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b|</worksheet>", xml)
             xml = xml[:m.start()] + block + xml[m.start():]
+        if pr.get("carried"):                            # his "carried to collection" rows end a page in Excel too
+            have = {int(x) for x in re.findall(r'<brk\b[^>]*\bid="(\d+)"', (re.search(r"<rowBreaks\b.*?</rowBreaks>", xml, re.S) or re.search(r"$^", "")).group(0) if re.search(r"<rowBreaks\b.*?</rowBreaks>", xml, re.S) else "")}
+            allb = sorted(have | {int(r) for r in pr["carried"]})
+            rbx = f'<rowBreaks count="{len(allb)}" manualBreakCount="{len(allb)}">' + "".join(f'<brk id="{x}" max="16383" man="1"/>' for x in allb) + "</rowBreaks>"
+            if re.search(r"<rowBreaks\b", xml):
+                xml = re.sub(r"<rowBreaks\b[^>]*?(?:/>|>.*?</rowBreaks>)", rbx, xml, count=1, flags=re.S)
+            else:
+                m2 = re.search(r"<(colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|legacyDrawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b|</worksheet>", xml)
+                xml = xml[:m2.start()] + rbx + xml[m2.start():]
         # fit to page needs the sheet's own switch
         if fixed:
             xml = re.sub(r"<pageSetUpPr\b[^>]*/>", "", xml, count=1)
@@ -3327,6 +3336,7 @@ def _xlsx_dates(data):
 # ---------------------------------------------------------------------------------------- A4 on every sheet (7 Nov 2026)
 A4_MARGINS = {"normal": [10, 10, 15, 15, 8, 8], "narrow": [6, 6, 12, 12, 6, 6], "wide": [20, 20, 20, 20, 10, 10]}   # mm: left right top bottom header footer
 _TOTALISH = re.compile(r"\b(grand\s*total|net\s*total|sub\s*-?\s*total|total|discount|carried\s+to|collection|retention|vat|amount\s+due)\b", re.I)
+_CARRIED = re.compile(r"\s*(total\s+)?(carried\s+(to|forward|over)|c\s*/\s*f\b|to\s+collection|carried\b)", re.I)
 _TOTAL_LEAD = re.compile(r"\s*(grand\s*total|net\s*total|sub\s*-?\s*total|total\b|less\s+discount|discount|net\s+amount|amount\s+due|"
                          r"carried\s+to|brought\s+forward|retention|vat\b|less\b|add\b)", re.I)
 _SIGNISH = re.compile(r"\b(prepared\s+by|checked\s+by|approved\s+by|certified\s+by|signature)\b", re.I)
@@ -3395,6 +3405,14 @@ def a4_pages(model, inputs=None):
             else:
                 run = None
         pr["keep"] = [x for x in keep if x[1] > x[0]]
+        # The consultant ends each of his pages with "TOTAL CARRIED TO COLLECTION" (or "... carried forward") and
+        # starts the next with its headings. Excel only gets that right at his own scale and paper; on A4 the page
+        # must end there whatever the scale: a page break after every such row (not after the sheet's last row).
+        last = max(words) if words else 0
+        carried = [r for r in sorted(words) if r < last - 1 and _CARRIED.match(first[r])]
+        if carried:
+            pr["breaks"] = sorted(set(pr.get("breaks") or []) | set(carried))
+            pr["carried"] = carried
         if ps.get("area") and isinstance(ps["area"], list) and len(ps["area"]) == 4:
             s = dict(s, print_area=[int(x) for x in ps["area"]])
         m["sheets"].append(dict(s, print=pr))
