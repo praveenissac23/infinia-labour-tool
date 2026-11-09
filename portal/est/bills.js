@@ -221,6 +221,7 @@ async function openBill(id, step) {
   try { IPA.bill = await GET(`/store/est/ipa/bill/${id}`); } catch (e) { return fail(e); }
   try { IPA.people = (await GET("/store/est/ipa/signatures")).people; } catch (e) { IPA.people = []; }
   try { IPA.staff = (await GET("/store/est/ipa/people")).people; } catch (e) { IPA.staff = []; }
+  try { IPA.mine = await GET("/store/est/ipa/my-signature"); } catch (e) { IPA.mine = {}; }
   IPA.step = step || "work"; IPA.q = ""; IPA.filter = "";
   big("", `<div class="ipa"><nav class="ipa-nav" id="ipa-nav"></nav><div class="ipa-main" id="ipa-main"></div></div>`, () => { appFull(false); billsRedraw(); }, "est.ipa");
   appFull(true);                                       // the app's menu and top bar step aside: the bill gets the whole screen
@@ -256,7 +257,7 @@ function checks(b) {
     const open = pay.rows.filter(r => r.desc && /\d/.test(String(r.desc.value || "")) && !(r.amount && r.amount.value));
     out.push(open.length ? [false, `No amount yet for ${open.map(r => esc(r.desc.value)).join(", ")} - type it on Payments received once the money is in`] : [true, "Every earlier bill on the payments list has its amount"]);
   }
-  (b.signers || []).forEach(x => { const lab = x.labels.find(l => l !== "Signature") || x.labels[0]; out.push(x.signed_at ? (x.sig ? [true, `${esc(lab)}: ${esc(x.name)} signed on ${dt(x.signed_at)}`] : [false, `${esc(lab)}: ${esc(x.name)} signed on ${dt(x.signed_at)} but has no signature picture - upload it on Cover & details`]) : [false, `${esc(lab)}: ${esc(x.name)} has not signed yet${x.turn ? " - it is their turn" : ""}`]); });
+  (b.signers || []).filter(x => !x.ext).forEach(x => { const lab = x.labels.find(l => l !== "Signature") || x.labels[0]; out.push(x.signed_at ? (x.sig ? [true, `${esc(lab)}: ${esc(x.name)} signed on ${dt(x.signed_at)}`] : [false, `${esc(lab)}: ${esc(x.name)} signed on ${dt(x.signed_at)} but has no signature picture - upload it on Cover & details`]) : [false, `${esc(lab)}: ${esc(x.name)} has not signed yet${x.turn ? " - it is their turn" : ""}`]); });
   return out;
 }
 
@@ -269,7 +270,7 @@ function drawBill() {
   undoRefresh();
   IPA_STEPS = IPA_ALL_STEPS.filter(([k]) => k !== "fees" || (b.fees && b.fees.length));
   if (!IPA_STEPS.some(x => x[0] === IPA.step)) IPA.step = "work";
-  const signed = (b.signers || []).filter(x => x.signed_at).length, nsign = (b.signers || []).length;
+  const signed = (b.signers || []).filter(x => x.signed_at && !x.ext).length, nsign = (b.signers || []).filter(x => !x.ext).length;
   const sub = { cover: `${dt(b.issue_date) || "no date"}`, work: `${f.moved} of ${f.entry} lines moved`,
                 pay: b.payments.length ? `total ${money(b.payments[0].total, false)}` : "none on this format",
                 fees: b.fees && b.fees.length ? `this bill ${money(b.fees[0].total, false)}` : "",
@@ -388,35 +389,51 @@ function samePerson(a, b) {
   return whole;
 }
 
-// who prepares / checks / approves: the full name and designation printed on the bill, and the person's signature
+// who prepares / checks / approves: the same four lines on every bill - Prepared by (a QS), Checked by, Approved by,
+// and the consultant. Lines 1-3 pick from their own list only, the designation fills itself; the consultant is typed.
 function signersCard(b) {
   if (!b.signers || !b.signers.length) return "";
   const staff = IPA.staff || [];
-  const names = [...new Set(staff.map(x => x.name).concat((IPA.people || []).map(x => x.name)).filter(Boolean))];
-  const who = n => staff.find(p => samePerson(p.name, n));
+  const who = n => n ? staff.find(p => samePerson(p.name, n)) : null;
+  const roles = b.signers.some(g => g.role);
+  const reg = g => { if (g.ext) return `<div class="small muted">External - signs and stamps the printed copy</div>`;
+    const p = who(g.name); if (!g.name) return `<div class="small ipa-warn">Pick who signs</div>`;
+    return p ? `<div class="small ${p.login ? "muted" : "ipa-warn"}">Staff register: ${esc(p.name)} - ${esc(p.short || p.designation)}${p.login ? ` · login <b>${esc(p.login)}</b>` : " · no login, cannot sign"}</div>` : `<div class="small ipa-warn">Not in the staff register - cannot sign</div>`; };
+  const nameCell = g => {
+    if (!roles) return `<input class="ipa-sgn" value="${esc(g.name)}" data-noclear data-spell="off" autocomplete="off">`;
+    if (g.ext) return `<input class="ipa-sgn" value="${esc(g.name)}" data-noclear data-spell="off" autocomplete="off" placeholder="The consultant">`;
+    const opts = (g.options || []).slice(); if (g.name && !opts.includes(g.name)) opts.unshift(g.name);
+    const id = "sgl-" + g.role;
+    return `<input class="ipa-sgn ipa-sgsel" list="${id}" value="${esc(g.name)}" data-noclear data-spell="off" autocomplete="off" placeholder="Type to search - pick from the list" ${g.signed_at ? "disabled" : ""}><datalist id="${id}">${opts.map(o => `<option value="${esc(o)}">`).join("")}</datalist>`; };
   return `<div class="ipa-card"><h3>Prepared, checked and approved by</h3>
-    <div class="muted small" style="margin-bottom:10px">Who prepares, checks and approves this bill - the names and designations printed on it. Pick or type the full name; a signature uploaded once is kept for that person. It is printed only after they sign on Approve &amp; send, each in turn. Next month's bill keeps the same people.</div>
-    <datalist id="ipa-people">${names.map(n => { const p = staff.find(x => x.name === n); return `<option value="${esc(n)}">${p ? esc(p.designation) : ""}</option>`; }).join("")}</datalist>
+    <div class="muted small" style="margin-bottom:10px">Who prepares, checks and approves this bill - the names and designations printed on it. Each person's signature belongs to their own login: uploaded once, changed only by them in Settings &rsaquo; My signature, printed only after they sign on Approve &amp; send. Next month's bill keeps the same people.</div>
     <div class="ipa-tw"><table class="ipa-sg" data-nofreeze><thead><tr><th>Signs as</th><th>Full name</th><th>Designation</th><th>Signature</th><th></th></tr></thead><tbody>
-    ${b.signers.map(g => `<tr data-sg="${esc(g.key)}"><td><b>${esc(g.labels.join(" / "))}</b><div class="muted small">${esc(g.sheets.join(", "))}</div></td>
-      <td><input class="ipa-sgn" list="ipa-people" value="${esc(g.name)}" data-noclear data-spell="off" autocomplete="off" placeholder="Pick from the staff register">${(() => { const p = who(g.name);
-        return p ? `<div class="small ${p.login ? "muted" : "ipa-warn"}">Staff register: ${esc(p.name)} - ${esc(p.short || p.designation)}${p.login ? ` · login <b>${esc(p.login)}</b>` : " · no login, cannot sign"}</div>` : `<div class="small ipa-warn">Not in the staff register${g.step === 0 ? "" : " - cannot sign"}</div>`; })()}</td>
-      <td><input class="ipa-sgt" value="${esc(g.title || "")}" data-noclear></td>
-      <td class="sig">${sigCell(g)}</td>
-      <td class="r nowrap"><label class="btn btn-plain btn-sm">${g.own ? "Change signature" : "Upload signature"}<input type="file" accept="image/*" class="ipa-sgf" hidden></label>
-        ${g.signed_at ? "" : `<button type="button" class="btn btn-plain btn-sm ipa-sgx" title="Nobody signs here on this bill: the name, designation and signature are taken off the printed bill">Remove</button>`}</td></tr>`).join("")}
-    </tbody></table></div>
-    ${(b.signers_off || []).length ? `<div class="small muted" style="margin-top:8px">Removed from this bill: ${b.signers_off.map(o => `<b>${esc(o.labels[0])}</b> (${esc(o.was)}) <button type="button" class="btn btn-plain btn-sm" data-sgback="${esc(o.key)}">Put back</button>`).join(" · ")}</div>` : ""}</div>`;
+    ${b.signers.map(g => `<tr data-sg="${esc(g.key)}"><td><b>${esc(g.label || g.labels.join(" / "))}</b><div class="muted small">${esc((g.sheets || []).join(", "))}</div></td>
+      <td>${nameCell(g)}${reg(g)}</td>
+      <td><input class="ipa-sgt" value="${esc(g.title || "")}" data-noclear ${g.fixed_title ? "readonly tabindex=\"-1\" style=\"background:#F6F4F1;color:#444\"" : ""} ${g.ext ? 'placeholder="optional"' : ""}></td>
+      <td class="sig">${g.sig ? `<img src="${g.sig}" alt="signature">` : `<span class="muted small">none</span>`}${g.sig && !g.own ? `<div class="muted small">from the format</div>` : ""}</td>
+      <td class="r nowrap">${sigAct(g)}</td></tr>`).join("")}
+    </tbody></table></div></div>`;
 }
 // The signature column says where each person stands: signed (and when), or waiting - with the picture that will print
 function sigCell(g) {
   const img = g.sig ? `<img src="${g.sig}" alt="signature" style="${g.signed_at ? "" : "opacity:.35"}">` : "";
   if (g.signed_at) return `${img}<div class="small" style="color:#1E7A3C;font-weight:600">&#10003; Signed ${esc(dt(g.signed_at))}</div>`;
   const st = g.turn ? `<b style="color:#B26A00">Their turn</b> - signs on Approve &amp; send` : "Waiting - signs on Approve &amp; send";
-  const pic = g.own ? "signature on file" : g.sig ? "old picture from the uploaded bill - not printed until they sign" : "<span class='ipa-warn'>no signature on file - upload it once</span>";
+  const pic = g.own ? "signature on file" : g.sig ? "old picture from the uploaded bill - not printed until they sign" : "<span class='ipa-warn'>no signature on file - they upload it once from their own login</span>";
   return `${img}<div class="small muted">${st}<br>${pic}</div>`;
 }
+// A signature belongs to the login: the person uploads it once (here or in Settings > My signature) and only they change it
+function sigAct(g) {
+  if (g.ext) return "";
+  const me = g.name && IPA.mine && IPA.mine.name && samePerson(IPA.mine.name, g.name);
+  if (me && !g.own) return `<label class="btn btn-plain btn-sm">Upload my signature<input type="file" accept="image/*" class="ipa-sgf" hidden></label>`;
+  if (me) return `<button class="btn btn-plain btn-sm" data-mysig>Change in Settings</button>`;
+  if (!g.name) return "";
+  return g.own ? `<span class="muted small">On file for ${esc(g.name.split(" ")[0])}'s login</span>` : `<span class="small ipa-warn">${esc(g.name.split(" ")[0])} uploads it once<br>from their own login</span>`;
+}
 function bindSigners(m) {
+  $$("[data-mysig]", m).forEach(x => x.onclick = () => { try { parent.postMessage({ est: "mysig" }, location.origin); } catch (e) {} });
   $$("[data-sgback]", m).forEach(x => x.onclick = async () => { if (await save({ signs: { [x.dataset.sgback]: { removed: false } } })) { toast("Put back - pick who signs"); drawBill(); } });
   $$("tr[data-sg]", m).forEach(tr => {
     const k = tr.dataset.sg, n = $(".ipa-sgn", tr), t = $(".ipa-sgt", tr), f = $(".ipa-sgf", tr);
@@ -428,7 +445,11 @@ function bindSigners(m) {
       if (!n.value.trim()) { toast("Type the full name", { err: true }); return; }
       if (await save({ signs: { [k]: { name: n.value.trim(), title: t.value.trim() } } })) { toast("Saved - printed on the bill"); drawBill(); }
     };
-    n.onchange = () => {
+    if (n.classList.contains("ipa-sgsel")) { n.onfocus = () => { n.dataset.was = n.value; n.value = ""; }; n.onblur = () => { if (!n.value) n.value = n.dataset.was || ""; };
+      n.onchange = async () => { const g = IPA.bill.signers.find(x => x.key === k) || {}, v = (g.options || []).find(o => o.toLowerCase() === n.value.trim().toLowerCase());
+        if (!v) { toast("Pick one of: " + (g.options || []).join(", ")); n.value = n.dataset.was || ""; return; }
+        n.value = v; n.dataset.was = v; if (v === g.name) return; if (await save({ signs: { [k]: { name: v } } })) { toast("Saved - printed on the bill"); drawBill(); } }; }
+    else n.onchange = () => {
       const was = (IPA.bill.signers.find(x => x.key === k) || {}).name || "";
       const sp = (IPA.staff || []).find(x => samePerson(x.name, n.value.trim()));
       const pp = (IPA.people || []).find(x => samePerson(x.name, n.value.trim()));
@@ -437,14 +458,15 @@ function bindSigners(m) {
       }
       push();
     };
-    t.onchange = push;
-    f.onchange = async () => {
+    if (!t.readOnly) t.onchange = push;
+    if (f) f.onchange = async () => {
       const file = f.files[0]; if (!file) return;
       if (!n.value.trim()) { toast("Type the full name first", { err: true }); return; }
       const fd = new FormData(); fd.append("name", n.value.trim()); fd.append("title", t.value.trim()); fd.append("file", file);
       try {
         toast("Uploading the signature...");
         await api("/store/est/ipa/signature", { method: "POST", body: fd });
+        try { IPA.mine = await GET("/store/est/ipa/my-signature"); } catch (e) {}
         IPA.people = (await GET("/store/est/ipa/signatures")).people;
         await save({ signs: { [k]: { name: n.value.trim(), title: t.value.trim() } } });
         toast("Signature saved - the paper's white is taken out"); drawBill();
@@ -817,7 +839,7 @@ function chainCard(b) {
   if (!b.signers || !b.signers.length) return "";
   const meName = ST.meta.me.name || "", meUser = ST.meta.me.username || "";
   return `<div class="ipa-card"><h3>Approval <span class="muted small">- each person signs in turn; the bill goes out once everyone has</span></h3>
-    <ol class="ipa-chain">${b.signers.map(x => {
+    <ol class="ipa-chain">${b.signers.filter(x => !x.ext).map(x => {
       const mine = ST.meta.me.admin || samePerson(meName, x.name) || samePerson(meUser, x.name);
       const state = x.signed_at ? "done" : x.turn ? "turn" : "wait";
       return `<li class="${state}"><span class="dot">${x.signed_at ? "&#10003;" : x.turn ? "&rarr;" : "&middot;"}</span>
@@ -898,7 +920,7 @@ function drawSheets(m) {
 }
 async function drawReview(m) {
   const b = IPA.bill, ck = checks(b), c = b.cover;
-  const allSigned = !(b.signers || []).some(x => !x.signed_at);
+  const allSigned = !(b.signers || []).some(x => !x.signed_at && !x.ext);
   m.innerHTML = `<div class="ipa-card ipa-rev">
       <div class="ipa-rev-top"><div><small>Total amount due for payment</small><div class="big">AED ${money(b.total_due, false)}</div>${c && c.words ? `<div class="muted small">${esc(c.words)}</div>` : ""}</div>
         <div class="ipa-rev-st"><label class="small muted">Status</label><select id="ipa-st" ${ST.meta.me.admin ? "" : "disabled"}>${IPA.list.statuses.map(s => `<option ${s === b.status ? "selected" : ""}>${s}</option>`).join("")}</select>

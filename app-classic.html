@@ -2123,7 +2123,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                  z-index:200; text-align:left;">
               <div style="padding:10px 14px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
                 <strong style="font-size:13.5px;">Notifications</strong>
-                <span style="display:flex; gap:6px;"><button class="btn btn-gray" style="padding:2px 8px; font-size:11px;" onclick="openNotifPrefs()" title="Choose what this login is told about">Settings</button><button class="btn btn-gray" style="padding:2px 8px; font-size:11px;" onclick="markAllRead()">Mark all read</button></span>
+                <span style="display:flex; gap:6px;"><button class="btn btn-gray" style="padding:2px 8px; font-size:11px;" onclick="openNotifPrefs()" title="What this login is told about, and your signature">Settings</button><button class="btn btn-gray" style="padding:2px 8px; font-size:11px;" onclick="markAllRead()">Mark all read</button></span>
               </div>
               <div id="bell-list" style="max-height:380px; overflow-y:auto;"></div>
             </div>
@@ -4780,6 +4780,15 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <p style="font-size:12px; color:#888; margin:0 0 10px;">What the bell and your devices tell you about. Untick anything you do not want; it applies to this login everywhere.</p>
             <div id="notif-groups" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:4px 18px;"></div>
             <div class="form-row" style="margin-top:10px;"><button class="btn btn-primary" onclick="notifSave()">Save</button><span id="notif-msg" style="font-size:12px; color:#888; margin-left:8px;"></span></div>
+          </div>
+          <div class="card" id="pg-mysig-card">
+            <h2>My signature</h2>
+            <p style="font-size:12px; color:#888; margin:0 0 10px;">Your signature for the bills you prepare, check or approve. It belongs to this login - only you upload or change it. Bills already signed keep the signature they were signed with.</p>
+            <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+              <div id="mysig-img" style="min-width:180px; min-height:70px; border:1px dashed #DDD; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:6px; font-size:12px; color:#888;"></div>
+              <label class="btn btn-primary" style="cursor:pointer;"><span id="mysig-btn">Upload signature</span><input type="file" id="mysig-file" accept="image/*" hidden onchange="mySigUpload()"></label>
+              <span id="mysig-msg" style="font-size:12px; color:#888;">Sign on white paper with a dark pen and take a photo - the paper is taken out by itself.</span>
+            </div>
           </div>
           <div class="card" id="pg-push-card">
             <h2>Notifications on this device</h2>
@@ -24025,10 +24034,11 @@ async function notifPaint() {
 }
 // Every login chooses its own notifications - also a login that cannot open the Settings page: the same
 // "My notifications" card opens over whatever page it is on, from the bell.
-function openNotifPrefs() {
+function openNotifPrefs(focus) {
   const bp = document.getElementById("bell-panel"); if (bp) bp.style.display = "none";
   const card = document.getElementById("pg-notif-card"); if (!card) return;
-  if (typeof pgGo === "function" && (CURRENT_ROLE === "admin" || (typeof pgAllowed === "function" && pgAllowed("settings")))) { pgGo("settings"); setTimeout(() => card.scrollIntoView({ block: "start" }), 300); return; }
+  const sig = document.getElementById("pg-mysig-card"), show = focus === "sig" && sig ? sig : card;
+  if (typeof pgGo === "function" && (CURRENT_ROLE === "admin" || (typeof pgAllowed === "function" && pgAllowed("settings")))) { pgGo("settings"); setTimeout(() => show.scrollIntoView({ block: "start" }), 300); return; }
   let ov = document.getElementById("notif-pref-ov");
   if (!ov) {
     ov = document.createElement("div"); ov.id = "notif-pref-ov";
@@ -24037,13 +24047,15 @@ function openNotifPrefs() {
     ov.addEventListener("mousedown", e => { if (e.target === ov) closeNotifPrefs(); });
     document.body.appendChild(ov);
   }
-  card._home = card.parentNode; card._next = card.nextSibling;
-  document.getElementById("notif-pref-box").appendChild(card);
-  card.style.margin = "0"; ov.style.display = "flex"; notifPaint();
+  const box = document.getElementById("notif-pref-box");
+  // My signature first when asked from a bill, then My notifications - both this login's own
+  [show, show === card ? sig : card].forEach(c => { if (!c) return; if (!c._home) { c._home = c.parentNode; c._next = c.nextSibling; } c.style.margin = "0 0 12px"; box.appendChild(c); });
+  ov.style.display = "flex"; notifPaint(); mySigPaint();
 }
 function closeNotifPrefs() {
-  const ov = document.getElementById("notif-pref-ov"), card = document.getElementById("pg-notif-card");
-  if (card && card._home) { card._home.insertBefore(card, card._next || null); card.style.margin = ""; }
+  const ov = document.getElementById("notif-pref-ov");
+  ["pg-mysig-card", "pg-notif-card"].forEach(id => { const c = document.getElementById(id);
+    if (c && c._home) { c._home.insertBefore(c, c._next && c._next.parentNode === c._home ? c._next : null); c.style.margin = ""; c._home = null; } });
   if (ov) ov.style.display = "none";
 }
 async function notifSave() {
@@ -24084,8 +24096,22 @@ function agentCopy() {
   (navigator.clipboard ? navigator.clipboard.writeText(el.value) : Promise.reject()).then(
     () => showStatus("settings-status", "ok", "Link copied."), () => { document.execCommand("copy"); showStatus("settings-status", "ok", "Link copied."); });
 }
+async function mySigPaint() {
+  const box = document.getElementById("mysig-img"); if (!box) return;
+  let d; try { d = await apiCall("/store/est/ipa/my-signature"); } catch (e) { return; }
+  box.innerHTML = d.sig ? `<img src="${d.sig}" alt="signature" style="max-height:80px; max-width:260px;">` : "None uploaded yet";
+  document.getElementById("mysig-btn").textContent = d.sig ? "Change signature" : "Upload signature";
+}
+async function mySigUpload() {
+  const input = document.getElementById("mysig-file"), f = input.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  try { await apiCall("/store/est/ipa/my-signature", { method: "POST", body: fd }); showStatus("settings-status", "ok", "Signature saved - used on the bills you sign from now on."); mySigPaint(); }
+  catch (e) { showStatus("settings-status", "err", errText(e)); }
+  input.value = "";
+}
 async function pushPaint() {
   notifPaint();
+  mySigPaint();
   agentPaint();
   const el = document.getElementById("push-state"); if (!el) return;
   const on = document.getElementById("push-on-btn"), off = document.getElementById("push-off-btn"), test = document.getElementById("push-test-btn");

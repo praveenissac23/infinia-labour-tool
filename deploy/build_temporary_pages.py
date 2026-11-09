@@ -174,7 +174,7 @@ PAGES = {
                         tab("docs", "docsoffice", "Docs to office", ["docs_send", "docs_verify"], go="dtLoad()")]),
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
-            ["#pg-notif-card", "#pg-push-card", "#pg-agent-card", "#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"]),
+            ["#pg-mysig-card", "#pg-notif-card", "#pg-push-card", "#pg-agent-card", "#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"]),
         tab("companies", "settings", "Companies & sites", "settings_companies", ["#companies-card", "#pg-sites-block"]),
         tab("logins", "pglogins", "Logins", "settings_logins"),
         tab("access", "pgaccess", "Access", "settings_access"),
@@ -841,6 +841,7 @@ window.addEventListener("message", e => {
   }
 
   if (e.data.est === "app" && typeof pgGo === "function") pgGo(e.data.page, e.data.tab);
+  if (e.data.est === "mysig" && typeof openNotifPrefs === "function") openNotifPrefs("sig");   // a bill's "change it in Settings"
   if (e.data.est === "full") pgFull(!!e.data.on);       // a bill open: the whole screen for it
   if (e.data.est === "glass") document.documentElement.classList.toggle("est-glass", !!e.data.on);   // the project dashboard's dark glass look (on <html>: the app rewrites the body's classes); the frame fades its own page
 });

@@ -140,6 +140,55 @@ def abaad_whole(SessionLocal):
         db.close()
 
 
+def bill_signers(SessionLocal):
+    """Every Draft bill nobody has signed yet: the 'Prepared, checked and approved by' lines as on 914 Interim Bill 8
+    (9 Nov 2026) - names in full from each line's list (914: Anoop S -> Anoop Subramanian), 913 Interim Bill 10:
+    Prepared by left for a QS to be picked, Checked by Remya Uchambally taken off, Approved by Anoop Subramanian and
+    the consultant added. Bills approved or signed are not touched. Each bill's change is written to the audit log."""
+    key = "est_onetime_bill_signers_20261109"
+    db = SessionLocal()
+    try:
+        if db.query(models.Setting).filter(models.Setting.key == key).first():
+            return
+        import est_bills as EB
+        notes = []
+        for b in db.query(EB.EstBill).filter(EB.EstBill.status == "Draft").all():
+            if any((v or {}).get("signed_at") for v in EB._signs(b).values()):
+                continue
+            fmt = db.get(EB.EstBillFormat, b.format_id)
+            if not fmt:
+                continue
+            try:
+                inputs = json.loads(json.dumps(EB._inputs(b)))
+                model = EB._bill_model(fmt, inputs)
+                values = EB.BE.calculate(model, inputs)
+                cons = ((EB._cover(model, values) or {}).get("facts") or {}).get("consultant") or ""
+                due0 = b.total_due
+                EB._undo_skip()
+                log = EB.apply_roles(b, model, inputs, cons)
+                inputs, values = EB._calc(model, inputs)
+                b.inputs = json.dumps(inputs)
+                EB._save_totals(b, model, values)
+                if abs((b.total_due or 0) - (due0 or 0)) > 0.005:
+                    raise ValueError(f"total due would change {due0} -> {b.total_due}")
+            except Exception as e:                   # one bill that cannot be read is left as it is
+                db.rollback()
+                notes.append(f"bill #{b.id}: left as it was ({type(e).__name__}: {e})")
+                continue
+            if log:
+                notes.append(f"bill #{b.id} ({b.label}): " + "; ".join(log))
+        db.add(models.Setting(key=key, value="1"))
+        db.add(models.AuditLog(action="est_onetime", details=("Bill signers (Prepared, checked and approved by): " + ("; ".join(notes) or "none needed"))[:4000]))
+        db.commit()
+        if notes:
+            print("Bill signers: " + "; ".join(notes))
+    except Exception as e:
+        db.rollback()
+        _note(db, f"Bill signers NOT put in (nothing changed): {type(e).__name__}: {e}")
+    finally:
+        db.close()
+
+
 def summary_mirror(SessionLocal):
     """Lines and sections added to a bill's sheet (913 bill 10: VI VARIATION ORDER - 04 / Construction of Swimming
     Pool 312,000 on the Cost Proposal Log) put on the Summary that copies that sheet line by line, so its totals and
@@ -187,3 +236,4 @@ def run(SessionLocal):
     raida_groups(SessionLocal)
     abaad_whole(SessionLocal)
     summary_mirror(SessionLocal)
+    bill_signers(SessionLocal)

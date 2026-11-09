@@ -73,6 +73,7 @@ class EstSignature(Base):
     title = Column(String, default="")
     png = deferred(Column(LargeBinary))            # cleaned: white made see-through, cropped
     updated_by = Column(Integer, nullable=True)
+    user_id = Column(Integer, nullable=True, index=True)   # the login it belongs to: only that login changes it (Settings)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
@@ -98,7 +99,7 @@ def create_tables(engine):
     from sqlalchemy import inspect, text
     for t in (EstBillFormat, EstBill, EstSignature, EstBillHist):
         t.__table__.create(bind=engine, checkfirst=True)
-    for tb, col, typ in (("est_bills", "signs", "TEXT"), ("est_bills", "contract_id", "INTEGER"), ("est_bill_formats", "contract_id", "INTEGER")):
+    for tb, col, typ in (("est_bills", "signs", "TEXT"), ("est_bills", "contract_id", "INTEGER"), ("est_bill_formats", "contract_id", "INTEGER"), ("est_signatures", "user_id", "INTEGER")):
         try:                                       # columns added after the tables were made
             have = {c["name"] for c in inspect(engine).get_columns(tb)}
             if col not in have:
@@ -888,12 +889,170 @@ def _bill_out(b, fmt, model, values, inputs, users=None, store=None):
             "bill_no_raw": BE.general(values.get(model["map"]["bill_no"]["sheet"], {}).get(f"{model['map']['bill_no']['r']},{model['map']['bill_no']['c']}")) if model.get("map", {}).get("bill_no") else "",
             "has_date": bool(model.get("map", {}).get("issue_date")), "has_no": bool(model.get("map", {}).get("bill_no")),
             "changed": sum(len(v) for v in inputs.values()),
-            "signers": _signers_out(b, model, store or {}),
+            "signers": _signers_out(b, model, store or {}, ((_cover(model, values) or {}).get("facts") or {}).get("consultant") or ""),
             "signers_off": [{"key": g["key"], "labels": g["labels"], "was": (_signs(b).get(g["key"]) or {}).get("was") or g["orig"]}
-                            for g in _groups(model) if (_signs(b).get(g["key"]) or {}).get("removed")]}
+                            for g in _groups(model) if (_signs(b).get(g["key"]) or {}).get("removed")] if not _roles_on(b) else []}
 
 
-def _signers_out(b, model, store):
+# ---- who signs a bill: the same four lines on the Cover & details page of every bill --------------------------
+# Kept in the settings (est_bill_signers) so the office can change the people later; these are the defaults.
+SIGN_ROLES_DEFAULT = [
+    {"role": "prep", "label": "Signature / Prepared by", "sheets": "IPA, APP A-Payment summary", "title": "Quantity Surveyor",
+     "people": ["Neethu Treesa Jose", "Preenu Annie Daniel", "Arathi S", "Sreelekshmi MS"]},
+    {"role": "check", "label": "Signature / Checked by", "sheets": "IPA, APP A-Payment summary", "title": "Chief Accountant", "people": ["Shafeeq"]},
+    {"role": "appr", "label": "Approved by", "sheets": "IPA", "title": "Senior Contracts Manager", "people": ["Anoop Subramanian"]},
+    {"role": "cons", "label": "Approved by", "sheets": "IPA", "title": "", "people": [], "external": True},
+]
+_ROLES_CACHE = {"t": 0, "v": None}
+
+
+def sign_roles():
+    import time
+    if _ROLES_CACHE["v"] is not None and time.time() - _ROLES_CACHE["t"] < 60:
+        return _ROLES_CACHE["v"]
+    v = SIGN_ROLES_DEFAULT
+    try:
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            row = db.query(models.Setting).filter(models.Setting.key == "est_bill_signers").first()
+            if row and row.value:
+                got = json.loads(row.value)
+                if isinstance(got, list) and got:
+                    v = got
+        finally:
+            db.close()
+    except Exception:
+        pass
+    _ROLES_CACHE.update(t=time.time(), v=v)
+    return v
+
+
+_COMPANY = re.compile(r"(\bm\s*/\s*s\b|\bllc\b|l\.l\.c|consult|engineer|architect|design|\bco\.?\b|limited|\bltd\b)", re.I)
+
+
+def _role_map(model, sg):
+    """The format's signing places matched to the four lines: {role: group}; the rest are extra (not signed, taken
+    off the printed bill)."""
+    groups = sorted(_groups(model), key=lambda g: _step_of(g["labels"]))
+    roles = {r["role"]: r for r in sign_roles()}
+    name = lambda g: ((sg.get(g["key"]) or {}).get("was") or (sg.get(g["key"]) or {}).get("name") or g["orig"])
+    has = lambda g, rx: any(re.search(rx, l, re.I) for l in g["labels"])
+    used, out = set(), {}
+
+    def pick(pred):
+        for g in groups:
+            if g["key"] not in used and pred(g):
+                used.add(g["key"])
+                return g
+        return None
+    listed = lambda g, r: any(same_person(name(g), p) for p in (roles.get(r) or {}).get("people", []))
+    out["prep"] = pick(lambda g: has(g, "prepar|submit"))
+    out["check"] = pick(lambda g: has(g, "check|review|verif") and listed(g, "check")) or pick(lambda g: has(g, "check|review|verif") and has(g, "signature")) \
+        or pick(lambda g: has(g, "check|review|verif"))
+    out["cons"] = pick(lambda g: has(g, "approv|certif") and _COMPANY.search(name(g) or ""))
+    out["appr"] = pick(lambda g: has(g, "approv|certif") and listed(g, "appr")) or pick(lambda g: has(g, "approv|certif") and not _COMPANY.search(name(g) or ""))
+    extra = [g for g in groups if g["key"] not in used]
+    return {k: v for k, v in out.items() if v}, extra
+
+
+def _role_name(r, raw):
+    """A name for lines 1-3: the full name from the line's list (Anoop S -> Anoop Subramanian), or "" if not on it."""
+    for p in r.get("people", []):
+        if raw and same_person(raw, p):
+            return p
+    return ""
+
+
+def _role_rows(b, model, store, consultant=""):
+    """The four lines of the Cover & details page, in order: prepared, checked, approved, the consultant."""
+    sg = _signs(b)
+    gm, extra = _role_map(model, sg)
+    places = model.get("map", {}).get("signs", [])
+    out = []
+    for i, r in enumerate(sign_roles()):
+        g = gm.get(r["role"])
+        key = g["key"] if g else "role:" + r["role"]
+        want = sg.get(key) or {}
+        raw = want.get("name") if "name" in want else (g["orig"] if g else "")
+        if r.get("external"):
+            name = (raw or "").strip() or consultant
+            title = want.get("title") if want.get("title") is not None else (g["orig_title"] if g else "")
+        else:
+            name = _role_name(r, raw) or ("" if (raw or g or len(r.get("people", [])) != 1) else r["people"][0])
+            if not raw and not g and len(r.get("people", [])) == 1:
+                name = r["people"][0]
+            title = r.get("title", "")
+        sig = _sig_for(store, name) if name else None
+        fimg = None
+        if g:
+            for pi in g["places"]:
+                p = places[pi]
+                if p["img"] is not None:
+                    sh = next(x for x in model["sheets"] if x["name"] == p["sheet"])
+                    im = sh["images"][p["img"]]
+                    fimg = f"data:image/{'jpeg' if im['ext'] in ('jpg', 'jpeg') else im['ext']};base64,{im['data']}"
+                    break
+        shown = _png_url(sig.png) if sig else (fimg if g and same_person(name, g["orig"]) else "")
+        out.append({"key": key, "role": r["role"], "labels": [x.strip() for x in r["label"].split("/")], "label": r["label"],
+                    "sheets": g["sheets"] if g else [x.strip() for x in r.get("sheets", "").split(",") if x.strip()],
+                    "orig": g["orig"] if g else "", "orig_title": g["orig_title"] if g else "", "name": name, "title": title or "",
+                    "options": r.get("people", []), "fixed_title": not r.get("external"), "ext": bool(r.get("external")),
+                    "sig": shown, "own": bool(sig), "format_has": bool(fimg), "step": i,
+                    "signed_at": want.get("signed_at") or "", "signed_by": want.get("signed_by") or ""})
+    nxt = next((x for x in out if not x["ext"] and not x["signed_at"]), None)
+    for x in out:
+        x["turn"] = x is nxt
+    return out, extra
+
+
+def apply_roles(b, model, inputs, consultant=""):
+    """Puts a bill on the four lines: names written in full from each line's list (Anoop S -> Anoop Subramanian),
+    a name not on the list left for the office to pick, the fixed designations, the consultant on the last line,
+    and any other signing place of the format (913: Checked by Remya Uchambally) taken off the printed bill.
+    Returns what changed (for the log); the caller saves b.signs and inputs."""
+    sg = _signs(b)
+    rows, extra = _role_rows(b, model, {}, consultant)
+    places = model.get("map", {}).get("signs", [])
+    groups = {g["key"]: g for g in _groups(model)}
+    log = []
+    for x in rows:
+        cur = dict(sg.get(x["key"]) or {})
+        if cur.get("signed_at"):
+            continue
+        old_n = cur.get("name") if "name" in cur else (x["orig"] or "")
+        if old_n != x["name"] or cur.get("title", x["orig_title"]) != x["title"] or x["key"] not in sg:
+            log.append(f"{x['label']}: {old_n or '-'} -> {x['name'] or '(to pick)'}")
+        cur.update(name=x["name"], title=x["title"], step=x["step"])
+        cur.pop("removed", None); cur.pop("was", None)
+        sg[x["key"]] = cur
+        g = groups.get(x["key"])
+        for pi in (g["places"] if g else []):
+            p = places[pi]
+            inputs.setdefault(p["sheet"], {})[f"{p['name']['r']},{p['name']['c']}"] = ((p["name"]["prefix"] or "") + x["name"]) if x["name"] else (p["name"]["prefix"] or "").rstrip()
+            if p.get("title"):
+                inputs[p["sheet"]][f"{p['title']['r']},{p['title']['c']}"] = x["title"] or ""
+    for g in extra:
+        if (sg.get(g["key"]) or {}).get("removed"):
+            continue
+        log.append(f"{' / '.join(g['labels'])}: {(sg.get(g['key']) or {}).get('name') or g['orig']} removed")
+        sg[g["key"]] = {"removed": True, "step": _step_of(g["labels"]), "was": (sg.get(g["key"]) or {}).get("name") or g["orig"]}
+        for pi in g["places"]:
+            p = places[pi]
+            inputs.setdefault(p["sheet"], {})[f"{p['name']['r']},{p['name']['c']}"] = (p["name"]["prefix"] or "").rstrip()
+            if p.get("title"):
+                inputs[p["sheet"]][f"{p['title']['r']},{p['title']['c']}"] = ""
+    b.signs = json.dumps(sg)
+    return log
+
+
+def _roles_on(b):
+    return (b.status or "Draft") in ("Draft", "Awaiting approval")
+
+
+def _signers_out(b, model, store, consultant=""):
+    if _roles_on(b):
+        return _role_rows(b, model, store, consultant)[0]
     sg = _signs(b)
     out = []
     import base64 as _b
@@ -1473,8 +1632,17 @@ def new_bill(payload: dict = Body(...), db: Session = Depends(get_db), user: mod
     carried = {}
     for k, v in (_signs(last) if last else {}).items():     # the same people sign next month - each signs afresh
         carried[k] = {"name": v.get("name"), "title": v.get("title"), "step": v.get("step", 1)}
+    for k, v in (_signs(last) if last else {}).items():     # a line taken off stays off
+        if v.get("removed"):
+            carried[k] = {"removed": True, "step": v.get("step", 1), "was": v.get("was")}
     b = EstBill(project_id=pid, format_id=fmt.id, contract_id=fmt.contract_id, seq=seq, status="Draft", inputs=json.dumps(inputs), created_by=user.id, updated_by=user.id,
                 signs=json.dumps(carried) if carried else "")
+    try:                                                    # the four lines of Cover & details, the same on every bill
+        apply_roles(b, model, inputs, ((_cover(model, values) or {}).get("facts") or {}).get("consultant") or "")
+        inputs, values = _calc(model, inputs)
+        b.inputs = json.dumps(inputs)
+    except Exception as e:
+        print("signers not set on the new bill:", e)
     _save_totals(b, model, values)
     db.add(b)
     db.commit()
@@ -1544,8 +1712,24 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         sg = _signs(b)
         places = mp.get("signs", [])
         groups = {g["key"]: g for g in _groups(model)}
+        rows_now = {x["key"]: x for x in _role_rows(b, model, {})[0]} if _roles_on(b) else {}
         for k, want in payload["signs"].items():
             g = groups.get(k)
+            row = rows_now.get(k)
+            if row and isinstance(want, dict) and not want.get("removed"):
+                if row["ext"]:
+                    want = dict(want, name=str(want.get("name") or "").strip()[:120], title=str(want.get("title") or "").strip()[:80])
+                else:
+                    nm = _role_name({"people": row["options"]}, str(want.get("name") or ""))
+                    if want.get("name") and not nm:
+                        raise HTTPException(400, f"{row['label']}: pick one of {', '.join(row['options'])}.")
+                    want = dict(want, name=nm, title=row["title"])
+                if not g:                                    # a line the format has no place for: kept with the bill only
+                    prev = {x: v for x, v in (sg.get(k) or {}).items() if x not in ("removed", "was")}
+                    if not same_person(prev.get("name") or "", want["name"]):
+                        prev = {}
+                    sg[k] = dict(prev, name=want["name"], title=want["title"], step=row["step"])
+                    continue
             if not g or not isinstance(want, dict):
                 continue
             if want.get("removed"):                      # nobody signs here on this bill: name, designation and picture off
@@ -1556,7 +1740,7 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
                     if p.get("title"):
                         inputs[p["sheet"]][f"{p['title']['r']},{p['title']['c']}"] = ""
                 continue
-            name = str(want.get("name") or "").strip()[:80] or (sg.get(k) or {}).get("was") or g["orig"]
+            name = str(want.get("name") or "").strip()[:80] if (row and "name" in want) else (str(want.get("name") or "").strip()[:80] or (sg.get(k) or {}).get("was") or g["orig"])
             title = str(want.get("title") if want.get("title") is not None else g["orig_title"]).strip()[:80]
             prev = {x: v for x, v in (sg.get(k) or {}).items() if x not in ("removed", "was")}
             if not same_person(prev.get("name") or g["orig"], name):
@@ -2351,8 +2535,12 @@ def sign_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     if x["signed_at"]:
         raise HTTPException(400, f"{x['name']} has already signed.")
     if not x["turn"]:
-        waiting = next((y for y in signers if not y["signed_at"]), None)
+        waiting = next((y for y in signers if not y["signed_at"] and not y.get("ext")), None)
         raise HTTPException(400, f"Not yet - {waiting['name']} ({waiting['labels'][0]}) signs first." if waiting else "Nothing to sign.")
+    if not (x["name"] or "").strip():
+        raise HTTPException(400, f"Pick who signs as {x['labels'][-1]} on Cover & details first.")
+    if x.get("ext"):
+        raise HTTPException(400, f"{x['name']} signs and stamps the printed copy - not in the app.")
     if not can_sign(user, x):
         raise HTTPException(403, f"Only {x['name']} can sign here (the login's full name must match), or an admin.")
     from datetime import timezone as _tz
@@ -2364,7 +2552,7 @@ def sign_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         sg[y["key"]] = d
     b.signs = json.dumps(sg)
     b.updated_by = user.id
-    rest = [y for y in signers if y["key"] != x["key"] and not y["signed_at"]]
+    rest = [y for y in signers if y["key"] != x["key"] and not y["signed_at"] and not y.get("ext")]
     if not rest:
         b.status = "Approved" if b.status in ("Draft", "Awaiting approval") else b.status
     elif b.status == "Draft":
@@ -2374,7 +2562,7 @@ def sign_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     out = get_bill(bid, db, user)
     nxt = next((y for y in out["signers"] if y["turn"]), None)
     out["next"] = {"name": nxt["name"], "label": nxt["labels"][0], "has_login": bool(_user_for(db, nxt["name"]))} if nxt else None
-    out["warn"] = "" if (x["sig"] or x["format_has"]) else f"No signature picture for {x['name']} on file - the name prints without one until it is uploaded (Cover & details)."
+    out["warn"] = "" if (x["sig"] or x["format_has"]) else f"No signature picture for {x['name']} on file - the name prints without one until {x['name']} uploads it from their own login (Settings > My signature)."
     return out
 
 
@@ -2432,26 +2620,69 @@ def clean_signature(data):
     return buf.getvalue()
 
 
-@router.post("/store/est/ipa/signature")
-async def upload_signature(name: str = Form(...), title: str = Form(""), file: UploadFile = File(...),
-                           db: Session = Depends(get_db), user: models.User = E.VIEW):
-    name = (name or "").strip()[:80]
-    if not name:
-        raise HTTPException(400, "Type the person's full name.")
+def _is_me(user, name):
+    return bool(name) and (same_person(user.full_name or "", name) or same_person(user.username or "", name))
+
+
+def _my_sig(db, user):
+    """This login's signature: the one uploaded by it, else one saved under its name before logins owned them."""
+    rows = db.query(EstSignature).all()
+    return next((y for y in rows if y.user_id == user.id), None) or \
+        next((y for y in rows if not y.user_id and _is_me(user, y.name)), None)
+
+
+async def _read_sig(file):
     data = await file.read()
     if len(data) > 8 * 1024 * 1024:
         raise HTTPException(400, "That picture is over 8 MB.")
-    png = clean_signature(data)
-    x = next((y for y in db.query(EstSignature).all() if same_person(y.name, name)), None)
+    return clean_signature(data)
+
+
+@router.post("/store/est/ipa/signature")
+async def upload_signature(name: str = Form(...), title: str = Form(""), file: UploadFile = File(...),
+                           db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """From a bill: a person uploads their own signature once - it then belongs to their login, and only they
+    change it (Settings > My signature). Nobody uploads a signature for somebody else."""
+    name = (name or "").strip()[:80]
+    if not name:
+        raise HTTPException(400, "Pick who signs first.")
+    if not _is_me(user, name):
+        raise HTTPException(403, f"Only {name} uploads their own signature - from their login, once (Settings > My signature).")
+    x = _my_sig(db, user)
+    if x and x.png:
+        raise HTTPException(400, "Your signature is already on file - change it in Settings > My signature.")
+    png = await _read_sig(file)
     if not x:
-        x = EstSignature(name=name)
+        x = EstSignature(name=user.full_name or name)
         db.add(x)
-    x.name, x.png, x.updated_by = name, png, user.id
+    x.png, x.updated_by, x.user_id = png, user.id, user.id
     if title.strip():
         x.title = title.strip()[:80]
     db.commit()
-    E.M.log_action(db, user.id, "est_signature", f"signature for {name}")
+    E.M.log_action(db, user.id, "est_signature", f"own signature uploaded ({x.name})")
     return {"id": x.id, "name": x.name, "title": x.title or "", "sig": _png_url(png)}
+
+
+@router.get("/store/est/ipa/my-signature")
+def my_signature(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    x = _my_sig(db, user)
+    return {"name": user.full_name or user.username, "sig": _png_url(x.png) if x and x.png else "",
+            "updated_at": x.updated_at.isoformat() if x and x.updated_at else None}
+
+
+@router.post("/store/est/ipa/my-signature")
+async def set_my_signature(file: UploadFile = File(...), db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    """Settings > My signature: upload or change this login's own signature. Bills already signed keep the
+    signature they were signed with; bills signed from now on carry the new one."""
+    png = await _read_sig(file)
+    x = _my_sig(db, user)
+    if not x:
+        x = EstSignature(name=user.full_name or user.username)
+        db.add(x)
+    x.png, x.updated_by, x.user_id = png, user.id, user.id
+    db.commit()
+    E.M.log_action(db, user.id, "est_signature", f"own signature {'changed' if x.id else 'uploaded'} ({x.name})")
+    return {"name": x.name, "sig": _png_url(png)}
 
 
 @router.delete("/store/est/ipa/signature/{sid}")
@@ -2459,6 +2690,8 @@ def delete_signature(sid: int, db: Session = Depends(get_db), user: models.User 
     x = db.query(EstSignature).get(sid)
     if not x:
         raise HTTPException(404, "Not there any more.")
+    if x.user_id != user.id and user.role != "admin":
+        raise HTTPException(403, "Only the person themselves changes their signature (Settings > My signature).")
     db.delete(x); db.commit()
     E.M.log_action(db, user.id, "est_signature_removed", f"signature for {x.name}")
     return {"ok": True}
