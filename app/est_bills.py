@@ -2744,9 +2744,22 @@ def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, d
         pn = pn[:46].rstrip() + "..."
     model = dict(model, _title=title, _bill=" - ".join(x for x in (code, pn, f"Interim Bill {label}") if x))   # the footer of every page
     if format == "excel":
-        data = BE.write_xlsx(BE.add_pages_xlsx(fmt.data, inputs), model, model.get("_with") or inputs, values, sign_images(model, _signs(b), store))
+        # built from the same bill, sheets and pages as the PDF (9 Nov 2026) - and checked before it goes out
+        import est_bills_xlsx as BX
+        from urllib.parse import quote
+        smodel = signed_model(model, _signs(b), store)
+        data = BX.render_xlsx(smodel, values, title, inputs, fname + ".xlsx")
+        try:
+            bad = BX.check(data, smodel, values)
+        except Exception as e:                           # the check itself failing never blocks the bill
+            print("Excel export check could not run:", repr(e)); bad = []
+        if bad:
+            print(f"Excel export check failed - bill {bid}:", bad)
+            E.M.log_action(db, u.id, "est_bill_excel_check", f"bill {bid}: " + "; ".join(bad[:5]))
+            raise HTTPException(409, "Export check failed - " + bad[0])
+        nice = f"{code} - Interim Bill {label} - {(b.issue_date or date.today()):%d-%m-%Y}.xlsx"
         return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                 headers={"Content-Disposition": f"attachment; filename={fname}.xlsx"})
+                                 headers={"Content-Disposition": f"attachment; filename={fname}.xlsx; filename*=UTF-8''{quote(nice)}"})
     if format == "pdf":
         buf = BR.render_pdf(signed_model(model, _signs(b), store), values, title, inputs, fname=fname + ".xlsx")
         return StreamingResponse(buf, media_type="application/pdf", headers={"Content-Disposition": f"inline; filename={fname}.pdf"})

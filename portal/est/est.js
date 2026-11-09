@@ -301,6 +301,18 @@ async function exportGo(fmt, what, extra) {
       else { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name; a.click(); toast("Sharing isn't available here - the PDF was downloaded"); }
       return;
     }
+    if (fmt === "excel") {           // one click: the file downloads here, no new page (9 Nov 2026)
+      const tt = toast("Preparing Excel…", { ms: 60000 });
+      const r = await fetch(url);
+      if (!r.ok) { let m = ""; try { m = (await r.json()).detail; } catch (_) {} if (tt && tt.remove) tt.remove(); throw new Error(m || "The Excel file could not be made."); }
+      const blob = await r.blob(), cd = r.headers.get("content-disposition") || "";
+      const m = /filename\*=UTF-8''([^;]+)/i.exec(cd) || /filename="?([^";]+)"?/i.exec(cd);
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = m ? decodeURIComponent(m[1]) : (extra.name || what) + ".xlsx";
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      if (tt && tt.remove) tt.remove();
+      toast("Excel downloaded");
+      return;
+    }
     window.open(url, "_blank");
   } catch (e) { if (e && e.name !== "AbortError") fail(e); }
 }

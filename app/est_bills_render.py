@@ -736,6 +736,9 @@ def autowrap(model, values, inputs=None):
     return m
 
 
+_XL_JS = '<script>function xlGet(a){var m=document.getElementById("xlmsg");m.textContent="Preparing Excel\\u2026";\nfetch(a.href).then(function(r){if(!r.ok)return r.json().then(function(j){throw new Error(j.detail||"The Excel file could not be made.")});\nvar cd=r.headers.get("content-disposition")||"",n=/filename\\*=UTF-8\'\'([^;]+)/i.exec(cd);return r.blob().then(function(b){var x=document.createElement("a");\nx.href=URL.createObjectURL(b);x.download=n?decodeURIComponent(n[1]):"bill.xlsx";document.body.appendChild(x);x.click();x.remove();m.textContent="Excel downloaded";setTimeout(function(){m.textContent=""},4000)})})\n.catch(function(e){m.textContent=e.message});return false}</script>'
+
+
 def preview_html(model, values, title, pdf_url, excel_url, inputs=None, embed=False, fname=""):
     """The bill page by page exactly as it prints (and as the PDF comes out): each sheet on its own paper and
     orientation, at its print scale, margins and centring, broken where the consultant broke it, the heading rows
@@ -784,7 +787,7 @@ body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#E4E
 @page a4p{{size:A4 portrait;margin:0}} @page a4l{{size:A4 landscape;margin:0}} @page a3p{{size:A3 portrait;margin:0}} @page a3l{{size:A3 landscape;margin:0}}
 .a4p{{page:a4p}} .a4l{{page:a4l}} .a3p{{page:a3p}} .a3l{{page:a3l}}
 @media print{{.bar,.pno{{display:none}} body{{background:#fff}} .pages{{padding:0}} .pg{{box-shadow:none;margin:0;break-after:page;transform:none!important}} .pgw{{width:auto!important;height:auto!important;margin:0!important}} .xs,.xt td{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
-</style></head><body><div class="bar"><b>{t}</b><button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><a href="{excel_url}">Excel</a><button onclick="shr()">Share</button></div>
+</style></head><body><div class="bar"><b>{t}</b><button onclick="print()">Print</button><a href="{pdf_url}">PDF</a><a href="{excel_url}" onclick="return xlGet(this)">Excel</a><span id="xlmsg" style="font-size:12px;color:#fff;margin-left:6px"></span><button onclick="shr()">Share</button></div>{_XL_JS}
 <script>async function shr(){{try{{const r=await fetch("{pdf_url}");const b=await r.blob();const f=new File([b],{repr(re.sub(r'[^A-Za-z0-9]+', '_', title).strip('_') + '.pdf')},{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{t}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}
 function fit(){{var W=document.documentElement.clientWidth-24;document.querySelectorAll(".pg").forEach(function(p){{var w=parseFloat(p.style.width),h=parseFloat(p.style.height),k=w>W?W/w:1,g=p.parentNode;
 if(!g.classList.contains("pgw")){{g=document.createElement("div");g.className="pgw";p.parentNode.insertBefore(g,p);g.appendChild(p);}}
