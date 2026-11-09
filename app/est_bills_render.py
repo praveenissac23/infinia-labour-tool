@@ -863,6 +863,16 @@ def page_plan(model, s, inputs=None, values=None):
             # stay on one page (down to half size); without them a sheet only a little too long for one page
             need = min(need, ah / full)
     sc = max(need, floor)
+    if pr.get("fill") and breaks and cont_w and cont_w * sc < aw * 0.85:
+        # a narrow sheet with its own page breaks (919's Percentage breakdown): as wide as the page allows while
+        # each of his pages still fits on one A4 page
+        cand = min(1.25, aw / cont_w)
+        for i, hseg in enumerate(segs):
+            full = hseg + (tpt if i and titles else 0)
+            if full:
+                cand = min(cand, ah / full)
+        if cand > sc:
+            sc = cand
     th = tpt * sc
     pages, cur, own, used = [], [], [], 0.0
     keep = {}                                           # a block kept together: its first row -> its rows shown

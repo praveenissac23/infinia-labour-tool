@@ -763,6 +763,12 @@ def sign_images(model, signs, store):
     places = model.get("map", {}).get("signs", [])
     for g in _groups(model):
         want = (signs or {}).get(g["key"]) or {}
+        if want.get("removed"):
+            for pi in g["places"]:
+                p = places[pi]
+                if p["img"] is not None:
+                    out.append({"sheet": p["sheet"], "img": p["img"], "png": None, "box": {}})
+            continue
         name = (want.get("name") or "").strip() or g["orig"]
         signed = bool(want.get("signed_at"))
         sig = _sig_for(store, name)
@@ -882,7 +888,9 @@ def _bill_out(b, fmt, model, values, inputs, users=None, store=None):
             "bill_no_raw": BE.general(values.get(model["map"]["bill_no"]["sheet"], {}).get(f"{model['map']['bill_no']['r']},{model['map']['bill_no']['c']}")) if model.get("map", {}).get("bill_no") else "",
             "has_date": bool(model.get("map", {}).get("issue_date")), "has_no": bool(model.get("map", {}).get("bill_no")),
             "changed": sum(len(v) for v in inputs.values()),
-            "signers": _signers_out(b, model, store or {})}
+            "signers": _signers_out(b, model, store or {}),
+            "signers_off": [{"key": g["key"], "labels": g["labels"], "was": (_signs(b).get(g["key"]) or {}).get("was") or g["orig"]}
+                            for g in _groups(model) if (_signs(b).get(g["key"]) or {}).get("removed")]}
 
 
 def _signers_out(b, model, store):
@@ -892,6 +900,8 @@ def _signers_out(b, model, store):
     places = model.get("map", {}).get("signs", [])
     for g in _groups(model):
         want = sg.get(g["key"]) or {}
+        if want.get("removed"):
+            continue
         name = want.get("name") or g["orig"]
         title = want.get("title") if want.get("title") is not None else g["orig_title"]
         sig = _sig_for(store, name)
@@ -1538,9 +1548,17 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
             g = groups.get(k)
             if not g or not isinstance(want, dict):
                 continue
-            name = str(want.get("name") or "").strip()[:80] or g["orig"]
+            if want.get("removed"):                      # nobody signs here on this bill: name, designation and picture off
+                sg[k] = {"removed": True, "step": _step_of(g["labels"]), "was": (sg.get(k) or {}).get("name") or g["orig"]}
+                for pi in g["places"]:
+                    p = places[pi]
+                    inputs.setdefault(p["sheet"], {})[f"{p['name']['r']},{p['name']['c']}"] = (p["name"]["prefix"] or "").rstrip()
+                    if p.get("title"):
+                        inputs[p["sheet"]][f"{p['title']['r']},{p['title']['c']}"] = ""
+                continue
+            name = str(want.get("name") or "").strip()[:80] or (sg.get(k) or {}).get("was") or g["orig"]
             title = str(want.get("title") if want.get("title") is not None else g["orig_title"]).strip()[:80]
-            prev = sg.get(k) or {}
+            prev = {x: v for x, v in (sg.get(k) or {}).items() if x not in ("removed", "was")}
             if not same_person(prev.get("name") or g["orig"], name):
                 prev = {}                                  # another person: they sign afresh
             sg[k] = dict(prev, name=name, title=title, step=_step_of(g["labels"]))

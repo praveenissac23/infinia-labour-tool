@@ -402,13 +402,28 @@ function signersCard(b) {
       <td><input class="ipa-sgn" list="ipa-people" value="${esc(g.name)}" data-noclear data-spell="off" autocomplete="off" placeholder="Pick from the staff register">${(() => { const p = who(g.name);
         return p ? `<div class="small ${p.login ? "muted" : "ipa-warn"}">Staff register: ${esc(p.name)} - ${esc(p.short || p.designation)}${p.login ? ` · login <b>${esc(p.login)}</b>` : " · no login, cannot sign"}</div>` : `<div class="small ipa-warn">Not in the staff register${g.step === 0 ? "" : " - cannot sign"}</div>`; })()}</td>
       <td><input class="ipa-sgt" value="${esc(g.title || "")}" data-noclear></td>
-      <td class="sig">${g.sig ? `<img src="${g.sig}" alt="signature">` : `<span class="muted small">${g.format_has ? "none for this person" : "none"}</span>`}${g.sig && !g.own ? `<div class="muted small">from the format</div>` : ""}</td>
-      <td class="r"><label class="btn btn-plain btn-sm">${g.own ? "Change signature" : "Upload signature"}<input type="file" accept="image/*" class="ipa-sgf" hidden></label></td></tr>`).join("")}
-    </tbody></table></div></div>`;
+      <td class="sig">${sigCell(g)}</td>
+      <td class="r nowrap"><label class="btn btn-plain btn-sm">${g.own ? "Change signature" : "Upload signature"}<input type="file" accept="image/*" class="ipa-sgf" hidden></label>
+        ${g.signed_at ? "" : `<button type="button" class="btn btn-plain btn-sm ipa-sgx" title="Nobody signs here on this bill: the name, designation and signature are taken off the printed bill">Remove</button>`}</td></tr>`).join("")}
+    </tbody></table></div>
+    ${(b.signers_off || []).length ? `<div class="small muted" style="margin-top:8px">Removed from this bill: ${b.signers_off.map(o => `<b>${esc(o.labels[0])}</b> (${esc(o.was)}) <button type="button" class="btn btn-plain btn-sm" data-sgback="${esc(o.key)}">Put back</button>`).join(" · ")}</div>` : ""}</div>`;
+}
+// The signature column says where each person stands: signed (and when), or waiting - with the picture that will print
+function sigCell(g) {
+  const img = g.sig ? `<img src="${g.sig}" alt="signature" style="${g.signed_at ? "" : "opacity:.35"}">` : "";
+  if (g.signed_at) return `${img}<div class="small" style="color:#1E7A3C;font-weight:600">&#10003; Signed ${esc(dt(g.signed_at))}</div>`;
+  const st = g.turn ? `<b style="color:#B26A00">Their turn</b> - signs on Approve &amp; send` : "Waiting - signs on Approve &amp; send";
+  const pic = g.own ? "signature on file" : g.sig ? "old picture from the uploaded bill - not printed until they sign" : "<span class='ipa-warn'>no signature on file - upload it once</span>";
+  return `${img}<div class="small muted">${st}<br>${pic}</div>`;
 }
 function bindSigners(m) {
+  $$("[data-sgback]", m).forEach(x => x.onclick = async () => { if (await save({ signs: { [x.dataset.sgback]: { removed: false } } })) { toast("Put back - pick who signs"); drawBill(); } });
   $$("tr[data-sg]", m).forEach(tr => {
     const k = tr.dataset.sg, n = $(".ipa-sgn", tr), t = $(".ipa-sgt", tr), f = $(".ipa-sgf", tr);
+    const rx = $(".ipa-sgx", tr); if (rx) rx.onclick = async () => {
+      const g = IPA.bill.signers.find(x => x.key === k) || {};
+      if (!(await confirmDelete(`Remove ${g.labels ? g.labels.join(" / ") : "this signer"} (${g.name || ""}) from this bill?`, "The name, designation and signature are taken off the printed bill and nobody signs here. 'Put back' brings the line back.", "Remove", ""))) return;
+      if (await save({ signs: { [k]: { removed: true } } })) { toast("Removed from this bill"); drawBill(); } };
     const push = async () => {
       if (!n.value.trim()) { toast("Type the full name", { err: true }); return; }
       if (await save({ signs: { [k]: { name: n.value.trim(), title: t.value.trim() } } })) { toast("Saved - printed on the bill"); drawBill(); }
