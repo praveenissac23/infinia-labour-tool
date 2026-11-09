@@ -1736,6 +1736,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .notif-for { font-size: 11.5px; color: #999; margin-top: 2px; }
   .notif-foot { display: flex; gap: 9px; align-items: center; padding: 14px 20px 18px; }
   .notif-count { font-size: 12px; color: #999; margin-right: auto; }
+  .notif-all { color: #B03A2E !important; border-color: #E8B4AE !important; background: #FDF2F1 !important; font-weight: 700; white-space: nowrap; }
+  .notif-all:hover { background: #FAE3E0 !important; }
+  @media (max-width: 520px) { .notif-foot { flex-wrap: wrap; } .notif-count { flex-basis: 100%; } .notif-all { margin-right: auto; } }
 
   /* Price history: one card per material, the figures that matter
      across the top, every purchase underneath. */
@@ -8496,7 +8499,7 @@ function showNextNotification() {
       <div class="nb-where">${esc_(n.board)}${n.list ? ` <span>&rsaquo;</span> ${esc_(n.list)}` : ""}</div>
       ${n.words ? `<div class="nb-words">${esc_(n.words)}</div>` : ""}</div>` : `<div class="nb-card"><div class="nb-ct">${esc_(n.board)}</div></div>`}
     <div class="notif-foot">
-      <span class="notif-count">${left ? `${left} more waiting` : ""}</span>
+      <span class="notif-count">${left ? `${left} more waiting` : ""}</span>${left ? `<button type="button" class="btn btn-gray notif-all" id="notif-all" title="Close all ${left + 1} and mark them read - they stay on the bell list">Close all ${left + 1} &middot; mark read</button>` : ""}
       <button class="btn btn-gray" id="notif-close">Close</button>
       <button class="btn btn-primary" id="notif-go">${n.card ? "Open card" : "Open board"}</button>
     </div>`;
@@ -8512,7 +8515,7 @@ function showNextNotification() {
     <div class="notif-lines lpo-chg-pop"><ul style="margin:8px 0 0 18px;padding:0;font-size:13.5px;line-height:1.6;">${(n.changes || []).map(c => `<li>${esc_(c)}</li>`).join("")}</ul>
       ${n.zoho_result ? `<div style="margin-top:10px;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:600;${n.by_hand ? "background:#FDECEA;color:#B03A2E;" : "background:#E8F5EC;color:#1E7A3C;"}">${n.by_hand ? "\u26A0 " : "\u2713 "}${esc_(n.zoho_result)}</div>` : ""}</div>
     <div class="notif-foot">
-      <span class="notif-count">${left ? `${left} more waiting` : ""}</span>
+      <span class="notif-count">${left ? `${left} more waiting` : ""}</span>${left ? `<button type="button" class="btn btn-gray notif-all" id="notif-all" title="Close all ${left + 1} and mark them read - they stay on the bell list">Close all ${left + 1} &middot; mark read</button>` : ""}
       <button class="btn btn-gray" id="notif-close">Close</button>
       ${n.by_hand ? "" : `<button class="btn btn-gray" id="notif-seen">Seen</button>`}
       <button class="btn btn-primary" id="notif-go">Open Send to Zoho</button>
@@ -8528,7 +8531,7 @@ function showNextNotification() {
     </div>
     <div id="notif-lines" class="notif-lines"></div>
     <div class="notif-foot">
-      <span class="notif-count">${left ? `${left} more waiting` : ""}</span>
+      <span class="notif-count">${left ? `${left} more waiting` : ""}</span>${left ? `<button type="button" class="btn btn-gray notif-all" id="notif-all" title="Close all ${left + 1} and mark them read - they stay on the bell list">Close all ${left + 1} &middot; mark read</button>` : ""}
       <button class="btn btn-gray" id="notif-close">Close</button>
       <button class="btn btn-primary" id="notif-go">${label}</button>
     </div>`;
@@ -8540,6 +8543,9 @@ function showNextNotification() {
   // Close shows the next one - that is working through them, which is
   // what Close is for.
   document.getElementById("notif-close").onclick = () => { read(); showNextNotification(); };
+  // 20 or 30 waiting after a sign-in: all of them closed and marked read at once (they stay on the bell list)
+  const allB = document.getElementById("notif-all");
+  if (allB) allB.onclick = () => { const r = readIds(); r.add(n.id); notifQueue.forEach(q => r.add(q.id)); saveReadIds(r); closeNotifications(); renderBell(); };
   const seenB = document.getElementById("notif-seen");      // an LPO change Zoho already matches: noted, off the list
   if (seenB) seenB.onclick = async () => { read(); try { await apiCall(`/store/zoho/pos/${n.lpo_id}/seen`, { method: "POST" }); } catch (e) {} showNextNotification(); loadNotifications(); };
   document.getElementById("notif-go").onclick = () => {
