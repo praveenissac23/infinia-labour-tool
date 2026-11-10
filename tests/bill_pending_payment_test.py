@@ -90,6 +90,24 @@ b3 = c.post("/store/est/ipa/new", headers=H, json={"project_id": pid, "format_id
 B3 = G(b3)
 ck("bill 11: PA 9 and PA 10 Pending", row(B3, 9)["pending"] and row(B3, 10)["pending"], [(x["desc"]["value"], x["pending"]) for x in B3["payments"][0]["rows"] if x["desc"]["value"]])
 ck("...carried: only bill 10's fees (its own 0 + the 1250 it carried) - the 1250 never twice", carried(B3) == [("Carried from Payment Application No 10 (Pending)", 1250)], carried(B3))
+# a bill whose line was marked Pending before the carry existed (912 IPA 9): opening it brings the fees on
+import json as _j
+from database import SessionLocal as _SL
+import est_bills as _EB
+_db = _SL(); _b = _db.get(_EB.EstBill, b3)
+B3 = G(b3); r8_ = row(B3, 10)
+c.post(f"/store/est/ipa/bill/{b3}/status", headers=H, json={"status": "Draft"})
+B3 = P(b3, {"set": {"APP A": {r8_["received"]["key"]: 46340}}}).json()
+ck("(set up: PA 10 received, its line off)", not any("No 10" in str(x["desc"]["value"]) for x in B3["fees"][0]["rows"] if x.get("carry")), carried(B3))
+due_before = B3["total_due"]
+_db.expire_all(); _b = _db.get(_EB.EstBill, b3)
+_inp = _j.loads(_b.inputs); _inp["APP A"][r8_["received"]["key"]] = "Pending"
+for k_ in [k for k in _inp.get("APP B", {}) if k == "_carry"]:
+    _inp["APP B"].pop(k_)
+_b.inputs = _j.dumps(_inp); _db.commit()
+B3o = G(b3)
+ck("opened: carried fees there without typing anything", any("No 10" in str(x["desc"]["value"]) for x in B3o["fees"][0]["rows"] if x.get("carry")), carried(B3o))
+print("due before/after", due_before, B3o["total_due"])
 ck("spare lines for later bills (13, 14) are not marked Pending", not row(B3, 13)["pending"] and not row(B3, 14)["pending"], [row(B3, 13), row(B3, 14)])
 import models
 from database import SessionLocal

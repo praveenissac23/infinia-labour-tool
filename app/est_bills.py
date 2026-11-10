@@ -796,6 +796,31 @@ def mark_unpaid_pending(model, inputs):
     return inputs
 
 
+def _refresh_carry(db, b, fmt, inputs):
+    """A bill still being made (Draft / returned) is opened: the authority fees of the bills still Pending are
+    brought up to date at once - not only at the next change typed (10 Nov 2026). Not an undo step."""
+    if (b.status or "Draft") not in OPEN_STATUS:
+        return inputs
+    try:
+        before = json.dumps(inputs, sort_keys=True)
+        new = _sync_carry(db, b, fmt, json.loads(before))
+        if json.dumps(new, sort_keys=True) == before:
+            return inputs
+        model = _bill_model(fmt, new)
+        new, values = _calc(model, new)
+        _undo_skip()
+        b.inputs = json.dumps(new)
+        _save_totals(b, model, values)
+        db.commit()
+        E.M.log_action(db, None, "est_bill_carry", f"bill #{b.id} {b.label}: authority fees of the Pending bills brought onto Appendix B - total due {b.total_due:,.2f}")
+        return new
+    except Exception:
+        import logging
+        logging.getLogger("est_bills").exception("bill %s: carried fees on opening", b.id)
+        db.rollback()
+        return inputs
+
+
 def _sync_carry(db, b, fmt, inputs):
     """This bill's carried lines on Appendix B made to match the Pending rows: lines put in above the total, or taken
     out again. Returns the inputs (changed or not)."""
@@ -1657,6 +1682,7 @@ def get_bill(bid: int, db: Session = Depends(get_db), user: models.User = E.VIEW
     b = _get(db, EstBill, bid)
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
+    inputs = _refresh_carry(db, b, fmt, inputs)
     model = _bill_model(fmt, inputs)
     values = BE.calculate(model, inputs)
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
