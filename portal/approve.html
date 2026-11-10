@@ -38,6 +38,7 @@
 .sheet{position:fixed;left:0;right:0;bottom:0;z-index:8;background:#fff;border-radius:18px 18px 0 0;padding:18px 16px;padding-bottom:max(18px,env(safe-area-inset-bottom));box-shadow:0 -6px 24px rgba(0,0,0,.25)}
 .sheet .in{max-width:640px;margin:0 auto}.sheet h2{margin:0 0 4px;font-size:17px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}.chips span{border:1px solid #E5D7D2;border-radius:18px;padding:6px 11px;font-size:13px;color:#7A2E22;cursor:pointer}
+.chips span.on{background:#C0392B;color:#fff;border-color:#C0392B}
 textarea,select,input{width:100%;border:1px solid #DDD3CB;border-radius:9px;padding:10px;font:14px inherit}
 textarea{height:80px;resize:vertical}
 .lg{max-width:360px;margin:60px auto;background:#fff;border-radius:14px;padding:22px;box-shadow:0 2px 12px rgba(0,0,0,.1)}
@@ -231,13 +232,15 @@ textarea{height:80px;resize:vertical}
     const chain = D.chain.map(x => `<span class="${x.signed ? "" : "back"}" style="${x.signed ? "" : x.turn ? "border-color:#B9770E;color:#7A5200" : "border-color:#ccc;color:#888"}">${x.signed ? "&#10003; " : x.turn ? "&#9203; " : ""}${esc(x.label)} &middot; ${esc(x.name)}${(D.stamps.find(s => s.by === x.name && x.signed) || {}).at ? `<small>${esc(when((D.stamps.find(s => s.by === x.name) || {}).at))}</small>` : ""}</span>`).join("");
     $("#app").innerHTML = `<div class="info"><div class="card"><h1>${esc(D.project)} &middot; Interim bill ${esc(D.label)}</h1>
       <div class="m">${esc(D.project_name || "")}${D.issue_date ? " &middot; " + esc(when(D.issue_date)) : ""}</div>
-      <div class="amt">AED ${money(D.total)}</div><div class="stamps">${chain}</div>${st}</div></div>
+      <div class="amt">AED ${money(D.total)}</div><div class="stamps">${chain}</div>${st}
+      ${D.since_reject && D.status === "Awaiting approval" ? `<div class="state bad" style="text-align:left;margin-top:10px"><b>Rejected before</b> by ${esc(D.since_reject.by)} on ${esc(when(D.since_reject.at))}: ${esc(D.since_reject.reason)}
+        <div style="font-weight:400;margin-top:4px">Changed since: ${D.since_reject.changes.length ? D.since_reject.changes.slice(0, 12).map(esc).join("<br>") : "no figure changed"}</div></div>` : ""}</div></div>
       <div class="pages" id="pages"><div class="msg">Loading the PDF...</div></div>
       ${D.can_act && !done[id] ? `<div class="bar"><div class="in"><div class="s"><span><b>${esc(D.project)} &middot; IPA ${esc(D.label)}</b> &middot; ${esc(D.next.label)}</span><b>AED ${money(D.total)}</b></div>
-        <div class="row2"><button class="btn no" id="b-no">&#8630; Send back</button><button class="btn ok" id="b-ok">&#10003; ${word === "Checked" ? "Checked - approve" : "Approve"}</button></div></div></div>` :
+        <div class="row2"><button class="btn no" id="b-no">${D.final ? "&#10005; Reject" : "&#8630; Send back"}</button><button class="btn ok" id="b-ok">&#10003; ${word === "Checked" ? "Checked - approve" : "Approve"}</button></div></div></div>` :
         (idx + 1 < n ? `<div class="bar"><div class="in"><button class="btn ok" id="b-next">Next bill &rarr;</button></div></div>` : "")}`;
     if ($("#b-ok")) $("#b-ok").onclick = billOk;
-    if ($("#b-no")) $("#b-no").onclick = billBack;
+    if ($("#b-no")) $("#b-no").onclick = D.final ? billReject : billBack;
     if ($("#b-next")) $("#b-next").onclick = () => { idx++; showBill(); };
     billPdf(id);
   }
@@ -286,13 +289,44 @@ textarea{height:80px;resize:vertical}
       catch (x) { if (x.signin) return login(); e.target.disabled = false; alertIn(s, x.message); }
     };
   }
-  function billDone(ok, nxt) {
-    done[D.id] = ok ? "Done - signed by you." : "Sent back to the QS.";
+  function billReject() {
+    const prep = (D.chain[0] || {}).name || "Prepared by";
+    const s = sheet(`<h2>Reject - ${esc(D.project)} IPA ${esc(D.label)}</h2>
+      <div style="color:#666;font-size:13px">It goes back to ${esc(prep)} (Prepared by) to correct; every signature on it comes off.</div>
+      <textarea id="r-note" placeholder="Reason for rejection (at least 10 characters)"></textarea>
+      <div style="font-size:12.5px;color:#666;margin-top:10px">Where the problem is (optional)</div>
+      <div class="chips" id="r-areas">${(D.areas || []).map(x => `<span data-a="${esc(x)}">${esc(x)}</span>`).join("")}</div>
+      <input id="r-where" placeholder="Which sheet or line (optional)" style="width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:10px;padding:10px;font:inherit;margin-top:8px">
+      <div style="font-size:12.5px;color:#666;margin-top:10px">Attachment (optional - PDF, picture, Excel)</div>
+      <input type="file" id="r-file" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.xls,.xlsx,.csv,image/*,application/pdf" style="margin-top:4px">
+      <button class="btn ok" id="r-go" style="margin-top:14px;background:#C0392B">Reject and return to Prepared by</button><button class="btn no" id="r-x">Cancel</button>`);
+    s.querySelectorAll("#r-areas span").forEach(c => c.onclick = () => c.classList.toggle("on"));
+    s.querySelector("#r-x").onclick = () => s.remove();
+    s.querySelector("#r-go").onclick = async e => {
+      const note = s.querySelector("#r-note").value.trim();
+      if (note.length < 10) { alertIn(s, "Give the reason (at least 10 characters)."); return; }
+      if (!confirm(`Return Interim Bill ${D.label} to ${prep} (Prepared by) for correction?`)) return;
+      const fd = new FormData(); fd.append("reason", note);
+      fd.append("areas", JSON.stringify([...s.querySelectorAll("#r-areas span.on")].map(x => x.dataset.a)));
+      fd.append("where", s.querySelector("#r-where").value.trim());
+      const f = s.querySelector("#r-file").files[0]; if (f) fd.append("file", f);
+      e.target.disabled = true;
+      try {
+        const r = await fetch(`/store/est/ipa/bill/${D.id}/reject`, { method: "POST", headers: { Authorization: "Bearer " + TOKEN }, body: fd });
+        if (r.status === 401) return login();
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.detail || "Could not reject");
+        s.remove(); billDone(false, null, prep);
+      } catch (x) { e.target.disabled = false; alertIn(s, x.message); }
+    };
+  }
+  function billDone(ok, nxt, retTo) {
+    done[D.id] = ok ? "Done - signed by you." : retTo ? `Rejected - returned to ${retTo}.` : "Sent back to the QS.";
     const left = ids.filter((x, i) => i !== idx && !done[x]), nextI = ids.findIndex((x, i) => i > idx && !done[x]);
     window.scrollTo(0, 0);
     $("#app").innerHTML = `<div class="donebox"><div class="c ${ok ? "" : "r"}">${ok ? "&#10003;" : "&#8630;"}</div>
-      <h2 style="margin:0">${ok ? (D.next.step === 1 ? "Checked" : "Approved") : "Sent back"}</h2>
-      <div style="color:#666;margin:6px 0 18px">${esc(D.project)} IPA ${esc(D.label)} &middot; AED ${money(D.total)}<br>${ok ? (nxt ? esc(nxt.name) + " (" + esc(nxt.label.replace("Signature / ", "")) + ") has been told." : "The bill is approved - ready to submit to the client.") : "It is back with the QS, with your note."}</div>
+      <h2 style="margin:0">${ok ? (D.next.step === 1 ? "Checked" : "Approved") : retTo ? "Rejected" : "Sent back"}</h2>
+      <div style="color:#666;margin:6px 0 18px">${esc(D.project)} IPA ${esc(D.label)} &middot; AED ${money(D.total)}<br>${ok ? (nxt ? esc(nxt.name) + " (" + esc(nxt.label.replace("Signature / ", "")) + ") has been told." : "The bill is approved - ready to submit to the client.") : retTo ? "Returned to " + esc(retTo) + " to correct - only they are told." : "It is back with the QS, with your note."}</div>
       ${nextI >= 0 ? `<button class="btn ok" id="d-next">Next bill &rarr;</button><div style="color:#888;font-size:12.5px;margin-top:8px">${left.length} more waiting</div>` : `<button class="btn ok" id="d-home">Done</button>`}</div>`;
     if ($("#d-next")) $("#d-next").onclick = () => { idx = nextI; showBill(); };
     if ($("#d-home")) $("#d-home").onclick = () => { if (history.length > 1) history.back(); else location.href = "/"; };

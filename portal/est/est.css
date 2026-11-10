@@ -1039,3 +1039,36 @@ body.glass .wrap .btn:hover { background-color: rgba(255,80,95,.14) !important; 
 /* the heading row that stays at the top while a table scrolls (help/freeze.js): dark on the dashboards */
 body.glass .freeze-head { background: #1B0D11 !important; box-shadow: 0 6px 16px rgba(0,0,0,.45) !important; border-bottom: 1px solid rgba(255,255,255,.12); }
 body.glass .freeze-head th, body.glass .freeze-head td { background: transparent !important; color: rgba(255,255,255,.72) !important; border-color: rgba(255,255,255,.12) !important; }
+/* Payments received: Pending (10 Nov 2026) */
+.ipa-rcv { display: inline-flex; gap: 6px; align-items: center; }
+.ipa-rcv select.ipa-pin { width: auto; min-width: 96px; }
+.ipa-pend { display: inline-block; background: #FFF1D6; color: #8A5A00; border: 1px solid #F2D29A; border-radius: 10px; padding: 2px 10px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.ipa-pamt input.ipa-pin.amt { color: #8A8079; font-style: italic; }
+.ipa-pamt { color: #8A8079; font-style: italic; }
+.ipa-pnote { font-size: 11px; color: #8A5A00; font-style: italic; margin-top: 2px; }
+.ipa-pay tr.carry td { background: #FFFBF1; color: #5b4a2a; }
+/* Reject / returned to Prepared by (10 Nov 2026) */
+.ipa-ret { background: #FDECEA; border: 1px solid #F1B9B2; color: #8E1F16; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13.5px; line-height: 1.5; }
+.ipa-ret-w { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12.5px; }
+.ipa-ret-a { background: #fff; border: 1px solid #E6B8B1; color: #A93226; border-radius: 12px; padding: 2px 10px; font-size: 12px; cursor: pointer; }
+.ipa-rj-btn { background: #fff; color: #C0392B; border: 1.5px solid #C0392B; }
+.ipa-rj-btn:hover { background: #FBEFED; }
+.ipa-chain li.rej .dot { background: #C0392B; color: #fff; }
+.ipa-rej-t { color: #A93226; }
+.ipa-since { border-left: 4px solid #E6B8B1; }
+.ipa-since ul { margin: 4px 0 0 18px; padding: 0; }
+.ipa-rjm { position: fixed; inset: 0; background: rgba(30, 20, 15, .45); z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.ipa-rjb { background: #fff; border-radius: 14px; padding: 18px 20px; width: min(560px, 100%); max-height: 92vh; overflow: auto; box-shadow: 0 20px 50px rgba(0,0,0,.25); }
+.ipa-rjb h3 { margin: 0 0 12px; }
+.ipa-rjb label { display: block; font-weight: 600; font-size: 13px; margin: 10px 0 4px; }
+.ipa-rjb textarea, .ipa-rjb #rj-w { width: 100%; box-sizing: border-box; border: 1px solid #ddd; border-radius: 8px; padding: 8px 10px; font: inherit; }
+.ipa-rjb input[type=file] { display: block; margin-top: 4px; font-weight: 400; }
+.ipa-rj-ar { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 8px; }
+.ipa-rj-ar label { display: inline-flex; gap: 5px; align-items: center; font-weight: 400; margin: 0; }
+.ipa-rj-err { color: #B03A2E; font-size: 12.5px; min-height: 16px; margin-top: 6px; }
+.ipa-rj-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.ipa-rj-go { background: #C0392B; color: #fff; border: 1px solid #C0392B; }
+.est-ret { border: 1px solid rgba(241, 120, 105, .6); }
+.est-retrow { display: block; width: 100%; text-align: left; background: rgba(192, 57, 43, .12); border: 1px solid rgba(241, 120, 105, .45); border-radius: 10px; padding: 10px 12px; margin-top: 8px; cursor: pointer; color: inherit; font: inherit; }
+.est-retrow b { display: block; } .est-retrow span { display: block; opacity: .8; font-size: 12.5px; margin-top: 2px; }
+#ipa-st.ret { border-color: #C0392B; color: #A93226; background: #FDECEA; font-weight: 700; }

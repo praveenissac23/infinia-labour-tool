@@ -839,8 +839,8 @@ function pgEstFrame(id, msg) {
 window.addEventListener("message", e => {
   if (e.origin !== location.origin || !e.data || !e.data.est) return;
   if (e.data.est === "go") {
-    const m = { est: "open", pid: e.data.pid, group: e.data.group, sec: e.data.sec }, f = document.getElementById("pg-estproj-frame");
-    if (f && !f.getAttribute("src")) { if (m.pid) f.dataset.src = f.dataset.src.split("#")[0] + "#p" + m.pid + (m.group ? "&s=" + m.group + "." + m.sec : ""); pgTab("estproj"); }   // its first load lands on it
+    const m = { est: "open", pid: e.data.pid, group: e.data.group, sec: e.data.sec, bill: e.data.bill }, f = document.getElementById("pg-estproj-frame");
+    if (f && !f.getAttribute("src")) { if (m.pid) f.dataset.src = f.dataset.src.split("#")[0] + "#p" + m.pid + (m.group ? "&s=" + m.group + "." + m.sec : "") + (m.bill ? "&bill=" + m.bill : ""); pgTab("estproj"); }   // its first load lands on it
     else { pgTab("estproj"); if (f && f.contentWindow) { try { f.contentWindow.postMessage(m, location.origin); } catch (er) {} } }
   }
 

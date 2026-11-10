@@ -28,7 +28,7 @@ function h(html) { const t = document.createElement("template"); t.innerHTML = h
 function st(s) {
   const g = ["Paid", "Approved", "Claimed", "Closed", "Answered", "Won", "Completed", "Current", "Certified", "Certified at site", "Approved as noted", "✔"];
   const a = ["Submitted", "At site", "Pricing", "Invoiced", "Preparing", "Running", "MD approved"];
-  const r = ["Rejected", "Lost", "Revise & resubmit", "Cancelled", "Overdue"];
+  const r = ["Rejected", "Lost", "Revise & resubmit", "Cancelled", "Overdue", "Returned to Prepared by"];
   const b = ["Received", "Open", "Draft", "Identified", "Not started", "Absorbed", "Prepared", "CM approved", "Verified"];
   const k = g.includes(s) ? "g" : a.includes(s) ? "a" : r.includes(s) ? "r" : b.includes(s) ? "b" : "";
   return `<span class="st ${k}">${esc(s || "-")}</span>`;
@@ -286,7 +286,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") { const lv =
 // ---------- Preview / PDF / Excel / Share ----------
 function xpButtons(what, extra = {}) {
   const k = JSON.stringify({ what, extra }).replace(/"/g, "&quot;");
-  return `<span class="xp"><button class="btn btn-ghost" data-xp="preview" data-k="${k}">Preview</button><button class="btn btn-ghost" data-xp="pdf" data-k="${k}">Export PDF</button><button class="btn btn-ghost" data-xp="excel" data-k="${k}">Export Excel</button><button class="btn btn-ghost" data-xp="share" data-k="${k}">Share</button></span>`;
+  return `<span class="xp"><button class="btn btn-ghost" data-xp="preview" data-k="${k}">Preview</button><button class="btn btn-ghost" data-xp="pdf" data-k="${k}">Export PDF</button><button class="btn btn-ghost" data-xp="excel" data-k="${k}">Export Excel</button><button class="btn btn-ghost" data-xp="share" data-k="${k}"${extra.noshare ? ' disabled title="Returned to Prepared by - it cannot be shared or sent until it is signed again"' : ""}>Share</button></span>`;
 }
 async function exportGo(fmt, what, extra) {
   try {
@@ -426,7 +426,10 @@ async function loadDash() {
   const d = ST.dash, t = d.totals, k = d.kpi, A = v => "AED " + money(v, false);
   const rows = d.projects;
   const coll = t.revised ? Math.round(100 * t.received / t.revised) : 0;
+  let ret = [];                                   // bills rejected and returned to this login (Prepared by), on top
+  try { ret = ((await GET("/notifications")).notifications || []).filter(x => x.returned); } catch (e) {}
   app.innerHTML = `<div class="wrap">
+    ${ret.length ? `<div class="card est-ret"><h3>Bills returned to you <span class="muted small">- fix and sign again</span></h3>${ret.map(x => `<button class="est-retrow" data-retp="${x.pid}" data-retb="${x.bill}"><b>${esc(x.title.replace(/^Bill returned to you: /, ""))}</b><span>${esc(x.detail || "")}</span></button>`).join("")}</div>` : ""}
     <div class="card"><h3>All projects ${tip("Every figure is worked out from the projects - nothing is typed here. Click a project to open its dashboard.")}<span class="spacer"></span>${xpButtons("dash")}</h3>
       <div class="kpis">
         ${kpi("Contract value", A(t.revised), rows.length + " projects · " + rows.filter(r => r.status === "Running").length + " running")}
@@ -452,6 +455,11 @@ async function loadDash() {
     </div>
   </div>`;
   $$("[data-pid]", app).forEach(r => r.onclick = () => { const s = (r.dataset.sec || "").split("."); goProject(+r.dataset.pid, s[0], s[1]); });
+  $$("[data-retp]", app).forEach(r => r.onclick = () => {
+    const pid = +r.dataset.retp, bill = +r.dataset.retb;
+    if (window.PG_EMBED) { try { parent.postMessage({ est: "go", view: "projects", pid, group: "bills", sec: "ipa", bill }, location.origin); return; } catch (e) {} }
+    location.href = `/portal/est-app.html?view=projects#p${pid}&s=bills.ipa&bill=${bill}`;
+  });
   $$("[data-go]", app).forEach(f => f.onclick = () => {
     const s = f.dataset.go.split("."), want = s[1] === "pcs" ? ["Prepared", "CM approved", "Verified", "MD approved"] : ["At site", "Received", "Certified"];
     const n = {}; d.queue.filter(x => want.includes(x.status)).forEach(x => n[x.project_id] = (n[x.project_id] || 0) + 1);

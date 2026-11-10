@@ -3977,3 +3977,77 @@ def add_pages_xlsx(data: bytes, inputs):
         zout.writestr(k, v)
     zout.close()
     return out.getvalue()
+
+
+# ---- previous payments marked Pending (10 Nov 2026) ------------------------------------------------------------
+# A bill submitted but not paid yet: its Received on reads "Pending". Its amount stays on the line but is left out of
+# the total of previous payments - the total's SUM(E7:E22) becomes SUMIF(D7:D22,"<>Pending",E7:E22) (a single cell
+# E9: IF(D9="Pending",0,E9)), on screen, in the PDF and as the formula in the Excel file.
+
+def is_pending(v):
+    return isinstance(v, str) and v.strip().lower() == "pending"
+
+
+def pending_rows(model, inputs):
+    """{sheet: [rows]} of the previous-payments tables whose Received on is Pending."""
+    out = {}
+    for p in (model.get("map") or {}).get("payments", []):
+        rc = p["cols"].get("received")
+        if not rc:
+            continue
+        s = next((x for x in model["sheets"] if x["name"] == p["sheet"]), None)
+        if not s:
+            continue
+        inp = (inputs or {}).get(p["sheet"]) or {}
+        for r in range(p["head_row"] + 1, p["total_row"]):
+            k = f"{r},{rc}"
+            v = inp[k] if k in inp else (s["cells"].get(k) or {}).get("v")
+            if is_pending(v):
+                out.setdefault(p["sheet"], []).append(r)
+    return out
+
+
+_UNQ_REF = re.compile(r"(?<![A-Za-z0-9_.!$'\"])(\$?)([A-Z]{1,3})(\$?)(\d+)(?::(\$?)([A-Z]{1,3})(\$?)(\d+))?(?![A-Za-z0-9_(!])")
+
+
+def pending_formula(f, amt_c, rec_c, lo, hi):
+    """The total's formula with the amount column's refs (rows lo..hi) leaving Pending rows out."""
+    al, rl = get_column_letter(amt_c), get_column_letter(rec_c)
+    parts = re.split(r'("(?:[^"]|"")*")', f)           # text in quotes is left alone
+    def one(m):
+        if column_index_from_string(m.group(2)) != amt_c:
+            return m.group(0)
+        a = int(m.group(4))
+        if m.group(6):
+            if column_index_from_string(m.group(6)) != amt_c:
+                return m.group(0)
+            b = int(m.group(8))
+            if b < lo or a > hi:
+                return m.group(0)
+            return f'SUMIF({m.group(1)}{rl}{m.group(3)}{a}:{m.group(5)}{rl}{m.group(7)}{b},"<>Pending",{m.group(0)})'
+        if not (lo <= a <= hi):
+            return m.group(0)
+        return f'IF({rl}{a}="Pending",0,{m.group(0)})'
+    return "".join(x if i % 2 else _UNQ_REF.sub(one, x) for i, x in enumerate(parts))
+
+
+def pending_totals(model, inputs):
+    """The model with each previous-payments total leaving its Pending rows out (unchanged when none is Pending)."""
+    pend = pending_rows(model, inputs)
+    if not pend:
+        return model
+    m = dict(model); sheets = []
+    for s in model["sheets"]:
+        tabs = [p for p in (model.get("map") or {}).get("payments", []) if p["sheet"] == s["name"] and pend.get(s["name"])]
+        if tabs:
+            s = dict(s); s["cells"] = dict(s["cells"])
+            for p in tabs:
+                k = f"{p['total_row']},{p['cols']['amount']}"
+                cell = s["cells"].get(k)
+                if cell and "f" in cell:
+                    cell = dict(cell); cell["f"] = pending_formula(cell["f"], p["cols"]["amount"], p["cols"]["received"], p["head_row"] + 1, p["total_row"] - 1)
+                    cell.pop("x", None)
+                    s["cells"][k] = cell
+        sheets.append(s)
+    m["sheets"] = sheets
+    return m

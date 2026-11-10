@@ -265,7 +265,7 @@ function drawBill() {
   const b = IPA.bill, f = billFigs(b), ck = checks(b);
   const p = ST.b.project;
   $("#b-title").innerHTML = `<span class="ipa-ttl">Interim Bill ${esc(billNo(b))}</span> <span class="muted small">${esc(p.code)}${p.name ? " · " + esc(p.name) : ""}</span> ${st(b.status)}`;
-  $("#b-tools").innerHTML = `<span class="ipa-ur"><button class="btn btn-plain btn-sm" id="ipa-undo" title="Undo (Ctrl+Z)" disabled>&#8630; Undo</button><button class="btn btn-plain btn-sm" id="ipa-redo" title="Redo (Ctrl+Y)" disabled>&#8631; Redo</button></span>` + xpButtons("ipa", { id: b.id, name: `${p.code} IPA ${billNo(b)}` });
+  $("#b-tools").innerHTML = `<span class="ipa-ur"><button class="btn btn-plain btn-sm" id="ipa-undo" title="Undo (Ctrl+Z)" disabled>&#8630; Undo</button><button class="btn btn-plain btn-sm" id="ipa-redo" title="Redo (Ctrl+Y)" disabled>&#8631; Redo</button></span>` + xpButtons("ipa", Object.assign({ id: b.id, name: `${p.code} IPA ${billNo(b)}` }, b.returned ? { noshare: 1 } : {}));
   $("#ipa-undo").onclick = () => undoBill(false); $("#ipa-redo").onclick = () => undoBill(true);
   undoRefresh();
   IPA_STEPS = IPA_ALL_STEPS.filter(([k]) => k !== "fees" || (b.fees && b.fees.length));
@@ -282,6 +282,56 @@ function drawBill() {
   $$("#ipa-nav [data-step]").forEach(x => x.onclick = () => { IPA.step = x.dataset.step; drawBill(); $("#big .bbody").scrollTop = 0; });
   const m = $("#ipa-main");
   ({ cover: drawCover, work: drawWork, pay: ipaDrawPay, fees: drawFees, sheets: drawSheets, review: drawReview })[IPA.step](m);
+  retBanner(m);
+}
+// ---- a bill rejected by the final approver: back with the person who prepared it (10 Nov 2026)
+const AREA_STEP = { "Cover & details": "cover", "Work done": "work", "Payments received": "pay", "Authority fees": "fees", "Sheets": "sheets" };
+function dmyHm(iso) { const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || ""); return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : (iso || ""); }
+function retMine(b) { const rd = (b.rounds || []).slice(-1)[0] || {}; const me = ST.meta.me; return me.admin || samePerson(me.name || "", rd.to || "") || samePerson(me.username || "", rd.to || ""); }
+function retBanner(m) {
+  const b = IPA.bill; if (!b.returned || !m) return;
+  const rd = (b.rounds || []).slice(-1)[0]; if (!rd) return;
+  const links = (rd.areas || []).filter(a => AREA_STEP[a] && IPA_STEPS.some(s_ => s_[0] === AREA_STEP[a])).map(a => `<button class="ipa-ret-a" data-retgo="${AREA_STEP[a]}">${esc(a)}</button>`).join("");
+  const el = h(`<div class="ipa-ret"><b>Returned to ${esc(rd.to)} by ${esc(rd.by)} on ${esc(rd.at_dmy || dmyHm(rd.at))}</b> &ndash; ${esc(rd.reason)}. ${retMine(b) ? "Fix it and send for signing again." : `Read only - ${esc(rd.to)} is correcting it.`}
+      ${links || rd.where ? `<div class="ipa-ret-w">Where: ${links}${rd.where ? ` <span>${esc(rd.where)}</span>` : ""}</div>` : ""}
+      ${rd.file ? `<div class="ipa-ret-w"><button class="ipa-ret-a" data-retfile="${rd.file.id}">&#128206; ${esc(rd.file.name)}</button></div>` : ""}</div>`);
+  m.prepend(el);
+  $$("[data-retgo]", el).forEach(x => x.onclick = () => { IPA.step = x.dataset.retgo; drawBill(); $("#big .bbody").scrollTop = 0; });
+  $$("[data-retfile]", el).forEach(x => x.onclick = async () => { try { const t = await POST("/auth/download-token"); window.open(`/store/est/ipa/bill/${b.id}/file/${x.dataset.retfile}?token=${encodeURIComponent(t.token || t.download_token)}`, "_blank"); } catch (e) { fail(e); } });
+}
+function sinceRejectCard(b) {
+  const sr = b.since_reject; if (!sr || b.returned || !["Awaiting approval"].includes(b.status)) return "";
+  return `<div class="ipa-card ipa-since"><h3>Rejected before <span class="muted small">- round ${sr.n}, by ${esc(sr.by)} on ${esc(dmyHm(sr.at))}</span></h3>
+    <div><b>Reason:</b> ${esc(sr.reason)}${(sr.areas || []).length ? ` <span class="muted">(${esc(sr.areas.join(", "))}${sr.where ? " - " + esc(sr.where) : ""})</span>` : ""}</div>
+    <div class="small" style="margin-top:6px"><b>Changed since:</b> ${sr.changes.length ? `<ul>${sr.changes.slice(0, 40).map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "no figure changed (lines, payments, fees, total)"}</div></div>`;
+}
+async function rejectBill() {
+  const b = IPA.bill, prep = (b.signers || []).filter(x => !x.ext)[0] || {};
+  const areas = ["Cover & details", "Work done", "Payments received", "Authority fees", "Sheets"];
+  const box = h(`<div class="ipa-rjm"><div class="ipa-rjb"><h3>Reject Interim Bill ${esc(billNo(b))}</h3>
+      <label>Reason for rejection <span class="muted small">(required, at least 10 characters)</span><textarea id="rj-r" rows="3" placeholder="What is wrong and what to fix"></textarea></label>
+      <label>Where the problem is <span class="muted small">(optional)</span></label><div class="ipa-rj-ar">${areas.map(a => `<label><input type="checkbox" value="${esc(a)}"> ${esc(a)}</label>`).join("")}</div>
+      <input id="rj-w" placeholder="Which sheet or line (optional) - e.g. Cost Proposal Log line 3">
+      <label>Attachment <span class="muted small">(optional - PDF, picture or Excel)</span><input type="file" id="rj-f" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.xls,.xlsx,.csv,image/*,application/pdf"></label>
+      <div class="ipa-rj-err" id="rj-e"></div>
+      <div class="ipa-rj-btns"><button class="btn btn-plain" id="rj-x">Cancel</button><button class="btn ipa-rj-go" id="rj-go">Reject and return to Prepared by</button></div></div></div>`);
+  document.body.appendChild(box);
+  $("#rj-x", box).onclick = () => box.remove();
+  $("#rj-go", box).onclick = async () => {
+    const reason = $("#rj-r", box).value.trim();
+    if (reason.length < 10) { $("#rj-e", box).textContent = "Give the reason (at least 10 characters)."; return; }
+    if (!(await confirmDelete(`Return Interim Bill ${esc(billNo(b))} to ${esc(prep.name || "Prepared by")} (Prepared by) for correction?`, "Every signature on this bill comes off; it is signed again once corrected.", "Reject and return", ""))) return;
+    const fd = new FormData(); fd.append("reason", reason);
+    fd.append("areas", JSON.stringify($$(".ipa-rj-ar input:checked", box).map(x => x.value))); fd.append("where", $("#rj-w", box).value.trim());
+    const f = $("#rj-f", box).files[0]; if (f) fd.append("file", f);
+    $("#rj-go", box).disabled = true;
+    try {
+      const r = await fetch(`/store/est/ipa/bill/${b.id}/reject`, { method: "POST", headers: { Authorization: "Bearer " + (TOKEN || "") }, body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.detail || "Could not reject");
+      box.remove(); IPA.bill = await GET(`/store/est/ipa/bill/${b.id}`); toast(`Returned to ${j.to}`); drawBill();
+    } catch (e) { $("#rj-e", box).textContent = e.message; $("#rj-go", box).disabled = false; }
+  };
 }
 function nextBtn(k) {
   const i = IPA_STEPS.findIndex(s => s[0] === k), n = IPA_STEPS[i + 1], pv = IPA_STEPS[i - 1];
@@ -801,14 +851,30 @@ function payCell(p, r, c) {
   if (c === "desc") return `<td>${paid ? esc(x.value || "") : `<input class="ipa-pin wide" data-spell="off" ${at} value="${esc(x.value ?? "")}" placeholder="e.g. Payment Application No 9">`}</td>`;
   if (c === "amount") {
     const raw = x.raw === null || x.raw === undefined ? "" : String(x.raw).replace(/^=/, "");
-    return `<td class="r">${paid ? money(x.value) : `<input class="ipa-pin amt" data-noclear ${at} data-raw="${esc(raw)}" value="${typeof x.value === "number" && x.value ? money(x.value, false) : ""}" placeholder="">`}</td>`;
+    const pn = r.pending ? `<div class="ipa-pnote">Pending - not in total</div>` : "";
+    return `<td class="r${r.pending ? " ipa-pamt" : ""}">${paid ? money(x.value) + pn : `<input class="ipa-pin amt" data-noclear ${at} data-raw="${esc(raw)}" value="${typeof x.value === "number" && x.value ? money(x.value, false) : ""}" placeholder="">${pn}`}</td>`;
   }
   const iso = cellIso(x);
-  const asText = typeof x.raw === "string" && !String(x.raw).startsWith("=") ? (String(x.raw).match(/[./-]/) || ["."])[0] : "";
+  const asText = typeof x.raw === "string" && !String(x.raw).startsWith("=") && !/pending/i.test(x.raw) ? (String(x.raw).match(/[./-]/) || ["."])[0] : "";
+  if (c === "received") {                    // Received on: a date, or Pending (submitted, money not in yet - out of the total)
+    if (paid) return `<td>${r.pending ? '<span class="ipa-pend">Pending</span>' : iso ? dt(iso) : esc(x.value || "")}</td>`;
+    return `<td><span class="ipa-rcv"><select class="ipa-pin ipa-rk" ${at}><option value="r"${r.pending ? "" : " selected"}>Received</option><option value="p"${r.pending ? " selected" : ""}>Pending</option></select>${r.pending ? '<span class="ipa-pend">Pending</span>' : `<input class="ipa-pin" type="date" ${at} data-text="${esc(asText)}" value="${iso}">`}</span></td>`;
+  }
   return `<td>${paid ? (iso ? dt(iso) : esc(x.value || "")) : `<input class="ipa-pin" type="date" ${at} data-text="${esc(asText)}" value="${iso}">`}</td>`;
 }
 function bindPayInput(inp) {
   const c = inp.dataset.c;
+  if (inp.classList.contains("ipa-rk")) {           // Received <-> Pending
+    inp.onchange = async () => {
+      const pend = inp.value === "p";
+      if (pend) {
+        if (await save({ set: { [inp.dataset.sh]: { [inp.dataset.pk]: "Pending" } }, why: { label: "Marked Pending", page: "pay" } })) { toast("Pending - left out of the total of previous payments"); drawBill(); }
+      } else {
+        if (await save({ set: { [inp.dataset.sh]: { [inp.dataset.pk]: null } }, why: { label: "Marked Received", page: "pay" } })) { toast("Received - pick the date it came in"); drawBill(); const d = $(`input[type=date][data-pk="${inp.dataset.pk}"]`); if (d) { d.focus(); try { d.showPicker(); } catch (e) {} } }
+      }
+    };
+    return;
+  }
   if (c === "amount") {
     inp.onfocus = () => { inp.value = inp.dataset.raw; inp.dataset.was = inp.value; setTimeout(() => inp.select(), 0); };
     inp.onblur = async () => {
@@ -845,14 +911,24 @@ function chainCard(b) {
     <ol class="ipa-chain">${b.signers.filter(x => !x.ext).map(x => {
       const mine = ST.meta.me.admin || samePerson(meName, x.name) || samePerson(meUser, x.name);
       const state = x.signed_at ? "done" : x.turn ? "turn" : "wait";
+      const internal = b.signers.filter(y => !y.ext), isFinal = internal.length > 1 && internal[internal.length - 1].key === x.key;
+      const rd = (b.rounds || []).slice(-1)[0];
+      if (b.returned && rd) {                         // returned: Prepared by fixes it, the others wait, the approver's rejection shown
+        const prepRow = internal[0] && internal[0].key === x.key;
+        const msg = prepRow ? (mine ? "Returned to you - fix and sign again" : `Returned to ${esc(x.name)} to correct`) : isFinal ? `Rejected on ${esc(rd.at_dmy || dmyHm(rd.at))} - ${esc(rd.reason)}` : "Waiting";
+        return `<li class="${prepRow ? "turn" : isFinal ? "rej" : "wait"}"><span class="dot">${prepRow ? "&rarr;" : isFinal ? "&#10005;" : "&middot;"}</span>
+          <div class="who"><b>${esc(x.labels.find(l => l !== "Signature") || x.labels[0])}</b><div>${esc(x.name)}${x.title ? ` <span class="muted">- ${esc(x.title)}</span>` : ""}</div><div class="small ${isFinal ? "ipa-rej-t" : "muted"}">${msg}</div></div>
+          <div class="act">${prepRow && mine ? `<button class="btn btn-primary" data-sign="${esc(x.key)}">Sign and send for checking</button>` : ""}</div></li>`;
+      }
       return `<li class="${state}"><span class="dot">${x.signed_at ? "&#10003;" : x.turn ? "&rarr;" : "&middot;"}</span>
         <div class="who"><b>${esc(x.labels.find(l => l !== "Signature") || x.labels[0])}</b><div>${esc(x.name)}${x.title ? ` <span class="muted">- ${esc(x.title)}</span>` : ""}</div>
           <div class="small muted">${x.signed_at ? `Signed on ${dt(x.signed_at)}` : x.turn ? (mine ? "Your turn to sign" : `Waiting for ${esc(x.name)} to sign`) : "After the one before"}</div></div>
         <div class="act">${x.signed_at ? (mine ? `<button class="btn btn-plain btn-sm" data-unsign="${esc(x.key)}">Take back</button>` : "")
-          : x.turn && mine ? `<button class="btn btn-primary" data-sign="${esc(x.key)}">${x.step === 0 ? "Sign as prepared" : x.step >= 3 ? "Approve & sign" : "Check & sign"}</button>` : ""}</div></li>`; }).join("")}</ol>
+          : x.turn && mine ? `<button class="btn btn-primary" data-sign="${esc(x.key)}">${x.step === 0 ? "Sign as prepared" : (x.step >= 3 || isFinal) ? "Approve & sign" : "Check & sign"}</button>${isFinal && b.status === "Awaiting approval" ? ` <button class="btn ipa-rj-btn" data-reject="1">Reject</button>` : ""}` : ""}</div></li>`; }).join("")}</ol>
     ${b.signers.some(x => x.turn && !(ST.meta.me.admin || samePerson(meName, x.name) || samePerson(meUser, x.name))) ? `<div class="small muted">Only the person named can sign - matched to their login through the staff register - or an admin on their behalf. They see it on their bell.</div>` : ""}</div>`;
 }
 function bindChain(m) {
+  $$("[data-reject]", m).forEach(bt => bt.onclick = rejectBill);
   $$("[data-sign]", m).forEach(bt => bt.onclick = async () => {
     bt.disabled = true;
     try {
@@ -881,7 +957,7 @@ function drawFees(m) {
       ${(t.earlier || []).map(e => e.head ? `<tr class="hd old"><td colspan="${t.cols.length + 1}">${esc(e.desc ?? "")} <span class="muted small">earlier bill</span></td></tr>`
           : `<tr class="old">${feeCols(t).map(c => `<td class="${c === "amount" ? "r" : ""}">${c === "amount" ? (e.amount ? money(e.amount, false) : "") : esc(e[c] ?? "")}</td>`).join("")}<td></td></tr>`).join("")}
       ${(t.earlier || []).length ? `<tr class="tot old"><td colspan="${t.cols.length - 1}">Claimed in earlier bills</td><td class="r">${money(t.earlier_total, false)}</td><td></td></tr>` : ""}
-      ${t.rows.map(r => r.head ? `<tr class="hd"><td colspan="${t.cols.length + 1}"><input class="ipa-pin" data-sh="${esc(t.sheet)}" data-pk="${r.desc.key}" data-c="desc" value="${esc(r.desc.value ?? "")}" style="width:200px;font-weight:700"></td></tr>` :
+      ${t.rows.map(r => r.carry ? `<tr class="carry">${feeCols(t).map(c => `<td class="${c === "amount" ? "r" : ""}">${c === "amount" ? `<b>${money(r.amount.value, false)}</b>` : c === "desc" ? `${esc(r.desc.value ?? "")}<div class="small muted">Taken from that bill's Authority fees - comes off when its payment is marked Received</div>` : ""}</td>`).join("")}<td class="r"><span class="ipa-pend" title="Read only - set on Payments received">carried</span></td></tr>` : r.head ? `<tr class="hd"><td colspan="${t.cols.length + 1}"><input class="ipa-pin" data-sh="${esc(t.sheet)}" data-pk="${r.desc.key}" data-c="desc" value="${esc(r.desc.value ?? "")}" style="width:200px;font-weight:700"></td></tr>` :
         `<tr>${feeCols(t).map(c => { const x = r[c]; if (!x) return "<td></td>";
           const at = `data-sh="${esc(t.sheet)}" data-pk="${x.key}" data-c="${c}"`;
           if (c === "amount") return `<td class="r"><input class="ipa-pin amt" data-noclear ${at} data-raw="${esc(x.raw === null || x.raw === undefined ? "" : String(x.raw).replace(/^=/, ""))}" value="${typeof x.value === "number" && x.value ? money(x.value, false) : ""}"></td>`;
@@ -926,12 +1002,12 @@ async function drawReview(m) {
   const allSigned = !(b.signers || []).some(x => !x.signed_at && !x.ext);
   m.innerHTML = `<div class="ipa-card ipa-rev">
       <div class="ipa-rev-top"><div><small>Total amount due for payment</small><div class="big">AED ${money(b.total_due, false)}</div>${c && c.words ? `<div class="muted small">${esc(c.words)}</div>` : ""}</div>
-        <div class="ipa-rev-st"><label class="small muted">Status</label><select id="ipa-st" ${ST.meta.me.admin ? "" : "disabled"}>${IPA.list.statuses.map(s => `<option ${s === b.status ? "selected" : ""}>${s}</option>`).join("")}</select>
+        <div class="ipa-rev-st"><label class="small muted">Status</label><select id="ipa-st" class="${b.returned ? "ret" : ""}" ${ST.meta.me.admin ? "" : "disabled"}>${IPA.list.statuses.map(s => `<option ${s === b.status ? "selected" : ""}>${s}</option>`).join("")}</select>
           ${allSigned && ["Draft", "Awaiting approval", "Approved"].includes(b.status) ? `<button class="btn btn-primary" id="ipa-submit">Mark as submitted</button>` : ""}</div></div>
       <ul class="ipa-checks">${ck.map(([ok, t]) => `<li class="${ok === true ? "ok" : ok === false ? "no" : "na"}"><span>${ok === true ? "&#10003;" : ok === false ? "!" : "&ndash;"}</span>${t}</li>`).join("")}</ul>
-      <div class="ipa-rev-x">${xpButtons("ipa", { id: b.id, name: `${ST.b.project.code} IPA ${billNo(b)}` })}</div>
+      <div class="ipa-rev-x">${xpButtons("ipa", Object.assign({ id: b.id, name: `${ST.b.project.code} IPA ${billNo(b)}` }, b.returned ? { noshare: 1 } : {}))}</div>
     </div>
-    ${chainCard(b)}
+    ${sinceRejectCard(b)}${chainCard(b)}
     <div class="ipa-card"><h3>The bill as it will print <span class="muted small">- the consultant's own sheets, this month's figures${allSigned ? "" : ", signatures once each person has signed"}</span></h3><div id="ipa-pv" class="ipa-pv"><div class="empty">Loading...</div></div></div>
     <div class="ipa-card"><button class="btn btn-ghost" id="ipa-del">Delete this bill</button></div>
     ${nextBtn("review")}`;
@@ -1437,7 +1513,7 @@ async function drawSheet(v, i, keep) {
   if (!document.getElementById("ipa-css")) document.head.appendChild(h(`<style id="ipa-css">${d.css}</style>`));
   d.i = i;
   const b = IPA.bill, cur = b.sheets.find(x => x.i === i) || {};
-  const locked = b.status !== "Draft";                  // the sheets are changed only while the bill is a Draft
+  const locked = !(b.status === "Draft" || (b.returned && retMine(b)));   // changed while a Draft (or returned to whoever prepared it)
   const FS = [6, 7, 8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 22, 24];
   const FONTS = ["Calibri", "Arial", "Arial Narrow", "Times New Roman", "Cambria", "Tahoma", "Verdana", "Century Gothic", "Book Antiqua"];
   const B_ = (fx, t, h, v) => `<button class="btn btn-plain btn-sm" data-fx="${fx}"${v !== undefined ? ` data-v="${v}"` : ""} title="${t}" disabled>${h}</button>`;

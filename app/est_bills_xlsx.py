@@ -280,6 +280,9 @@ def render_xlsx(model, values, title, inputs=None, fname=""):
                 part = {"l": ws.oddHeader.left, "c": ws.oddHeader.center, "r": ws.oddHeader.right}.get(k[1])
                 if part is not None:
                     part.text = BR.hf_text(t, 1, 1, s["name"], title, bill).replace("&", "&&") if "&P" not in t else t
+        if model.get("_watermark"):                       # a returned bill: not for issue, on every page
+            ws.oddHeader.center.text, ws.oddHeader.center.size, ws.oddHeader.center.color = model["_watermark"], 16, "C0392B"
+            ws.oddHeader.center.font = "Arial,Bold"
         if s["name"] in stamps:
             stamp_on.append(si + 1)
         ws.sheet_view.showGridLines = False

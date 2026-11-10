@@ -794,7 +794,7 @@ if(!g.classList.contains("pgw")){{g=document.createElement("div");g.className="p
 p.style.margin="0";p.style.transformOrigin="0 0";p.style.transform=k<1?"scale("+k.toFixed(4)+")":"";g.style.cssText="width:"+(w*k).toFixed(1)+"px;height:"+(h*k).toFixed(1)+"px;margin:0 auto 18px;overflow:hidden";}});}}
 function fitcells(){{document.querySelectorAll(".cl").forEach(function(d){{d.style.fontSize="";if(d.scrollHeight<=d.clientHeight+1)return;var f=parseFloat(getComputedStyle(d).fontSize),k=1;while(d.scrollHeight>d.clientHeight+1&&k>0.6){{k-=0.05;d.style.fontSize=(f*k).toFixed(2)+"px";}}}});}}
 addEventListener("resize",fit);addEventListener("DOMContentLoaded",function(){{fit();fitcells();}});if(document.fonts)document.fonts.ready.then(fitcells);</script>
-<div class="pages">{''.join(out)}</div>{"<style>.bar{display:none}</style>" if embed else ""}</body></html>"""
+{('<style>.pg::after{content:"' + model["_watermark"] + '";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-35deg);font:700 52px Arial,sans-serif;color:rgba(192,57,43,.18);white-space:nowrap;pointer-events:none;z-index:5}</style>') if model.get("_watermark") else ""}<div class="pages">{''.join(out)}</div>{"<style>.bar{display:none}</style>" if embed else ""}</body></html>"""
 
 
 # ---------------------------------------------------------------------------------------------- PDF
@@ -1253,6 +1253,10 @@ def render_pdf(model, values, title, inputs=None, fname=""):
                     cv.drawRightString(PW - (rgt if k[0] == "f" else pl["mr"]), yy, txt)
                 else:
                     cv.drawCentredString(PW / 2, yy, txt)
+            if model.get("_watermark"):                   # a returned bill: not for issue
+                cv.saveState(); cv.setFillColorRGB(0.75, 0.22, 0.17); cv.setFillAlpha(0.18) if hasattr(cv, "setFillAlpha") else None
+                cv.setFont("Helvetica-Bold", 46 if PW < PH else 56); cv.translate(PW / 2, PH / 2); cv.rotate(35)
+                cv.drawCentredString(0, -16, model["_watermark"]); cv.restoreState()
             cv.showPage()
     cv.save()
     buf.seek(0)

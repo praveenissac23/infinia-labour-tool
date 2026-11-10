@@ -13,7 +13,7 @@ import tempfile
 import re
 from datetime import date, datetime
 
-from fastapi import Body, Depends, File, Form, HTTPException, UploadFile
+from fastapi import Body, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy import Column, Date, DateTime, Float, Integer, LargeBinary, String, Text, func
 from sqlalchemy.orm import Session, deferred
@@ -26,7 +26,7 @@ import est_bills_engine as BE
 import est_bills_render as BR
 
 router = E.router
-STATUSES = ["Draft", "Awaiting approval", "Approved", "Submitted", "Certified", "Paid"]
+STATUSES = ["Draft", "Returned to Prepared by", "Awaiting approval", "Approved", "Submitted", "Certified", "Paid"]
 
 
 class EstBillFormat(Base):
@@ -59,10 +59,23 @@ class EstBill(Base):
     work_done = Column(Float, default=0.0)
     notes = Column(Text, default="")
     signs = Column(Text, default="")               # who signs: {group: {"name", "title"}} (the person's signature from est_signatures)
+    returns = Column(Text, default="")             # rejections by the final approver, each round kept: [{at, by, reason, areas, ...}]
     created_by = Column(Integer, nullable=True)
     updated_by = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class EstBillFile(Base):
+    """A file put with a bill's rejection (the approver's marked-up PDF, a photo, an Excel)."""
+    __tablename__ = "est_bill_files"
+    id = Column(Integer, primary_key=True)
+    bill_id = Column(Integer, index=True)
+    name = Column(String, default="")
+    mime = Column(String, default="")
+    data = Column(LargeBinary)
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class EstSignature(Base):
@@ -97,9 +110,9 @@ class EstBillHist(Base):
 
 def create_tables(engine):
     from sqlalchemy import inspect, text
-    for t in (EstBillFormat, EstBill, EstSignature, EstBillHist):
+    for t in (EstBillFormat, EstBill, EstSignature, EstBillHist, EstBillFile):
         t.__table__.create(bind=engine, checkfirst=True)
-    for tb, col, typ in (("est_bills", "signs", "TEXT"), ("est_bills", "contract_id", "INTEGER"), ("est_bill_formats", "contract_id", "INTEGER"), ("est_signatures", "user_id", "INTEGER")):
+    for tb, col, typ in (("est_bills", "signs", "TEXT"), ("est_bills", "contract_id", "INTEGER"), ("est_bill_formats", "contract_id", "INTEGER"), ("est_signatures", "user_id", "INTEGER"), ("est_bills", "returns", "TEXT")):
         try:                                       # columns added after the tables were made
             have = {c["name"] for c in inspect(engine).get_columns(tb)}
             if col not in have:
@@ -172,7 +185,7 @@ def _bill_model(fmt, b_or_inputs):
 
 def _looks(model, inputs):
     """The bill as it is drawn: dates DD/MM/YYYY, Description / Remarks wrapping, then the office's own formatting."""
-    m = BE.dates_dmy(model)
+    m = BE.dates_dmy(BE.pending_totals(model, inputs))   # a payment still Pending: left out of the previous-payments total
     w = BE.with_defaults(m, inputs)
     out = dict(BE.a4_pages(BE.apply_fmt(m, w), inputs))   # every sheet on A4 (Page setup on the bill on top)
     out["_with"] = w                                     # the same formatting for the Excel file
@@ -263,6 +276,10 @@ def _signed_at(b):
             t = x.get("signed_ts") or (str(x["signed_at"]) + ("T23:59:59" if len(str(x["signed_at"])) == 10 else ""))
             if not last or _as_utc(t) > _as_utc(last[0]):
                 last = (t, x.get("signed_by_name") or x.get("name") or "")
+    for rd in _rounds(b):                                 # a rejection is a boundary too: undo never goes back past it
+        t = rd.get("at")
+        if t and (not last or _as_utc(t) > _as_utc(last[0])):
+            last = (t, f"{rd.get('by')} (rejected)")
     return last
 
 
@@ -313,8 +330,11 @@ def _hist_state(db, b, user):
             if u:
                 out["undo"] = {"id": u.id, "label": u.label, "where": where(u), "takeback": True}
             return out
-    if b.status != "Draft":
+    if b.status not in ("Draft", RETURNED):
         out["blocked"] = f"This bill is {b.status} - nothing can be undone."
+        return out
+    if not _may_edit(b, user):
+        out["blocked"] = "Returned to the person who prepared it - only they can change it."
         return out
     sg = _signed_at(b)
     if u:
@@ -337,6 +357,7 @@ def bill_undo(bid: int, payload: dict = Body(default={}), db: Session = Depends(
     """Undo ({"redo": true} = redo) this person's last change on this bill - only the cells it changed; the bill's
     totals worked out again. Signatures are never touched; never past a signing; Draft bills only."""
     b = _get(db, EstBill, bid)
+    _guard(b, user)
     redo = bool(payload.get("redo"))
     st = _hist_state(db, b, user)
     if st.get("takeback") and not redo:
@@ -349,7 +370,7 @@ def bill_undo(bid: int, payload: dict = Body(default={}), db: Session = Depends(
         st = _hist_state(db, b, user)
     if st["blocked"] and not redo:
         raise HTTPException(400, st["blocked"])
-    if b.status != "Draft":
+    if b.status not in ("Draft", RETURNED):
         raise HTTPException(400, f"This bill is {b.status} - nothing can be undone.")
     pick = st["redo"] if redo else st["undo"]
     if not pick:
@@ -636,8 +657,9 @@ def _payments(model, values, inputs):
         vals = values.get(sh, {})
         s = next(x for x in model["sheets"] if x["name"] == sh)
         rows = []
+        pend = set(BE.pending_rows(model, inputs).get(sh, []))
         for r in range(p["head_row"] + 1, p["total_row"]):
-            row = {"r": r}
+            row = {"r": r, "pending": r in pend}
             for k, c in cols.items():
                 key = f"{r},{c}"
                 raw = inputs.get(sh, {}).get(key)
@@ -649,6 +671,131 @@ def _payments(model, values, inputs):
         total = vals.get(f"{p['total_row']},{cols['amount']}")
         out.append({"sheet": sh, "cols": list(cols.keys()), "rows": rows, "total": total if isinstance(total, (int, float)) else None})
     return out
+
+
+# ---- authority fees of a bill still Pending, carried onto this bill (10 Nov 2026) ----------------------------------
+# A row of the previous payments marked Pending: that earlier bill's "Payment paid to Authorities" (its Appendix B
+# total) is claimed again on this bill, as its own read-only line "Carried from Payment Application No 8 (Pending)".
+# Only the fees - nothing else of that bill. Marked Received: the line comes off. A fee carried on a bill already
+# submitted is never carried again. Each bill keeps what it carried in its inputs (fees sheet, "_carry").
+CARRY_RE = re.compile(r"^\s*Carried from\s+(.+?)\s*\(Pending\)", re.I)
+OPEN_STATUS = ("Draft", "Returned to Prepared by")
+_FEES_CACHE = {}
+
+
+def _fees_total_of(db, bill):
+    """An earlier bill's Appendix B total (paid to authorities in that bill)."""
+    key = (bill.id, str(bill.updated_at), bill.inputs and len(bill.inputs))
+    if key in _FEES_CACHE:
+        return _FEES_CACHE[key]
+    tot = 0.0
+    try:
+        fmt = db.get(EstBillFormat, bill.format_id)
+        inp = _inputs(bill)
+        model = _bill_model(fmt, inp)
+        inp, values = _calc(model, inp)
+        for t in model.get("map", {}).get("fees", []):
+            v = values.get(t["sheet"], {}).get(f"{t['total_row']},{t['cols']['amount']}")
+            tot += v if isinstance(v, (int, float)) else 0
+    except Exception:
+        tot = 0.0
+    _FEES_CACHE[key] = round(tot, 2)
+    if len(_FEES_CACHE) > 200:
+        _FEES_CACHE.pop(next(iter(_FEES_CACHE)))
+    return _FEES_CACHE[key]
+
+
+def _carry_of(bill):
+    out = []
+    for sh, inp in _inputs(bill).items():
+        if isinstance(inp, dict):
+            out += [x for x in (inp.get("_carry") or []) if isinstance(x, dict)]
+    return out
+
+
+def _carry_wanted(db, b, model, inputs, values):
+    pend = BE.pending_rows(model, inputs)
+    if not pend:
+        return []
+    q = db.query(EstBill).filter(EstBill.project_id == b.project_id, EstBill.id != (b.id or 0))
+    if b.contract_id:
+        q = q.filter(EstBill.contract_id == b.contract_id)
+    others = q.all()
+    want = []
+    for p in model.get("map", {}).get("payments", []):
+        dc = p["cols"].get("desc")
+        for r in pend.get(p["sheet"], []):
+            label = values.get(p["sheet"], {}).get(f"{r},{dc}") if dc else None
+            label = " ".join(str(label or "").split())
+            nums = re.findall(r"\d+", label)
+            if not nums:
+                continue
+            n = int(nums[-1])
+            cand = [o for o in others if (str(o.label or "").strip() == str(n) or o.seq == n) and (not b.seq or (o.seq or 0) < b.seq)]
+            x = next((o for o in cand if str(o.label or "").strip() == str(n)), cand[0] if cand else None)
+            if not x:
+                continue
+            if any(o.id != x.id and (o.status or "Draft") not in OPEN_STATUS and any(c.get("from") == x.id for c in _carry_of(o)) for o in others):
+                continue                                # claimed on a bill already sent: never twice
+            amt = _fees_total_of(db, x)
+            if amt:
+                want.append({"from": x.id, "label": label, "amount": amt})
+    return want
+
+
+def _sync_carry(db, b, fmt, inputs):
+    """This bill's carried lines on Appendix B made to match the Pending rows: lines put in above the total, or taken
+    out again. Returns the inputs (changed or not)."""
+    model = _bill_model(fmt, inputs)
+    fees = model.get("map", {}).get("fees") or []
+    if not fees:
+        return inputs
+    t = fees[0]; sh = t["sheet"]; cols = t["cols"]
+    if not BE.pending_rows(model, inputs) and not ((inputs.get(sh) or {}).get("_carry")):
+        return inputs
+    values = BE.calculate(model, inputs)
+    want = _carry_wanted(db, b, model, inputs, values)
+    tab = next((x for x in _fees(model, values, inputs) if x["sheet"] == sh), None)
+    cur = [x["r"] for x in (tab["rows"] if tab else []) if x.get("carry")]
+    if [w["amount"] for w in want] == [w.get("amount") for w in ((inputs.get(sh) or {}).get("_carry") or [])] and len(cur) == len(want):
+        ok = all(" ".join(str((inputs.get(sh) or {}).get(f"{r},{cols['desc']}") or "").split()) == f"Carried from {w['label']} (Pending)" for r, w in zip(cur, want))
+        if ok:
+            return inputs
+    # fewer wanted: the extra lines come out (bottom first)
+    for r in sorted(cur[len(want):], reverse=True):
+        nx = BE.drop_added(inputs, sh, r)
+        if nx is None:                                  # not a row put in by the app: just emptied
+            for c in cols.values():
+                (inputs.get(sh) or {}).pop(f"{r},{c}", None)
+        else:
+            inputs = nx
+    cur = cur[:len(want)]
+    # more wanted: a line put in just above the total, like the line above it
+    while len(cur) < len(want):
+        model = _bill_model(fmt, inputs)
+        t = next(x for x in model["map"]["fees"] if x["sheet"] == sh)
+        at = t["total_row"]
+        moved = BE.shift_inputs(inputs.get(sh) or {}, sh, at, 1)
+        moved.setdefault("_rows", []).append([at, 1, [at - 1], {"kind": "line", "carry": True}])
+        tr, ac = at + 1, t["cols"]["amount"]
+        k = f"{tr},{ac}"
+        if isinstance(moved.get(k), str) and moved[k].upper().startswith("=SUM("):
+            m_ = re.match(r"=SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)$", moved[k], re.I)
+            if m_ and int(m_.group(4)) == at - 1:
+                moved[k] = f"=SUM({m_.group(1)}{m_.group(2)}:{m_.group(3)}{at})"
+        inputs[sh] = moved
+        cur.append(at)
+    inp = inputs.setdefault(sh, {})
+    for r, w in zip(cur, want):
+        inp[f"{r},{cols['desc']}"] = f"Carried from {w['label']} (Pending)"
+        if cols.get("ref"):
+            inp[f"{r},{cols['ref']}"] = ""
+        inp[f"{r},{cols['amount']}"] = w["amount"]
+    if want:
+        inp["_carry"] = want
+    else:
+        inp.pop("_carry", None)
+    return inputs
 
 
 def _cover(model, values):
@@ -882,6 +1029,7 @@ def _fees(model, values, inputs):
                     raw = cell.get("v") if "v" in cell else (("=" + cell["f"]) if "f" in cell else None)
                 row[k] = {"key": key, "value": vals.get(key), "raw": raw}
             d = row["desc"]["value"]
+            row["carry"] = bool(isinstance(row["desc"]["raw"], str) and CARRY_RE.match(row["desc"]["raw"]))
             row["head"] = bool(isinstance(d, str) and re.match(r"^\s*(ipa|bill|interim|payment (application|certificate)|this bill)\b", d, re.I)) and row["amount"]["value"] in (None, "", 0)
             rows.append(row)
         # the lines of this bill: from its heading ("IPA 10") on; the spacer rows above are left alone
@@ -915,7 +1063,11 @@ def _bill_out(b, fmt, model, values, inputs, users=None, store=None):
             "changed": sum(len(v) for v in inputs.values()),
             "signers": _signers_out(b, model, store or {}, ((_cover(model, values) or {}).get("facts") or {}).get("consultant") or ""),
             "signers_off": [{"key": g["key"], "labels": g["labels"], "was": (_signs(b).get(g["key"]) or {}).get("was") or g["orig"]}
-                            for g in _groups(model) if (_signs(b).get(g["key"]) or {}).get("removed")] if not _roles_on(b) else []}
+                            for g in _groups(model) if (_signs(b).get(g["key"]) or {}).get("removed")] if not _roles_on(b) else [],
+            # rejections by the final approver: every round, and what changed since the last one
+            "rounds": [{k: v for k, v in rd.items() if k not in ("snapshot",)} for rd in _rounds(b)],
+            "since_reject": _since_reject(b, model, values, inputs) if b.returns else None,
+            "returned": b.status == RETURNED}
 
 
 # ---- who signs a bill: the same four lines on the Cover & details page of every bill --------------------------
@@ -1071,7 +1223,7 @@ def apply_roles(b, model, inputs, consultant=""):
 
 
 def _roles_on(b):
-    return (b.status or "Draft") in ("Draft", "Awaiting approval")
+    return (b.status or "Draft") in ("Draft", "Awaiting approval", RETURNED)
 
 
 def _signers_out(b, model, store, consultant=""):
@@ -1217,7 +1369,8 @@ def bell_items(db, user):
     out = []
     try:
         bills = db.query(EstBill.id, EstBill.project_id, EstBill.label, EstBill.seq, EstBill.total_due, EstBill.signs,
-                         EstBill.updated_at, EstBill.created_at, EstBill.status).filter((EstBill.status == "Awaiting approval") |
+                         EstBill.updated_at, EstBill.created_at, EstBill.status, EstBill.returns).filter((EstBill.status == "Awaiting approval") |
+                         (EstBill.status == RETURNED) |
                          ((EstBill.status == "Draft") & EstBill.signs.like('%"back_note"%'))).order_by(EstBill.id.desc()).limit(40).all()
         if not bills:
             return out
@@ -1228,6 +1381,20 @@ def bell_items(db, user):
             except ValueError:
                 continue
             chain = sorted(((v.get("step", 1), k, v) for k, v in sg.items() if isinstance(v, dict) and v.get("name")), key=lambda x: (x[2].get("ord", 99), x[0]))
+            if b.status == RETURNED:                      # rejected: only the person who prepared it is told
+                try:
+                    rd = (json.loads(b.returns or "[]") or [{}])[-1]
+                except ValueError:
+                    rd = {}
+                to = rd.get("to") or ""
+                if to and (same_person(user.full_name or "", to) or same_person(user.username or "", to)):
+                    p = projects.get(b.project_id)
+                    out.append({"id": f"ipa-{b.id}-ret-{rd.get('n', 1)}", "kind": "bill",
+                                "title": f"Bill returned to you: Interim Bill {b.label or b.seq} of {p.code if p else ''} - rejected by {rd.get('by', '')}",
+                                "detail": f"{rd.get('at_dmy', '')} - {rd.get('reason', '')}" + (f" ({', '.join(rd.get('areas') or [])})" if rd.get("areas") else ""),
+                                "screen": "pgestproj", "target": f"ipa{b.id}", "pid": b.project_id, "bill": b.id,
+                                "when": (rd.get("at") or "")[:10], "level": "warn", "returned": True})
+                continue
             if b.status == "Draft":                       # sent back: the QS who prepared it is told, with the note
                 prep = next((x for x in chain if x[0] == 0 and x[2].get("back_note")), None)
                 if prep and (same_person(user.full_name or "", prep[2]["name"]) or same_person(user.username or "", prep[2]["name"])):
@@ -1463,7 +1630,7 @@ def bill_sheet(bid: int, i: int, db: Session = Depends(get_db), user: models.Use
             for ln in t["lines"]:
                 mark[f"{ln['r']},{t['tot_c']}"] = "tot"
     sm = signed_model(model, _signs(b), _sig_store(db))
-    html, w, h = BR.sheet_html(sm, sm["sheets"][i], values, inputs, edit=b.status == "Draft", mark=mark, circ=circ)
+    html, w, h = BR.sheet_html(sm, sm["sheets"][i], values, inputs, edit=b.status in ("Draft", RETURNED), mark=mark, circ=circ)
     return {"html": html, "width": w, "height": h, "name": s["name"], "css": BR.SHEET_CSS,
             "remarks": bool(BE.remarks_cols(s, model["styles"])), "clear_remarks": bool((inputs.get("_opts") or {}).get("clear_remarks")),
             "pages": _page_starts(model, s, inputs, values), "manual": sorted(int(x) + 1 for x in (s.get("print") or {}).get("breaks") or [])}
@@ -1485,6 +1652,7 @@ def bill_opts(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     _why("Clear remarks for next bill", "sheets")
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
+    _guard(b, user)
     inputs = _inputs(b)
     o = dict(inputs.get("_opts") or {})
     if "clear_remarks" in payload:
@@ -1661,6 +1829,9 @@ def new_bill(payload: dict = Body(...), db: Session = Depends(get_db), user: mod
     prev_values = BE.calculate(model, prev_inputs)
     inputs = BE.roll_over(model, prev_inputs, prev_values, E.today())
     model = _bill_model(fmt, inputs)                       # rows the roll-over put in (a heading for this bill's fees)
+    for sh_, inp_ in inputs.items():                       # last bill's carried lines are history now; this bill carries afresh
+        if isinstance(inp_, dict):
+            inp_.pop("_carry", None)
     inputs, values = _calc(model, inputs)
     seq = (db.query(func.max(EstBill.seq)).filter(EstBill.project_id == pid, *([EstBill.contract_id == fmt.contract_id] if fmt.contract_id else [])).scalar() or 0) + 1
     carried = {}
@@ -1671,6 +1842,13 @@ def new_bill(payload: dict = Body(...), db: Session = Depends(get_db), user: mod
             carried[k] = {"removed": True, "step": v.get("step", 1), "was": v.get("was")}
     b = EstBill(project_id=pid, format_id=fmt.id, contract_id=fmt.contract_id, seq=seq, status="Draft", inputs=json.dumps(inputs), created_by=user.id, updated_by=user.id,
                 signs=json.dumps(carried) if carried else "")
+    try:                                                    # a payment still Pending: its authority fees carried onto this bill
+        inputs = _sync_carry(db, b, fmt, inputs)
+        model = _bill_model(fmt, inputs)
+        inputs, values = _calc(model, inputs)
+        b.inputs = json.dumps(inputs)
+    except Exception as e:
+        print("carried fees not set on the new bill:", e)
     try:                                                    # the four lines of Cover & details, the same on every bill
         apply_roles(b, model, inputs, ((_cover(model, values) or {}).get("facts") or {}).get("consultant") or "")
         inputs, values = _calc(model, inputs)
@@ -1710,6 +1888,7 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         _why(w.get("label") or (f"Typing in {a0}" if len(cells_) == 1 else f"{len(cells_)} cells changed"), w.get("page") or "", w.get("sheet") or sh0, k0)
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
+    _guard(b, user)
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
     model = _bill_model(fmt, inputs)
@@ -1788,6 +1967,15 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         b.signs = json.dumps(sg)
     if "notes" in payload:
         b.notes = str(payload.get("notes") or "")[:2000]
+    pend_was = BE.pending_rows(model, _inputs(b))
+    pend_now = BE.pending_rows(model, inputs)
+    if (b.status or "Draft") in OPEN_STATUS:
+        try:                                              # the fees of a bill still Pending carried onto this one
+            inputs = _sync_carry(db, b, fmt, inputs)
+            model = _bill_model(fmt, inputs)
+        except Exception:
+            import logging
+            logging.getLogger("est_bills").exception("bill %s: carried fees", bid)
     try:
         inputs, values = _calc(model, inputs)
     except HTTPException:
@@ -1800,6 +1988,13 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     b.updated_by = user.id
     _save_totals(b, model, values)
     db.commit()
+    for sh_ in set(pend_was) | set(pend_now):           # Pending <-> Received, in the activity log
+        for r_ in sorted(set(pend_was.get(sh_, [])) ^ set(pend_now.get(sh_, []))):
+            p_ = next((x for x in model["map"].get("payments", []) if x["sheet"] == sh_), None)
+            nm = values.get(sh_, {}).get(f"{r_},{p_['cols'].get('desc')}") if p_ else ""
+            E.M.log_action(db, user.id, "est_bill_pending", f"bill #{bid} {b.label}: {nm or 'row ' + str(r_)} "
+                           + ("Received -> Pending" if r_ in pend_now.get(sh_, []) else "Pending -> Received")
+                           + f" ({datetime.now().strftime('%d/%m/%Y %H:%M')})")
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
     return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
 
@@ -1810,8 +2005,10 @@ def bill_status(bid: int, payload: dict = Body(...), db: Session = Depends(get_d
     st = str(payload.get("status") or "")
     if st not in STATUSES:
         raise HTTPException(400, "Pick a status.")
+    if st == RETURNED and b.status != RETURNED:
+        raise HTTPException(400, "A bill is returned to the person who prepared it with Reject (Approve & send).")
     b.status, b.updated_by = st, user.id
-    if st != "Draft":                                  # approved / submitted: read-only, its undo history goes
+    if st not in ("Draft", RETURNED):                                  # approved / submitted: read-only, its undo history goes
         db.query(EstBillHist).filter(EstBillHist.bill_id == b.id).delete(synchronize_session=False)
     db.commit()
     E.M.log_action(db, user.id, "est_bill_status", f"bill #{bid} {b.label}: {st}")
@@ -1840,6 +2037,7 @@ def add_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db),
     _why(f"+ {int(payload.get('n') or 1)} row(s) at {payload.get('at')}", "sheets", str(payload.get("sheet") or ""))
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
+    _guard(b, user)
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
     model = _bill_model(fmt, inputs)
@@ -2045,6 +2243,7 @@ def add_line(bid: int, payload: dict = Body(...), db: Session = Depends(get_db),
     _why(f"{'+ Section' if payload.get('kind') == 'head' else '+ Line'} '{str((payload.get('values') or {}).get('desc') or '')[:40]}'", payload.get("page") or "work", str(payload.get("sheet") or ""))
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
+    _guard(b, user)
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
     model = _bill_model(fmt, inputs)
@@ -2131,6 +2330,7 @@ def remove_line(bid: int, payload: dict = Body(...), db: Session = Depends(get_d
     _why(f"Delete line (row {payload.get('r')})", payload.get("page") or "work", str(payload.get("sheet") or ""))
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
+    _guard(b, user)
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
     model = _bill_model(fmt, inputs)
@@ -2171,9 +2371,11 @@ def bill_pages(bid: int, payload: dict = Body(...), db: Session = Depends(get_db
     """A page added to the bill - a copy of one of its sheets ({"from", "name"}) - or taken off ({"remove": name}).
     The copy is added after the last sheet; its lines and figures are typed like any sheet's; the next bill keeps it."""
     b = _get(db, EstBill, bid)
+    _guard(b, user)
     _why(f"Delete page {payload.get('remove')}" if payload.get("remove") else f"+ Add page {payload.get('name') or ''}", "sheets", str(payload.get("from") or payload.get("remove") or ""))
     if b.status == "Paid" and user.role != "admin":
         raise HTTPException(400, "A paid bill cannot be changed.")
+    _guard(b, user)
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
     pages = BE.pages_of(inputs)
@@ -2220,6 +2422,7 @@ def bill_pages(bid: int, payload: dict = Body(...), db: Session = Depends(get_db
 def hide_rows(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
     """Rows of a table hidden on this bill (kept in the file, not printed) or shown again: {"sheet", "rows": [..], "show": bool}."""
     b = _get(db, EstBill, bid)
+    _guard(b, user)
     _why("Show hidden lines" if payload.get("show") else f"Hide line {', '.join(str(x) for x in payload.get('rows') or [])}", "sheets", str(payload.get("sheet") or ""))
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
@@ -2318,6 +2521,7 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
      borders of the row above, and its height) - or "reset": true (back to the consultant's look)}.
     Kept on the bill (inputs[sheet]["_fmt"]); the next bill keeps it. Wording and figures are never touched."""
     b = _get(db, EstBill, bid)
+    _guard(b, user)
     st_ = payload.get("set") or {}
     lab = ("Borders" if payload.get("borders") else "Merge / unmerge" if payload.get("merge") else "Row height" if "rowh" in payload else "Column width" if "colw" in payload
            else "Autofit" if payload.get("autofit") else "Page break" if payload.get("brk") else "Format painter" if payload.get("paint") else "Match row above" if payload.get("like_above") else "Reset" if payload.get("reset")
@@ -2325,7 +2529,7 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
                            "fc": "Text colour", "ind": "Indent", "wrap": "Wrap text"}.get(k, k) for k in st_) or "Format")
     n_ = len(payload.get("cells") or []) or len(payload.get("rows") or []) or len(payload.get("cols") or [])
     _why(f"{lab} on {n_} {'cell' if payload.get('cells') else 'row' if payload.get('rows') else 'column'}{'s' if n_ != 1 else ''}", "sheets", str(payload.get("sheet") or ""))
-    if b.status != "Draft":
+    if b.status not in ("Draft", RETURNED):
         raise HTTPException(400, f"This bill is {b.status} - the sheets can be changed while it is a Draft.")
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
@@ -2594,8 +2798,13 @@ def _sign(bid, payload, db, user):
     b.updated_by = user.id
     rest = [y for y in signers if y["key"] != x["key"] and not y["signed_at"] and not y.get("ext")]
     if not rest:
-        b.status = "Approved" if b.status in ("Draft", "Awaiting approval") else b.status
-    elif b.status == "Draft":
+        b.status = "Approved" if b.status in ("Draft", "Awaiting approval", RETURNED) else b.status
+    elif b.status in ("Draft", RETURNED):
+        if b.status == RETURNED:                          # sent again after a rejection: the round is closed, kept
+            rs = _rounds(b)
+            if rs:
+                rs[-1]["resent_at"] = _dubai_now().isoformat(timespec="seconds")
+                b.returns = json.dumps(rs)
         b.status = "Awaiting approval"
     db.commit()
     E.M.log_action(db, user.id, "est_bill_sign", f"bill #{bid} {b.label}: {x['labels'][0]} {x['name']}")
@@ -2647,6 +2856,9 @@ def bill_approval(bid: int, db: Session = Depends(get_db), user: models.User = D
             "next": {"key": nxt["key"], "label": word(nxt), "name": nxt["name"], "step": nxt["step"]} if nxt else None,
             "can_act": bool(nxt and nxt["step"] > 0 and b.status == "Awaiting approval" and can_sign(user, nxt)),
             "back": {"note": back.get("back_note", ""), "by": back.get("back_by", ""), "at": back.get("back_at", "")} if back.get("back_note") else None,
+            "final": bool(nxt and signers and nxt["key"] == signers[-1]["key"]),
+            "since_reject": _since_reject(b, model, BE.calculate(model, _inputs(b)), _inputs(b)) if b.returns else None,
+            "areas": list(AREAS),
             "me": user.full_name or user.username, "others": others}
 
 
@@ -2666,6 +2878,8 @@ def bill_approval_act(bid: int, payload: dict = Body(...), db: Session = Depends
     if not can_sign(user, nxt):
         raise HTTPException(403, f"Waiting on {nxt['name']} ({nxt['labels'][0].replace('Signature / ', '')}) - not your step.")
     if payload.get("back"):
+        if nxt["key"] == signers[-1]["key"]:
+            raise HTTPException(400, "The final approver rejects the bill with Reject (reason, where, attachment).")
         note = " ".join(str(payload.get("note") or "").split())[:300]
         if not note:
             raise HTTPException(400, "Say why it goes back (one line).")
@@ -2708,6 +2922,8 @@ def bills_to_check(db: Session = Depends(get_db), user: models.User = Depends(E.
             state = "waiting"
         elif b.status == "Draft" and prep.get("back_note"):
             state = "back"
+        elif b.status == RETURNED:
+            state = "returned"
         elif b.status in ("Approved", "Submitted", "Certified", "Paid") and any(v.get("signed_at") for v in rows if v.get("step", 0) > 0):
             state = "approved"
         else:
@@ -2724,8 +2940,218 @@ def bills_to_check(db: Session = Depends(get_db), user: models.User = Depends(E.
                     "mine": bool(waits and (same_person(user.full_name or "", waits) or same_person(user.username or "", waits))),
                     "steps": [{"name": v.get("name"), "title": v.get("title", ""), "signed": bool(v.get("signed_at")), "at": v.get("signed_ts") or v.get("signed_at") or ""}
                               for v in rows],
-                    "back": {"note": prep.get("back_note"), "by": prep.get("back_by"), "at": prep.get("back_at")} if state == "back" else None})
+                    "back": {"note": prep.get("back_note"), "by": prep.get("back_by"), "at": prep.get("back_at")} if state == "back"
+                    else ({"note": rd_.get("reason"), "by": rd_.get("by"), "at": rd_.get("at")} if state == "returned" and (rd_ := (_rounds(b) or [{}])[-1]) else None)})
     return {"rows": out, "me": user.full_name or user.username}
+
+
+# ---------------------------------------------------------------------------------------------------- reject
+# The final approver (Approved by) rejects a bill on his turn (10 Nov 2026): it goes back to the person who prepared
+# it ("Returned to Prepared by"), every sign-off on it comes off (the pictures stay with each person), only the
+# preparer (or an admin) may change it, and it moves on again when they sign. Every round is kept in est_bills.returns
+# with the reason, the areas picked, a file, the sign-offs cleared and a snapshot of the figures - so the checker
+# and the approver see what changed since.
+RETURNED = "Returned to Prepared by"
+AREAS = ("Cover & details", "Work done", "Payments received", "Authority fees", "Sheets")
+AREA_STEP = {"Cover & details": "cover", "Work done": "work", "Payments received": "pay", "Authority fees": "fees", "Sheets": "sheets"}
+
+
+def _rounds(b):
+    try:
+        x = json.loads(b.returns or "[]")
+        return x if isinstance(x, list) else []
+    except ValueError:
+        return []
+
+
+def _dubai_now():
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Asia/Dubai"))
+    except Exception:
+        return datetime.now()
+
+
+def _snapshot(model, values, inputs):
+    """The figures a checker looks at: each line's Total % and amount, each payment, each fee, the totals."""
+    out = {}
+    try:
+        for t in _progress(model, values, inputs):
+            for l in t["lines"]:
+                nm = f"{t['sheet']}: {(l.get('item') or '').strip()} {(l.get('desc') or '')[:60].strip()}".strip()
+                out[nm] = round(((l.get("amount") or 0) * (l.get("total") or 0)), 2)
+        for p in _payments(model, values, inputs):
+            for r in p["rows"]:
+                d = (r.get("desc") or {}).get("value")
+                if d:
+                    a = (r.get("amount") or {}).get("value")
+                    out[f"{p['sheet']}: {d}"] = (round(a, 2) if isinstance(a, (int, float)) else a, "Pending" if r.get("pending") else "")
+        for t in _fees(model, values, inputs):
+            for r in t["rows"]:
+                d = (r.get("desc") or {}).get("value")
+                if d and not r.get("head"):
+                    a = (r.get("amount") or {}).get("value")
+                    out[f"{t['sheet']}: {d}"] = round(a, 2) if isinstance(a, (int, float)) else a
+        f = _facts(model, values)
+        out["Total due this bill"] = round(f["total_due"] or 0, 2)
+    except Exception as e:
+        out["_error"] = str(e)
+    return out
+
+
+def _changes(old, new):
+    """What changed between two snapshots, one line each (amounts as money)."""
+    fm = lambda v: (f"{v:,.2f}" if isinstance(v, (int, float)) else ("Pending " + (f"{v[0]:,.2f}" if isinstance(v[0], (int, float)) else "") if isinstance(v, (list, tuple)) and len(v) > 1 and v[1] else fm(v[0]) if isinstance(v, (list, tuple)) else str(v or "")))
+    out = []
+    for k in list(new.keys()) + [k for k in old if k not in new]:
+        if k.startswith("_"):
+            continue
+        a, b_ = old.get(k), new.get(k)
+        if isinstance(a, list):
+            a = tuple(a)
+        if isinstance(b_, list):
+            b_ = tuple(b_)
+        if a == b_:
+            continue
+        if isinstance(a, (int, float)) and isinstance(b_, (int, float)) and abs(a - b_) < 0.005:
+            continue
+        out.append(f"{k}: {fm(a) if k in old else '(new)'} -> {fm(b_) if k in new else '(taken out)'}")
+    return out
+
+
+def _since_reject(b, model, values, inputs):
+    """The last rejection and what has changed on the bill since (for the checker and the approver)."""
+    rs = _rounds(b)
+    if not rs:
+        return None
+    last = rs[-1]
+    ch = _changes(last.get("snapshot") or {}, _snapshot(model, values, inputs))
+    return {"n": len(rs), "at": last.get("at"), "by": last.get("by"), "reason": last.get("reason"), "areas": last.get("areas") or [],
+            "where": last.get("where") or "", "to": last.get("to"), "resent_at": last.get("resent_at"),
+            "file": last.get("file"), "changes": ch}
+
+
+def _may_edit(b, user):
+    """A bill returned to the person who prepared it: only they (or an admin) change it."""
+    if (b.status or "") != RETURNED or user.role == "admin":
+        return True
+    rs = _rounds(b)
+    to = (rs[-1].get("to") if rs else "") or ""
+    return same_person(user.full_name or "", to) or same_person(user.username or "", to)
+
+
+def _guard(b, user):
+    if not _may_edit(b, user):
+        to = (_rounds(b)[-1].get("to") if _rounds(b) else "") or "the person who prepared it"
+        raise HTTPException(403, f"This bill was returned to {to} to correct - only they (or an admin) can change it now.")
+
+
+def _notify_returned(db, b, rnd):
+    """The person who prepared it is told by e-mail (the bell is worked out from the bill)."""
+    try:
+        import mailer
+        to = ""
+        for e in db.query(models.Employee).all():
+            nm = getattr(e, "name", "") or ""
+            if nm and same_person(nm, rnd["to"]):
+                to = (getattr(e, "work_email", "") or getattr(e, "personal_email", "") or "").strip()
+                if to:
+                    break
+        if not to:
+            return
+        p = db.query(E.EstProject).get(b.project_id)
+        body = (f"Interim Bill {b.label or b.seq} of {p.code if p else ''} {p.name if p else ''} was rejected and returned to you to correct.\n\n"
+                f"Rejected by : {rnd['by']}\nWhen        : {rnd['at_dmy']}\nReason      : {rnd['reason']}\n"
+                + (f"Where       : {', '.join(rnd['areas'])}{(' - ' + rnd['where']) if rnd.get('where') else ''}\n" if rnd.get("areas") or rnd.get("where") else "")
+                + (f"Attachment  : {rnd['file']['name']} (open the bill in the app)\n" if rnd.get("file") else "")
+                + "\nFix it and sign it again (Approve & send) - it then goes to the checker again.\n\nInfinia app")
+        sent, why = mailer.send(to, f"Bill {b.label or b.seq} of {p.code if p else ''} returned to you - {rnd['reason'][:60]}", body)
+        if not sent:
+            E.M.log_action(db, None, "est_bill_return_mail", f"bill #{b.id}: not e-mailed - {why}")
+    except Exception as e:
+        print("returned bill mail:", e)
+
+
+@router.post("/store/est/ipa/bill/{bid}/reject")
+async def reject_bill(bid: int, request: Request, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    """The final approver rejects: {reason (10+ chars), areas [..], where, file (PDF / picture / Excel)} as a form."""
+    b = _get(db, EstBill, bid)
+    if not _may_see(db, b, user):
+        raise HTTPException(403, "This bill is not waiting for you.")
+    form = await request.form()
+    reason = " ".join(str(form.get("reason") or "").split())
+    if len(reason) < 10:
+        raise HTTPException(400, "Give the reason for rejecting (at least 10 characters).")
+    try:
+        areas = [a for a in json.loads(form.get("areas") or "[]") if a in AREAS]
+    except ValueError:
+        areas = []
+    where = " ".join(str(form.get("where") or "").split())[:300]
+    fmt = _get(db, EstBillFormat, b.format_id)
+    inputs = _inputs(b)
+    model = _bill_model(fmt, inputs)
+    values = BE.calculate(model, inputs)
+    signers = [x for x in _signers_out(b, model, _sig_store(db)) if not x.get("ext")]
+    if b.status != "Awaiting approval" or not signers:
+        raise HTTPException(400, f"Only a bill waiting for approval can be rejected - this one is {b.status or 'Draft'}.")
+    final = signers[-1]
+    if not final["turn"] or any(not x["signed_at"] for x in signers[:-1]):
+        raise HTTPException(400, "Not yet - it can be rejected once Prepared by and Checked by have signed.")
+    if not can_sign(user, final):
+        raise HTTPException(403, f"Only {final['name']} (Approved by) or an admin can reject this bill.")
+    prep = next((x for x in signers if x["step"] == 0), signers[0])
+    up = form.get("file")
+    fobj = None
+    if up is not None and getattr(up, "filename", ""):
+        data = await up.read()
+        if len(data) > 15 * 1024 * 1024:
+            raise HTTPException(400, "The attachment is over 15 MB.")
+        if not re.search(r"\.(pdf|png|jpe?g|webp|heic|xlsx?|csv)$", up.filename, re.I):
+            raise HTTPException(400, "Attach a PDF, a picture or an Excel file.")
+        f = EstBillFile(bill_id=b.id, name=up.filename[:200], mime=getattr(up, "content_type", "") or "", data=data, created_by=user.id)
+        db.add(f); db.flush()
+        fobj = {"id": f.id, "name": f.name}
+    now = _dubai_now()
+    sg = _signs(b)
+    cleared = []
+    for x in signers:
+        d = dict(sg.get(x["key"]) or {})
+        if d.get("signed_at"):
+            cleared.append({"name": x["name"], "title": x["title"], "label": {0: "Prepared by", 1: "Checked by"}.get(x["step"], "Approved by"),
+                            "signed_at": d.get("signed_ts") or d.get("signed_at"), "signed_by": d.get("signed_by_name") or ""})
+        for k_ in ("signed_at", "signed_ts", "signed_by", "signed_by_name", "back_note", "back_by", "back_at"):
+            d.pop(k_, None)
+        d.setdefault("name", x["name"]); d.setdefault("title", x["title"]); d["step"] = x["step"]
+        sg[x["key"]] = d
+    rnd = {"n": len(_rounds(b)) + 1, "at": now.isoformat(timespec="seconds"), "at_dmy": now.strftime("%d/%m/%Y %H:%M"),
+           "by": user.full_name or user.username, "by_id": user.id, "as": final["name"], "reason": reason[:1000], "areas": areas, "where": where,
+           "file": fobj, "to": prep["name"], "to_title": prep["title"], "cleared": cleared, "snapshot": _snapshot(model, values, inputs), "resent_at": None}
+    b.returns = json.dumps(_rounds(b) + [rnd])
+    b.signs = json.dumps(sg)
+    b.status = RETURNED
+    b.updated_by = user.id
+    db.commit()
+    E.M.log_action(db, user.id, "est_bill_reject",
+                   f"bill #{bid} {b.label}: rejected by {rnd['by']} on {rnd['at_dmy']} - {reason}"
+                   + (f" | areas: {', '.join(areas)}" if areas else "") + (f" ({where})" if where else "")
+                   + f" | returned to {prep['name']} (Prepared by) | signatures cleared: "
+                   + (", ".join(f"{c['label']} {c['name']}" for c in cleared) or "none"))
+    _notify_returned(db, b, rnd)
+    return {"ok": True, "status": b.status, "to": prep["name"]}
+
+
+@router.get("/store/est/ipa/bill/{bid}/file/{fid}")
+def bill_file(bid: int, fid: int, token: str = "", db: Session = Depends(get_db)):
+    u = auth.get_download_user_from_token(token, db)
+    b = _get(db, EstBill, bid)
+    if not _may_see(db, b, u):
+        raise HTTPException(403, "Not your bill.")
+    f = db.query(EstBillFile).filter(EstBillFile.id == fid, EstBillFile.bill_id == bid).first()
+    if not f:
+        raise HTTPException(404, "File not found.")
+    from urllib.parse import quote
+    return StreamingResponse(io.BytesIO(f.data or b""), media_type=f.mime or "application/octet-stream",
+                             headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(f.name)}"})
 
 
 # ---------------------------------------------------------------------------------------------------- signatures
@@ -2905,6 +3331,8 @@ def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, d
     if len(pn) > 48:
         pn = pn[:46].rstrip() + "..."
     model = dict(model, _title=title, _bill=" - ".join(x for x in (code, pn, f"Interim Bill {label}") if x))   # the footer of every page
+    if b.status == RETURNED:                               # rejected and returned: still printable, never to be issued
+        model["_watermark"] = "RETURNED – NOT FOR ISSUE"
     if format == "excel":
         # built from the same bill, sheets and pages as the PDF (9 Nov 2026) - and checked before it goes out
         import est_bills_xlsx as BX

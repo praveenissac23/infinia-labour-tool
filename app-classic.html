@@ -799,6 +799,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .af-btns{display:flex;gap:6px;margin-top:auto;flex-wrap:wrap} .af-btns .btn{height:32px;padding:0 12px}
   @media (max-width:560px){ #screen-adminforms .af-grid{grid-template-columns:1fr} .af-thumb{width:96px;height:136px} }
   /* PPE register */
+  .dq-ret{border:1px solid #F1B9B2;background:#FFF7F6} .dq-ret.hidden{display:none}
+  .dq-retrow{display:block;width:100%;text-align:left;border:1px solid #F1D3CE;background:#fff;border-radius:10px;padding:10px 12px;margin-top:8px;cursor:pointer;font:inherit}
+  .dq-retrow b{display:block;color:#8E1F16;font-size:13.5px} .dq-retrow span{display:block;color:#6b625a;font-size:12.5px;margin-top:2px}
   #screen-clientbills .cb-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
   #screen-clientbills table.cb-t{width:100%;border-collapse:collapse;font-size:13px}
   #screen-clientbills .cb-t th{font-size:11px;color:#8A8079;text-transform:uppercase;text-align:left;padding:8px 10px;border-bottom:1px solid #F1ECE6;background:#FCFAF7;white-space:nowrap}
@@ -2242,6 +2245,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 
           <!-- Quick actions: the buttons this login's job uses most, drawn by
                dashQuick() from DASH_ACTIONS - only what the login may open. -->
+          <div class="card dq-ret hidden" id="dash-ret"></div>
           <div class="card dq-card" id="dash-quick-card">
             <div class="dq-head"><h2>Quick actions</h2><span class="dq-job" id="dash-quick-job"></span></div>
             <div class="dq-grid" id="dash-quick"></div>
@@ -15629,7 +15633,17 @@ function dashQuick() {
   const j = document.getElementById("dash-quick-job");
   if (j) j.textContent = job === "admin" ? "For the administrator" : MY_JOB ? "For the " + MY_JOB : "";
   dqBadges();
+  dashReturned();
   dskFit(); setTimeout(dskFit, 400);
+}
+// Bills rejected by the final approver and returned to this login (Prepared by), on the dashboard (10 Nov 2026).
+async function dashReturned() {
+  const box = document.getElementById("dash-ret"); if (!box) return;
+  let n = [];
+  try { n = ((await apiCall("/notifications")).notifications || []).filter(x => x.returned); } catch (e) { return; }
+  box.classList.toggle("hidden", !n.length);
+  box.innerHTML = n.length ? `<div class="dq-head"><h2>Bills returned to you</h2><span class="dq-job">${n.length} to fix and sign again</span></div>` +
+    n.map(x => `<button type="button" class="dq-retrow" onclick='openNotification(${JSON.stringify(x.id)}, "pgestproj", ${JSON.stringify(x.target || "")}, ${JSON.stringify({ pid: x.pid, bill: x.bill })})'><b>${escapeHtml(x.title.replace(/^Bill returned to you: /, ""))}</b><span>${escapeHtml(x.detail || "")}</span></button>`).join("") : "";
 }
 // The picture at the foot of the dashboard reaches the bottom of the window: a login with few quick actions no longer
 // leaves it floating half-way down with an empty band under it (7 Nov 2026). Never shorter than it was (250px).
@@ -20759,8 +20773,8 @@ function cbDays(ts) { if (!ts) return ""; const d = Math.floor((Date.now() - new
 function cbD(ts) { if (!ts) return ""; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ts); return m ? `${m[3]}/${m[2]}/${m[1]}` : ts; }
 function cbDraw() {
   const R = CB.rows, n = f => R.filter(f).length;
-  const F = { mine: r => r.mine, waiting: r => r.state === "waiting", back: r => r.state === "back", approved: r => r.state === "approved" };
-  const L = [["mine", "Waiting for me"], ["waiting", "All waiting"], ["back", "Sent back"], ["approved", "Approved - last 30 days"]];
+  const F = { mine: r => r.mine, waiting: r => r.state === "waiting", back: r => r.state === "back" || r.state === "returned", approved: r => r.state === "approved" };
+  const L = [["mine", "Waiting for me"], ["waiting", "All waiting"], ["back", "Sent back / rejected"], ["approved", "Approved - last 30 days"]];
   document.getElementById("cb-chips").innerHTML = L.map(([k, l]) => `<button type="button" class="seg-chip${CB_F === k ? " on" : ""}" onclick="CB_F='${k}';cbDraw()">${l} <span>${n(F[k])}</span></button>`).join("");
   const rows = R.filter(F[CB_F] || (() => true));
   document.getElementById("cb-count").textContent = `${rows.length} bill${rows.length === 1 ? "" : "s"}`;
@@ -20768,7 +20782,7 @@ function cbDraw() {
       const nowAt = r.steps.findIndex(x => !x.signed);
       const chain = r.steps.map((x, i) => `<span class="${x.signed ? "ok" : (i === nowAt && r.state === "waiting" ? "now" : "")}" title="${escapeAttr(x.title || "")}">${x.signed ? "&#10003; " : ""}${escapeHtml(x.name)}</span>`).join("");
       const col = r.state === "waiting" ? `<b>${escapeHtml(r.waiting_on)}</b><div class="sub">${escapeHtml(r.waiting_title || "")}${r.since ? " &middot; " + cbDays(r.since) : ""}</div>`
-        : r.state === "back" ? `<div class="cb-back">by ${escapeHtml(r.back.by || "")} &middot; ${cbD(r.back.at)}</div><div class="sub">${escapeHtml(r.back.note || "")}</div>`
+        : (r.state === "back" || r.state === "returned") ? `<div class="cb-back">${r.state === "returned" ? "Rejected" : "Sent back"} by ${escapeHtml(r.back.by || "")} &middot; ${cbD(r.back.at)}</div><div class="sub">${escapeHtml(r.back.note || "")}</div>`
         : `${cbD(r.since)}`;
       return `<tr class="${r.mine ? "mine" : ""}"><td class="l"><b>${escapeHtml(r.project)}</b><div class="sub">${escapeHtml(r.project_name || "")}</div></td><td class="l">IPA ${escapeHtml(r.label)}</td>
         <td class="n"><b>${Number(r.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></td>
