@@ -1664,12 +1664,14 @@ class CashExpected(Base):
 
 
 class CashMove(Base):
-    """A line the forecast finds by itself (a client bill, a subcontractor certificate) moved to another date, or
-    left out - kept by its key ("client:12", "sub:40")."""
+    """A line the forecast finds by itself (a PDC, a client bill, a subcontractor certificate, salaries) changed on
+    the forecast only - its date, amount, wording, note - or left out; kept by its key ("pdc:7", "client:12")."""
     __tablename__ = "cash_moves"
     id = Column(Integer, primary_key=True)
     key = Column(String, unique=True, index=True)
     on_date = Column(Date, nullable=True)
+    amount = Column(Float, nullable=True)            # changed here only - the PDC / bill itself is not touched
+    what = Column(String, nullable=True)
     skip = Column(Boolean, default=False)
     note = Column(String, default="")
     updated_by = Column(Integer, nullable=True)

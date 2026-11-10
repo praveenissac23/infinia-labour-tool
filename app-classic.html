@@ -4032,7 +4032,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           <div class="cf-hero"><div class="cf-dark" id="cf-now"></div><div class="cf-white"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h3 id="cf-ch-t">Bank balance</h3><div class="sub">every cheque, salary and receipt on its day</div></div>
             <div class="sub"><span style="color:#1E8449">&#9632;</span> balance &nbsp; <span style="color:#E6B8B1">&#9476;</span> <span id="cf-keep-l">keep at least</span> &nbsp; <span style="color:#1E8449">&#9679;</span> money in &nbsp; <span style="color:#B03A2E">&#9679;</span> big payment</div></div><div id="cf-chart"></div></div></div>
           <div class="cf-months" id="cf-months"></div>
-          <div class="cf-cols"><div class="cf-white"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3>Every payment and receipt</h3><div class="sub">In date order, with the bank balance after each</div></div><div class="seg-chips" id="cf-f"></div></div><div id="cf-list" style="margin-top:6px;overflow-x:auto"></div></div>
+          <div class="cf-cols"><div class="cf-white"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3>Every payment and receipt</h3><div class="sub">In date order, with the bank balance after each. &#9998; changes any line here only - nothing leaves the forecast.</div></div><div class="seg-chips" id="cf-f"></div></div><div id="cf-list" style="margin-top:6px;overflow-x:auto"></div></div>
             <div class="cf-white"><h3>Biggest payments coming</h3><div class="sub" id="cf-big-s"></div><div id="cf-big"></div><div id="cf-inbox"></div></div></div>
         </div>
         <div class="screen" id="screen-clientbills">
@@ -20897,12 +20897,11 @@ function cfList() {
   let lastM = "";
   document.getElementById("cf-list").innerHTML = rows.length ? `<table class="cf-t"><thead><tr><th>Date</th><th class="l">What</th><th>From</th><th class="n">In</th><th class="n">Out</th><th class="n">Balance</th><th></th></tr></thead><tbody>` +
     rows.map(i => { const m = i.date.slice(0, 7); const head = m !== lastM ? `<tr class="mh"><td colspan="7">${new Date(i.date).toLocaleString("en-GB", { month: "long", year: "numeric" })}</td></tr>` : ""; lastM = m;
-      const auto = /^(client|sub|sal):/.test(i.key), exp = i.type === "expected", eid = exp ? i.link.exp : null;
-      const act = auto ? `<button type="button" class="cf-ib" title="Move to another date" onclick="cfMove('${i.key}')">&#128197;</button><button type="button" class="cf-ib" title="Leave out of the forecast" onclick="cfSkip('${i.key}')">&#10005;</button>`
-        : exp ? `<button type="button" class="cf-ib" title="Change" onclick="cfExp(${eid})">&#9998;</button><button type="button" class="cf-ib ok" title="Paid - comes off the forecast" onclick="cfPaid(${eid})">&#10003;</button><button type="button" class="cf-ib" title="Delete" onclick="cfDrop(${eid})">&#10005;</button>`
-        : "";
+      const exp = i.type === "expected", eid = exp ? i.link.exp : null;
+      const act = exp ? `<button type="button" class="cf-ib" title="Change" onclick="cfExp(${eid})">&#9998;</button><button type="button" class="cf-ib ok" title="Paid - comes off the forecast" onclick="cfPaid(${eid})">&#10003;</button><button type="button" class="cf-ib" title="Delete" onclick="cfDrop(${eid})">&#10005;</button>`
+        : `<button type="button" class="cf-ib" title="Change on the forecast (date, amount, wording)" onclick="cfMove('${i.key}')">&#9998;</button><button type="button" class="cf-ib" title="Leave out of the forecast" onclick="cfSkip('${i.key}')">&#10005;</button>`;
       return head + `<tr><td>${cfD(i.date).slice(0, 5)}</td>
-        <td class="l">${exp ? "<b>" : ""}${escapeHtml(i.what)}${exp ? "</b>" : ""}${i.late ? `<span class="cf-late" title="Date was ${cfD(i.was)} - counted today">past</span>` : i.moved ? `<span class="cf-late" style="background:#EEF2FA;color:#3B5998">moved</span>` : ""}${i.note || i.sure !== "sure" ? `<div class="cf-src">${escapeHtml([exp ? "forecast" : "", i.note, i.sure !== "sure" ? i.sure : ""].filter(Boolean).join(" · "))}</div>` : (exp ? `<div class="cf-src">forecast</div>` : "")}</td>
+        <td class="l">${exp ? "<b>" : ""}${escapeHtml(i.what)}${exp ? "</b>" : ""}${i.late ? `<span class="cf-late" title="Date was ${cfD(i.was)} - counted today">past</span>` : i.edited ? `<span class="cf-late" style="background:#EEF2FA;color:#3B5998" title="${escapeAttr(i.orig ? "Was: " + i.orig.what + " · " + cfM2(i.orig.amount) + " · " + cfD(i.orig.date) : "")}">changed</span>` : ""}${i.note || i.sure !== "sure" ? `<div class="cf-src">${escapeHtml([exp ? "forecast" : "", i.note, i.sure !== "sure" ? i.sure : ""].filter(Boolean).join(" · "))}</div>` : (exp ? `<div class="cf-src">forecast</div>` : "")}</td>
         <td><span class="cf-tag ty-${i.type}">${CF_TY[i.type] || i.type}</span></td>
         <td class="n g">${i.in ? cfM(i.in) : ""}</td><td class="n r">${i.out ? cfM(i.out) : ""}</td><td class="n${i.after < d.keep ? " r" : ""}">${cfM(i.after)}</td><td class="n cf-act">${act}</td></tr>`; }).join("") + `</tbody></table>`
     : `<div class="sub" style="padding:12px">Nothing in these months.</div>`;
@@ -20936,12 +20935,23 @@ function cfExp(id) {
 async function cfPaid(id) { if (!(await hrAsk("Mark this as paid? It comes off the forecast - the bank balance takes it.", "Paid"))) return; try { await apiCall(`/store/cash/expected/${id}`, { method: "PUT", body: JSON.stringify({ status: "paid" }) }); cfLoad(); } catch (e) { showStatus("cf-status", "err", errText(e)); } }
 async function cfDrop(id) { if (!(await hrAsk("Delete this forecast line?", "Delete", true))) return; try { await apiCall(`/store/cash/expected/${id}`, { method: "PUT", body: JSON.stringify({ status: "dropped" }) }); cfLoad(); } catch (e) { showStatus("cf-status", "err", errText(e)); } }
 function cfMove(key) {
-  const it = CF.items.find(i => i.key === key) || {};
-  const o = cfModal(`<h3>Move to another date</h3><div class="sub">${escapeHtml(it.what || "")}</div><label>Expected on</label><input id="cfm-d" type="date" value="${it.date || ""}">
-    <div class="btns">${it.moved ? `<button type="button" class="btn btn-gray" id="cfm-r">Back as found</button>` : ""}<button type="button" class="btn btn-gray" id="cfm-x">Cancel</button><button type="button" class="btn btn-primary" id="cfm-go">Save</button></div>`);
+  const it = CF.items.find(i => i.key === key) || {}, o0 = it.orig || { what: it.what, amount: it.in || it.out, date: it.date };
+  const src = { pdc: "the PDC register", bank: "the Bank tab", client: "Estimation (client bill)", sub: "Estimation (subcontractor certificate)", sal: "the last payroll" }[key.split(":")[0]] || "the app";
+  const o = cfModal(`<h3>Change on the forecast</h3><div class="sub">From ${src}. What you change here counts on the Cash forecast only - ${src} is not touched.</div>
+    <label>What</label><input id="cfm-w" value="${escapeAttr(it.what || "")}">
+    <div class="g2"><div><label>Amount (AED) - ${it.in ? "coming in" : "going out"}</label><input id="cfm-a" inputmode="decimal" style="font-weight:700" value="${it.in || it.out || ""}"></div><div><label>Date</label><input id="cfm-d" type="date" value="${it.date || ""}"></div></div>
+    <label>Note</label><input id="cfm-n" value="${escapeAttr(it.note || "")}" placeholder="e.g. part paid in cash, balance on 20/11">
+    ${it.edited ? `<div class="hint">As found: ${escapeHtml(o0.what)} · AED ${cfM2(o0.amount)} · ${cfD(o0.date)}</div>` : ""}
+    <div class="status-msg" id="cfm-st"></div>
+    <div class="btns">${it.edited ? `<button type="button" class="btn btn-gray" id="cfm-r">Back as found</button>` : ""}<button type="button" class="btn btn-gray" id="cfm-s">Leave out</button><span style="flex:1"></span><button type="button" class="btn btn-gray" id="cfm-x">Cancel</button><button type="button" class="btn btn-primary" id="cfm-go">Save</button></div>`);
+  const post = async body => { try { await apiCall("/store/cash/move", { method: "POST", body: JSON.stringify(Object.assign({ key }, body)) }); o.remove(); cfLoad(); } catch (e) { showStatus("cfm-st", "err", errText(e)); } };
   o.querySelector("#cfm-x").onclick = () => o.remove();
-  const rb = o.querySelector("#cfm-r"); if (rb) rb.onclick = async () => { await apiCall("/store/cash/move", { method: "POST", body: JSON.stringify({ key, reset: true }) }); o.remove(); cfLoad(); };
-  o.querySelector("#cfm-go").onclick = async () => { try { await apiCall("/store/cash/move", { method: "POST", body: JSON.stringify({ key, on_date: o.querySelector("#cfm-d").value }) }); o.remove(); cfLoad(); } catch (e) { showStatus("cf-status", "err", errText(e)); } };
+  o.querySelector("#cfm-s").onclick = () => post({ skip: true });
+  const rb = o.querySelector("#cfm-r"); if (rb) rb.onclick = () => post({ reset: true });
+  o.querySelector("#cfm-go").onclick = () => {
+    const g = s_ => o.querySelector(s_).value.trim(), a = g("#cfm-a").replace(/,/g, "");
+    post({ what: g("#cfm-w") === o0.what ? "" : g("#cfm-w"), amount: Math.abs(+a - (o0.amount || 0)) < 0.005 ? "" : a, on_date: g("#cfm-d") === o0.date ? "" : g("#cfm-d"), note: g("#cfm-n") === (it.note || "") ? undefined : g("#cfm-n") });
+  };
 }
 async function cfSkip(key) { if (!(await hrAsk("Leave this line out of the forecast?", "Leave out"))) return; try { await apiCall("/store/cash/move", { method: "POST", body: JSON.stringify({ key, skip: true }) }); cfLoad(); } catch (e) { showStatus("cf-status", "err", errText(e)); } }
 function cfKeep() {

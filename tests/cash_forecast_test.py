@@ -75,7 +75,21 @@ if auto:
     ck("leave it out", not any(i["key"] == auto["key"] for i in F()["items"]))
     c.post("/store/cash/move", headers=H, json={"key": auto["key"], "reset": True})
     ck("back as found", any(i["key"] == auto["key"] for i in F()["items"]))
-ck("PDC lines cannot be moved here", c.post("/store/cash/move", headers=H, json={"key": "exp:1"}).status_code == 400)
+ck("forecast lines are changed on their own (not here)", c.post("/store/cash/move", headers=H, json={"key": "exp:1"}).status_code == 400)
+# any found line - a PDC - changed on the forecast only
+pl = next((i for i in F()["items"] if i["key"].startswith("pdc:")), None)
+if pl:
+    pid_ = int(pl["key"][4:]); before = db.query(models.Pdc).get(pid_); b_amt, b_date = before.amount, before.cheque_date
+    nd = (t + timedelta(days=20)).isoformat()
+    r = c.post("/store/cash/move", headers=H, json={"key": pl["key"], "amount": "12,345.60", "on_date": nd, "what": "Paid half in cash - rest", "note": "cash 5,000 given"})
+    ck("change a PDC line: amount, date, wording, note", r.status_code == 200, r.text)
+    e_ = next(i for i in F()["items"] if i["key"] == pl["key"])
+    ck("...shown changed, with what it was", e_["out"] == 12345.6 and e_["date"] == nd and e_["what"] == "Paid half in cash - rest" and e_["edited"] and e_["orig"]["amount"] == pl["out"], e_)
+    db.expire_all(); after = db.query(models.Pdc).get(pid_)
+    ck("...the PDC register is not touched", after.amount == b_amt and after.cheque_date == b_date)
+    c.post("/store/cash/move", headers=H, json={"key": pl["key"], "reset": True})
+    e2 = next(i for i in F()["items"] if i["key"] == pl["key"])
+    ck("...back as found", e2["out"] == pl["out"] and not e2["edited"])
 # exports
 tok = c.post("/auth/download-token", headers=H).json()["token"]
 ck("PDF", c.get(f"/export/accounts/cash?format=pdf&token={tok}").content[:4] == b"%PDF")

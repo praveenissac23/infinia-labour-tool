@@ -76,16 +76,21 @@ def collect(db, months=3, with_in=True):
         mv = moves.get(key)
         if mv and mv.skip:
             return
-        d0 = on
-        if mv and mv.on_date and not fixed:
-            on = mv.on_date
+        d0, a0, w0 = on, amount, what
+        if mv:                                            # changed on the forecast: date, amount, wording, note
+            on = mv.on_date or on
+            amount = mv.amount if mv.amount is not None else amount
+            what = mv.what or what
+            note = mv.note or note
         late = on < t
         on = max(on, t)
         if on > end or not amount:
             return
+        edited = bool(mv and (mv.on_date or mv.amount is not None or mv.what or mv.note))
         items.append({"key": key, "date": on.isoformat(), "was": d0.isoformat() if d0 != on else "", "late": late, "what": what, "type": typ,
                       "src": src, "in": r2(amount) if direction == "in" else 0.0, "out": r2(amount) if direction == "out" else 0.0,
-                      "sure": sure, "link": link or {}, "note": note, "moved": bool(mv and mv.on_date)})
+                      "sure": sure, "link": link or {}, "note": note, "moved": edited, "edited": edited,
+                      "orig": {"date": d0.isoformat(), "amount": r2(a0), "what": w0} if edited else None})
 
     # ---- PDCs not cleared: cheques, salaries, rent ... (past-date ones are counted today)
     pdcs = db.query(models.Pdc).filter(models.Pdc.status == "pending").all()
@@ -304,25 +309,42 @@ def edit_expected(xid: int, payload: dict = Body(...), db: Session = Depends(get
 
 @router.post("/store/cash/move")
 def move_line(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = ACC):
-    """A line found by itself: {"key", "on_date"} to another date, {"key", "skip": true} left out, {"key", "reset": true}."""
+    """Any line the forecast found (PDC, Bank tab, client bill, subcontractor certificate, salaries) changed here only:
+    {"key", "on_date", "amount", "what", "note"}; {"key", "skip": true} left out; {"key", "reset": true} back as found.
+    The PDC register, the bills and the bank are not touched."""
     key = str(payload.get("key") or "")
-    if not re.match(r"^(client|sub|sal|pdc|bank):", key):
-        raise HTTPException(400, "That line cannot be moved here.")
+    if not re.match(r"^(client|sub|sal|pdc|bank):[\w-]+$", key):
+        raise HTTPException(400, "That line cannot be changed here.")
     m = db.query(models.CashMove).filter(models.CashMove.key == key).first()
     if payload.get("reset"):
         if m:
             db.delete(m)
+        how = "back as found"
     else:
         if not m:
             m = models.CashMove(key=key); db.add(m)
         if payload.get("skip"):
-            m.skip = True
-        if payload.get("on_date"):
-            m.on_date = M._as_date(payload["on_date"]); m.skip = False
-        m.note = str(payload.get("note") or "")[:300]
+            m.skip, how = True, "left out"
+        else:
+            m.skip = False
+            if "on_date" in payload:
+                m.on_date = M._as_date(payload["on_date"]) if payload.get("on_date") else None
+            if "amount" in payload:
+                a = str(payload.get("amount") or "").replace(",", "").strip()
+                try:
+                    m.amount = round(float(a), 2) if a else None
+                except ValueError:
+                    raise HTTPException(400, "Give the amount as a number.")
+                if m.amount is not None and m.amount < 0:
+                    raise HTTPException(400, "The amount cannot be below 0 (pick Coming in / Going out by the line).")
+            if "what" in payload:
+                m.what = " ".join(str(payload.get("what") or "").split())[:200] or None
+            if "note" in payload:
+                m.note = str(payload.get("note") or "")[:300]
+            how = f"changed: {m.what or ''} {('AED ' + format(m.amount, ',.2f')) if m.amount is not None else ''} {m.on_date or ''}".strip()
         m.updated_by = user.id
     db.commit()
-    M.log_action(db, user.id, "cash_move", f"{key}: " + ("back as found" if payload.get("reset") else "left out" if payload.get("skip") else f"moved to {payload.get('on_date')}"))
+    M.log_action(db, user.id, "cash_move", f"{key}: {how}")
     return {"ok": True}
 
 
