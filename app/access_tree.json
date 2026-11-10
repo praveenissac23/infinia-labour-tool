@@ -713,10 +713,10 @@
     "id": "accounts.cash",
     "label": "Cash forecast",
     "right": [
-     "accounts_bank"
+     "accounts_cash"
     ],
     "grant": [
-     "accounts_bank"
+     "accounts_cash"
     ]
    },
    {

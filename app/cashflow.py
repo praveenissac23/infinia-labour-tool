@@ -28,7 +28,7 @@ import models
 from database import get_db
 
 router = APIRouter()
-ACC = Depends(M.require_any_screen("accounts_bank"))
+ACC = Depends(M.require_any_screen("accounts_cash"))   # the chief accountant and admin
 r2 = lambda v: round(float(v or 0) + 0.0, 2)
 SAL = re.compile(r"\b(salary|salaries|payroll|wps)\b", re.I)
 
@@ -350,7 +350,7 @@ def export(token: str, format: str = "pdf", months: int = 3, with_in: int = 1, d
     from urllib.parse import quote
     import auth, export_web
     u = auth.get_download_user_from_token(token, db)
-    if u.role != "admin" and "accounts_bank" not in set(M.effective_permissions(u)):
+    if u.role != "admin" and "accounts_cash" not in set(M.effective_permissions(u)):
         raise HTTPException(403, "Accounts only.")
     f = collect(db, max(1, min(12, months)), bool(with_in))
     TY = {"cheque": "Cheque", "salary": "Salaries", "sub": "Subcontractor", "client": "Client bill", "expected": "Expected"}

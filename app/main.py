@@ -483,6 +483,9 @@ ALL_SCREENS = ["dashboard", "attendance", "masterdata", "reports", "combine",
                # Bank: every ADCB payment and receipt, entered once and sent
                # to Zoho - the chief accountant; admin.
                "accounts_bank",
+               # Cash forecast: bank now, what goes out and comes in, month by
+               # month - the chief accountant; admin (10 Nov 2026).
+               "accounts_cash",
                # Labour camp: change who sleeps where (Reports > Labour >
                # Accommodation) - the PRO, the chief accountant and the store
                # keeper; everyone with Labour reports can look.
@@ -891,15 +894,19 @@ def _grant_client_bills(db):
 
 
 def _grant_cash(db):
-    """Accounts > Cash forecast is new: whoever has Accounts > Bank gets it beside it. Once."""
-    if db.query(models.Setting).filter(models.Setting.key == "cash_tab_granted").first():
+    """Accounts > Cash forecast: the chief accountant (his role and the logins on it) and admin only. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "cash_tab_granted2").first():
         return
-    for obj in list(db.query(models.AccessRole).all()) + list(db.query(models.User).all()):
+    roles = [r for r in db.query(models.AccessRole).all() if (r.name or "").strip().lower() == "chief accountant"]
+    rid = {r.id for r in roles}
+    for obj in roles + [u for u in db.query(models.User).all() if u.access_role_id in rid]:
         field = "permissions" if isinstance(obj, models.User) else "screens"
         keys = [k for k in (getattr(obj, field) or "").split(",") if k]
-        if "accounts.bank" in keys and "accounts.cash" not in keys:
-            setattr(obj, field, ",".join(keys + ["accounts.cash"]))
-    db.add(models.Setting(key="cash_tab_granted", value="1"))
+        for k in ("accounts_cash", "accounts.cash"):
+            if k not in keys:
+                keys.append(k)
+        setattr(obj, field, ",".join(keys))
+    db.add(models.Setting(key="cash_tab_granted2", value="1"))
     db.commit()
 
 

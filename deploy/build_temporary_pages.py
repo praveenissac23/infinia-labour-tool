@@ -110,7 +110,7 @@ PAGES = {
         tab("bank", "bank", "Bank", "accounts_bank"),
         # What is in the bank, what goes out and comes in, month by month - collected from PDCs, Bank, Estimation,
         # payroll and the Expiry reminder; expected expenses added (10 Nov 2026).
-        tab("cash", "cashfc", "Cash forecast", "accounts_bank", go="cfLoad()"),
+        tab("cash", "cashfc", "Cash forecast", "accounts_cash", go="cfLoad()"),
         # Subcontractor payment certificates sent by Estimation: print, mark paid.
         tab("subpay", "pgsubpay", "Subcontractor payments", "accounts_bank"),
         # Client bills on their way QS -> Chief Accountant -> Contracts Manager: open one to check and approve (10 Nov 2026).
