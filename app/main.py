@@ -15467,6 +15467,8 @@ import zoholog  # noqa: E402
 app.include_router(zoholog.router)
 import docsoffice  # noqa: E402
 app.include_router(docsoffice.router)
+import owner  # noqa: E402  - the owner's dashboard (admin)
+app.include_router(owner.router)
 import visa  # noqa: E402
 app.include_router(visa.router)
 import camp  # noqa: E402

@@ -1532,6 +1532,52 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dq-t { font-weight: 700; font-size: 14px; color: #7A3B33; line-height: 1.25; }
   .dq-s { font-size: 12px; color: #927068; margin-top: 3px; line-height: 1.3; }
   .dq-empty { grid-column: 1 / -1; color: #927068; font-size: 13px; padding: 6px 2px; }
+
+  /* ---- the owner's dashboard (admin) - bento of glass tiles on the dark dashboard ---- */
+  #screen-dashboard.own-mode > :not(#own-dash) { display: none !important; }
+  #own-dash { --od-bd: rgba(255,255,255,.09); color: #fff; font-family: Inter, system-ui, sans-serif; padding: 6px 4px 30px; }
+  #own-dash .od-hd { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin: 4px 0 18px; }
+  #own-dash .od-hd h1 { margin: 0; font-size: 30px; font-weight: 300; letter-spacing: -.01em; color: #fff; }
+  #own-dash .od-hd h1 b { font-weight: 700; }
+  #own-dash .od-hd span { color: rgba(255,255,255,.55); font-size: 14px; }
+  #own-dash .od-g { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 16px; }
+  #own-dash .od-c { border-radius: 24px; padding: 20px 22px; background: rgba(20,14,17,.55); border: 1px solid var(--od-bd); backdrop-filter: blur(30px); position: relative; overflow: hidden; min-width: 0;
+    transition: transform .25s ease, border-color .25s ease, background .25s ease; }
+  #own-dash .od-c.go { cursor: pointer; }
+  #own-dash .od-c.go:hover { transform: translateY(-2px); border-color: rgba(255,110,125,.45); background: rgba(40,14,20,.6); }
+  #own-dash .od-l { font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+  #own-dash .od-v { font-weight: 700; margin-top: 8px; font-feature-settings: "tnum"; letter-spacing: -.02em; }
+  #own-dash .od-s { font-size: 12.5px; color: rgba(255,255,255,.55); margin-top: 6px; }
+  #own-dash .od-hero { grid-column: 1 / 4; min-height: 360px; background: linear-gradient(140deg, rgba(155,27,46,.78), rgba(40,8,16,.6)); border-color: rgba(255,140,140,.25); }
+  #own-dash .od-hero .od-v { font-size: 82px; line-height: 1; }
+  #own-dash .od-hero .od-v small { font-size: 38px; opacity: .7; }
+  #own-dash .od-spark { position: absolute; left: 0; right: 0; bottom: 0; height: 150px; }
+  #own-dash .od-spark-l { position: absolute; right: 22px; top: 20px; font-size: 11px; color: rgba(255,255,255,.6); }
+  #own-dash .od-needs { grid-column: 4 / 7; }
+  #own-dash .od-n { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 15px; cursor: pointer; }
+  #own-dash .od-n:last-child { border: 0; }
+  #own-dash .od-n:hover { color: #ffd6da; }
+  #own-dash .od-pill { flex: none; font-size: 11.5px; padding: 4px 11px; border-radius: 20px; font-weight: 600; white-space: nowrap; }
+  #own-dash .od-pill.red { background: rgba(255,107,107,.18); color: #ff9a9a; }
+  #own-dash .od-pill.amber { background: rgba(255,195,92,.16); color: #ffc35c; }
+  #own-dash .od-ok { display: flex; align-items: center; gap: 10px; margin-top: 30px; font-size: 16px; color: #8ff0bd; }
+  #own-dash .od-k { grid-column: span 1; }
+  #own-dash .od-k .od-v { font-size: 38px; }
+  #own-dash .od-proj { grid-column: 1 / 5; }
+  #own-dash .od-dep { grid-column: 5 / 7; grid-row: span 2; }
+  #own-dash .od-rings { display: flex; gap: 22px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  #own-dash .od-ring { text-align: center; font-size: 12px; color: rgba(255,255,255,.75); cursor: pointer; }
+  #own-dash .od-ring:hover { color: #fff; }
+  #own-dash .od-dl { display: flex; justify-content: space-between; gap: 10px; padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 14px; cursor: pointer; }
+  #own-dash .od-dl:last-child { border: 0; }
+  #own-dash .od-dl:hover { color: #ffd6da; }
+  #own-dash .od-dl small { display: block; font-size: 11.5px; color: rgba(255,255,255,.5); margin-top: 2px; }
+  #own-dash .od-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; box-shadow: 0 0 10px currentColor; }
+  #own-dash .grn { color: #5ee0a0; } #own-dash .red { color: #ff7b7b; } #own-dash .amb { color: #ffc35c; }
+  #own-dash .od-more { font-size: 13px; color: rgba(255,255,255,.7); cursor: pointer; }
+  @media (max-width: 1100px) { #own-dash .od-g { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    #own-dash .od-hero, #own-dash .od-needs, #own-dash .od-proj, #own-dash .od-dep { grid-column: 1 / -1; grid-row: auto; }
+    #own-dash .od-hero .od-v { font-size: 60px; } }
   .dash-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 12px; margin-bottom: 16px; }
   @media (max-width: 760px) { .dash-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 520px) { .dash-tiles { grid-template-columns: 1fr; } }
@@ -2137,6 +2183,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
         <!-- ============ ATTENDANCE SCREEN ============ -->
         <!-- ============ DASHBOARD SCREEN ============ -->
         <div class="screen active" id="screen-dashboard">
+          <!-- The owner's dashboard (10 Nov 2026): the admin login sees this instead of the rest - money for
+               the next 30 days, what waits for him, the projects and each department. Drawn by ownDash(). -->
+          <div id="own-dash" style="display:none;"></div>
           <!-- Clock and the attendance calendar side by side: the calendar is
                small, and stacked it pushed everything else down the page. -->
           <div class="dash-top">
@@ -15304,6 +15353,63 @@ function applySettingsCards() {
   show("signature-card", co); show("company-card", co);
   if (co) { loadCompanySettings(); refreshSignatureState(); }
 }
+
+// ---- The owner's dashboard (admin) ---------------------------------------
+// One screen for the owner: the next 30 days' money, what waits for him, the projects and a light for each
+// department - every figure from the departments' own pages (GET /permissions/owner). Each tile opens its page.
+function odK(v) { v = +v || 0; const a = Math.abs(v); return a >= 1e6 ? (v / 1e6).toFixed(2) + "M" : a >= 1e3 ? Math.round(v / 1e3) + "K" : Math.round(v).toLocaleString("en-US"); }
+function odGo(g) {
+  if (!g) return;
+  if (g[0] === "dq") return dqGo(g[1]);
+  if (typeof pgGo === "function") pgGo(g[0], g[1]);
+}
+async function ownDash(role) {
+  const box = document.getElementById("own-dash"), scr = document.getElementById("screen-dashboard"); if (!box || !scr) return;
+  const off = () => { box.style.display = "none"; scr.classList.remove("own-mode"); };
+  if ((role || CURRENT_ROLE) !== "admin") return off();
+  let d; try { d = await apiCall("/permissions/owner"); } catch (e) { return off(); }
+  scr.classList.add("own-mode"); box.style.display = "";
+  const esc = x => String(x == null ? "" : x).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const hr = new Date().getHours(), m = d.money || {};
+  const greet = (hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening");
+  const day = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  const net = m.net || 0, nk = odK(Math.abs(net)), unit = nk.replace(/[\d.,]/g, ""), nnum = nk.replace(/[A-Z]/g, "");
+  // the collections line: month by month, last 12 months
+  const col = d.collected || [], mx = Math.max(1, ...col.map(c => c.amount));
+  const W = 600, H = 150, pts = col.map((c, i) => [col.length > 1 ? i * W / (col.length - 1) : W, H - 10 - (c.amount / mx) * (H - 40)]);
+  const path = pts.length ? "M" + pts.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" L") : "";
+  const spark = pts.length > 1 ? `<svg class="od-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="odf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".32"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+    <path d="${path} L${W},${H} L0,${H}Z" fill="url(#odf)"/><path d="${path}" stroke="#fff" stroke-width="2.5" fill="none" vector-effect="non-scaling-stroke"/></svg><div class="od-spark-l">Collected from clients · last 12 months</div>` : "";
+  const needs = d.needs || [];
+  const needsHtml = needs.length ? needs.map((n, i) => `<div class="od-n" data-i="${i}"><span>${esc(n.text)}</span><span class="od-pill ${n.lvl}">${n.amount != null ? "AED " + odK(n.amount) : esc(n.cta || "View")}</span></div>`).join("")
+    : `<div class="od-ok"><span style="font-size:22px">✓</span> Nothing is waiting for you today.</div>`;
+  const ringCol = p => p.paid_pct == null ? "rgba(255,255,255,.5)" : p.paid_pct >= 90 ? "#5ee0a0" : p.paid_pct >= 70 ? "#ffc35c" : "#ff6b6b";
+  const projs = d.projects || [], show = projs.slice(0, 6);
+  const ring = p => { const C = 2 * Math.PI * 31, pct = Math.max(0, Math.min(100, +p.done || 0));
+    return `<div class="od-ring" data-p="${p.id}" title="${esc(p.code + " " + p.name)} · ${pct}% of the contract ${p.basis === "paid" ? "paid (no certificates in the app yet)" : "certified"}${p.paid_pct == null ? "" : " · " + p.paid_pct + "% of the certified paid"}${p.owed ? " · AED " + odK(p.owed) + " not paid yet" : ""}"><svg width="78" height="78"><circle cx="39" cy="39" r="31" stroke="rgba(255,255,255,.1)" stroke-width="7" fill="none"/><circle cx="39" cy="39" r="31" stroke="${ringCol(p)}" stroke-width="7" fill="none" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - pct / 100)).toFixed(1)}" stroke-linecap="round" transform="rotate(-90 39 39)"/><text x="39" y="44" text-anchor="middle" fill="#fff" font-size="15" font-weight="700">${Math.round(pct)}%</text></svg><br>${esc(p.code)}</div>`; };
+  const dep = d.departments || [], lc = { green: "grn", amber: "amb", red: "red" };
+  const ppl = d.people || {};
+  const cm = m.collected_month || 0, cp = m.collected_prev || 0;
+  const nm = /^(admin|administrator)$/i.test(d.name || "") ? "" : d.name;
+  box.innerHTML = `<div class="od-hd"><h1>${greet}${nm ? `, <b>${esc(nm)}</b>` : ""}</h1><span>${esc(day)} · ${d.contracts.count} live projects · AED ${odK(d.contracts.value)} under contract</span></div>
+  <div class="od-g">
+    <div class="od-c od-hero go" data-go='["dq","pdc"]' title="Coming in less going out, over the next 30 days"><div class="od-l">Net position · next 30 days</div>
+      <div class="od-v">${net < 0 ? "−" : ""}${nnum}<small>${unit}</small></div>
+      <div style="margin-top:10px;font-size:15px">AED · <span class="grn">in ${odK(m.coming)}</span> · <span class="red">out ${odK(m.going)}</span></div>${spark}</div>
+    <div class="od-c od-needs"><div class="od-l">Needs you${needs.length ? " · " + needs.length : ""}</div>${needsHtml}</div>
+    <div class="od-c od-k go" data-go='["estimation","estproj"]' title="Certified by the consultants on the running projects, not yet paid by the clients"><div class="od-l">Coming in</div><div class="od-v grn">${odK(m.coming)}</div><div class="od-s">certified, not yet paid</div></div>
+    <div class="od-c od-k go" data-go='["dq","pdc"]' title="Cheques dated in the next 30 days (or already past) + subcontractor money certified and not paid"><div class="od-l">Going out</div><div class="od-v">${odK(m.going)}</div><div class="od-s">${m.pdc30_n} cheques · subcontractors</div></div>
+    <div class="od-c od-k go" data-go='["dq","projpay"]' title="Received from clients this month"><div class="od-l">Collected · ${new Date().toLocaleDateString("en-GB", { month: "short" })}</div><div class="od-v">${odK(cm)}</div><div class="od-s">${cp ? (cm >= cp ? "▲ " : "▼ ") + "last month " + odK(cp) : "this month so far"}</div></div>
+    <div class="od-c od-k go" data-go='["dq","att"]' title="Workers marked present today"><div class="od-l">On site today</div><div class="od-v">${ppl.marked ? ppl.on_site : "–"}</div><div class="od-s">${ppl.marked ? "of " + ppl.labour + " workers" : "attendance not marked yet"}</div></div>
+    <div class="od-c od-dep"><div class="od-l">Departments</div>${dep.map((x, i) => `<div class="od-dl" data-d="${i}"><span>${esc(x.name)}<small>${esc(x.note)}</small></span><span class="${lc[x.light] || ""}" style="white-space:nowrap"><span class="od-dot" style="background:currentColor"></span>${esc(x.value)}</span></div>`).join("")}</div>
+    <div class="od-c od-proj"><div class="od-l">Projects · % of the contract certified · ring colour = how much of it the client has paid</div>
+      <div class="od-rings">${show.map(ring).join("")}${projs.length > show.length ? `<span class="od-more" data-go='["estimation","estproj"]'>+${projs.length - show.length} more →</span>` : ""}</div></div>
+  </div>`;
+  box.querySelectorAll("[data-go]").forEach(el => el.onclick = () => odGo(JSON.parse(el.dataset.go)));
+  box.querySelectorAll(".od-n").forEach(el => el.onclick = () => odGo(needs[+el.dataset.i].go));
+  box.querySelectorAll(".od-dl").forEach(el => el.onclick = () => odGo(dep[+el.dataset.d].go));
+  box.querySelectorAll(".od-ring").forEach(el => el.onclick = () => odGo(["estimation", "estproj"]));
+}
 // ---- Dashboard skyline: the greeting and today's figures ----------------
 async function dashSky() {
   const h = document.getElementById("dsk-hello"), ln = document.getElementById("dsk-line");
@@ -15515,6 +15621,7 @@ async function applyScreenPermissions(prefetched) {
     MY_JOB = me.job || (me.role === "admin" ? "admin" : "");
     try { dashQuick(); } catch (e) { console.error(e); }
     try { dashSky(); } catch (e) {}
+    try { ownDash(me.role); } catch (e) {}
     setTimeout(() => { try { pushAfterLogin(); } catch (e) {} }, 1200);
     // Recording stock in and out is its own right. Done here, where the
     // permissions have actually arrived - reading MY_SCREENS before this
