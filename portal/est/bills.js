@@ -312,7 +312,10 @@ function undoRefresh() { clearTimeout(UNDO_T); UNDO_T = setTimeout(async () => {
 async function undoBill(redo, force) {
   const b = IPA.bill; if (!b) return;
   let out;
-  try { out = await POST(`/store/est/ipa/bill/${b.id}/undo`, { redo: !!redo, force: !!force }); }
+  // submitted, nobody has checked it yet: take it back first (the signature comes off), then undo
+  const tb = !redo && IPA.hist && IPA.hist.takeback;
+  if (tb && !(await confirmDelete("This bill is waiting for approval. Take it back to undo?", "Your signature comes off and nobody is asked to check it until you sign again.", "Take back & undo", ""))) return;
+  try { out = await POST(`/store/est/ipa/bill/${b.id}/undo`, { redo: !!redo, force: !!force, takeback: !!tb }); }
   catch (e) { if (/anyway\?$/.test(e.message || "") && await confirmDelete(e.message, "", redo ? "Redo" : "Undo", "")) return undoBill(redo, true); return fail(e); }
   IPA.bill = out; const x = out.undone || {};
   // back to where the change was, the cell lit up for a moment

@@ -296,7 +296,23 @@ def _hist_state(db, b, user):
     r = q.filter(EstBillHist.state == "undone").order_by(EstBillHist.moved_at.desc(), EstBillHist.id.desc()).first()
     pg = {"cover": "Cover & details", "work": "Work done", "pay": "Payments received", "fees": "Authority fees", "sheets": "Sheets", "review": "Approve & send"}
     where = lambda h: (h.sheet if h.sheet else pg.get(h.page, ""))
-    out = {"undo": None, "redo": None, "blocked": ""}
+    out = {"undo": None, "redo": None, "blocked": "", "takeback": None}
+    if b.status == "Awaiting approval":
+        # submitted, but nobody after the QS has signed yet: the QS (or an admin) takes it back to change or undo
+        sg_ = {k: v for k, v in _signs(b).items() if isinstance(v, dict) and v.get("name")}
+        prep = next(((k, v) for k, v in sg_.items() if v.get("step") == 0 and v.get("signed_at")), None)
+        later = [v for v in sg_.values() if v.get("step", 0) > 0 and v.get("signed_at")]
+        if later:
+            v = max(later, key=lambda v: v.get("signed_ts") or v.get("signed_at") or "")
+            out["blocked"] = f"{v.get('name')} has signed it - to change it, {v.get('name')} sends it back (Send back on the approval page)."
+            return out
+        if prep and (user.role == "admin" or same_person(user.full_name or "", prep[1].get("signed_by_name") or prep[1]["name"])
+                     or same_person(user.full_name or "", prep[1]["name"])):
+            out["takeback"] = {"key": prep[0], "name": prep[1]["name"]}
+            out["blocked"] = "Submitted for approval - take it back to undo (nobody has checked it yet)."
+            if u:
+                out["undo"] = {"id": u.id, "label": u.label, "where": where(u), "takeback": True}
+            return out
     if b.status != "Draft":
         out["blocked"] = f"This bill is {b.status} - nothing can be undone."
         return out
@@ -323,6 +339,14 @@ def bill_undo(bid: int, payload: dict = Body(default={}), db: Session = Depends(
     b = _get(db, EstBill, bid)
     redo = bool(payload.get("redo"))
     st = _hist_state(db, b, user)
+    if st.get("takeback") and not redo:
+        if not st.get("undo"):
+            raise HTTPException(400, "Nothing to undo.")
+        if not payload.get("takeback"):
+            raise HTTPException(409, f"This bill is waiting for approval. Take it back to undo? Your signature comes off - sign again when it is right.")
+        _sign(bid, {"key": st["takeback"]["key"], "undo": True}, db, user)   # back to Draft; the checker is no longer told
+        db.refresh(b)
+        st = _hist_state(db, b, user)
     if st["blocked"] and not redo:
         raise HTTPException(400, st["blocked"])
     if b.status != "Draft":
@@ -2539,7 +2563,7 @@ def _sign(bid, payload, db, user):
         cur.pop("signed_at", None); cur.pop("signed_ts", None); cur.pop("signed_by", None); cur.pop("signed_by_name", None)
         later = [y for y in signers if y["step"] > x["step"] and y["signed_at"]]
         for y in later:                                   # the ones after them sign again
-            c2 = dict(sg.get(y["key"]) or {}); c2.pop("signed_at", None); c2.pop("signed_by", None); c2.pop("signed_by_name", None); sg[y["key"]] = c2
+            c2 = dict(sg.get(y["key"]) or {}); [c2.pop(k_, None) for k_ in ("signed_at", "signed_ts", "signed_by", "signed_by_name")]; sg[y["key"]] = c2
         sg[x["key"]] = cur
         b.signs = json.dumps(sg)
         b.status = "Draft" if not any((sg.get(y["key"]) or {}).get("signed_at") for y in signers if y["step"] > 0) else "Awaiting approval"
