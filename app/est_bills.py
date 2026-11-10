@@ -733,14 +733,35 @@ def _carry_wanted(db, b, model, inputs, values):
             n = int(nums[-1])
             cand = [o for o in others if (str(o.label or "").strip() == str(n) or o.seq == n) and (not b.seq or (o.seq or 0) < b.seq)]
             x = next((o for o in cand if str(o.label or "").strip() == str(n)), cand[0] if cand else None)
-            if not x:
-                continue
-            if any(o.id != x.id and (o.status or "Draft") not in OPEN_STATUS and any(c.get("from") == x.id for c in _carry_of(o)) for o in others):
+            if x:
+                src, amt = x.id, _fees_total_of(db, x)
+            else:                                       # a bill from before the app: its lines under "IPA 08" on this Appendix B
+                src, amt = f"sheet:{n}", _fees_in_sheet(model, values, inputs, n)
+            if any((o.status or "Draft") not in OPEN_STATUS and any(c.get("from") == src for c in _carry_of(o)) for o in others):
                 continue                                # claimed on a bill already sent: never twice
-            amt = _fees_total_of(db, x)
             if amt:
-                want.append({"from": x.id, "label": label, "amount": amt})
+                want.append({"from": src, "label": label, "amount": amt})
     return want
+
+
+def _fees_in_sheet(model, values, inputs, n):
+    """An earlier bill's authority fees as its lines stand on this bill's Appendix B: the amounts under its heading
+    ("IPA 08", "IPA 8", "Bill 8") down to the next heading - carried lines left out."""
+    tot = 0.0
+    for t in model.get("map", {}).get("fees", []):
+        sh, cols = t["sheet"], t["cols"]
+        vals = values.get(sh, {})
+        inside = False
+        for r in range(t["head_row"] + 1, t["total_row"]):
+            d = vals.get(f"{r},{cols['desc']}")
+            a = vals.get(f"{r},{cols['amount']}")
+            if isinstance(d, str) and re.match(r"^\s*(ipa|bill|interim|payment (application|certificate))\b", d, re.I) and a in (None, "", 0):
+                m = re.search(r"(\d+)\s*$", d.strip())
+                inside = bool(m and int(m.group(1)) == n)
+                continue
+            if inside and isinstance(a, (int, float)) and not (isinstance(d, str) and CARRY_RE.match(d)):
+                tot += a
+    return round(tot, 2)
 
 
 def _sync_carry(db, b, fmt, inputs):

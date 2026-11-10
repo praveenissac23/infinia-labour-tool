@@ -88,6 +88,11 @@ B3 = c.get(f"/store/est/ipa/bill/{b3}", headers=H).json()
 r3 = next((x for x in B3["payments"][0]["rows"] if x["r"] == row["r"]), None)
 ck("next bill: still Pending", r3 and r3["pending"], r3)
 ck("...but not carried twice (bill 2 already claimed it)", not [x for x in B3["fees"][0]["rows"] if x.get("carry") and str(B1["label"]) in x["desc"]["value"]], [(x["desc"]["value"], x["amount"]["value"]) for x in B3["fees"][0]["rows"]])
+# a bill from before the app (no bill 8 in the app): its fees read from its lines under "IPA 8" on Appendix B
+r8 = next(x for x in B3["payments"][0]["rows"] if str(x["desc"]["value"] or "").strip() == "Payment Application No 8")
+B3 = c.put(f"/store/est/ipa/bill/{b3}", headers=H, json={"set": {"APP A": {r8["received"]["key"]: "Pending"}}}).json()
+c8 = [x for x in B3["fees"][0]["rows"] if x.get("carry") and "No 8" in x["desc"]["value"]]
+ck("bill 8 not in the app: its 140 of fees carried from the IPA 8 lines", c8 and abs(c8[0]["amount"]["value"] - 140) < 0.01, [(x["desc"]["value"], x["amount"]["value"]) for x in B3["fees"][0]["rows"]])
 import models
 from database import SessionLocal
 db = SessionLocal()
