@@ -42,21 +42,18 @@ ck("...on the list, type Expected", any(i["what"].startswith("Test insurance Q1"
 r = c.post("/store/cash/expected", headers=H, json={"what": "Store rent", "amount": 10000, "on_date": (t + timedelta(days=3)).isoformat(), "repeat": "month", "kind": "Rent"})
 d3 = F(); n = len([i for i in d3["items"] if i["what"].startswith("Store rent")])
 ck("every month: one line a month", n == len(d3["months"]) or n == len(d3["months"]) - 1, n)
-# make it a cheque: off the forecast as expected, on as a PDC - once
-r = c.post(f"/store/cash/expected/{xid}/cheque", headers=H, json={"cheque_no": "777001"})
-ck("make it a cheque", r.status_code == 200, r.text)
-d4 = F()
-ins = [i for i in d4["items"] if "test insurance q1" in i["what"].lower() and i["out"] == 60000]
-ck("...counted once, from the PDC register", len(ins) == 1 and ins[0]["key"].startswith("pdc:"), ins)
-# a repeating one made a cheque moves on to the next month
-rid = r.json()
-rent = next(x for x in d4["expected"] if x["what"] == "Store rent")
-c.post(f"/store/cash/expected/{rent['id']}/cheque", headers=H, json={})
-d5 = F(); x5 = next(x for x in d5["expected"] if x["what"] == "Store rent")
-ck("repeating: after its cheque the next one stays expected", x5["on_date"] > rent["on_date"], (rent["on_date"], x5["on_date"]))
-# paid
-c.put(f"/store/cash/expected/{x5['id']}", headers=H, json={"status": "paid"})
+# forecast lines stay on the forecast: nothing goes to the PDC register
+ck("no make-a-cheque here", c.post(f"/store/cash/expected/{xid}/cheque", headers=H, json={}).status_code in (404, 405))
+n_pdc = db.query(models.Pdc).count()
+ck("...the PDC register untouched", n_pdc == len(db.query(models.Pdc).all()))
+rent = next(x for x in F()["expected"] if x["what"] == "Store rent")
+c.put(f"/store/cash/expected/{rent['id']}", headers=H, json={"status": "paid"})
 ck("paid: off the forecast", not any(i["what"].startswith("Store rent") and i["type"] == "expected" for i in F()["items"]))
+c.put(f"/store/cash/expected/{xid}", headers=H, json={"status": "dropped"})
+ck("deleted: off the forecast", not any(i["what"].startswith("Test insurance Q1") for i in F()["items"]))
+d9 = F()
+ck("picture: lowest point, biggest payments, totals", "low" in d9 and isinstance(d9["biggest"], list) and abs(d9["total_out"] - sum(i["out"] for i in d9["items"])) < 0.05)
+ck("no renewals list", "renewals" not in d9)
 # salaries: a month with no salary on the PDC register gets the last payroll
 sal = [i for i in d["items"] if i["key"].startswith("sal:")]
 pdcsal = {(p.cheque_date.year, p.cheque_date.month) for p in pend if "salar" in (p.payee or "").lower()}

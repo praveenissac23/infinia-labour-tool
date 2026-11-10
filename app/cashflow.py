@@ -9,12 +9,11 @@ Everything the app already knows is collected by itself, so the chief accountant
                     payments entered on the Bank tab for a later date
                     subcontractor certificates certified and not paid (Estimation) - due after the subcontract's days
                     salaries for a month with no salary on the PDC register: the last payroll, office + labour
-                    renewals on the Expiry reminder (insurance, licences, vehicles) - with their cost once it is put
                     expected expenses typed here (CashExpected) - once or repeating
   coming in         payment certificates sent to clients and not paid (Estimation) - due 30 days after certified,
                     45 after submitted; money expected typed here
 A line found by itself can be moved to another date or left out (CashMove); nothing is counted twice: a cheque
-made from an expected expense is the PDC, a subcontractor certificate with a cheque already written is the PDC.
+the forecast expenses typed here stay here (nothing is sent to another page); a subcontractor certificate with a cheque already written is the PDC.
 """
 import re
 from datetime import date, timedelta
@@ -173,15 +172,14 @@ def collect(db, months=3, with_in=True):
         d = date(t.year, t.month, 1)
         while d <= end:
             if (d.year, d.month) not in pdc_sal_months and est:
-                add(f"sal:{d.year}-{d.month:02d}", date(d.year, d.month, 28), f"Salaries {d:%B %Y} (from the last payroll: office {off_tot:,.0f} + labour {lab_tot:,.0f})",
-                    "salary", "Payroll", est, "out", "likely", link={"pg": ["payroll"]})
+                add(f"sal:{d.year}-{d.month:02d}", date(d.year, d.month, 28), f"Salaries {d:%B %Y}",
+                    "salary", "Payroll", est, "out", "likely", link={"pg": ["payroll"]}, note=f"as the last payroll: office {off_tot:,.0f} + labour {lab_tot:,.0f}")
             d = _add_months(d, 1)
     except Exception as e:
         print("cash forecast - payroll:", e)
 
     # ---- expected expenses typed here (and the cost of renewals)
     exp = db.query(models.CashExpected).filter(models.CashExpected.status == "open").all()
-    priced = {x.expiry_id for x in exp if x.expiry_id}
     step = {"month": 1, "quarter": 3, "year": 12}
     for x in exp:
         d, n = x.on_date, 0
@@ -192,19 +190,6 @@ def collect(db, months=3, with_in=True):
             if x.repeat not in step:
                 break
             d = _add_months(x.on_date, step[x.repeat] * (n + 1)); n += 1
-    # renewals on the Expiry reminder in the months shown, with no cost put yet: listed with no amount (a prompt)
-    renew = []
-    for e in db.query(models.CompanyExpiry).filter(models.CompanyExpiry.expires_on.isnot(None), models.CompanyExpiry.expires_on <= end).all():
-        if e.id in priced or e.expires_on < t - timedelta(days=60):
-            continue
-        parts = []
-        for x_ in (e.category, e.kind, e.item):
-            if x_ and not any(x_.lower() in y.lower() or y.lower() in x_.lower() for y in parts):
-                parts.append(x_)
-        renew.append({"id": e.id, "what": " - ".join(parts), "number": e.number or "",
-                      "date": e.expires_on.isoformat(), "late": e.expires_on < t})
-    renew.sort(key=lambda x: x["date"])
-
     items.sort(key=lambda x: (x["date"], -x["in"], x["out"]))
     bal = bank["now"]
     for it in items:
@@ -233,7 +218,29 @@ def collect(db, months=3, with_in=True):
                    "opening": r2(opening), "in": r2(cin), "out": r2(cout), "closing": r2(opening + cin - cout), "low": r2(low), "by": {k: r2(v) for k, v in by.items()}})
         opening = opening + cin - cout
         d = nxt
-    return {"today": t.isoformat(), "bank": bank, "items": items, "months": mo, "renewals": renew, "keep": keep}
+    # the picture: the lowest point, the first day below the minimum, the biggest payments, what comes in
+    low = min([{"date": t.isoformat(), "after": bank["now"], "what": "now"}] + items, key=lambda i: i["after"])
+    below = next((i for i in items if i["after"] < keep), None)
+    groups = {}
+    for i in items:
+        if not i["out"]:
+            continue
+        k = ("salary", "Salaries") if i["type"] == "salary" else ("sub", "Subcontractor certificates") if i["type"] == "sub" else (i["key"], i["what"].split(" · cheque")[0])
+        g = groups.setdefault(k, {"what": k[1], "type": i["type"], "amount": 0.0, "dates": [], "n": 0, "late": False})
+        g["amount"] += i["out"]; g["dates"].append(i["date"]); g["n"] += 1; g["late"] = g["late"] or i["late"]
+    biggest = sorted(groups.values(), key=lambda g: -g["amount"])[:6]
+    for g in biggest:
+        g["amount"] = r2(g["amount"])
+    coming = [i for i in items if i["in"]]
+    tot_out = r2(sum(i["out"] for i in items))
+    by_type = {}
+    for i in items:
+        if i["out"]:
+            by_type[i["type"]] = r2(by_type.get(i["type"], 0) + i["out"])
+    return {"today": t.isoformat(), "bank": bank, "items": items, "months": mo, "keep": keep,
+            "low": {"date": low["date"], "amount": r2(low["after"]), "what": low["what"]},
+            "below": {"date": below["date"], "what": below["what"], "amount": below["after"]} if below else None,
+            "biggest": biggest, "coming": coming, "total_out": tot_out, "total_in": r2(sum(i["in"] for i in items)), "by_type": by_type}
 
 
 @router.get("/store/cash/forecast")
@@ -262,7 +269,7 @@ def _clean(p):
     rep = p.get("repeat") if p.get("repeat") in ("once", "month", "quarter", "year") else "once"
     return dict(what=what, kind=str(p.get("kind") or "")[:60], amount=amount, on_date=d, sure=p.get("sure") if p.get("sure") in ("sure", "likely", "maybe") else "sure",
                 repeat=rep, until=M._as_date(p.get("until")) if p.get("until") else None, direction="in" if p.get("direction") == "in" else "out",
-                bank=str(p.get("bank") or "ADCB")[:40], note=str(p.get("note") or "")[:500], expiry_id=int(p["expiry_id"]) if p.get("expiry_id") else None)
+                bank=str(p.get("bank") or "ADCB")[:40], note=str(p.get("note") or "")[:500], expiry_id=None)
 
 
 @router.post("/store/cash/expected")
@@ -287,27 +294,6 @@ def edit_expected(xid: int, payload: dict = Body(...), db: Session = Depends(get
     db.commit()
     M.log_action(db, user.id, "cash_expected_edit", f"Expected {x.what}: {x.status} AED {x.amount:,.2f} on {x.on_date:%d/%m/%Y}")
     return {"ok": True}
-
-
-@router.post("/store/cash/expected/{xid}/cheque")
-def make_cheque(xid: int, payload: dict = Body(default={}), db: Session = Depends(get_db), user: models.User = ACC):
-    """The cheque is written: it goes on the PDC register (and counts from there); a repeating one moves on."""
-    x = db.query(models.CashExpected).get(xid)
-    if not x or x.direction != "out":
-        raise HTTPException(404, "Not found.")
-    d = M._as_date(payload.get("cheque_date")) if payload.get("cheque_date") else x.on_date
-    amt = float(payload.get("amount") or x.amount)
-    c = models.Pdc(payee=str(payload.get("payee") or x.what)[:200], cheque_no=str(payload.get("cheque_no") or "")[:40], bank=x.bank or "",
-                   cheque_date=d, amount=amt, notes=(x.note or "") + " (from the cash forecast)", status="pending", created_by=user.id, updated_by=user.id)
-    db.add(c); db.flush()
-    step = {"month": 1, "quarter": 3, "year": 12}.get(x.repeat)
-    if step:                                                      # repeating: the next one stays expected
-        x.on_date = _add_months(x.on_date, step)
-    else:
-        x.status, x.pdc_id = "cheque", c.id
-    db.commit()
-    M.log_action(db, user.id, "cash_expected_cheque", f"{x.what}: cheque {c.cheque_no or ''} AED {amt:,.2f} dated {d:%d/%m/%Y} put on the PDC register")
-    return {"ok": True, "pdc_id": c.id}
 
 
 @router.post("/store/cash/move")
@@ -358,14 +344,18 @@ def export(token: str, format: str = "pdf", months: int = 3, with_in: int = 1, d
              "From": i["src"], "In (AED)": i["in"] or "", "Out (AED)": i["out"] or "", "Balance after (AED)": i["after"]} for i in f["items"]]
     sub = (f"In the bank now AED {f['bank']['now']:,.2f} (statement of {'/'.join(reversed((f['bank']['as_of'] or '').split('-')))}) | "
            + " | ".join(f"{m['label']}: in {m['in']:,.0f}, out {m['out']:,.0f}, closing {m['closing']:,.0f}" for m in f["months"]))
-    title = "Cash forecast"
+    import cash_report as CR
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+    stamp = _dt.now(ZoneInfo("Asia/Dubai")).strftime("%d/%m/%Y %H:%M")
+    name = f"Cash_forecast_{M._dubai_today():%d.%m.%Y}"
     if format == "view":
         vt = quote(auth.create_view_token(u.username), safe="")
-        url = f"/export/accounts/cash?months={months}&with_in={with_in}&token={vt}"
-        return M._preview_page(title, sub, rows, url, url, money_cols=["In (AED)", "Out (AED)", "Balance after (AED)"])
-    name = f"Cash_forecast_{M._dubai_today():%d.%m.%Y}"
+        base = f"/export/accounts/cash?months={months}&with_in={with_in}&token={vt}"
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(CR.report_html(f, base + "&format=pdf", base + "&format=excel", export_web.logo_data_uri(), stamp))
     if format == "excel":
-        return StreamingResponse(export_web.build_store_report_excel(title, rows, sub, money_cols=["In (AED)", "Out (AED)", "Balance after (AED)"]),
+        return StreamingResponse(export_web.build_store_report_excel("Cash forecast", rows, sub, money_cols=["In (AED)", "Out (AED)", "Balance after (AED)"]),
                                  media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})
-    return StreamingResponse(export_web.build_store_report_pdf(title, rows, sub, money_cols=["In (AED)", "Out (AED)", "Balance after (AED)"], orientation="landscape"),
-                             media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
+    return StreamingResponse(CR.report_pdf(f, export_web.LOGO_PATH, stamp), media_type="application/pdf",
+                             headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
