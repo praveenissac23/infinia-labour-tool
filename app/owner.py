@@ -62,7 +62,7 @@ def overview(db: Session = Depends(get_db), user: models.User = Depends(_owner))
         for c in b.get("clientpcs") or []:
             if c.get("status") in ("Submitted", "Certified", "Invoiced") and (c.get("payable") or 0) > 0:
                 owed += c["payable"]
-                client_open.append({"code": p.code, "seq": c.get("seq"), "status": c["status"], "amount": r2(c["payable"]),
+                client_open.append({"pid": p.id, "code": p.code, "seq": c.get("seq"), "status": c["status"], "amount": r2(c["payable"]),
                                     "since": c.get("certified_on") or c.get("submitted")})
         coming += owed
         # subcontractors: invoices certified (on their way to payment) and not paid - the amount payable on each
@@ -71,8 +71,8 @@ def overview(db: Session = Depends(get_db), user: models.User = Depends(_owner))
                 st = pc.get("status")
                 if st in ("Certified", "Prepared", "CM approved", "Verified", "MD approved"):
                     sub_due += pc.get("payable") or 0
-                if st in ("Prepared", "CM approved", "Verified"):
-                    md_q.append(pc.get("payable") or 0)
+                if ((pc.get("flow") or {}).get("turn")) == "md":            # at the Managing Director's desk
+                    md_q.append((pc["id"], pc.get("payable") or 0))
         rev = s_.get("revised") or 0
         done = round(100.0 * (s_.get("client_work") or 0) / rev, 1) if rev else 0.0
         basis = "certified"
@@ -94,7 +94,10 @@ def overview(db: Session = Depends(get_db), user: models.User = Depends(_owner))
     pdc30 = r2(sum(c.amount or 0 for c in in30))
     going = r2(pdc30 + sub_to_pay)
     out["money"] = {"coming": coming, "going": going, "net": r2(coming - going), "pdc30": pdc30, "pdc30_n": len(in30),
-                    "sub_to_pay": sub_to_pay, "client_open": client_open}
+                    "sub_to_pay": sub_to_pay, "client_open": client_open,
+                    # Coming in opens the project the money is owed on (one project), else the Estimation dashboard
+                    "coming_go": {"est": {"pid": client_open[0]["pid"], "group": "home", "sec": "dash"}} if len({c["pid"] for c in client_open}) == 1
+                    else {"pg": ["estimation", "estdash"]}}
 
     # ---- collected per month (Accounts > Project payments) ------------------------------------------
     def months():
@@ -118,9 +121,13 @@ def overview(db: Session = Depends(get_db), user: models.User = Depends(_owner))
     # ---- people: on site today, headcount -----------------------------------------------------------
     rows = db.query(models.DailyRow.employee_id, models.DailyRow.am, models.DailyRow.pm).filter(models.DailyRow.full_date == t).all()
     at_work = {r.employee_id for r in rows if "present" in ((r.am or "") + (r.pm or "")).lower()}
-    labour = db.query(models.Employee).filter(models.Employee.active == True, models.Employee.staff == False).count()  # noqa: E712
-    staff = db.query(models.Employee).filter(models.Employee.active == True, models.Employee.staff == True).count()  # noqa: E712
-    out["people"] = {"on_site": len(at_work), "marked": bool(rows), "labour": labour, "staff": staff}
+    # employed today: active, and no leaving date (or one still to come) - as the staff registers count them
+    emp = db.query(models.Employee.staff, models.Employee.pay_group, models.Employee.terminated_on).filter(models.Employee.active == True).all()  # noqa: E712
+    here = [e for e in emp if not e.terminated_on or e.terminated_on > t]
+    labour = sum(1 for e in here if not e.staff)
+    staff = sum(1 for e in here if e.staff and (e.pay_group or "staff") != "local")
+    local = sum(1 for e in here if e.staff and (e.pay_group or "") == "local")
+    out["people"] = {"on_site": len(at_work), "marked": bool(rows), "labour": labour, "staff": staff, "local": local}
 
     # ---- what waits for the owner ---------------------------------------------------------------------
     needs = []
@@ -134,34 +141,39 @@ def overview(db: Session = Depends(get_db), user: models.User = Depends(_owner))
                 days = None
         needs.append({"lvl": "red" if (days or 0) > 30 else "amber",
                       "text": f"{c['code']} PC {c['seq']} · {c['status'].lower()}, not paid yet" + (f" · {days} days" if days else ""),
-                      "amount": c["amount"], "go": ["estimation", "estproj"]})
+                      "amount": c["amount"], "go": {"est": {"pid": c["pid"], "group": "home", "sec": "dash"}}})
     awaiting = db.query(EB.EstBill).filter(EB.EstBill.status == "Awaiting approval").all()
     if awaiting:
         needs.append({"lvl": "amber", "text": f"{len(awaiting)} client bill{'s' if len(awaiting) != 1 else ''} waiting for approval",
-                      "amount": r2(sum(b.total_due or 0 for b in awaiting)), "go": ["estimation", "estproj"], "cta": "Approve"})
-    if md_q:
+                      "amount": r2(sum(b.total_due or 0 for b in awaiting)), "cta": "Approve",
+                      # one bill: that bill, open; several: the first one's project, its bills
+                      "go": {"est": {"pid": awaiting[0].project_id, "group": "bills", "sec": "ipa", **({"bill": awaiting[0].id} if len(awaiting) == 1 else {})}}})
+    if md_q:   # noqa
         needs.append({"lvl": "amber", "text": f"{len(md_q)} subcontractor payment{'s' if len(md_q) != 1 else ''} for your approval",
-                      "amount": r2(sum(md_q)), "go": ["estimation", "estdash"], "cta": "Approve"})
+                      "amount": r2(sum(a for _, a in md_q)), "cta": "Approve",
+                      "go": {"url": ES.approve_link([i for i, _ in md_q])}})        # the approval page, every one of them
     if week:
         late = sum(1 for c in week if c.cheque_date < t)
         needs.append({"lvl": "red" if late else "amber",
                       "text": "Cheques clearing this week" + (f" · {late} past date" if late else ""),
-                      "amount": r2(sum(c.amount or 0 for c in week)), "go": ["dq", "pdc"]})
+                      "amount": r2(sum(c.amount or 0 for c in week)), "go": {"dq": "pdc"}})
     ex = _safe(lambda: EX.summary(db), {})
     n_ex = (ex.get("expired") or 0) + (ex.get("week") or 0) + (ex.get("month") or 0)
     if n_ex:
         needs.append({"lvl": "red" if ex.get("expired") else "amber",
                       "text": f"{n_ex} visas, IDs & licences expire in 30 days" + (f" · {ex['expired']} already expired" if ex.get("expired") else ""),
-                      "go": ["dq", "expiry"], "cta": "View"})
-    urgent = db.query(models.MaterialRequest).filter(models.MaterialRequest.status.in_(("pending", "approved", "arranging")),
+                      "go": {"dq": "expiry"}, "cta": "View"})
+    # open = not yet all delivered: waiting for the office, ordered, or part arrived (the order tracker's open ones)
+    OPEN_MR = ("pending", "approved", "arranging", "ordered", "lpo_sent", "partial")
+    urgent = db.query(models.MaterialRequest).filter(models.MaterialRequest.status.in_(OPEN_MR),
                                                      models.MaterialRequest.needed_by != None, models.MaterialRequest.needed_by < t).count()  # noqa: E711
     if urgent:
-        needs.append({"lvl": "amber", "text": f"{urgent} material request{'s' if urgent != 1 else ''} past the date site needed them",
-                      "go": ["dq", "track"], "cta": "View"})
+        needs.append({"lvl": "amber", "text": f"{urgent} material request{'s' if urgent != 1 else ''} not delivered by the date site needed {'them' if urgent != 1 else 'it'}",
+                      "go": {"dq": "track"}, "cta": "View"})
     out["needs"] = needs
 
     # ---- a light for each department ------------------------------------------------------------------
-    open_mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.status.in_(("pending", "approved", "arranging", "lpo_sent", "partial"))).count()
+    open_mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.status.in_(OPEN_MR)).count()
     tenders = est.get("tenders") or 0
     late_logs = sum(b["summary"].get("overdue") or 0 for _, b in bl)
     month0 = t.replace(day=1)
@@ -169,18 +181,18 @@ def overview(db: Session = Depends(get_db), user: models.User = Depends(_owner))
     att = round(100.0 * len(at_work) / labour) if labour and rows else None
     light = lambda red, amber: "red" if red else ("amber" if amber else "green")
     out["departments"] = [
-        {"name": "Estimation / QS", "value": f"{bills_m} bill{'s' if bills_m != 1 else ''}", "note": f"this month · {tenders} tender{'s' if tenders != 1 else ''} pricing",
-         "light": light(late_logs > 5, late_logs > 0 or awaiting), "go": ["estimation", "estdash"]},
-        {"name": "Purchasing / Store", "value": f"{open_mr} open", "note": f"material requests · {urgent} past due",
-         "light": light(urgent > 10, urgent > 0), "go": ["dq", "track"]},
-        {"name": "Accounts", "value": _k(pdc30) + " PDC", "note": f"{len(in30)} cheques in 30 days",
-         "light": light(any(c.cheque_date < t for c in in30), pdc30 > coming), "go": ["dq", "pdc"]},
-        {"name": "HR / Payroll", "value": f"{labour + staff} people", "note": f"{labour} labour · {staff} office",
-         "light": "green", "go": ["dq", "staff"]},
+        {"name": "Estimation / QS", "value": f"{bills_m} bill{'s' if bills_m != 1 else ''}", "note": f"made this month · {tenders} tender{'s' if tenders != 1 else ''} pricing" + (f" · {late_logs} RFIs / submittals overdue" if late_logs else ""),
+         "light": light(late_logs > 5, late_logs > 0 or awaiting), "go": {"pg": ["estimation", "estdash"]}},
+        {"name": "Purchasing / Store", "value": f"{open_mr} open", "note": f"material requests not fully delivered · {urgent} late",
+         "light": light(urgent > 10, urgent > 0), "go": {"dq": "track"}},
+        {"name": "Accounts", "value": _k(pdc30) + " PDC", "note": f"{len(in30)} cheques in 30 days" + (f" · {sum(1 for c in in30 if c.cheque_date < t)} past date" if any(c.cheque_date < t for c in in30) else ""),
+         "light": light(any(c.cheque_date < t for c in in30), pdc30 > coming), "go": {"dq": "pdc"}},
+        {"name": "HR / Payroll", "value": f"{labour + staff + local} people", "note": f"{labour} labour · {staff} office staff · {local} local staff",
+         "light": "green", "go": {"dq": "staff"}},
         {"name": "Site / Labour", "value": (f"{att}%" if att is not None else "not in"), "note": "attendance today" if att is not None else "today's attendance not marked yet",
-         "light": light(att is not None and att < 60, att is None or att < 80), "go": ["dq", "att"]},
+         "light": light(att is not None and att < 60, att is None or att < 80), "go": {"dq": "att"}},
         {"name": "PRO / Visas", "value": f"{n_ex} expiring", "note": "in 30 days" + (f" · {ex.get('expired')} expired" if ex.get("expired") else ""),
-         "light": light(bool(ex.get("expired")), n_ex > 0), "go": ["dq", "expiry"]},
+         "light": light(bool(ex.get("expired")), n_ex > 0), "go": {"dq": "expiry"}},
     ]
     return out
 

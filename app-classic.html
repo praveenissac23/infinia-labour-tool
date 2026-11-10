@@ -15358,10 +15358,22 @@ function applySettingsCards() {
 // One screen for the owner: the next 30 days' money, what waits for him, the projects and a light for each
 // department - every figure from the departments' own pages (GET /permissions/owner). Each tile opens its page.
 function odK(v) { v = +v || 0; const a = Math.abs(v); return a >= 1e6 ? (v / 1e6).toFixed(2) + "M" : a >= 1e3 ? Math.round(v / 1e3) + "K" : Math.round(v).toLocaleString("en-US"); }
+// Every tile, line and ring opens the exact place: a project's own page (its dashboard, bills or a bill open),
+// the approval page of the certificates waiting, or the right page and tab of the app.
 function odGo(g) {
   if (!g) return;
-  if (g[0] === "dq") return dqGo(g[1]);
-  if (typeof pgGo === "function") pgGo(g[0], g[1]);
+  if (Array.isArray(g)) g = g[0] === "dq" ? { dq: g[1] } : { pg: g };
+  if (g.url) { location.href = g.url; return; }
+  if (g.dq) return dqGo(g.dq);
+  if (g.est) {                       // Estimation > Projects, on that project and section (and the bill, if one)
+    const m = Object.assign({ est: "open" }, g.est), f = document.getElementById("pg-estproj-frame");
+    const first = f && !f.getAttribute("src");
+    if (first) f.dataset.src = f.dataset.src.split("#")[0] + "#p" + m.pid + (m.group ? "&s=" + m.group + "." + m.sec : "") + (m.bill ? "&bill=" + m.bill : "");
+    if (typeof pgGo === "function") pgGo("estimation", "estproj");
+    if (!first && f && f.contentWindow) setTimeout(() => { try { f.contentWindow.postMessage(m, location.origin); } catch (e) {} }, 60);
+    return;
+  }
+  if (g.pg && typeof pgGo === "function") pgGo(g.pg[0], g.pg[1]);
 }
 async function ownDash(role) {
   const box = document.getElementById("own-dash"), scr = document.getElementById("screen-dashboard"); if (!box || !scr) return;
@@ -15397,22 +15409,22 @@ async function ownDash(role) {
   const nm = /^(admin|administrator)$/i.test(d.name || "") ? "" : d.name;
   box.innerHTML = `<div class="od-hd"><h1>${greet}${nm ? `, <b>${esc(nm)}</b>` : ""}</h1><span>${esc(day)} · ${d.contracts.count} live projects · AED ${odK(d.contracts.value)} under contract</span></div>
   <div class="od-g">
-    <div class="od-c od-hero go" data-go='["dq","pdc"]' title="Coming in less going out, over the next 30 days"><div class="od-l">Net position · next 30 days</div>
+    <div class="od-c od-hero go" data-go='{"dq":"projpay"}' title="Coming in less going out, over the next 30 days"><div class="od-l">Net position · next 30 days</div>
       <div class="od-v">${net < 0 ? "−" : ""}${nnum}<small>${unit}</small></div>
       <div style="margin-top:10px;font-size:15px">AED · <span class="grn">in ${odK(m.coming)}</span> · <span class="red">out ${odK(m.going)}</span></div>${spark}</div>
     <div class="od-c od-needs"><div class="od-l">Needs you${needs.length ? " · " + needs.length : ""}</div>${needsHtml}</div>
-    <div class="od-c od-k go" data-go='["estimation","estproj"]' title="Certified by the consultants on the running projects, not yet paid by the clients"><div class="od-l">Coming in</div><div class="od-v grn">${odK(m.coming)}</div><div class="od-s">certified, not yet paid</div></div>
-    <div class="od-c od-k go" data-go='["dq","pdc"]' title="Cheques dated in the next 30 days (or already past) + subcontractor money certified and not paid"><div class="od-l">Going out</div><div class="od-v">${odK(m.going)}</div><div class="od-s">${m.pdc30_n} cheques · subcontractors</div></div>
-    <div class="od-c od-k go" data-go='["dq","projpay"]' title="Received from clients this month"><div class="od-l">Collected · ${new Date().toLocaleDateString("en-GB", { month: "short" })}</div><div class="od-v">${odK(cm)}</div><div class="od-s">${cp ? (cm >= cp ? "▲ " : "▼ ") + "last month " + odK(cp) : "this month so far"}</div></div>
-    <div class="od-c od-k go" data-go='["dq","att"]' title="Workers marked present today"><div class="od-l">On site today</div><div class="od-v">${ppl.marked ? ppl.on_site : "–"}</div><div class="od-s">${ppl.marked ? "of " + ppl.labour + " workers" : "attendance not marked yet"}</div></div>
+    <div class="od-c od-k go" data-go='${esc(JSON.stringify(m.coming_go || { pg: ["estimation", "estdash"] }))}' title="Certified by the consultants on the running projects, not yet paid by the clients"><div class="od-l">Coming in</div><div class="od-v grn">${odK(m.coming)}</div><div class="od-s">certified, not yet paid</div></div>
+    <div class="od-c od-k go" data-go='{"dq":"pdc"}' title="Cheques dated in the next 30 days (or already past) + subcontractor money certified and not paid"><div class="od-l">Going out</div><div class="od-v">${odK(m.going)}</div><div class="od-s">${m.pdc30_n} cheques · subcontractors</div></div>
+    <div class="od-c od-k go" data-go='{"dq":"projpay"}' title="Received from clients this month"><div class="od-l">Collected · ${new Date().toLocaleDateString("en-GB", { month: "short" })}</div><div class="od-v">${odK(cm)}</div><div class="od-s">${cp ? (cm >= cp ? "▲ " : "▼ ") + "last month " + odK(cp) : "this month so far"}</div></div>
+    <div class="od-c od-k go" data-go='{"dq":"att"}' title="Workers marked present today"><div class="od-l">On site today</div><div class="od-v">${ppl.marked ? ppl.on_site : "–"}</div><div class="od-s">${ppl.marked ? "of " + ppl.labour + " workers" : "attendance not marked yet"}</div></div>
     <div class="od-c od-dep"><div class="od-l">Departments</div>${dep.map((x, i) => `<div class="od-dl" data-d="${i}"><span>${esc(x.name)}<small>${esc(x.note)}</small></span><span class="${lc[x.light] || ""}" style="white-space:nowrap"><span class="od-dot" style="background:currentColor"></span>${esc(x.value)}</span></div>`).join("")}</div>
     <div class="od-c od-proj"><div class="od-l">Projects · % of the contract certified · ring colour = how much of it the client has paid</div>
-      <div class="od-rings">${show.map(ring).join("")}${projs.length > show.length ? `<span class="od-more" data-go='["estimation","estproj"]'>+${projs.length - show.length} more →</span>` : ""}</div></div>
+      <div class="od-rings">${show.map(ring).join("")}${projs.length > show.length ? `<span class="od-more" data-go='{"pg":["estimation","estdash"]}'>+${projs.length - show.length} more →</span>` : ""}</div></div>
   </div>`;
   box.querySelectorAll("[data-go]").forEach(el => el.onclick = () => odGo(JSON.parse(el.dataset.go)));
   box.querySelectorAll(".od-n").forEach(el => el.onclick = () => odGo(needs[+el.dataset.i].go));
   box.querySelectorAll(".od-dl").forEach(el => el.onclick = () => odGo(dep[+el.dataset.d].go));
-  box.querySelectorAll(".od-ring").forEach(el => el.onclick = () => odGo(["estimation", "estproj"]));
+  box.querySelectorAll(".od-ring").forEach(el => el.onclick = () => odGo({ est: { pid: +el.dataset.p, group: "home", sec: "dash" } }));
 }
 // ---- Dashboard skyline: the greeting and today's figures ----------------
 async function dashSky() {
