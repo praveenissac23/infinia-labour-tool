@@ -21,7 +21,7 @@ r = c.post("/store/est/ipa/format", headers=H, data={"project_id": str(pid)}, fi
 fid = r.json()["id"]
 G = lambda bid: c.get(f"/store/est/ipa/bill/{bid}", headers=H).json()
 P = lambda bid, body: c.put(f"/store/est/ipa/bill/{bid}", headers=H, json=body)
-row = lambda B, n: next((x for x in B["payments"][0]["rows"] if re.search(rf"No {n}\s*$", str(x["desc"]["value"] or "").strip())), None)
+row = lambda B, n: next((x for x in B["payments"][0]["rows"] if re.search(rf"No 0*{n}\s*$", str(x["desc"]["value"] or "").strip())), None)
 carried = lambda B: [(x["desc"]["value"], x["amount"]["value"]) for x in B["fees"][0]["rows"] if x.get("carry")]
 paid = lambda B: B["payments"][0]["total"]
 cov = lambda B: {x["label"]: x["amount"] for x in (B.get("cover") or {}).get("rows", [])}
@@ -46,7 +46,7 @@ b2 = c.post("/store/est/ipa/new", headers=H, json={"project_id": pid, "format_id
 B2 = G(b2)
 ck("bill 10: PA 9 Pending by itself", row(B2, 9) and row(B2, 9)["pending"], row(B2, 9))
 ck("...PA 8 (received) untouched", not row(B2, 8)["pending"] and abs(row(B2, 8)["amount"]["value"] - 20000) < 0.01)
-ck("...bill 9's fees (1250) carried", carried(B2) == [("Carried from Payment Application No 9 (Pending)", 1250)], carried(B2))
+ck("...bill 9's fees (1250) carried", carried(B2) == [("Carried from Payment Application No 09 (Pending)", 1250)], carried(B2))
 ck("...paid to date stays 100,000 (bill 9 not taken off)", abs(paid(B2) - 100000) < 0.01, paid(B2))
 cv = cov(B2)
 print("bill 10 cover", cv, "due", B2["total_due"])
@@ -90,6 +90,7 @@ b3 = c.post("/store/est/ipa/new", headers=H, json={"project_id": pid, "format_id
 B3 = G(b3)
 ck("bill 11: PA 9 and PA 10 Pending", row(B3, 9)["pending"] and row(B3, 10)["pending"], [(x["desc"]["value"], x["pending"]) for x in B3["payments"][0]["rows"] if x["desc"]["value"]])
 ck("...carried: only bill 10's fees (its own 0 + the 1250 it carried) - the 1250 never twice", carried(B3) == [("Carried from Payment Application No 10 (Pending)", 1250)], carried(B3))
+ck("spare lines for later bills (13, 14) are not marked Pending", not row(B3, 13)["pending"] and not row(B3, 14)["pending"], [row(B3, 13), row(B3, 14)])
 import models
 from database import SessionLocal
 db = SessionLocal()

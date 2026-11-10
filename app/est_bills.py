@@ -769,6 +769,11 @@ def mark_unpaid_pending(model, inputs):
     Received date yet is marked Pending - it is left out of what was paid (so it is billed again in full, with its
     VAT) and its authority fees are carried. Lines with an amount or a date are left as they are."""
     values = BE.calculate(model, inputs)
+    bn = model.get("map", {}).get("bill_no")
+    cur = BE.strip_rev(BE.general(values.get(bn["sheet"], {}).get(f"{bn['r']},{bn['c']}"))) if bn else ""
+    cur = int(cur) if re.fullmatch(r"\d+", cur or "") else None
+    if cur is None:
+        return inputs                                     # without this bill's no. the earlier bills cannot be told apart
     for p in model.get("map", {}).get("payments", []):
         sh, cols = p["sheet"], p["cols"]
         if not (cols.get("received") and cols.get("desc")):
@@ -781,8 +786,8 @@ def mark_unpaid_pending(model, inputs):
             d = values.get(sh, {}).get(f"{r},{cols['desc']}")
             if not (isinstance(d, str) and re.search(r"(payment|ipa|ipc|bill|certificate|application)", d, re.I) and BE.bill_num_match(BE.strip_rev(d))):
                 continue
-            if re.search(r"advance", d, re.I):
-                continue
+            if re.search(r"advance", d, re.I) or int(BE.bill_num_match(BE.strip_rev(d)).group(0)) >= cur:
+                continue                                  # only bills before this one (not the spare lines for later ones)
             a = values.get(sh, {}).get(f"{r},{cols['amount']}")
             rk = f"{r},{cols['received']}"
             rv = inp[rk] if rk in inp else (s["cells"].get(rk) or {}).get("v")

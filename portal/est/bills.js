@@ -254,7 +254,9 @@ function checks(b) {
   out.push(f.moved ? [true, `${f.moved} line${f.moved === 1 ? "" : "s"} moved on this month - ${money(f.now, false)} of work`] : [false, "No line has moved on since the last bill - type this month's % on Work done"]);
   if (f.bad.length) out.push([false, `${f.bad.length} line${f.bad.length === 1 ? " is" : "s are"} over 100% or below last month: ${f.bad.slice(0, 3).map(l => esc(l.item || l.desc.slice(0, 30))).join(", ")}`]);
   if (pay) {
-    const named = r => r.desc && /\d/.test(String(r.desc.value || "")) && !/advance/i.test(String(r.desc.value || ""));
+    const curNo = parseInt(String(billNo(b)).match(/\d+/) || "", 10);
+    const lineNo = r => { const m = String(r.desc.value || "").trim().match(/(\d+)\D*$/); return m ? +m[1] : NaN; };
+    const named = r => r.desc && /\d/.test(String(r.desc.value || "")) && !/advance/i.test(String(r.desc.value || "")) && !(lineNo(r) >= curNo);   // earlier bills only
     const got = r => !!(r.received && (cellIso(r.received) || (r.received.value && !/pending/i.test(String(r.received.value)))));
     const pend = pay.rows.filter(r => named(r) && r.pending);
     const carried = ((b.fees || [])[0] || { rows: [] }).rows.filter(x => x.carry);

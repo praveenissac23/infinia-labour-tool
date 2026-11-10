@@ -17,12 +17,15 @@ for col, t in zip("ABCDE", ["#", "Payment Certificate No", "Date of Submission",
     a[f"{col}4"] = t
 rows = [("Initial Advance Payment", None, 46017, 50000), ("Previous Payments", None, None, None),
         ("Payment Application No 7", 46266, 46284, 30000), ("Payment Application No 8", 46303, None, None)]
+spare = ["Payment Application No 13", "Payment Application No 14"]   # lines typed ahead in the workbook for later bills
 for i, (d, s, rcv, amt) in enumerate(rows):
     r = 5 + i
     a[f"A{r}"], a[f"B{r}"] = i + 1, d
     if s: a[f"C{r}"] = s
     if rcv: a[f"D{r}"] = rcv
     if amt: a[f"E{r}"] = amt
+for j, d in enumerate(spare):
+    a[f"A{18 + j}"], a[f"B{18 + j}"] = 14 + j, d
 a["B23"] = "Total Previous Payments Received Carried to Summary"; a["E23"] = "=SUM(E5:E22)"
 for r in range(4, 24):
     for col in "ABCDE":
