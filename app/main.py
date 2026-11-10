@@ -227,6 +227,7 @@ def seed_on_startup():
         _tick_est_tabs(db)
         _grant_camp(db)
         _grant_ppe(db)
+        _grant_diesel(db)
         _move_monthly_tick(db)
         _grant_admin_forms(db)
         _grant_docs_office(db)
@@ -847,6 +848,19 @@ def _grant_ppe(db):
         if add:
             setattr(obj, field, ",".join(keys + add))
     db.add(models.Setting(key="ppe_right_granted", value="1"))
+    db.commit()
+
+
+def _grant_diesel(db):
+    """Store > Diesel is new: a login ticked tab by tab that has any Store tab gets it too. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "diesel_tab_granted").first():
+        return
+    for obj in list(db.query(models.AccessRole).all()) + list(db.query(models.User).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        if any(k.startswith("store.store") or k.startswith("store.rentals") for k in keys) and "store.diesel" not in keys:
+            setattr(obj, field, ",".join(keys + ["store.diesel"]))
+    db.add(models.Setting(key="diesel_tab_granted", value="1"))
     db.commit()
 
 
@@ -15467,6 +15481,8 @@ import zoholog  # noqa: E402
 app.include_router(zoholog.router)
 import docsoffice  # noqa: E402
 app.include_router(docsoffice.router)
+import diesel  # noqa: E402  - Store > Diesel: in and used, site by site
+app.include_router(diesel.router)
 import owner  # noqa: E402  - the owner's dashboard (admin)
 app.include_router(owner.router)
 import visa  # noqa: E402

@@ -427,6 +427,15 @@
     ]
    },
    {
+    "id": "store.diesel",
+    "label": "Diesel",
+    "right": [
+     "store",
+     "storekeeper"
+    ],
+    "grant": []
+   },
+   {
     "id": "store.requests",
     "label": "Requests",
     "children": [

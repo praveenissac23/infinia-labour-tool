@@ -799,6 +799,32 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .af-btns{display:flex;gap:6px;margin-top:auto;flex-wrap:wrap} .af-btns .btn{height:32px;padding:0 12px}
   @media (max-width:560px){ #screen-adminforms .af-grid{grid-template-columns:1fr} .af-thumb{width:96px;height:136px} }
   /* PPE register */
+  #screen-diesel .ds-new{border:1px solid #ECE6DF;border-radius:12px;background:#FCFAF7;padding:12px 14px;margin:12px 0}
+  #screen-diesel .ds-new .ds-h{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  #screen-diesel .ds-new .ds-h b{font-size:14px}
+  #screen-diesel .ds-f{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  #screen-diesel .ds-f .pc-f input,#screen-diesel .ds-f .pc-f select{height:36px;box-sizing:border-box}
+  #screen-diesel .ds-qty{display:flex;gap:6px} #screen-diesel .ds-qty input{width:110px;font-weight:700;font-size:15px}
+  #screen-diesel .ds-filter{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:14px 0 10px}
+  #screen-diesel .ds-filter .pc-f select,#screen-diesel .ds-filter .pc-f input{height:34px;box-sizing:border-box}
+  #screen-diesel .ds-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+  #screen-diesel .ds-tile{border:1px solid #ECE6DF;border-radius:12px;padding:10px 14px;background:#fff}
+  #screen-diesel .ds-tile span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8A8079}
+  #screen-diesel .ds-tile b{font-size:22px;font-weight:700;color:#2B2622} #screen-diesel .ds-tile small{display:block;color:#8A8079;font-size:11.5px}
+  #screen-diesel .ds-tile.in b{color:#1E8449} #screen-diesel .ds-tile.bad b{color:#B03A2E}
+  #screen-diesel .ds-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:12px}
+  #screen-diesel .ds-panel{border:1px solid #ECE6DF;border-radius:12px;background:#fff;overflow:auto}
+  #screen-diesel .ds-panel h3{margin:0;padding:9px 14px;font-size:13.5px;background:#FCFAF7;border-bottom:1px solid #F1ECE6}
+  #screen-diesel table.ds-t{width:100%;border-collapse:collapse;font-size:12.5px}
+  #screen-diesel .ds-t th{font-size:11px;color:#8A8079;text-transform:uppercase;text-align:left;padding:7px 10px;border-bottom:1px solid #F1ECE6;background:#FCFAF7;white-space:nowrap}
+  #screen-diesel .ds-t td{padding:7px 10px;border-bottom:1px solid #F6F2EE;vertical-align:middle}
+  #screen-diesel .ds-t .n{text-align:right;white-space:nowrap} #screen-diesel .ds-t .g{color:#1E8449} #screen-diesel .ds-t .r{color:#B03A2E}
+  #screen-diesel .ds-t td.l,#screen-diesel .ds-t th.l{text-align:left !important}
+  #screen-diesel .ds-tag{font-size:10.5px;font-weight:700;border-radius:9px;padding:2px 8px;white-space:nowrap}
+  #screen-diesel .ds-tag.in{background:#E8F6EE;color:#1E8449} #screen-diesel .ds-tag.use{background:#FDECEA;color:#B03A2E}
+  #screen-diesel .ds-log{max-height:560px}
+  @media (max-width:760px){#screen-diesel .ds-tiles{grid-template-columns:repeat(2,minmax(0,1fr))} #screen-diesel .ds-cols{grid-template-columns:1fr}
+    #screen-diesel .ds-f .pc-f{flex:1 1 140px} #screen-diesel .ds-f .pc-f.ds-qf{flex-basis:100%} #screen-diesel .ds-qty input{flex:1;width:auto} #screen-diesel .ds-qty select{flex:1} #screen-diesel .ds-f .pc-f input,#screen-diesel .ds-f .pc-f select{width:100%}}
   #screen-ppe .pc-btns{align-items:flex-end} #screen-ppe .pc-btns .btn{height:36px;box-sizing:border-box} #screen-ppe .pc-btns select{height:36px}
   #screen-ppe .pe-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0;min-height:68px}
   #screen-ppe .pe-wrap{min-height:420px}
@@ -3938,6 +3964,26 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="grid-wrap" style="max-height:none;"><table class="pc-table dt-table dt2" data-nomove><thead><tr><th class="l" style="width:104px;">No.</th><th class="l" style="width:100px;">Date</th><th class="l">Documents</th><th class="l dt2-by" style="width:96px;">Sent by</th><th class="l" style="width:160px;">Office</th><th style="width:160px;"></th></tr></thead><tbody id="dt-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody></table></div>
           </div>
         </div>
+        <div class="screen" id="screen-diesel">
+          <div class="card">
+            <div class="pc-head">
+              <div class="pc-title"><h2 style="margin:0;">Diesel <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">Every lot received and every fill into a machine, with the time - site by site</span></h2></div>
+              <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="dsExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="dsExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="dsExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="dsExport('view')">Share</button></div></div>
+            </div>
+            <div class="status-msg" id="ds-status"></div>
+            <div id="ds-form"></div>
+            <div class="ds-filter">
+              <label class="pc-f"><span>Site</span><select id="ds-site" onchange="dsDraw()"></select></label>
+              <label class="pc-f"><span>From</span><input type="date" id="ds-from" onchange="dsDraw()"></label>
+              <label class="pc-f"><span>To</span><input type="date" id="ds-to" onchange="dsDraw()"></label>
+              <label class="pc-f"><span>Show in</span><select id="ds-unit" onchange="dsUnitPick(this.value)"></select></label>
+              <button type="button" class="btn btn-gray btn-sm" onclick="['ds-from','ds-to'].forEach(i=>document.getElementById(i).value='');document.getElementById('ds-site').value='';dsDraw()">Clear</button>
+            </div>
+            <div class="ds-tiles" id="ds-tiles"></div>
+            <div class="ds-cols"><div class="ds-panel"><h3 id="ds-by-h">By site</h3><div id="ds-bysite"></div></div><div class="ds-panel"><h3>By machine</h3><div id="ds-bymac"></div></div></div>
+            <div class="ds-panel ds-log"><h3>Log <span class="sub" style="display:inline;font-weight:400;" id="ds-count"></span></h3><div id="ds-log"></div></div>
+          </div>
+        </div>
         <div class="screen" id="screen-ppe">
           <div class="card">
             <div class="pc-head">
@@ -5799,6 +5845,7 @@ function switchScreen(name) {
   if (name === "expiry") expOpen();
   if (name === "adminforms") formsOpen();
   if (name === "docsoffice") dtLoad();
+  if (name === "diesel") dsLoad();
   if (name === "pdc") pdcOpen();
   if (name === "seccheque") scOpen();
   if (name === "invoices") setTimeout(() => invOpen(), 0);
@@ -20679,6 +20726,117 @@ async function dtReopen(id) {
 async function dtExport(id, kind) {
   await refreshDownloadToken();
   window.open(`${API}/export/store/docs/${id}?format=${kind}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
+}
+// ---- Store > Diesel ------------------------------------------------------------
+// In and used, site by site, with the time of each fill. Kept in litres; typed and read in the unit chosen.
+let DS = null, DS_KIND = "use", DS_EDIT = null, DS_DIRECT = false;
+function dsUnits() { return (DS && DS.units) || [{ id: "L", label: "Litres", short: "L", litres: 1 }]; }
+function dsUnitOf(id) { return dsUnits().find(u => u.id === id) || dsUnits()[0]; }
+function dsShowUnit() { let u = ""; try { u = localStorage.getItem("ds_unit") || ""; } catch (e) {} return dsUnits().some(x => x.id === u) ? u : "IG"; }
+function dsUnitPick(v) { try { localStorage.setItem("ds_unit", v); } catch (e) {} dsDraw(); }
+function dsQ(litres) { const u = dsUnitOf(dsShowUnit()); return (litres / u.litres).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function dsD(iso) { return iso ? iso.split("-").reverse().join("/") : ""; }
+function dsNow() { const d = new Date(); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
+function dsUsed(r) { return r.kind === "use" || (r.kind === "in" && r.machine) ? r.litres : 0; }
+function dsIn(r) { return r.kind === "in" ? r.litres : 0; }
+async function dsLoad() {
+  try { DS = await apiCall("/store/diesel"); } catch (e) { showStatus("ds-status", "err", errText(e)); return; }
+  const ss = document.getElementById("ds-site"), keep = ss.value;
+  ss.innerHTML = `<option value="">All sites</option>` + DS.sites.map(c => `<option${c === keep ? " selected" : ""}>${escapeHtml(c)}</option>`).join("");
+  document.getElementById("ds-unit").innerHTML = dsUnits().map(u => `<option value="${u.id}"${u.id === dsShowUnit() ? " selected" : ""}>${escapeHtml(u.label)}</option>`).join("");
+  dsFormDraw(); dsDraw();
+}
+function dsFormDraw() {
+  const ed = DS_EDIT ? DS.rows.find(r => r.id === DS_EDIT) : null, v = ed || {};
+  const site = v.site || (document.getElementById("ds-f-site") || {}).value || document.getElementById("ds-site").value || "";
+  const unit = v.unit || (document.getElementById("ds-f-unit") || {}).value || dsShowUnit();
+  if (ed) { DS_KIND = ed.kind; DS_DIRECT = ed.kind === "in" && !!ed.machine; }
+  const siteSel = `<select id="ds-f-site"><option value="">Pick the site</option>${DS.sites.map(c => `<option${c === site ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>`;
+  const mac = `<label class="pc-f" style="flex:1 1 200px;"><span>Machine</span><input type="text" id="ds-f-mac" list="ds-mac-list" autocomplete="off" data-spell="off" placeholder="e.g. Generator G-1" value="${escapeAttr(v.machine || "")}"></label>`;
+  document.getElementById("ds-form").innerHTML = `<div class="ds-new"><div class="ds-h"><b>${ed ? "Change entry" : "Book diesel"}</b>
+      <div class="seg-chips"><button type="button" class="seg-chip${DS_KIND === "use" ? " on" : ""}" onclick="DS_KIND='use';dsFormDraw()">Used</button><button type="button" class="seg-chip${DS_KIND === "in" ? " on" : ""}" onclick="DS_KIND='in';dsFormDraw()">Received</button></div>
+      ${DS_KIND === "in" ? `<span class="sub" style="display:inline;">Filled into</span><div class="seg-chips"><button type="button" class="seg-chip${!DS_DIRECT ? " on" : ""}" onclick="DS_DIRECT=false;dsFormDraw()">Jars / tank</button><button type="button" class="seg-chip${DS_DIRECT ? " on" : ""}" onclick="DS_DIRECT=true;dsFormDraw()">Straight into a machine</button></div>` : ""}</div>
+    <div class="ds-f">
+      <label class="pc-f"><span>Site</span>${siteSel}</label>
+      <label class="pc-f"><span>Date</span><input type="date" id="ds-f-date" value="${escapeAttr(v.date || (document.getElementById("ds-f-date") || {}).value || pcToday())}" max="${pcToday()}"></label>
+      <label class="pc-f"><span>Time</span><input type="time" id="ds-f-time" value="${escapeAttr(v.time || dsNow())}"></label>
+      <label class="pc-f ds-qf"><span>Quantity</span><span class="ds-qty"><input type="number" id="ds-f-qty" min="0" step="0.01" inputmode="decimal" placeholder="0.00" value="${v.qty || ""}"><select id="ds-f-unit">${dsUnits().map(u => `<option value="${u.id}"${u.id === unit ? " selected" : ""}>${escapeHtml(u.label)}</option>`).join("")}</select></span></label>
+      ${DS_KIND === "use" ? mac : `<label class="pc-f" style="flex:1 1 200px;"><span>Supplier</span><input type="text" id="ds-f-sup" list="ds-sup-list" autocomplete="off" data-spell="off" placeholder="Pick or type" value="${escapeAttr(v.supplier || "")}"></label>
+        <label class="pc-f"><span>Delivery note no.</span><input type="text" id="ds-f-dn" placeholder="e.g. 55821" value="${escapeAttr(v.dn_no || "")}"></label>${DS_DIRECT ? mac : ""}`}
+      <label class="pc-f" style="flex:1 1 180px;"><span>Note</span><input type="text" id="ds-f-note" placeholder="Optional" value="${escapeAttr(v.note || "")}"></label>
+      ${ed ? `<button type="button" class="btn btn-gray" onclick="DS_EDIT=null;dsFormDraw()">Cancel</button>` : ""}
+      <button type="button" class="btn btn-primary" data-main id="ds-save" onclick="dsSave()">${ed ? "Save changes" : "Save"}</button></div>
+    <datalist id="ds-mac-list">${(DS.machines || []).map(n => `<option value="${escapeAttr(n)}">`).join("")}</datalist>
+    <datalist id="ds-sup-list">${(DS.suppliers || []).map(n => `<option value="${escapeAttr(n)}">`).join("")}</datalist></div>`;
+}
+async function dsSave() {
+  const g = id => (document.getElementById(id) || {}).value || "";
+  const body = { kind: DS_KIND, site: g("ds-f-site"), date: g("ds-f-date"), time: g("ds-f-time"), qty: g("ds-f-qty"), unit: g("ds-f-unit"),
+                 supplier: g("ds-f-sup"), dn_no: g("ds-f-dn"), machine: DS_KIND === "use" || DS_DIRECT ? g("ds-f-mac") : "", note: g("ds-f-note") };
+  if (!body.site) return showStatus("ds-status", "err", "Pick the site.");
+  if (!(+body.qty > 0)) return showStatus("ds-status", "err", "Type the quantity.");
+  if ((DS_KIND === "use" || DS_DIRECT) && !body.machine.trim()) return showStatus("ds-status", "err", "Which machine?");
+  const b = document.getElementById("ds-save"); b.disabled = true;
+  try {
+    const was = DS_EDIT;
+    DS_EDIT ? await apiCall(`/store/diesel/${DS_EDIT}`, { method: "PUT", body: JSON.stringify(body) }) : await apiCall("/store/diesel", { method: "POST", body: JSON.stringify(body) });
+    const u = dsUnitOf(body.unit);
+    showStatus("ds-status", "ok", `${was ? "Changed" : "Saved"}: ${body.qty} ${u.short} ${DS_KIND === "use" ? "used in " + body.machine : "received"} at ${body.site}.`);
+    DS_EDIT = null; DS_DIRECT = false; await dsLoad();
+    const q = document.getElementById("ds-f-qty"); if (q) q.value = "";
+  } catch (e) { showStatus("ds-status", "err", errText(e)); b.disabled = false; }
+}
+function dsEdit(id) { DS_EDIT = id; dsFormDraw(); document.getElementById("ds-form").scrollIntoView({ behavior: "smooth", block: "center" }); }
+async function dsDel(id) {
+  if (!(await hrAsk("Delete this diesel entry?", "Delete", true))) return;
+  try { await apiCall(`/store/diesel/${id}`, { method: "DELETE" }); await dsLoad(); showStatus("ds-status", "ok", "Entry removed."); }
+  catch (e) { showStatus("ds-status", "err", errText(e)); }
+}
+function dsDraw() {
+  if (!DS) return;
+  const site = document.getElementById("ds-site").value, f = document.getElementById("ds-from").value, t = document.getElementById("ds-to").value;
+  const sh = dsUnitOf(dsShowUnit()).short;
+  // running balance per site, oldest first, over everything (what is left does not start again at the From date)
+  const asc = DS.rows.filter(r => !site || r.site === site).slice().sort((a, b) => (a.date + a.time + String(a.id).padStart(9, "0")).localeCompare(b.date + b.time + String(b.id).padStart(9, "0")));
+  const bal = {}, left = {};
+  asc.forEach(r => { bal[r.site] = (bal[r.site] || 0) + dsIn(r) - dsUsed(r); left[r.id] = bal[r.site]; });
+  const inRange = r => (!f || r.date >= f) && (!t || r.date <= t);
+  const rows = asc.filter(inRange);
+  const tin = rows.reduce((a, r) => a + dsIn(r), 0), tuse = rows.reduce((a, r) => a + dsUsed(r), 0);
+  const lastLeft = {}; asc.filter(r => !t || r.date <= t).forEach(r => { lastLeft[r.site] = left[r.id]; });
+  const nowLeft = Object.values(lastLeft).reduce((a, v) => a + v, 0);
+  const fills = rows.filter(r => dsUsed(r) > 0).length;
+  document.getElementById("ds-tiles").innerHTML =
+    `<div class="ds-tile in"><span>Received</span><b>${dsQ(tin)} <small style="display:inline;">${sh}</small></b><small>${rows.filter(r => r.kind === "in").length} deliver${rows.filter(r => r.kind === "in").length === 1 ? "y" : "ies"}</small></div>
+     <div class="ds-tile"><span>Used</span><b>${dsQ(tuse)} <small style="display:inline;">${sh}</small></b><small>${fills} fill${fills === 1 ? "" : "s"} into machines</small></div>
+     <div class="ds-tile${nowLeft < -0.001 ? " bad" : ""}"><span>Should be left</span><b>${dsQ(nowLeft)} <small style="display:inline;">${sh}</small></b><small>received - used, ${t ? "on " + dsD(t) : "now"}</small></div>
+     <div class="ds-tile"><span>Used per day</span><b>${dsQ(tuse / Math.max(1, new Set(rows.filter(r => dsUsed(r) > 0).map(r => r.date)).size))} <small style="display:inline;">${sh}</small></b><small>on days with a fill</small></div>`;
+  // by site
+  const bs = {}; rows.forEach(r => { const x = bs[r.site] = bs[r.site] || { i: 0, u: 0 }; x.i += dsIn(r); x.u += dsUsed(r); });
+  Object.keys(lastLeft).forEach(k => { bs[k] = bs[k] || { i: 0, u: 0 }; });
+  const sk = Object.keys(bs).sort();
+  document.getElementById("ds-bysite").innerHTML = sk.length ? `<table class="ds-t"><thead><tr><th class="l">Site</th><th class="n">Received</th><th class="n">Used</th><th class="n">Should be left</th></tr></thead><tbody>${sk.map(k => `<tr><td class="l">${escapeHtml(k)}</td><td class="n g">${dsQ(bs[k].i)}</td><td class="n">${dsQ(bs[k].u)}</td><td class="n${(lastLeft[k] || 0) < -0.001 ? " r" : ""}"><b>${dsQ(lastLeft[k] || 0)}</b></td></tr>`).join("")}</tbody></table>` : `<div class="sub" style="padding:12px 14px;">Nothing booked yet.</div>`;
+  // by machine
+  const bm = {}; rows.filter(r => dsUsed(r) > 0).forEach(r => { const k = r.machine + (site ? "" : " · " + r.site); const x = bm[k] = bm[k] || { n: 0, u: 0, last: "" }; x.n++; x.u += dsUsed(r); x.last = r.date + " " + r.time; });
+  const mk = Object.keys(bm).sort((a, b) => bm[b].u - bm[a].u);
+  document.getElementById("ds-bymac").innerHTML = mk.length ? `<table class="ds-t"><thead><tr><th>Machine</th><th class="n">Fills</th><th class="n">Used</th><th class="n">Last fill</th></tr></thead><tbody>${mk.map(k => `<tr><td>${escapeHtml(k)}</td><td class="n">${bm[k].n}</td><td class="n">${dsQ(bm[k].u)}</td><td class="n">${dsD(bm[k].last.slice(0, 10))} ${bm[k].last.slice(11)}</td></tr>`).join("")}</tbody></table>` : `<div class="sub" style="padding:12px 14px;">No fills in this period.</div>`;
+  // log, newest first
+  const log = rows.slice().reverse();
+  document.getElementById("ds-count").textContent = `${log.length} entr${log.length === 1 ? "y" : "ies"} · in ${sh}`;
+  document.getElementById("ds-log").innerHTML = log.length ? `<table class="ds-t"><thead><tr><th>Date</th><th>Time</th><th class="l">Site</th><th></th><th>Machine / supplier</th><th class="n">In</th><th class="n">Used</th><th class="n">Left</th><th>By</th><th></th></tr></thead><tbody>${log.map(r => {
+      const direct = r.kind === "in" && r.machine;
+      const what = r.kind === "use" ? escapeHtml(r.machine) : `${escapeHtml([r.supplier, r.dn_no && "DN " + r.dn_no].filter(Boolean).join(" · ") || "Delivery")}${direct ? ` · <b>straight into ${escapeHtml(r.machine)}</b>` : " · into jars"}`;
+      const mine = DS.admin || r.by_id === DS.me;
+      return `<tr><td>${dsD(r.date)}</td><td>${escapeHtml(r.time)}</td><td class="l">${escapeHtml(r.site)}</td><td><span class="ds-tag ${r.kind}">${r.kind === "in" ? "IN" : "USED"}</span></td>
+        <td>${what}${r.note ? `<div class="sub">${escapeHtml(r.note)}</div>` : ""}</td><td class="n g">${dsIn(r) ? "+" + dsQ(dsIn(r)) : ""}</td><td class="n">${dsUsed(r) ? "−" + dsQ(dsUsed(r)) : ""}</td>
+        <td class="n${left[r.id] < -0.001 ? " r" : ""}">${dsQ(left[r.id])}</td><td>${escapeHtml(r.by)}</td>
+        <td class="n">${mine ? `<button type="button" class="btn btn-gray btn-sm" onclick="dsEdit(${r.id})">Change</button> <button type="button" class="btn btn-gray btn-sm" title="Delete" onclick="dsDel(${r.id})">×</button>` : ""}</td></tr>`; }).join("")}</tbody></table>` : `<div class="sub" style="padding:12px 14px;">Nothing booked for this site and period.</div>`;
+}
+async function dsExport(kind) {
+  await refreshDownloadToken();
+  const f = document.getElementById("ds-from").value, t = document.getElementById("ds-to").value;
+  if (f && t && f > t) return showStatus("ds-status", "err", "The From date is after the To date.");
+  window.open(`${API}/export/store/diesel?format=${kind}&site=${encodeURIComponent(document.getElementById("ds-site").value)}&date_from=${f}&date_to=${t}&unit=${dsShowUnit()}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
 // ---- Reports > Labour > Visa files ------------------------------------------
 let VF = null, VF_ST = "ongoing", VF_OPEN = null, VF_PEOPLE = null;

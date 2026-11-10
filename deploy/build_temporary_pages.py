@@ -134,6 +134,8 @@ PAGES = {
         tab("rentals", "store", "Rentals", "store", subs=[
             sub("hire", "On rent", screen="store", right="store", go="pgStorePanel('hire')"),
             sub("returns", "Return notes", screen="store", right="store", go="pgStorePanel('returns')")]),
+        # Diesel in and used, site by site, with the time of each fill (10 Nov 2026).
+        tab("diesel", "diesel", "Diesel", ["store", "storekeeper"], go="dsLoad()"),
         tab("requests", "requests", "Requests", ["requests", "approvals"], subs=[
             sub("requests", "Material requests", screen="requests", right="requests"),
             # Approvals and Order follow-up live on the Order tracker (2 Nov 2026): every button they had is there.

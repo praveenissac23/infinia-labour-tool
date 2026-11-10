@@ -1613,3 +1613,26 @@ class RentalMap(Base):
     source = Column(String, default="")           # auto | questionnaire | manual
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class DieselEntry(Base):
+    """Store > Diesel: every lot of diesel received at a site and every fill
+    into a machine, with the time - so what came in and what was used can be
+    set side by side, site by site. Kept in litres; the unit it was typed in
+    is kept beside it. Received straight into a machine counts as received
+    and used at once."""
+    __tablename__ = "diesel_entries"
+    id = Column(Integer, primary_key=True)
+    site = Column(String, default="", index=True)
+    kind = Column(String, default="use", index=True)     # in | use
+    on_date = Column(Date, nullable=False, index=True)
+    on_time = Column(String, default="")                  # HH:MM
+    litres = Column(Float, default=0.0)
+    unit = Column(String, default="L")                    # as typed: L | IG | USG
+    qty = Column(Float, default=0.0)                      # as typed, in that unit
+    supplier = Column(String, default="")
+    dn_no = Column(String, default="")
+    machine = Column(String, default="")                  # use: the machine; in: set when filled straight into it
+    note = Column(String, default="")
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
