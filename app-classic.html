@@ -802,51 +802,62 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dq-ret{border:1px solid #F1B9B2;background:#FFF7F6} .dq-ret.hidden{display:none}
   .dq-retrow{display:block;width:100%;text-align:left;border:1px solid #F1D3CE;background:#fff;border-radius:10px;padding:10px 12px;margin-top:8px;cursor:pointer;font:inherit}
   .dq-retrow b{display:block;color:#8E1F16;font-size:13.5px} .dq-retrow span{display:block;color:#6b625a;font-size:12.5px;margin-top:2px}
-  #screen-cashfc .cf-top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px}
-  #screen-cashfc .cf-top h2{margin:0;font-size:22px;font-weight:800} #screen-cashfc .sub{color:#8A8079;font-size:12px}
-  #screen-cashfc .cf-ctl{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  #screen-cashfc .cf-hero{display:grid;grid-template-columns:1.25fr 2fr;gap:14px}
-  #screen-cashfc .cf-dark{background:radial-gradient(120% 140% at 0% 0%,#5A2A24 0%,#2E2A27 55%,#1E1B19 100%);color:#fff;border-radius:18px;padding:22px 24px;position:relative;overflow:hidden}
-  #screen-cashfc .cf-dark .l{font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.65} #screen-cashfc .cf-dark .v{font-size:38px;font-weight:800;letter-spacing:-.5px;margin:6px 0 2px}
-  #screen-cashfc .cf-dark .s{font-size:12px;opacity:.72;line-height:1.5} #screen-cashfc .cf-dark a{color:#F5C6BF;cursor:pointer;text-decoration:underline}
-  #screen-cashfc .cf-run{margin-top:16px;background:rgba(255,255,255,.07);border-radius:14px;padding:12px 16px;display:flex;gap:16px;align-items:center}
-  #screen-cashfc .cf-run b{font-size:22px;display:block} #screen-cashfc .cf-run small{display:block;opacity:.7;font-size:11.5px}
-  #screen-cashfc .cf-pill{display:inline-flex;gap:6px;background:rgba(46,204,113,.16);color:#8EEBB3;border-radius:12px;padding:4px 10px;font-size:11.5px;font-weight:700;margin-top:10px}
+  /* Cash forecast - "The Tanks": dark page, one ring per month, the weeks ahead, biggest payments, coming in, every line */
+  #screen-cashfc.active{background:#1B1816;color:#F4EFEA;border-radius:22px;padding:26px 30px 34px}
+  #screen-cashfc .sub{color:#B5A99F;font-size:12.5px}
+  #screen-cashfc .cf-top{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap}
+  #screen-cashfc .cf-k{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:#B5A99F;font-weight:600}
+  #screen-cashfc .cf-now{font-size:46px;font-weight:800;letter-spacing:-1.2px;margin:4px 0 2px;line-height:1.1}
+  #screen-cashfc .cf-now small{font-size:15px;color:#B5A99F;font-weight:500;letter-spacing:0}
+  #screen-cashfc .cf-pill{display:inline-flex;gap:6px;background:rgba(46,204,113,.16);color:#8EEBB3;border-radius:12px;padding:3px 10px;font-size:11.5px;font-weight:700;margin-top:6px}
   #screen-cashfc .cf-pill.old{background:rgba(255,193,7,.16);color:#FFD27A}
-  #screen-cashfc .cf-white{background:#fff;border:1px solid #ECE6DF;border-radius:18px;padding:16px 20px}
-  #screen-cashfc .cf-white h3{margin:0;font-size:15px}
-  #screen-cashfc .cf-months{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:14px}
-  #screen-cashfc .cf-mc{background:#fff;border:1px solid #ECE6DF;border-radius:18px;padding:16px 18px;position:relative}
-  #screen-cashfc .cf-mc .h b{font-size:17px} #screen-cashfc .cf-mc .cl{font-size:28px;font-weight:800;margin:8px 0 2px} #screen-cashfc .cf-mc .cs{font-size:11.5px;color:#8A8079}
-  #screen-cashfc .cf-bar{height:10px;border-radius:6px;background:#F1ECE6;margin:12px 0 6px;display:flex;overflow:hidden} #screen-cashfc .cf-bar i{display:block;height:100%}
-  #screen-cashfc .cf-io{display:flex;justify-content:space-between;font-size:12.5px}
-  #screen-cashfc .g{color:#1E8449!important} #screen-cashfc .r{color:#B03A2E!important}
-  #screen-cashfc .cf-mc.bad{background:linear-gradient(180deg,#FFF6F4,#fff);border-color:#F1B9B2}
-  #screen-cashfc .cf-badge{position:absolute;top:14px;right:16px;background:#C0392B;color:#fff;border-radius:10px;padding:3px 9px;font-size:10.5px;font-weight:700} #screen-cashfc .cf-badge.ok{background:#E8F6EE;color:#1E8449}
-  #screen-cashfc .cf-mini{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px} #screen-cashfc .cf-mini span{font-size:10.5px;border-radius:8px;padding:2px 7px;font-weight:600}
-  #screen-cashfc .ty-cheque{background:#EEF2FA;color:#3B5998} #screen-cashfc .ty-salary{background:#F3EEFA;color:#6B3FA0} #screen-cashfc .ty-sub{background:#FFF1D6;color:#8A5A00}
-  #screen-cashfc .ty-expected{background:#FDECEA;color:#B03A2E} #screen-cashfc .ty-client{background:#E8F6EE;color:#1E8449}
-  #screen-cashfc .cf-cols{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;margin-top:14px;align-items:start}
+  #screen-cashfc .cf-ctl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
+  #screen-cashfc .seg-chips{background:#2E2A27} #screen-cashfc .seg-chip{color:#CFC4BB} #screen-cashfc .seg-chip.on{background:#C0392B;color:#fff;box-shadow:none}
+  #screen-cashfc .cf-tanks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin-top:20px}
+  #screen-cashfc .cf-tanks.many{grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+  #screen-cashfc .cf-tk{background:#24201E;border-radius:22px;padding:18px 10px 16px;text-align:center;cursor:pointer;border:2px solid transparent}
+  #screen-cashfc .cf-tk:hover{border-color:#4a403b} #screen-cashfc .cf-tk.on{border-color:#C0392B}
+  #screen-cashfc .cf-tk svg{width:100%;max-width:210px;height:auto}
+  #screen-cashfc .cf-tk .t{font-size:18px;font-weight:700;margin-top:8px} #screen-cashfc .cf-tanks.many .cf-tk .t{font-size:14px}
+  #screen-cashfc .cf-tk .s{color:#B5A99F;font-size:12.5px;margin-top:3px}
+  #screen-cashfc .cf-foot{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:20px}
+  #screen-cashfc .cf-foot>div{background:#24201E;border-radius:16px;padding:15px 18px}
+  #screen-cashfc .cf-foot span{font-size:11px;color:#B5A99F;text-transform:uppercase;letter-spacing:.12em}
+  #screen-cashfc .cf-foot b{font-size:21px;display:block;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #screen-cashfc .cf-foot .warn{background:#4A1F1A} #screen-cashfc .cf-foot .safe{background:#163D25}
+  #screen-cashfc .cf-foot a{color:#F5C6BF;cursor:pointer;text-decoration:underline;font-size:12px}
+  #screen-cashfc .cf-panel{background:#24201E;border-radius:22px;padding:20px 22px;margin-top:20px}
+  #screen-cashfc .cf-panel h3{margin:0 0 2px;font-size:16px;color:#fff}
+  #screen-cashfc .cf-2{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+  #screen-cashfc .cf-2 .cf-panel{margin-top:20px}
+  #screen-cashfc .g{color:#8EEBB3!important} #screen-cashfc .r{color:#FF9C8F!important} #screen-cashfc .y{color:#F5B041!important}
+  #screen-cashfc .cf-wk rect{cursor:pointer}
+  #screen-cashfc .cf-big{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #332E2B}
+  #screen-cashfc .cf-big:last-child{border:0}
+  #screen-cashfc .cf-big .ico{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none;font-size:13px}
+  #screen-cashfc .cf-big .w{flex:1;min-width:0} #screen-cashfc .cf-big .w b{display:block;font-size:14px;color:#fff} #screen-cashfc .cf-big .w small{color:#B5A99F;font-size:12px} #screen-cashfc .cf-big .a{font-weight:800;font-size:15px;white-space:nowrap}
+  #screen-cashfc .ty-cheque{background:#24345A;color:#9DB7F0} #screen-cashfc .ty-salary{background:#3B2A55;color:#C9A8F0} #screen-cashfc .ty-sub{background:#4A3A12;color:#F5C76A}
+  #screen-cashfc .ty-expected{background:#4A1F1A;color:#FF9C8F} #screen-cashfc .ty-client{background:#163D25;color:#8EEBB3}
+  #screen-cashfc .cf-note{margin-top:14px;border-radius:14px;padding:13px 16px;background:#4A1F1A} #screen-cashfc .cf-note.ok{background:#163D25}
+  #screen-cashfc .cf-note b{display:block} #screen-cashfc .cf-note .sub{color:#F0D5CF} #screen-cashfc .cf-note.ok .sub{color:#C6EFD5}
   #screen-cashfc table.cf-t{width:100%;border-collapse:collapse}
-  #screen-cashfc .cf-t th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#8A8079;text-align:left;padding:8px;border-bottom:1px solid #EFE9E3}
-  #screen-cashfc .cf-t td{padding:9px 8px;border-bottom:1px solid #F5F1ED;font-size:12.5px;vertical-align:middle} #screen-cashfc .cf-t .n{text-align:right;white-space:nowrap} #screen-cashfc .cf-t .l{text-align:left!important}
-  #screen-cashfc .cf-t tr.mh td{background:#F8F5F1;font-weight:800;color:#5b524b;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase}
+  #screen-cashfc .cf-t th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#B5A99F;text-align:left;padding:8px;border-bottom:1px solid #3a3330}
+  #screen-cashfc .cf-t td{padding:9px 8px;border-bottom:1px solid #2E2A27;font-size:12.5px;vertical-align:middle;color:#EDE6E0} #screen-cashfc .cf-t .n{text-align:right;white-space:nowrap} #screen-cashfc .cf-t .l{text-align:left!important}
+  #screen-cashfc .cf-t th{background:#24201E!important;border-bottom:1px solid #3a3330!important} #screen-cashfc .cf-t tbody tr td{background:transparent} #screen-cashfc .cf-t tbody tr:hover td{background:#2B2623}
+  #screen-cashfc .cf-t tr.mh td{background:#2E2A27;font-weight:800;color:#E8DFD8;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase}
   #screen-cashfc .cf-tag{font-size:10.5px;font-weight:700;border-radius:9px;padding:2px 8px;white-space:nowrap}
-  #screen-cashfc .cf-src{font-size:11px;color:#9a918a} #screen-cashfc .cf-late{background:#FDECEA;color:#B03A2E;font-size:9.5px;font-weight:700;border-radius:7px;padding:1px 6px;margin-left:5px}
-  #screen-cashfc .cf-big{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #F5F1ED}
-  #screen-cashfc .cf-big .ico{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none}
-  #screen-cashfc .cf-big .w{flex:1;min-width:0} #screen-cashfc .cf-big .w b{display:block;font-size:13px} #screen-cashfc .cf-big .w small{color:#8A8079} #screen-cashfc .cf-big .a{font-weight:800}
-  #screen-cashfc .cf-in{margin-top:14px;background:#E8F6EE;border-radius:12px;padding:12px 14px}
+  #screen-cashfc .cf-src{font-size:11px;color:#9a8f87} #screen-cashfc .cf-late{background:#4A1F1A;color:#FF9C8F;font-size:9.5px;font-weight:700;border-radius:7px;padding:1px 6px;margin-left:5px}
   #screen-cashfc .cf-act{white-space:nowrap;width:1%} #screen-cashfc .cf-t td.l{min-width:240px}
-  #screen-cashfc .cf-ib{border:1px solid #E6E0DA;background:#fff;border-radius:8px;width:28px;height:28px;margin-left:4px;cursor:pointer;color:#6b625a;font-size:12px;padding:0}
-  #screen-cashfc .cf-ib:hover{border-color:#E6B8B1;color:#A93226;background:#FBEFED} #screen-cashfc .cf-ib.ok:hover{border-color:#9FD8B5;color:#1E8449;background:#E8F6EE}
+  #screen-cashfc .cf-ib{border:1px solid #4a403b;background:#2E2A27;border-radius:8px;width:28px;height:28px;margin-left:4px;cursor:pointer;color:#E8DFD8;font-size:12px;padding:0}
+  #screen-cashfc .cf-ib:hover{border-color:#C0392B;color:#fff;background:#4A1F1A} #screen-cashfc .cf-ib.ok:hover{border-color:#2ECC71;color:#8EEBB3;background:#163D25}
+  #screen-cashfc .status-msg{margin-top:10px}
   .cf-ov{position:fixed;inset:0;background:rgba(40,30,25,.5);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px}
   .cf-mod{background:#fff;border-radius:16px;width:min(560px,100%);max-height:92vh;overflow:auto;padding:20px 22px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
   .cf-mod h3{margin:0 0 4px} .cf-mod label{display:block;font-size:11px;color:#8A8079;text-transform:uppercase;letter-spacing:.06em;margin:11px 0 4px}
   .cf-mod input,.cf-mod select{width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:9px;padding:9px 11px;font:inherit;font-size:14px}
   .cf-mod .g2{display:grid;grid-template-columns:1fr 1fr;gap:12px} .cf-mod .btns{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
   .cf-mod .hint{background:#FFF7E6;border:1px solid #F2D29A;color:#7A5200;border-radius:9px;padding:8px 12px;font-size:12px;margin-top:12px}
-  @media (max-width:1000px){#screen-cashfc .cf-hero,#screen-cashfc .cf-cols{grid-template-columns:1fr} #screen-cashfc .cf-months{grid-template-columns:1fr} .cf-mod .g2{grid-template-columns:1fr} #screen-cashfc .cf-dark .v{font-size:30px}}
+  @media (max-width:1000px){#screen-cashfc.active{padding:18px 16px 26px;border-radius:16px} #screen-cashfc .cf-now{font-size:32px} #screen-cashfc .cf-tanks{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px} #screen-cashfc .cf-tanks.many{grid-template-columns:repeat(3,minmax(0,1fr))} #screen-cashfc .cf-tk{padding:10px 4px} #screen-cashfc .cf-tk .t{font-size:13px} #screen-cashfc .cf-tk .s{font-size:10.5px} #screen-cashfc .cf-foot{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px} #screen-cashfc .cf-foot b{font-size:17px;white-space:normal} #screen-cashfc .cf-now small{display:block;margin-top:2px} #screen-cashfc .cf-wk{overflow-x:auto} #screen-cashfc .cf-wk svg{min-width:760px} #screen-cashfc .cf-2{grid-template-columns:1fr} .cf-mod .g2{grid-template-columns:1fr}}
   #screen-clientbills .cb-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
   #screen-clientbills table.cb-t{width:100%;border-collapse:collapse;font-size:13px}
   #screen-clientbills .cb-t th{font-size:11px;color:#8A8079;text-transform:uppercase;text-align:left;padding:8px 10px;border-bottom:1px solid #F1ECE6;background:#FCFAF7;white-space:nowrap}
@@ -4025,15 +4036,17 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           </div>
         </div>
         <div class="screen" id="screen-cashfc">
-          <div class="cf-top"><div><h2>Cash forecast</h2><div class="sub" id="cf-asof">Everything the company pays and receives, collected from the app</div></div>
-            <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="cfExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="cfExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="cfExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="cfExport('view')">Share</button></div></div></div>
-          <div class="cf-top" style="margin-top:-4px"><div class="cf-ctl"><div class="seg-chips" id="cf-mo"></div><div class="seg-chips" id="cf-in"></div></div><button type="button" class="btn btn-primary" onclick="cfExp()">+ Forecast expense</button></div>
+          <div class="cf-top"><div><div class="cf-k" id="cf-asof">Cash forecast</div><div class="cf-now" id="cf-now">&nbsp;</div><div class="sub" id="cf-bsrc"></div></div>
+            <div class="pc-btns" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="cfExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="cfExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="cfExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="cfExport('view')">Share</button></div><button type="button" class="btn btn-primary" onclick="cfExp()">+ Forecast expense</button></div></div>
+          <div class="cf-ctl"><div class="seg-chips" id="cf-mo"></div><div class="seg-chips" id="cf-in"></div></div>
           <div class="status-msg" id="cf-status"></div>
-          <div class="cf-hero"><div class="cf-dark" id="cf-now"></div><div class="cf-white"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h3 id="cf-ch-t">Bank balance</h3><div class="sub">every cheque, salary and receipt on its day</div></div>
-            <div class="sub"><span style="color:#1E8449">&#9632;</span> balance &nbsp; <span style="color:#E6B8B1">&#9476;</span> <span id="cf-keep-l">keep at least</span> &nbsp; <span style="color:#1E8449">&#9679;</span> money in &nbsp; <span style="color:#B03A2E">&#9679;</span> big payment</div></div><div id="cf-chart"></div></div></div>
-          <div class="cf-months" id="cf-months"></div>
-          <div class="cf-cols"><div class="cf-white"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3>Every payment and receipt</h3><div class="sub">In date order, with the bank balance after each. &#9998; changes any line here only - nothing leaves the forecast.</div></div><div class="seg-chips" id="cf-f"></div></div><div id="cf-list" style="margin-top:6px;overflow-x:auto"></div></div>
-            <div class="cf-white"><h3>Biggest payments coming</h3><div class="sub" id="cf-big-s"></div><div id="cf-big"></div><div id="cf-inbox"></div></div></div>
+          <div class="cf-tanks" id="cf-tanks"></div>
+          <div class="cf-foot" id="cf-foot"></div>
+          <div class="cf-panel"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h3 id="cf-wk-t">The weeks ahead</h3><div class="sub" id="cf-wk-s">each pair of bars is one week - what comes in, what goes out, and what is left in the bank at the end of it</div></div>
+            <div class="sub"><span class="g">&#9632;</span> in &nbsp; <span class="r">&#9632;</span> out &nbsp; <span style="color:#fff">&#9679;</span> left at the end &nbsp; <span class="r">&#9476;</span> <span id="cf-keep-l">keep at least</span></div></div><div id="cf-chart" class="cf-wk"></div></div>
+          <div class="cf-2"><div class="cf-panel"><h3>Biggest payments coming</h3><div class="sub" id="cf-big-s"></div><div id="cf-big"></div></div>
+            <div class="cf-panel"><h3>Coming in</h3><div class="sub">client bills waiting for payment</div><div id="cf-inbox"></div></div></div>
+          <div class="cf-panel" id="cf-all"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3 id="cf-all-t">Every payment and receipt</h3><div class="sub">In date order, with the bank balance after each. &#9998; changes any line here only - nothing leaves the forecast.</div></div><div class="seg-chips" id="cf-f"></div></div><div id="cf-list" style="margin-top:6px;overflow-x:auto"></div></div>
         </div>
         <div class="screen" id="screen-clientbills">
           <div class="card">
@@ -20821,7 +20834,7 @@ async function dtExport(id, kind) {
 // ---- Accounts > Cash forecast ------------------------------------------------------------------
 // Everything that goes out or comes in, collected by the server (bank statement, PDCs, Bank tab, Estimation, payroll)
 // plus the chief accountant's own forecast expenses - which stay here, on this page only.
-let CF = null, CF_MO = 3, CF_IN = 1, CF_F = "all";
+let CF = null, CF_MO = 3, CF_IN = 1, CF_F = "all", CF_MON = "";
 const CF_TY = { cheque: "Cheque", salary: "Salaries", sub: "Subcontractor", client: "Client bill", expected: "Forecast" };
 const CF_ICO = { cheque: "C", salary: "S", sub: "S", client: "B", expected: "F" };
 const cfM = v => Number(v || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -20835,65 +20848,84 @@ async function cfLoad() {
 function cfDraw() {
   const d = CF, keep = d.keep, b = d.bank;
   const now = new Date();
-  document.getElementById("cf-asof").textContent = `Everything the company pays and receives, collected from the app - as on ${cfD(d.today)} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  document.getElementById("cf-mo").innerHTML = [[3, "3 months"], [6, "6 months"], [12, "12 months"]].map(([v, l]) => `<button type="button" class="seg-chip${CF_MO === v ? " on" : ""}" onclick="CF_MO=${v};cfLoad()">${l}</button>`).join("");
+  document.getElementById("cf-asof").textContent = `Cash forecast · as on ${cfD(d.today)} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  document.getElementById("cf-mo").innerHTML = [[3, "3 months"], [6, "6 months"], [12, "12 months"]].map(([v, l]) => `<button type="button" class="seg-chip${CF_MO === v ? " on" : ""}" onclick="CF_MO=${v};CF_MON='';cfLoad()">${l}</button>`).join("");
   document.getElementById("cf-in").innerHTML = [[1, "In &amp; out"], [0, "Out only"]].map(([v, l]) => `<button type="button" class="seg-chip${CF_IN === v ? " on" : ""}" onclick="CF_IN=${v};cfLoad()">${l}</button>`).join("");
   const days = b.as_of ? Math.round((new Date(d.today) - new Date(b.as_of)) / 864e5) : null;
-  document.getElementById("cf-now").innerHTML = `<div class="l">In the bank now</div><div class="v">AED ${cfM(b.now)}</div>
-    <div class="s">${b.banks.map(x => `${escapeHtml(x.bank)} statement of ${cfD(x.as_of)}`).join(" · ") || "No bank statement uploaded yet - Accounts &gt; Bank"}${b.since.length ? ` · ${b.paid_since < 0 ? "&minus;" : "+"}${cfM(Math.abs(b.paid_since))} entered on the Bank tab since` : " · nothing entered since"}</div>
-    ${days === null ? "" : days <= 3 ? `<div class="cf-pill">&#9679; Bank statement is up to date</div>` : `<div class="cf-pill old">&#9679; Statement is ${days} days old - upload the latest on Accounts &gt; Bank</div>`}
-    <div class="cf-run"><div><small>${d.below ? `Goes below ${cfM(keep)} on` : "Stays above"}</small><b>${d.below ? cfD(d.below.date) : cfM(keep)}</b></div>
-      <div style="border-left:1px solid rgba(255,255,255,.15);padding-left:16px"><small>Lowest point</small><b style="color:${d.low.amount < keep ? "#FF9C8F" : "#8EEBB3"}">${cfM(d.low.amount)}</b><small>${cfD(d.low.date)}${d.low.what && d.low.what !== "now" ? " · after " + escapeHtml(d.low.what.split(" · ")[0]).slice(0, 34) : ""}</small></div></div>
-    <div class="s" style="margin-top:12px">Keep at least <b>AED ${cfM(keep)}</b> &nbsp;<a onclick="cfKeep()">change</a></div>`;
-  document.getElementById("cf-ch-t").textContent = `Bank balance - next ${CF_MO} months`;
-  document.getElementById("cf-keep-l").textContent = `keep at least ${cfM(keep)}`;
-  const mos = d.months;
-  document.getElementById("cf-months").innerHTML = mos.map(m => {
-    const bad = m.closing < keep || m.low < keep, tot = (m.in + m.out) || 1;
-    const chips = ["cheque", "salary", "sub", "expected"].filter(k => m.by[k]).map(k => `<span class="ty-${k}">${CF_TY[k] === "Cheque" ? "Cheques" : CF_TY[k] === "Subcontractor" ? "Subcontractors" : CF_TY[k]} ${cfK(-m.by[k])}</span>`).join("");
-    return `<div class="cf-mc${bad ? " bad" : ""}"><span class="cf-badge${bad ? "" : " ok"}">${m.closing < 0 ? "Below zero" : bad ? "Below " + cfM(keep) : m.closing > keep * 2 ? "Comfortable" : "OK"}</span>
-      <div class="h"><b>${m.label}</b></div><div class="cl${m.closing < keep ? " r" : ""}">${cfM(m.closing)}</div><div class="cs">closing balance · opening ${cfM(m.opening)}${m.low < m.closing - 1 && m.low < keep ? ` · lowest ${cfM(m.low)}` : ""}</div>
-      <div class="cf-bar"><i style="width:${100 * m.in / tot}%;background:#2ECC71"></i><i style="width:${100 * m.out / tot}%;background:#E74C3C"></i></div>
-      <div class="cf-io"><span class="g">&#9650; In ${cfM(m.in)}</span><span class="r">&#9660; Out ${cfM(m.out)}</span></div><div class="cf-mini">${chips}</div></div>`; }).join("");
+  document.getElementById("cf-now").innerHTML = `AED ${cfM(b.now)} <small>in the bank today</small>`;
+  document.getElementById("cf-bsrc").innerHTML = `${b.banks.map(x => `${escapeHtml(x.bank)} statement of ${cfD(x.as_of)}`).join(" · ") || "No bank statement uploaded yet - Accounts &gt; Bank"}${b.since.length ? ` · ${b.paid_since < 0 ? "&minus;" : "+"}${cfM(Math.abs(b.paid_since))} entered on the Bank tab since` : ""}
+    ${days === null ? "" : days <= 3 ? ` &nbsp;<span class="cf-pill">&#9679; up to date</span>` : ` &nbsp;<span class="cf-pill old">&#9679; statement is ${days} days old - upload the latest on Accounts &gt; Bank</span>`}`;
+  // the tanks - one ring per month, filled by what is left at the end of it
+  const mos = d.months, full = Math.max(b.now, ...mos.map(m => m.opening), ...mos.map(m => m.closing), keep * 2) || 1, C = 2 * Math.PI * 108;
+  const tank = m => { const c = m.closing, f = Math.max(0, Math.min(1, c / full)), col = c < keep ? "#E74C3C" : c < keep * 2 ? "#F5B041" : "#2ECC71";
+    const lowIn = m.low < keep && c >= keep;
+    return `<div class="cf-tk${CF_MON === m.m ? " on" : ""}" onclick="cfMon('${m.m}')" title="Show ${m.label}'s payments"><svg viewBox="0 0 260 260"><circle cx="130" cy="130" r="108" stroke="#332E2B" stroke-width="22" fill="none"/>${f > 0 ? `<circle cx="130" cy="130" r="108" stroke="${col}" stroke-width="22" fill="none" stroke-dasharray="${(C * f).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 130 130)" stroke-linecap="round"/>` : ""}
+      <text x="130" y="128" text-anchor="middle" font-size="40" font-weight="800" fill="${c < keep ? "#FF9C8F" : "#fff"}">${c < 0 ? "&minus;" : ""}${cfK(Math.abs(c))}</text><text x="130" y="160" text-anchor="middle" font-size="15" fill="#B5A99F">${c < 0 ? "below zero" : c < keep ? "below " + cfK(keep) : lowIn ? "dips to " + cfK(m.low) : "end of " + m.label}</text></svg>
+      <div class="t">${m.label}</div><div class="s">${CF_IN ? `<span class="g">+${cfM(m.in)}</span> · ` : ""}<span class="r">&minus;${cfM(m.out)}</span></div></div>`; };
+  const tk = document.getElementById("cf-tanks"); tk.className = "cf-tanks" + (mos.length > 3 ? " many" : ""); tk.innerHTML = mos.map(tank).join("");
+  // four tiles
+  const bg = d.biggest[0];
+  document.getElementById("cf-foot").innerHTML = `<div><span>Going out · ${CF_MO} months</span><b>${cfM(d.total_out)}</b></div>
+    <div><span>Coming in</span><b class="g">${CF_IN ? cfM(d.total_in) : "&ndash;"}</b></div>
+    <div><span>Biggest</span><b title="${escapeAttr(bg ? bg.what : "")}">${bg ? escapeHtml(bg.what.split(" · ")[0].slice(0, 22)) + " " + cfK(bg.amount) : "&ndash;"}</b></div>
+    <div class="${d.below ? "warn" : "safe"}"><span>${d.below ? "Watch" : "Safe"} · keep ${cfK(keep)} <a onclick="cfKeep()">change</a></span><b class="${d.below ? "r" : "g"}">${d.below ? cfD(d.below.date).slice(0, 5) + " · below " + cfK(keep) : "lowest " + cfM(d.low.amount)}</b></div>`;
+  document.getElementById("cf-keep-l").textContent = `keep at least ${cfK(keep)}`;
   // biggest + coming in
   document.getElementById("cf-big-s").textContent = `next ${CF_MO} months`;
   document.getElementById("cf-big").innerHTML = d.biggest.length ? d.biggest.map(g => `<div class="cf-big"><div class="ico ty-${g.type}">${CF_ICO[g.type] || "·"}</div><div class="w"><b>${escapeHtml(g.what)}${g.type === "sub" && g.n > 1 ? ` (${g.n})` : ""}</b><small>${g.late ? "date passed" : g.dates.slice(0, 3).map(x => cfD(x).slice(0, 5)).join(" · ")}${g.type === "expected" ? " · forecast" : g.type === "cheque" ? " · cheque" : ""}</small></div><div class="a r">${cfM(g.amount)}</div></div>`).join("")
     : `<div class="sub" style="padding:12px 0">Nothing going out.</div>`;
-  document.getElementById("cf-inbox").innerHTML = CF_IN ? `<div class="cf-in"><b class="g">Coming in: ${cfM(d.total_in)}</b><div class="sub">${d.coming.slice(0, 4).map(i => escapeHtml(i.what.split(" - ")[0] + " " + (i.what.split(" - ")[1] || "")).trim() + " " + cfM(i.in)).join(" · ") || "No client bill waiting for payment"}</div></div>` : "";
+  const end = mos.length ? mos[mos.length - 1].to : d.today, lastIn = d.coming.length ? d.coming[d.coming.length - 1].date : null;
+  const quiet = lastIn ? Math.round((new Date(end) - new Date(lastIn)) / 864e5) : null;
+  document.getElementById("cf-inbox").innerHTML = !CF_IN ? `<div class="sub" style="padding:12px 0">Showing money out only - choose In &amp; out to see client payments.</div>`
+    : (d.coming.length ? d.coming.slice(0, 6).map(i => `<div class="cf-big"><div class="ico ty-client">B</div><div class="w"><b>${escapeHtml(i.what.split(" · ")[0])}</b><small>${escapeHtml(i.what.split(" · ").slice(1).join(" · ") || i.src || "")}${i.what.includes(" · ") ? " · " : ""}expected ${cfD(i.date).slice(0, 5)}${i.sure !== "sure" ? " · " + escapeHtml(i.sure) : ""}</small></div><div class="a g">${cfM(i.in)}</div></div>`).join("") + (d.coming.length > 6 ? `<div class="sub" style="padding-top:8px">+ ${d.coming.length - 6} more in the list below</div>` : "") : `<div class="sub" style="padding:12px 0">No client bill waiting for payment.</div>`)
+      + (!d.coming.length || quiet > 30 ? `<div class="cf-note"><b class="r">${d.coming.length ? `Nothing expected in after ${cfD(lastIn)}.` : "Nothing expected in."}</b><div class="sub">${d.below ? `The bank goes below ${cfM(keep)} on ${cfD(d.below.date)} - a client payment before then keeps it above.` : "Payments still go out every month - the next client bills keep the tanks full."}</div></div>`
+        : `<div class="cf-note ok"><b class="g">Client money keeps coming in.</b><div class="sub">${d.coming.length} payment${d.coming.length > 1 ? "s" : ""} expected over the next ${CF_MO} months.</div></div>`);
   cfChart(); cfList();
 }
+
+function cfMon(m) { CF_MON = CF_MON === m ? "" : m; cfDraw(); if (CF_MON) document.getElementById("cf-all").scrollIntoView({ behavior: "smooth", block: "start" }); }
+// the weeks ahead: one pair of bars per week (two weeks when 6 months, four when 12), with the bank left at the end of each
 function cfChart() {
-  const d = CF, it = d.items, W = 820, H = 240, L = 40, keep = d.keep;
-  if (!d.months.length) return;
-  const t0 = new Date(d.today), t1 = new Date(d.months[d.months.length - 1].to), span = Math.max(1, (t1 - t0) / 864e5);
-  const pts = [[0, d.bank.now]]; it.forEach(i => pts.push([(new Date(i.date) - t0) / 864e5, i.after]));
-  const vals = pts.map(p => p[1]).concat([keep]), hi = Math.max(...vals) * 1.08, lo = Math.min(0, ...vals);
-  const X = x => L + (W - L - 8) * x / span, Y = v => 12 + (H - 42) * (hi - v) / ((hi - lo) || 1);
-  let line = "", red = "", area = `M${X(0)} ${H - 30}`;
-  for (let k = 0; k < pts.length; k++) {
-    const [x, v] = pts[k], nx = k + 1 < pts.length ? pts[k + 1][0] : span;
-    const seg = `M${X(x).toFixed(1)} ${Y(v).toFixed(1)} L${X(nx).toFixed(1)} ${Y(v).toFixed(1)}` + (k + 1 < pts.length ? ` L${X(nx).toFixed(1)} ${Y(pts[k + 1][1]).toFixed(1)}` : "");
-    if (v < keep) red += seg + " "; else line += seg + " ";
-    area += ` L${X(x).toFixed(1)} ${Y(v).toFixed(1)} L${X(nx).toFixed(1)} ${Y(v).toFixed(1)}`;
+  const d = CF, it = d.items, keep = d.keep;
+  if (!d.months.length) { document.getElementById("cf-chart").innerHTML = ""; return; }
+  const step = CF_MO >= 12 ? 28 : CF_MO >= 6 ? 14 : 7, t0 = new Date(d.today), t1 = new Date(d.months[d.months.length - 1].to);
+  const n = Math.max(1, Math.ceil(((t1 - t0) / 864e5 + 1) / step)), wk = [];
+  let bal = d.bank.now;
+  for (let k = 0; k < n; k++) {
+    const a = new Date(t0.getTime() + k * step * 864e5), z = new Date(a.getTime() + step * 864e5);
+    const mine = it.filter(i => { const x = new Date(i.date); return x >= a && x < z; });
+    const cin = mine.reduce((s, i) => s + i.in, 0), cout = mine.reduce((s, i) => s + i.out, 0); bal += cin - cout;
+    wk.push({ a, cin, cout, bal, mine });
   }
-  area += ` L${X(span)} ${H - 30} Z`;
-  const ticks = [0, 1, 2, 3].map(k => { const v = lo + (hi - lo) * k / 3; return `<line x1="${L}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}" stroke="#F3EEE9"/><text x="0" y="${Y(v) + 4}" font-size="10" fill="#9a918a">${cfK(v)}</text>`; }).join("");
-  const mlab = d.months.map(m => { const x = X(Math.max(0, (new Date(m.from) - t0) / 864e5)); return `<text x="${x + 4}" y="${H - 14}" font-size="10.5" font-weight="700" fill="#6b625a">${m.label.slice(0, 3).toUpperCase()}</text>`; }).join("");
-  const big = it.filter(i => i.in >= 30000 || i.out >= 100000).sort((a, b) => Math.max(b.in, b.out) - Math.max(a.in, a.out)).slice(0, 6);
-  const marks = big.map(i => { const x = X((new Date(i.date) - t0) / 864e5), y = Y(i.after), lab = (i.in ? "+" + cfM(i.in) + " " : "") + i.what.split(" · ")[0].split(" (")[0].slice(0, 24) + (i.out ? " " + cfM(i.out) : "");
-    return `<circle cx="${x}" cy="${y}" r="5" fill="${i.in ? "#1E8449" : "#B03A2E"}"><title>${escapeHtml(cfD(i.date) + " · " + i.what + " · " + cfM(i.in || i.out))}</title></circle><text x="${x > W - 190 ? x - 7 : x + 7}" text-anchor="${x > W - 190 ? "end" : "start"}" y="${y - 7}" font-size="10.5" fill="${i.in ? "#1E8449" : "#B03A2E"}" font-weight="${i.in ? 700 : 400}">${escapeHtml(lab)}</text>`; }).join("");
-  const bx = d.below ? X((new Date(d.below.date) - t0) / 864e5) : null;
-  document.getElementById("cf-chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}"><defs><linearGradient id="cfgg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#2ECC71" stop-opacity=".26"/><stop offset="1" stop-color="#2ECC71" stop-opacity="0"/></linearGradient></defs>
-    ${ticks}<rect x="${L}" y="${Y(keep)}" width="${W - L}" height="${Math.max(0, H - 30 - Y(keep))}" fill="#FDECEA" opacity=".55"/>
-    <path d="${area}" fill="url(#cfgg)"/><line x1="${L}" x2="${W}" y1="${Y(keep)}" y2="${Y(keep)}" stroke="#E6B8B1" stroke-width="2" stroke-dasharray="6 4"/>
-    <path d="${line}" fill="none" stroke="#1E8449" stroke-width="2.6"/><path d="${red}" fill="none" stroke="#C0392B" stroke-width="2.6"/>${marks}
-    ${bx !== null ? `<line x1="${bx}" x2="${bx}" y1="12" y2="${H - 30}" stroke="#C0392B" stroke-dasharray="3 3" opacity=".6"/><text x="${bx > W - 160 ? bx - 6 : bx + 6}" y="24" text-anchor="${bx > W - 160 ? "end" : "start"}" font-size="10.5" fill="#B03A2E" font-weight="700">below ${cfM(keep)} from ${cfD(d.below.date).slice(0, 5)}</text>` : ""}${mlab}</svg>`;
+  document.getElementById("cf-wk-t").textContent = step === 7 ? `The next ${n} weeks` : step === 14 ? `The next ${n} fortnights` : `The next ${n} four-week spells`;
+  document.getElementById("cf-wk-s").textContent = `each pair of bars is ${step === 7 ? "one week" : step === 14 ? "two weeks" : "four weeks"} - what comes in, what goes out, and what is left in the bank at the end of it. Point at a bar to see what is in it.`;
+  const W = 1240, colW = (W - 60) / n, bw = Math.min(34, colW * .32), maxF = Math.max(1, ...wk.map(w => Math.max(w.cin, w.cout)));
+  const balTop = 26, balH = 70, base = 190, barH = 70;
+  const bals = wk.map(w => w.bal).concat([d.bank.now, keep]), hi = Math.max(...bals), lo = Math.min(...bals), Yb = v => balTop + balH * (hi - v) / ((hi - lo) || 1);
+  const tip = (w, kind) => escapeAttr(w.mine.filter(i => kind === "in" ? i.in : i.out).sort((x, y) => (y.in + y.out) - (x.in + x.out)).slice(0, 8).map(i => `${cfD(i.date).slice(0, 5)} ${i.what.split(" · ")[0].slice(0, 40)} ${cfM(i.in || i.out)}`).join("\n") || "nothing");
+  let svg = `<line x1="30" x2="${W}" y1="${base}" y2="${base}" stroke="#3a3330"/><line x1="30" x2="${W}" y1="${Yb(keep)}" y2="${Yb(keep)}" stroke="#FF9C8F" stroke-dasharray="4 4" opacity=".55"/><text x="${W}" y="${Yb(keep) - 5}" text-anchor="end" font-size="10.5" fill="#FF9C8F">${cfK(keep)}</text>`;
+  const pts = [];
+  wk.forEach((w, k) => {
+    const cx = 50 + colW * k + colW / 2, hIn = barH * w.cin / maxF, hOut = barH * w.cout / maxF;
+    if (w.cin) svg += `<rect x="${cx - bw - 2}" y="${base - hIn}" width="${bw}" height="${Math.max(2, hIn)}" rx="4" fill="#2ECC71"><title>In ${cfM(w.cin)}\n${tip(w, "in")}</title></rect>`;
+    if (w.cout) svg += `<rect x="${cx + 2}" y="${base}" width="${bw}" height="${Math.max(2, hOut)}" rx="4" fill="#E74C3C"><title>Out ${cfM(w.cout)}\n${tip(w, "out")}</title></rect>`;
+    if (w.cout && hOut > 16 && colW > 70) svg += `<text x="${cx + 2 + bw / 2}" y="${base + hOut + 13}" text-anchor="middle" font-size="10" fill="#FF9C8F">${cfK(w.cout)}</text>`;
+    if (w.cin && colW > 70) svg += `<text x="${cx - 2 - bw / 2}" y="${base - hIn - 5}" text-anchor="middle" font-size="10" fill="#8EEBB3">${cfK(w.cin)}</text>`;
+    const lab = w.a.toLocaleString("en-GB", { day: "numeric", month: "short" });
+    svg += `<text x="${cx}" y="${base + barH + 32}" text-anchor="middle" font-size="11" fill="#B5A99F">${n > 20 && k % 2 ? "" : lab}</text>`;
+    pts.push([cx, Yb(w.bal), w.bal]);
+  });
+  svg += `<polyline fill="none" stroke="#fff" stroke-width="2" opacity=".85" points="${pts.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ")}"/>`;
+  pts.forEach(([x, y, v], k) => { const c = v < keep ? "#FF9C8F" : "#fff"; svg += `<circle cx="${x}" cy="${y}" r="4.5" fill="${c}"><title>Bank at the end: ${cfM(v)}</title></circle>${n <= 14 || k % 2 === 0 ? `<text x="${x}" y="${y - 9}" text-anchor="middle" font-size="10.5" fill="${c}">${cfK(v)}</text>` : ""}`; });
+  document.getElementById("cf-chart").innerHTML = `<svg viewBox="0 0 ${W} ${base + barH + 40}" width="100%" style="display:block;margin-top:8px">${svg}</svg>`;
 }
 function cfList() {
   const d = CF;
   const F = { all: () => true, out: i => i.out, in: i => i.in, exp: i => i.type === "expected" };
   document.getElementById("cf-f").innerHTML = [["all", "All"], ["out", "Out"], ["in", "In"], ["exp", "Forecast"]].map(([k, l]) => `<button type="button" class="seg-chip${CF_F === k ? " on" : ""}" onclick="CF_F='${k}';cfList()">${l}</button>`).join("");
-  const rows = d.items.filter(F[CF_F]);
+  const rows = d.items.filter(F[CF_F]).filter(i => !CF_MON || i.date.slice(0, 7) === CF_MON);
+  const mo = CF_MON && d.months.find(m => m.m === CF_MON);
+  document.getElementById("cf-all-t").innerHTML = mo ? `${mo.label} - every payment and receipt <button type="button" class="seg-chip on" style="margin-left:6px" onclick="cfMon('${CF_MON}')">Show all months &times;</button>` : "Every payment and receipt";
   let lastM = "";
   document.getElementById("cf-list").innerHTML = rows.length ? `<table class="cf-t"><thead><tr><th>Date</th><th class="l">What</th><th>From</th><th class="n">In</th><th class="n">Out</th><th class="n">Balance</th><th></th></tr></thead><tbody>` +
     rows.map(i => { const m = i.date.slice(0, 7); const head = m !== lastM ? `<tr class="mh"><td colspan="7">${new Date(i.date).toLocaleString("en-GB", { month: "long", year: "numeric" })}</td></tr>` : ""; lastM = m;
