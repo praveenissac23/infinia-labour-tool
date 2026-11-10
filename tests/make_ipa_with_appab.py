@@ -9,7 +9,8 @@ wb = load_workbook(out); th = Side(style="thin"); box = Border(left=th, right=th
 cv = wb["IPA"]; cv["B3"] = 8
 cv["A7"] = "Less Previous Progressive Payments (Appendix A)"; cv["B7"] = "='APP A'!E23"
 cv["A8"] = "Add: Payment paid to Authorities in Current Bill (Appendix B)"; cv["B8"] = "='APP B'!D9"
-cv["A9"] = "Total amount due"; cv["B9"] = "=B6-B7+B8"
+cv["A9"] = "Add. 5% Tax Payment"; cv["B9"] = "=(B6-B7)*0.05"
+cv["A10"] = "Total amount due"; cv["B10"] = "=ROUND(B6-B7+B8+B9,2)"
 a = wb.create_sheet("APP A")
 a["A2"] = "APPENDIX A - PREVIOUS PAYMENTS"
 for col, t in zip("ABCDE", ["#", "Payment Certificate No", "Date of Submission", "Date of Receipt", "Amount (AED)"]):

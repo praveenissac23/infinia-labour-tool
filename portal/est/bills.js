@@ -254,8 +254,19 @@ function checks(b) {
   out.push(f.moved ? [true, `${f.moved} line${f.moved === 1 ? "" : "s"} moved on this month - ${money(f.now, false)} of work`] : [false, "No line has moved on since the last bill - type this month's % on Work done"]);
   if (f.bad.length) out.push([false, `${f.bad.length} line${f.bad.length === 1 ? " is" : "s are"} over 100% or below last month: ${f.bad.slice(0, 3).map(l => esc(l.item || l.desc.slice(0, 30))).join(", ")}`]);
   if (pay) {
-    const open = pay.rows.filter(r => r.desc && /\d/.test(String(r.desc.value || "")) && !(r.amount && r.amount.value));
-    out.push(open.length ? [false, `No amount yet for ${open.map(r => esc(r.desc.value)).join(", ")} - type it on Payments received once the money is in`] : [true, "Every earlier bill on the payments list has its amount"]);
+    const named = r => r.desc && /\d/.test(String(r.desc.value || "")) && !/advance/i.test(String(r.desc.value || ""));
+    const got = r => !!(r.received && (cellIso(r.received) || (r.received.value && !/pending/i.test(String(r.received.value)))));
+    const pend = pay.rows.filter(r => named(r) && r.pending);
+    const carried = ((b.fees || [])[0] || { rows: [] }).rows.filter(x => x.carry);
+    pend.forEach(r => { const c = carried.find(x => String(x.desc.value || "").includes(String(r.desc.value).trim()));
+      out.push([true, `${esc(String(r.desc.value).trim())} is Pending - not paid yet, so it is billed again in this bill with its VAT${c ? ` and its authority fees (AED ${money(c.amount.value, false)})` : " (it had no authority fees)"}`]); });
+    const noAmt = pay.rows.filter(r => named(r) && !r.pending && got(r) && !(r.amount && r.amount.value));
+    if (noAmt.length) out.push([false, `${noAmt.map(r => esc(r.desc.value)).join(", ")}: marked Received but no amount - type the amount received`]);
+    const noDate = pay.rows.filter(r => named(r) && !r.pending && !got(r) && r.received && (r.amount && r.amount.value));
+    if (noDate.length) out.push([false, `${noDate.map(r => esc(r.desc.value)).join(", ")}: an amount but no Received date - pick the date it came in, or mark it Pending if it is not paid`]);
+    const blank = pay.rows.filter(r => named(r) && !r.pending && !got(r) && !(r.amount && r.amount.value));
+    if (blank.length) out.push([false, `${blank.map(r => esc(r.desc.value)).join(", ")}: no amount and no date - mark it Pending (not paid yet) or Received with its date and amount`]);
+    if (!pend.length && !noAmt.length && !noDate.length && !blank.length) out.push([true, "Every earlier bill on the payments list is Received with its amount"]);
   }
   (b.signers || []).filter(x => !x.ext).forEach(x => { const lab = x.labels.find(l => l !== "Signature") || x.labels[0]; out.push(x.signed_at ? (x.sig ? [true, `${esc(lab)}: ${esc(x.name)} signed on ${dt(x.signed_at)}`] : [false, `${esc(lab)}: ${esc(x.name)} signed on ${dt(x.signed_at)} but has no signature picture - upload it on Cover & details`]) : [false, `${esc(lab)}: ${esc(x.name)} has not signed yet${x.turn ? " - it is their turn" : ""}`]); });
   return out;

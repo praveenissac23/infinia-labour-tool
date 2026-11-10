@@ -1,6 +1,7 @@
-"""Payments received: Received on = a date or Pending (10 Nov 2026). Pending amounts stay on the line but are out of
-the total of previous payments (cover, APP A total, total due, Excel formula); that earlier bill's authority fees
-are carried onto this bill's Appendix B as a read-only line until it is Received.
+"""Previous bills not paid yet (10 Nov 2026): Received on = a date or Pending. A Pending bill is left out of what was
+paid, so the next bill claims it again in full - its work with its VAT (the cover's cumulative sum) and its authority
+fees (a carried line on Appendix B). A new bill marks the bill before it Pending by itself. Received with a date: the
+amount counts as paid and the carried fees come off. Never claimed twice.
     python3 tests/make_ipa_with_appab.py /tmp/claude-0/bills/ab-like.xlsx
     cp /tmp/full.db /tmp/claude-0/rt/pd.db && cd app && DATABASE_URL=sqlite:////tmp/claude-0/rt/pd.db INFINIA_NO_SCHED=1 INFINIA_NO_PUSH=1 python3 ../tests/bill_pending_payment_test.py
 """
@@ -18,84 +19,78 @@ H = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "admin
 pid = c.get("/store/est/meta", headers=H).json()["projects"][-1]["id"]
 r = c.post("/store/est/ipa/format", headers=H, data={"project_id": str(pid)}, files={"file": ("ab-like.xlsx", open("/tmp/claude-0/bills/ab-like.xlsx", "rb").read(), "application/octet-stream")})
 fid = r.json()["id"]
+G = lambda bid: c.get(f"/store/est/ipa/bill/{bid}", headers=H).json()
+P = lambda bid, body: c.put(f"/store/est/ipa/bill/{bid}", headers=H, json=body)
+row = lambda B, n: next((x for x in B["payments"][0]["rows"] if re.search(rf"No {n}\s*$", str(x["desc"]["value"] or "").strip())), None)
+carried = lambda B: [(x["desc"]["value"], x["amount"]["value"]) for x in B["fees"][0]["rows"] if x.get("carry")]
+paid = lambda B: B["payments"][0]["total"]
+cov = lambda B: {x["label"]: x["amount"] for x in (B.get("cover") or {}).get("rows", [])}
+
+# bill 9 (the first in the app): PA 8 - from before the app - has no money yet: Pending by itself, its 140 carried
 b1 = c.post("/store/est/ipa/new", headers=H, json={"project_id": pid, "format_id": fid}).json()["id"]
-B1 = c.get(f"/store/est/ipa/bill/{b1}", headers=H).json()
-print("bill 1", B1["label"], "fees", [(x["rows"] and [(rr["desc"]["value"], rr["amount"]["value"]) for rr in x["rows"]]) for x in B1["fees"]], "fees total", B1["fees"][0]["total"])
-fr = [x for x in B1["fees"][0]["rows"] if not x["head"]][0]
-B1 = c.put(f"/store/est/ipa/bill/{b1}", headers=H, json={"set": {"APP B": {fr["desc"]["key"]: "Trakhees permit", fr["amount"]["key"]: 1250}}}).json()
-fee1 = B1["fees"][0]["total"]
-ck("bill 1 has its own authority fees", abs(fee1 - 1250) < 0.01, fee1)
+B1 = G(b1)
+ck("bill 9: PA 8 (no money yet) marked Pending by itself", row(B1, 8) and row(B1, 8)["pending"], row(B1, 8))
+ck("...its authority fees (140, from the IPA 8 lines) carried", carried(B1) == [("Carried from Payment Application No 8 (Pending)", 140)], carried(B1))
+fr = [x for x in B1["fees"][0]["rows"] if not x["head"] and not x.get("carry")][0]
+B1 = P(b1, {"set": {"APP B": {fr["desc"]["key"]: "Trakhees permit", fr["amount"]["key"]: 1250}}}).json()
+ck("bill 9 own fees 1250 + carried 140", abs(B1["fees"][0]["total"] - 1390) < 0.01, B1["fees"][0]["total"])
+# PA 8 paid before bill 9 goes: Received with date and amount -> counts as paid, the 140 comes off
+r8 = row(B1, 8)
+B1 = P(b1, {"set": {"APP A": {r8["received"]["key"]: 46330, r8["amount"]["key"]: 20000}}}).json()
+ck("PA 8 Received: paid total +20,000, the 140 line comes off", abs(paid(B1) - 100000) < 0.01 and not carried(B1) and abs(B1["fees"][0]["total"] - 1250) < 0.01, (paid(B1), carried(B1)))
 c.post(f"/store/est/ipa/bill/{b1}/status", headers=H, json={"status": "Approved"})
+due9 = B1["total_due"]
+
+# bill 10: bill 9 not paid -> Pending by itself, billed again: its net with VAT through the cover, its 1250 carried
 b2 = c.post("/store/est/ipa/new", headers=H, json={"project_id": pid, "format_id": fid}).json()["id"]
-B = c.get(f"/store/est/ipa/bill/{b2}", headers=H).json()
-pay = B["payments"][0]
-print("bill 2", B["label"], "pay rows", [(x["desc"]["value"], x.get("received", {}).get("value"), x["amount"]["value"]) for x in pay["rows"] if x["desc"]["value"]])
-row = next(x for x in pay["rows"] if re.search(rf"\b{re.escape(str(B1['label']))}\s*$", str(x["desc"]["value"] or "")))
-due0, tot0, fees0 = B["total_due"], pay["total"], B["fees"][0]["total"]
-# the amount of B1 typed as received money, no date yet
-B = c.put(f"/store/est/ipa/bill/{b2}", headers=H, json={"set": {"APP A": {row["amount"]["key"]: "=(989148-280)/1.05"}}, "why": {"page": "pay"}}).json()
+B2 = G(b2)
+ck("bill 10: PA 9 Pending by itself", row(B2, 9) and row(B2, 9)["pending"], row(B2, 9))
+ck("...PA 8 (received) untouched", not row(B2, 8)["pending"] and abs(row(B2, 8)["amount"]["value"] - 20000) < 0.01)
+ck("...bill 9's fees (1250) carried", carried(B2) == [("Carried from Payment Application No 9 (Pending)", 1250)], carried(B2))
+ck("...paid to date stays 100,000 (bill 9 not taken off)", abs(paid(B2) - 100000) < 0.01, paid(B2))
+cv = cov(B2)
+print("bill 10 cover", cv, "due", B2["total_due"])
+# total due = (work to date - paid) x 1.05 + own fees + carried: bill 9's whole amount is in it
+W = 109500.0                                   # the 913-like Summary: 250,000 + ... work to date (from the cover)
+W = next((v for k, v in cv.items() if k.lower().startswith("work done")), None) if cv else None
+if W is not None:
+    exp = round((W - 100000) * 1.05 + B2["fees"][0]["total"], 2)
+    ck("total due = (work to date - paid) x 1.05 + fees", abs(B2["total_due"] - exp) < 0.02, (B2["total_due"], exp))
+    ck("bill 9's due is inside bill 10's (same work, nothing new)", abs(B2["total_due"] - due9) < 0.02, (B2["total_due"], due9))
+ck("bill 10 (no new work) = bill 9 in full: its work with VAT + its 1250 fees", abs(B2["total_due"] - due9) < 0.02, (B2["total_due"], due9))
+# the amount typed while Pending is not counted
 amt = (989148 - 280) / 1.05
-tot1, due1 = B["payments"][0]["total"], B["total_due"]
-ck("amount typed counts in the total (as before)", abs(tot1 - tot0 - amt) < 0.01, (tot0, tot1))
-# Pending
-r = c.put(f"/store/est/ipa/bill/{b2}", headers=H, json={"set": {"APP A": {row["received"]["key"]: "Pending"}}, "why": {"page": "pay"}})
-ck("mark Pending saves", r.status_code == 200, r.text[:300]); B = r.json()
-p2 = B["payments"][0]; rw = next(x for x in p2["rows"] if x["r"] == row["r"])
-ck("row says pending, amount still there", rw["pending"] and abs(rw["amount"]["value"] - amt) < 0.01, rw)
-ck("left out of the total of previous payments", abs(p2["total"] - tot0) < 0.01, (p2["total"], tot0))
-f2 = B["fees"][0]
-carried = [x for x in f2["rows"] if x.get("carry")]
-ck("one carried line on Appendix B", len(carried) == 1 and abs(carried[0]["amount"]["value"] - fee1) < 0.01, [(x["desc"]["value"], x["amount"]["value"], x.get("carry")) for x in f2["rows"]])
-ck("...reads 'Carried from ... (Pending)'", carried and carried[0]["desc"]["value"] == f"Carried from {row['desc']['value'].strip()} (Pending)", carried and carried[0]["desc"]["value"])
-ck("Appendix B total = own + carried", abs(f2["total"] - fees0 - fee1) < 0.01, (f2["total"], fees0, fee1))
-ck("total due up by the payment and the carried fees", abs(B["total_due"] - (due1 + amt + fee1)) < 0.02, (B["total_due"], due1, amt, fee1))
-print("cover", B.get("cover") and {k: v for k, v in B["cover"].items() if k != "facts"})
-cov = {x["label"]: x["amount"] for x in (B.get("cover") or {}).get("rows", [])}
-if cov:
-    ck("cover: Less previous = total without pending", abs((cov.get("Less Previous Progressive Payments (Appendix A)") or 0) - tot0) < 0.01, cov)
-# Excel: the SUMIF formula and the same total; the check passes
+B2 = P(b2, {"set": {"APP A": {row(B2, 9)["amount"]["key"]: "=(989148-280)/1.05"}}}).json()
+ck("amount typed on a Pending line: shown, not counted", abs(row(B2, 9)["amount"]["value"] - amt) < 0.01 and abs(paid(B2) - 100000) < 0.01, paid(B2))
+# Excel and PDF
 tok = c.post("/auth/download-token", headers=H).json()["token"]
 x = c.get(f"/export/est/ipa/{b2}?format=excel&token={tok}")
-ck("Excel exports (its check passes)", x.status_code == 200, x.text[:300])
+ck("Excel exports (its own check passes)", x.status_code == 200, x.text[:300])
 if x.status_code == 200:
     import openpyxl
-    wb = openpyxl.load_workbook(io.BytesIO(x.content)); ws = wb["APP A"]
+    ws = openpyxl.load_workbook(io.BytesIO(x.content))["APP A"]
     f = ws.cell(23, 5).value
     ck("Excel total is a SUMIF leaving Pending out", isinstance(f, str) and "SUMIF" in f and "Pending" in f, f)
-    ck("Excel row shows Pending", ws.cell(row["r"], 4).value == "Pending", ws.cell(row["r"], 4).value)
-    wb2 = openpyxl.load_workbook(io.BytesIO(x.content), data_only=True)
-    ck("Excel cached total = app", abs((wb2["APP A"].cell(23, 5).value or 0) - p2["total"]) < 0.01, wb2["APP A"].cell(23, 5).value)
-p = c.get(f"/export/est/ipa/{b2}?format=pdf&token={tok}")
-ck("PDF exports", p.status_code == 200 and p.content[:4] == b"%PDF", p.status_code)
-# Undo takes it back to received-without-date (and the carried line off)
-u = c.post(f"/store/est/ipa/bill/{b2}/undo", headers=H, json={})
-ck("Undo the Pending", u.status_code == 200, u.text[:300])
-B = c.get(f"/store/est/ipa/bill/{b2}", headers=H).json()
-ck("...total back, no carried line", abs(B["payments"][0]["total"] - tot1) < 0.01 and not [x for x in B["fees"][0]["rows"] if x.get("carry")], (B["payments"][0]["total"], [x["desc"]["value"] for x in B["fees"][0]["rows"]]))
-c.post(f"/store/est/ipa/bill/{b2}/undo", headers=H, json={"redo": True})
-B = c.get(f"/store/est/ipa/bill/{b2}", headers=H).json()
-ck("Redo: pending again with its line", [x for x in B["fees"][0]["rows"] if x.get("carry")] and abs(B["payments"][0]["total"] - tot0) < 0.01)
-# Received: a date
-r = c.put(f"/store/est/ipa/bill/{b2}", headers=H, json={"set": {"APP A": {row["received"]["key"]: 46335}}, "why": {"page": "pay"}}); B = r.json()
-ck("Received: in the total again", abs(B["payments"][0]["total"] - tot1) < 0.01, B["payments"][0]["total"])
-ck("...carried line taken off, Appendix B back", not [x for x in B["fees"][0]["rows"] if x.get("carry")] and abs(B["fees"][0]["total"] - fees0) < 0.01, [(x["desc"]["value"], x["amount"]["value"]) for x in B["fees"][0]["rows"]])
-ck("...total due as with the payment counted", abs(B["total_due"] - due1) < 0.02, (B["total_due"], due1))
-# still pending on the next bill: carried again unless a bill already sent carried it
-c.put(f"/store/est/ipa/bill/{b2}", headers=H, json={"set": {"APP A": {row["received"]["key"]: "Pending"}}})
+    ck("Excel row reads Pending", ws.cell(row(B2, 9)["r"], 4).value == "Pending")
+    ck("Excel cached total = app", abs((openpyxl.load_workbook(io.BytesIO(x.content), data_only=True)["APP A"].cell(23, 5).value or 0) - paid(B2)) < 0.01)
+ck("PDF exports", c.get(f"/export/est/ipa/{b2}?format=pdf&token={tok}").content[:4] == b"%PDF")
+# Received -> counts, fees off; Undo -> back
+due_p = B2["total_due"]
+B2 = P(b2, {"set": {"APP A": {row(B2, 9)["received"]["key"]: 46335}}, "why": {"page": "pay"}}).json()
+ck("PA 9 Received: paid +amount, the 1250 off", abs(paid(B2) - 100000 - amt) < 0.01 and not carried(B2), (paid(B2), carried(B2)))
+ck("...total due down by amount x 1.05 + 1250", abs(due_p - B2["total_due"] - (amt * 1.05 + 1250)) < 0.05, (due_p, B2["total_due"]))
+c.post(f"/store/est/ipa/bill/{b2}/undo", headers=H, json={})
+B2 = G(b2)
+ck("Undo: Pending again, the 1250 back", row(B2, 9)["pending"] and carried(B2) and abs(B2["total_due"] - due_p) < 0.02, (B2["total_due"], due_p))
 c.post(f"/store/est/ipa/bill/{b2}/status", headers=H, json={"status": "Approved"})
+
+# bill 11: bills 9 and 10 both unpaid. 10 is Pending by itself (its fees include the 1250 it carried); 9 stays Pending
+# but its 1250 is not carried again
 b3 = c.post("/store/est/ipa/new", headers=H, json={"project_id": pid, "format_id": fid}).json()["id"]
-B3 = c.get(f"/store/est/ipa/bill/{b3}", headers=H).json()
-r3 = next((x for x in B3["payments"][0]["rows"] if x["r"] == row["r"]), None)
-ck("next bill: still Pending", r3 and r3["pending"], r3)
-ck("...but not carried twice (bill 2 already claimed it)", not [x for x in B3["fees"][0]["rows"] if x.get("carry") and str(B1["label"]) in x["desc"]["value"]], [(x["desc"]["value"], x["amount"]["value"]) for x in B3["fees"][0]["rows"]])
-# a bill from before the app (no bill 8 in the app): its fees read from its lines under "IPA 8" on Appendix B
-r8 = next(x for x in B3["payments"][0]["rows"] if str(x["desc"]["value"] or "").strip() == "Payment Application No 8")
-B3 = c.put(f"/store/est/ipa/bill/{b3}", headers=H, json={"set": {"APP A": {r8["received"]["key"]: "Pending"}}}).json()
-c8 = [x for x in B3["fees"][0]["rows"] if x.get("carry") and "No 8" in x["desc"]["value"]]
-ck("bill 8 not in the app: its 140 of fees carried from the IPA 8 lines", c8 and abs(c8[0]["amount"]["value"] - 140) < 0.01, [(x["desc"]["value"], x["amount"]["value"]) for x in B3["fees"][0]["rows"]])
+B3 = G(b3)
+ck("bill 11: PA 9 and PA 10 Pending", row(B3, 9)["pending"] and row(B3, 10)["pending"], [(x["desc"]["value"], x["pending"]) for x in B3["payments"][0]["rows"] if x["desc"]["value"]])
+ck("...carried: only bill 10's fees (its own 0 + the 1250 it carried) - the 1250 never twice", carried(B3) == [("Carried from Payment Application No 10 (Pending)", 1250)], carried(B3))
 import models
 from database import SessionLocal
 db = SessionLocal()
-logs = [a.details for a in db.query(models.AuditLog).filter(models.AuditLog.action == "est_bill_pending").all()] if hasattr(models, "AuditLog") else []
-print("log", logs[-3:])
 print("\n" + ("ALL PASS" if not fails else f"{len(fails)} FAIL: {fails}"))

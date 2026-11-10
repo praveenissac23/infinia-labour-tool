@@ -764,6 +764,33 @@ def _fees_in_sheet(model, values, inputs, n):
     return round(tot, 2)
 
 
+def mark_unpaid_pending(model, inputs):
+    """On a new bill: every earlier bill on the previous-payments list that names a bill no. but has no money and no
+    Received date yet is marked Pending - it is left out of what was paid (so it is billed again in full, with its
+    VAT) and its authority fees are carried. Lines with an amount or a date are left as they are."""
+    values = BE.calculate(model, inputs)
+    for p in model.get("map", {}).get("payments", []):
+        sh, cols = p["sheet"], p["cols"]
+        if not (cols.get("received") and cols.get("desc")):
+            continue
+        s = next((x for x in model["sheets"] if x["name"] == sh), None)
+        if not s:
+            continue
+        inp = inputs.setdefault(sh, {})
+        for r in range(p["head_row"] + 1, p["total_row"]):
+            d = values.get(sh, {}).get(f"{r},{cols['desc']}")
+            if not (isinstance(d, str) and re.search(r"(payment|ipa|ipc|bill|certificate|application)", d, re.I) and BE.bill_num_match(BE.strip_rev(d))):
+                continue
+            if re.search(r"advance", d, re.I):
+                continue
+            a = values.get(sh, {}).get(f"{r},{cols['amount']}")
+            rk = f"{r},{cols['received']}"
+            rv = inp[rk] if rk in inp else (s["cells"].get(rk) or {}).get("v")
+            if a in (None, "", 0) and rv in (None, ""):
+                inp[rk] = "Pending"
+    return inputs
+
+
 def _sync_carry(db, b, fmt, inputs):
     """This bill's carried lines on Appendix B made to match the Pending rows: lines put in above the total, or taken
     out again. Returns the inputs (changed or not)."""
@@ -1853,6 +1880,7 @@ def new_bill(payload: dict = Body(...), db: Session = Depends(get_db), user: mod
     for sh_, inp_ in inputs.items():                       # last bill's carried lines are history now; this bill carries afresh
         if isinstance(inp_, dict):
             inp_.pop("_carry", None)
+    inputs = mark_unpaid_pending(model, inputs)            # an earlier bill with no money in yet: Pending, carried in full
     inputs, values = _calc(model, inputs)
     seq = (db.query(func.max(EstBill.seq)).filter(EstBill.project_id == pid, *([EstBill.contract_id == fmt.contract_id] if fmt.contract_id else [])).scalar() or 0) + 1
     carried = {}
