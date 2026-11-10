@@ -249,7 +249,7 @@ def forecast(months: int = 3, with_in: int = 1, db: Session = Depends(get_db), u
     out["expected"] = [{"id": x.id, "what": x.what, "kind": x.kind, "amount": x.amount, "on_date": x.on_date.isoformat(), "sure": x.sure, "repeat": x.repeat,
                         "direction": x.direction, "note": x.note, "expiry_id": x.expiry_id}
                        for x in db.query(models.CashExpected).filter(models.CashExpected.status == "open").all()]
-    out["kinds"] = ["Insurance", "Licence / permit", "Visa / labour", "Rent", "Deposit / guarantee", "Vehicle", "Tax / VAT", "Loan / bank", "Other"]
+    out["kinds"] = ["Supplier", "Subcontractor", "Insurance", "Licence / permit", "Visa / labour", "Rent", "Deposit / guarantee", "Vehicle", "Tax / VAT", "Loan / bank", "Other"]
     return out
 
 
@@ -274,7 +274,13 @@ def _clean(p):
 
 @router.post("/store/cash/expected")
 def add_expected(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = ACC):
-    x = models.CashExpected(**_clean(payload), created_by=user.id, updated_by=user.id)
+    v = _clean(payload)
+    if not payload.get("force") and v["direction"] == "out":   # already on the PDC register: it would count twice
+        for c in db.query(models.Pdc).filter(models.Pdc.status == "pending").all():
+            if _same_party(v["what"], c.payee) and abs((c.amount or 0) - v["amount"]) < 1.01:
+                raise HTTPException(409, f"Already on the PDC register: {c.payee} - AED {c.amount:,.2f} on {c.cheque_date:%d/%m/%Y}"
+                                         f"{' (cheque ' + c.cheque_no + ')' if c.cheque_no else ''}. It is counted from there - add it anyway?")
+    x = models.CashExpected(**v, created_by=user.id, updated_by=user.id)
     db.add(x); db.commit()
     M.log_action(db, user.id, "cash_expected_add", f"Expected {'in' if x.direction == 'in' else 'expense'}: {x.what} AED {x.amount:,.2f} on {x.on_date:%d/%m/%Y} ({x.repeat})")
     return {"ok": True, "id": x.id}

@@ -38,6 +38,12 @@ ck("add expected expense", r.status_code == 200, r.text); xid = r.json()["id"]
 d2 = F()
 ck("...counted: closing of the month 60,000 lower", abs(m0["closing"] - 60000 - next(m for m in d2["months"] if m["m"] == m0["m"])["closing"]) < 0.02 if (t + timedelta(days=5)).month == t.month else True)
 ck("...on the list, type Expected", any(i["what"].startswith("Test insurance Q1") and i["out"] == 60000 and i["type"] == "expected" for i in d2["items"]))
+# already a PDC: warned, added only when asked again
+pd = db.query(models.Pdc).filter(models.Pdc.status == "pending").first()
+if pd:
+    r = c.post("/store/cash/expected", headers=H, json={"what": pd.payee, "amount": pd.amount, "on_date": (t + timedelta(days=6)).isoformat(), "kind": "Supplier"})
+    ck("same supplier + amount as a PDC: warned", r.status_code == 409 and "PDC register" in r.text, r.text)
+ck("Supplier is a kind", "Supplier" in F()["kinds"])
 # repeating rent: 3 lines in 3 months
 r = c.post("/store/cash/expected", headers=H, json={"what": "Store rent", "amount": 10000, "on_date": (t + timedelta(days=3)).isoformat(), "repeat": "month", "kind": "Rent"})
 d3 = F(); n = len([i for i in d3["items"] if i["what"].startswith("Store rent")])

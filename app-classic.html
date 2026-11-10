@@ -20925,7 +20925,11 @@ function cfExp(id) {
   o.querySelector("#cfx-go").onclick = async () => {
     const g = s => o.querySelector(s).value;
     const body = { what: g("#cfx-w"), amount: g("#cfx-a"), on_date: g("#cfx-d"), kind: g("#cfx-k"), direction: g("#cfx-dir"), sure: g("#cfx-s"), repeat: g("#cfx-r"), note: g("#cfx-n") };
-    try { await apiCall(id ? `/store/cash/expected/${id}` : "/store/cash/expected", { method: id ? "PUT" : "POST", body: JSON.stringify(body) }); o.remove(); showStatus("cf-status", "ok", `${body.what} - AED ${cfM2(+String(body.amount).replace(/,/g, ""))} on ${cfD(body.on_date)} is in the forecast.`); cfLoad(); }
+    try {
+      try { await apiCall(id ? `/store/cash/expected/${id}` : "/store/cash/expected", { method: id ? "PUT" : "POST", body: JSON.stringify(body) }); }
+      catch (e) { if (!/add it anyway\?$/.test(errText(e)) || !(await hrAsk(errText(e), "Add anyway"))) throw e;
+        await apiCall("/store/cash/expected", { method: "POST", body: JSON.stringify(Object.assign(body, { force: 1 })) }); }
+      o.remove(); showStatus("cf-status", "ok", `${body.what} - AED ${cfM2(+String(body.amount).replace(/,/g, ""))} on ${cfD(body.on_date)} is in the forecast.`); cfLoad(); }
     catch (e) { showStatus("cfx-st", "err", errText(e)); }
   };
 }
