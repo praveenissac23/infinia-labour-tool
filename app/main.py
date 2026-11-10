@@ -852,15 +852,19 @@ def _grant_ppe(db):
 
 
 def _grant_diesel(db):
-    """Store > Diesel is new: a login ticked tab by tab that has any Store tab gets it too. Once."""
-    if db.query(models.Setting).filter(models.Setting.key == "diesel_tab_granted").first():
+    """Store > Stock > Diesel is new: a login ticked tab by tab that has any Store tab gets it too
+    (and a tick for the short-lived Store > Diesel tab moves under Stock). Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "diesel_sub_granted").first():
         return
     for obj in list(db.query(models.AccessRole).all()) + list(db.query(models.User).all()):
         field = "permissions" if isinstance(obj, models.User) else "screens"
         keys = [k for k in (getattr(obj, field) or "").split(",") if k]
-        if any(k.startswith("store.store") or k.startswith("store.rentals") for k in keys) and "store.diesel" not in keys:
-            setattr(obj, field, ",".join(keys + ["store.diesel"]))
-    db.add(models.Setting(key="diesel_tab_granted", value="1"))
+        had = "store.diesel" in keys
+        keys = [k for k in keys if k != "store.diesel"]
+        if (had or any(k.startswith("store.store") or k.startswith("store.rentals") for k in keys)) and "store.store.diesel" not in keys:
+            keys.append("store.store.diesel")
+        setattr(obj, field, ",".join(keys))
+    db.add(models.Setting(key="diesel_sub_granted", value="1"))
     db.commit()
 
 

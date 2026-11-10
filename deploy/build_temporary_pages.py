@@ -130,12 +130,12 @@ PAGES = {
             # Deliveries are booked on the Order tracker only (2 Nov 2026) - an old link goes there.
             sub("arrive", "Material arrived", screen="store", right="storekeeper", go="setTimeout(() => pgGo('store', 'tracker'), 0)", hidden=True),
             sub("other", "Returns, lost & corrections", screen="store", right="store", go="pgStorePanel('other')"),
-            sub("items", "Material list", screen="store", right="store", go="pgStorePanel('items')")]),
+            sub("items", "Material list", screen="store", right="store", go="pgStorePanel('items')"),
+            # Diesel in and used, site by site, with the time of each fill (10 Nov 2026).
+            sub("diesel", "Diesel", screen="diesel", right=["store", "storekeeper"], go="dsLoad()")]),
         tab("rentals", "store", "Rentals", "store", subs=[
             sub("hire", "On rent", screen="store", right="store", go="pgStorePanel('hire')"),
             sub("returns", "Return notes", screen="store", right="store", go="pgStorePanel('returns')")]),
-        # Diesel in and used, site by site, with the time of each fill (10 Nov 2026).
-        tab("diesel", "diesel", "Diesel", ["store", "storekeeper"], go="dsLoad()"),
         tab("requests", "requests", "Requests", ["requests", "approvals"], subs=[
             sub("requests", "Material requests", screen="requests", right="requests"),
             # Approvals and Order follow-up live on the Order tracker (2 Nov 2026): every button they had is there.
