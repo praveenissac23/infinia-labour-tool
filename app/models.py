@@ -1636,3 +1636,41 @@ class DieselEntry(Base):
     note = Column(String, default="")
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CashExpected(Base):
+    """Accounts > Cash forecast: a payment that is coming but is not a cheque yet (insurance, a licence, a deposit)
+    - or the cost of a renewal on the Expiry reminder. Once - or every month / 3 months / year. Made a cheque: it
+    becomes a PDC and leaves the forecast (it is counted there). Paid: it leaves too."""
+    __tablename__ = "cash_expected"
+    id = Column(Integer, primary_key=True)
+    what = Column(String, default="")
+    kind = Column(String, default="")               # Insurance, Licence, Rent, Deposit, Other ...
+    amount = Column(Float, default=0.0)
+    on_date = Column(Date, nullable=False, index=True)
+    sure = Column(String, default="sure")           # sure | likely | maybe
+    repeat = Column(String, default="once")         # once | month | quarter | year
+    until = Column(Date, nullable=True)             # a repeat stops after this date
+    direction = Column(String, default="out")       # out | in (money expected in that is not a client bill)
+    bank = Column(String, default="ADCB")
+    note = Column(String, default="")
+    expiry_id = Column(Integer, nullable=True, index=True)   # the renewal on the Expiry reminder it is the cost of
+    status = Column(String, default="open", index=True)      # open | cheque | paid | dropped
+    pdc_id = Column(Integer, nullable=True)
+    created_by = Column(Integer, nullable=True)
+    updated_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class CashMove(Base):
+    """A line the forecast finds by itself (a client bill, a subcontractor certificate) moved to another date, or
+    left out - kept by its key ("client:12", "sub:40")."""
+    __tablename__ = "cash_moves"
+    id = Column(Integer, primary_key=True)
+    key = Column(String, unique=True, index=True)
+    on_date = Column(Date, nullable=True)
+    skip = Column(Boolean, default=False)
+    note = Column(String, default="")
+    updated_by = Column(Integer, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

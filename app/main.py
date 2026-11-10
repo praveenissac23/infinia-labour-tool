@@ -229,6 +229,7 @@ def seed_on_startup():
         _grant_ppe(db)
         _grant_diesel(db)
         _grant_client_bills(db)
+        _grant_cash(db)
         _move_monthly_tick(db)
         _grant_admin_forms(db)
         _grant_docs_office(db)
@@ -886,6 +887,19 @@ def _grant_client_bills(db):
         if "accounts.subpay" in keys and "accounts.clientbills" not in keys:
             setattr(obj, field, ",".join(keys + ["accounts.clientbills"]))
     db.add(models.Setting(key="client_bills_granted", value="1"))
+    db.commit()
+
+
+def _grant_cash(db):
+    """Accounts > Cash forecast is new: whoever has Accounts > Bank gets it beside it. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "cash_tab_granted").first():
+        return
+    for obj in list(db.query(models.AccessRole).all()) + list(db.query(models.User).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        if "accounts.bank" in keys and "accounts.cash" not in keys:
+            setattr(obj, field, ",".join(keys + ["accounts.cash"]))
+    db.add(models.Setting(key="cash_tab_granted", value="1"))
     db.commit()
 
 
@@ -15506,6 +15520,8 @@ import zoholog  # noqa: E402
 app.include_router(zoholog.router)
 import docsoffice  # noqa: E402
 app.include_router(docsoffice.router)
+import cashflow  # noqa: E402  - Accounts > Cash forecast
+app.include_router(cashflow.router)
 import diesel  # noqa: E402  - Store > Diesel: in and used, site by site
 app.include_router(diesel.router)
 import owner  # noqa: E402  - the owner's dashboard (admin)

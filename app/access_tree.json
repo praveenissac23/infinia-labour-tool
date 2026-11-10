@@ -710,6 +710,16 @@
     ]
    },
    {
+    "id": "accounts.cash",
+    "label": "Cash forecast",
+    "right": [
+     "accounts_bank"
+    ],
+    "grant": [
+     "accounts_bank"
+    ]
+   },
+   {
     "id": "accounts.subpay",
     "label": "Subcontractor payments",
     "right": [

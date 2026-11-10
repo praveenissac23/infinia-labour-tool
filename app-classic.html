@@ -802,6 +802,37 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .dq-ret{border:1px solid #F1B9B2;background:#FFF7F6} .dq-ret.hidden{display:none}
   .dq-retrow{display:block;width:100%;text-align:left;border:1px solid #F1D3CE;background:#fff;border-radius:10px;padding:10px 12px;margin-top:8px;cursor:pointer;font:inherit}
   .dq-retrow b{display:block;color:#8E1F16;font-size:13.5px} .dq-retrow span{display:block;color:#6b625a;font-size:12.5px;margin-top:2px}
+  #screen-cashfc .cf-ctl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  #screen-cashfc .cf-flow{display:grid;grid-template-columns:1.15fr repeat(var(--n,3),minmax(0,1fr));gap:12px;margin-top:14px}
+  #screen-cashfc .cf-now{background:linear-gradient(135deg,#2E2A27,#4A3B35);color:#fff;border-radius:14px;padding:16px 18px}
+  #screen-cashfc .cf-now .l{font-size:11px;letter-spacing:.1em;text-transform:uppercase;opacity:.7} #screen-cashfc .cf-now .v{font-size:28px;font-weight:800;margin:6px 0 4px}
+  #screen-cashfc .cf-now .s{font-size:11.5px;opacity:.78;line-height:1.45} #screen-cashfc .cf-now a{color:#F5C6BF;cursor:pointer;text-decoration:underline}
+  #screen-cashfc .cf-m{border:1px solid #ECE6DF;border-radius:14px;padding:14px 16px;background:#fff;position:relative}
+  #screen-cashfc .cf-m .t{display:flex;justify-content:space-between;font-weight:800;font-size:14px;margin-bottom:4px} #screen-cashfc .cf-m .t small{font-weight:600;color:#8A8079;font-size:11px}
+  #screen-cashfc .cf-r{display:flex;justify-content:space-between;padding:3px 0;font-size:12.5px;color:#5b524b} #screen-cashfc .cf-r b{color:#2B2622}
+  #screen-cashfc .g{color:#1E8449!important} #screen-cashfc .r{color:#B03A2E!important}
+  #screen-cashfc .cf-close{border-top:2px solid #2B2622;margin-top:6px;padding-top:7px;display:flex;justify-content:space-between;font-weight:800;font-size:16px}
+  #screen-cashfc .cf-m.warn{border-color:#F1B9B2;background:#FFF7F6} #screen-cashfc .cf-flag{position:absolute;top:-9px;right:12px;background:#C0392B;color:#fff;font-size:10.5px;font-weight:700;border-radius:9px;padding:2px 8px}
+  #screen-cashfc .cf-cols{display:grid;grid-template-columns:1.55fr 1fr;gap:14px;margin-top:14px;align-items:start}
+  #screen-cashfc .cf-box{border:1px solid #ECE6DF;border-radius:14px;background:#fff;padding:14px 16px;overflow:auto}
+  #screen-cashfc .cf-box h3{margin:0 0 2px;font-size:15px}
+  #screen-cashfc table.cf-t{width:100%;border-collapse:collapse;font-size:12.5px}
+  #screen-cashfc .cf-t th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#8A8079;text-align:left;padding:7px 8px;border-bottom:1px solid #EFE9E3;background:#FCFAF7;white-space:nowrap}
+  #screen-cashfc .cf-t td{padding:7px 8px;border-bottom:1px solid #F5F1ED;vertical-align:middle} #screen-cashfc .cf-t .n{text-align:right;white-space:nowrap} #screen-cashfc .cf-t .l{text-align:left!important}
+  #screen-cashfc .cf-t tr.mh td{background:#F6F2EE;font-weight:800}
+  #screen-cashfc .cf-tag{font-size:10.5px;font-weight:700;border-radius:9px;padding:2px 8px;white-space:nowrap}
+  #screen-cashfc .ty-cheque{background:#EEF2FA;color:#3B5998} #screen-cashfc .ty-salary{background:#F3EEFA;color:#6B3FA0} #screen-cashfc .ty-sub{background:#FFF1D6;color:#8A5A00}
+  #screen-cashfc .ty-expected{background:#FDECEA;color:#B03A2E} #screen-cashfc .ty-client{background:#E8F6EE;color:#1E8449}
+  #screen-cashfc .cf-src{font-size:10.5px;color:#9a918a} #screen-cashfc .cf-late{background:#FDECEA;color:#B03A2E;font-size:9.5px;font-weight:700;border-radius:7px;padding:1px 6px;margin-left:5px}
+  #screen-cashfc .cf-act button{margin-left:4px}
+  #screen-cashfc .cf-ren{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #F2D29A;background:#FFFBF1;border-radius:10px;padding:8px 12px;margin-top:8px}
+  .cf-ov{position:fixed;inset:0;background:rgba(40,30,25,.5);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px}
+  .cf-mod{background:#fff;border-radius:16px;width:min(560px,100%);max-height:92vh;overflow:auto;padding:20px 22px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+  .cf-mod h3{margin:0 0 4px} .cf-mod label{display:block;font-size:11px;color:#8A8079;text-transform:uppercase;letter-spacing:.06em;margin:11px 0 4px}
+  .cf-mod input,.cf-mod select{width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:9px;padding:9px 11px;font:inherit;font-size:14px}
+  .cf-mod .g2{display:grid;grid-template-columns:1fr 1fr;gap:12px} .cf-mod .btns{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+  .cf-mod .hint{background:#FFF7E6;border:1px solid #F2D29A;color:#7A5200;border-radius:9px;padding:8px 12px;font-size:12px;margin-top:12px}
+  @media (max-width:900px){#screen-cashfc .cf-flow{grid-template-columns:1fr 1fr} #screen-cashfc .cf-cols{grid-template-columns:1fr} .cf-mod .g2{grid-template-columns:1fr}}
   #screen-clientbills .cb-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
   #screen-clientbills table.cb-t{width:100%;border-collapse:collapse;font-size:13px}
   #screen-clientbills .cb-t th{font-size:11px;color:#8A8079;text-transform:uppercase;text-align:left;padding:8px 10px;border-bottom:1px solid #F1ECE6;background:#FCFAF7;white-space:nowrap}
@@ -3979,6 +4010,20 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="grid-wrap" style="max-height:none;"><table class="pc-table dt-table dt2" data-nomove><thead><tr><th class="l" style="width:104px;">No.</th><th class="l" style="width:100px;">Date</th><th class="l">Documents</th><th class="l dt2-by" style="width:96px;">Sent by</th><th class="l" style="width:160px;">Office</th><th style="width:160px;"></th></tr></thead><tbody id="dt-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody></table></div>
           </div>
         </div>
+        <div class="screen" id="screen-cashfc">
+          <div class="card">
+            <div class="pc-head">
+              <div class="pc-title"><h2 style="margin:0;">Cash forecast</h2><div class="sub" style="margin-top:3px;">What is in the bank, what goes out and what comes in - month by month. Cheques, salaries, subcontractor certificates, client bills and renewals come in by themselves; anything else is added as an expected expense.</div></div>
+              <div class="pc-btns"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="cfExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="cfExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="cfExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="cfExport('view')">Share</button></div></div>
+            </div>
+            <div class="cf-ctl"><div class="seg-chips" id="cf-mo"></div><div class="seg-chips" id="cf-in"></div><span style="flex:1"></span><button type="button" class="btn btn-primary" onclick="cfExp()">+ Expected expense</button></div>
+            <div class="status-msg" id="cf-status"></div>
+            <div class="cf-flow" id="cf-flow"></div>
+            <div class="cf-cols"><div class="cf-box"><h3>Day by day</h3><div class="sub">The bank balance after each payment and receipt</div><div id="cf-chart"></div></div>
+              <div class="cf-box"><h3>What makes up the months</h3><div id="cf-by"></div><div id="cf-ren"></div></div></div>
+            <div class="cf-box" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3>Every payment and receipt</h3><div class="sub">Open a line to see where it comes from. A line found by itself can be moved to another date or left out.</div></div><div class="seg-chips" id="cf-f"></div></div><div id="cf-list" style="margin-top:8px"></div></div>
+          </div>
+        </div>
         <div class="screen" id="screen-clientbills">
           <div class="card">
             <div class="pc-head"><div class="pc-title"><h2 style="margin:0;">Client bills <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">QS prepares &rarr; Chief Accountant checks &rarr; Contracts Manager approves</span></h2></div></div>
@@ -5870,6 +5915,7 @@ function switchScreen(name) {
   if (name === "docsoffice") dtLoad();
   if (name === "diesel") dsLoad();
   if (name === "clientbills") cbLoad();
+  if (name === "cashfc") cfLoad();
   if (name === "pdc") pdcOpen();
   if (name === "seccheque") scOpen();
   if (name === "invoices") setTimeout(() => invOpen(), 0);
@@ -20761,6 +20807,143 @@ async function dtExport(id, kind) {
   await refreshDownloadToken();
   window.open(`${API}/export/store/docs/${id}?format=${kind}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
+// ---- Accounts > Cash forecast ------------------------------------------------------------------
+// Bank now (ADCB statement + Bank tab entries since), out: PDCs, Bank tab future, subcontractor certificates, salaries,
+// expected expenses; in: client certificates. Collected by the server; expected expenses typed here.
+let CF = null, CF_MO = 3, CF_IN = 1, CF_F = "all";
+const CF_TY = { cheque: "Cheque", salary: "Salaries", sub: "Subcontractor", client: "Client bill", expected: "Expected" };
+const cfM = v => Number(v || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
+const cfM2 = v => Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const cfD = s => s ? s.split("-").reverse().join("/") : "";
+async function cfLoad() {
+  try { CF = await apiCall(`/store/cash/forecast?months=${CF_MO}&with_in=${CF_IN}`); } catch (e) { showStatus("cf-status", "err", errText(e)); return; }
+  cfDraw();
+}
+function cfDraw() {
+  const d = CF, keep = d.keep;
+  document.getElementById("cf-mo").innerHTML = [[3, "3 months"], [6, "6 months"], [12, "12 months"]].map(([v, l]) => `<button type="button" class="seg-chip${CF_MO === v ? " on" : ""}" onclick="CF_MO=${v};cfLoad()">${l}</button>`).join("");
+  document.getElementById("cf-in").innerHTML = [[1, "With money coming in"], [0, "Going out only"]].map(([v, l]) => `<button type="button" class="seg-chip${CF_IN === v ? " on" : ""}" onclick="CF_IN=${v};cfLoad()">${l}</button>`).join("");
+  const b = d.bank, shown = d.months.slice(0, 3);
+  const fl = document.getElementById("cf-flow"); fl.style.setProperty("--n", shown.length);
+  fl.innerHTML = `<div class="cf-now"><div class="l">In the bank now</div><div class="v">AED ${cfM(b.now)}</div>
+      <div class="s">${b.banks.map(x => `${escapeHtml(x.bank)} ${cfM(x.balance)} - statement of ${cfD(x.as_of)}`).join("<br>") || "No bank statement uploaded yet (Accounts &gt; Bank)"}
+      ${b.since.length ? `<br>${b.paid_since < 0 ? "&minus;" : "+"} ${cfM(Math.abs(b.paid_since))} entered on the Bank tab since (${b.since.length} line${b.since.length === 1 ? "" : "s"}, not on a statement yet)` : ""}</div>
+      <div class="s" style="margin-top:12px">Keep at least <b>AED ${cfM(keep)}</b> <a onclick="cfKeep()">change</a></div></div>` +
+    shown.map(m => { const bad = m.closing < keep || m.low < keep;
+      return `<div class="cf-m${bad ? " warn" : ""}">${bad ? `<span class="cf-flag">${m.closing < 0 || m.low < 0 ? "Below zero" : "Below AED " + cfM(keep)}</span>` : ""}
+        <div class="t">${m.label} <small>${cfD(m.from).slice(0, 5)} - ${cfD(m.to).slice(0, 5)}</small></div>
+        <div class="cf-r"><span>Opening</span><b>${cfM(m.opening)}</b></div>
+        <div class="cf-r"><span>+ Coming in</span><b class="g">+ ${cfM(m.in)}</b></div>
+        <div class="cf-r"><span>&minus; Going out</span><b class="r">&minus; ${cfM(m.out)}</b></div>
+        <div class="cf-close${m.closing < keep ? " r" : ""}"><span>Closing</span><span>${cfM(m.closing)}</span></div>
+        ${m.low < m.closing - 1 && m.low < keep ? `<div class="cf-r r" style="font-size:11.5px">lowest in the month ${cfM(m.low)}</div>` : ""}</div>`; }).join("");
+  // what makes up the months
+  const types = ["client", "cheque", "salary", "sub", "expected"];
+  const mos = d.months;
+  document.getElementById("cf-by").innerHTML = `<table class="cf-t"><thead><tr><th></th>${mos.map(m => `<th class="n">${m.label.slice(0, 3)}</th>`).join("")}</tr></thead><tbody>
+    ${types.filter(t => mos.some(m => m.by[t])).map(t => `<tr><td><span class="cf-tag ty-${t}">${t === "cheque" ? "Cheques (PDC)" : t === "expected" ? "Expected" : CF_TY[t] + (t === "sub" ? "s" : t === "client" ? "s" : "")}</span></td>${mos.map(m => { const v = m.by[t] || 0; return `<td class="n ${v > 0 ? "g" : v < 0 ? "r" : ""}">${v ? (v > 0 ? "+ " : "") + cfM(Math.abs(v)) : "-"}</td>`; }).join("")}</tr>`).join("")}
+    <tr style="font-weight:800"><td>Going out</td>${mos.map(m => `<td class="n r">${cfM(m.out)}</td>`).join("")}</tr>
+    <tr style="font-weight:800"><td>Coming in</td>${mos.map(m => `<td class="n g">${cfM(m.in)}</td>`).join("")}</tr></tbody></table>`;
+  document.getElementById("cf-ren").innerHTML = d.renewals.length ? `<div style="margin-top:14px;font-weight:700">Renewals coming up - put the cost to count it</div>` +
+    d.renewals.slice(0, 4).map(r => `<div class="cf-ren"><div><b>${escapeHtml(r.what)}</b><div class="cf-src">${r.late ? "expired " : "expires "}${cfD(r.date)}${r.number ? " · " + escapeHtml(r.number) : ""}</div></div><button type="button" class="btn btn-primary btn-sm" onclick="cfRen(${r.id})">Add cost</button></div>`).join("") +
+    (d.renewals.length > 4 ? `<div class="cf-src" style="margin-top:6px">+ ${d.renewals.length - 4} more on the Expiry reminder - <a style="cursor:pointer;text-decoration:underline" onclick="cfRenAll()">show all</a></div>` : "") : "";
+  cfChart(); cfList();
+}
+function cfChart() {
+  const d = CF, it = d.items, W = 760, H = 240, L = 46, keep = d.keep;
+  if (!d.months.length) return;
+  const t0 = new Date(d.today), t1 = new Date(d.months[d.months.length - 1].to), span = Math.max(1, (t1 - t0) / 864e5);
+  const pts = [[0, d.bank.now]]; it.forEach(i => pts.push([(new Date(i.date) - t0) / 864e5, i.after]));
+  const vals = pts.map(p => p[1]).concat([keep, 0]), hi = Math.max(...vals) * 1.05, lo = Math.min(0, ...vals);
+  const X = x => L + (W - L - 10) * x / span, Y = v => 10 + (H - 40) * (hi - v) / ((hi - lo) || 1);
+  let path = "", red = "";
+  for (let k = 0; k < pts.length; k++) {
+    const [x, v] = pts[k], nx = k + 1 < pts.length ? pts[k + 1][0] : span;
+    const seg = `M${X(x).toFixed(1)} ${Y(v).toFixed(1)} L${X(nx).toFixed(1)} ${Y(v).toFixed(1)}` + (k + 1 < pts.length ? ` L${X(nx).toFixed(1)} ${Y(pts[k + 1][1]).toFixed(1)}` : "");
+    if (v < keep) red += seg + " "; else path += seg + " ";
+  }
+  const ticks = [hi, (hi + lo) / 2, lo].map(v => `<text x="0" y="${Y(v) + 4}" font-size="10" fill="#9a918a">${(v / 1e6).toFixed(1)}M</text><line x1="${L}" x2="${W}" y1="${Y(v)}" y2="${Y(v)}" stroke="#F0EBE6"/>`).join("");
+  const mlab = d.months.map(m => { const x = X(Math.max(0, (new Date(m.from) - t0) / 864e5)); return `<line x1="${x}" x2="${x}" y1="10" y2="${H - 30}" stroke="#F0EBE6"/><text x="${x + 4}" y="${H - 14}" font-size="10.5" fill="#6b625a">${m.label.slice(0, 3)}</text>`; }).join("");
+  const big = it.filter(i => i.out >= 50000 || i.in >= 50000).slice(0, 8).map(i => { const x = X((new Date(i.date) - t0) / 864e5); return `<circle cx="${x}" cy="${Y(i.after)}" r="3.5" fill="${i.in ? "#1E8449" : "#B03A2E"}"><title>${escapeHtml(cfD(i.date) + " " + i.what + " " + cfM(i.in || i.out))}</title></circle>`; }).join("");
+  document.getElementById("cf-chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${ticks}${mlab}
+    <line x1="${L}" x2="${W}" y1="${Y(keep)}" y2="${Y(keep)}" stroke="#E6B8B1" stroke-width="2" stroke-dasharray="6 4"/><text x="${W - 4}" y="${Y(keep) - 4}" font-size="10" fill="#B03A2E" text-anchor="end">keep ${cfM(keep)}</text>
+    <path d="${path}" fill="none" stroke="#1E8449" stroke-width="2.4"/><path d="${red}" fill="none" stroke="#C0392B" stroke-width="2.4"/>${big}</svg>`;
+}
+function cfList() {
+  const d = CF;
+  const F = { all: () => true, out: i => i.out, in: i => i.in, exp: i => i.type === "expected" };
+  document.getElementById("cf-f").innerHTML = [["all", "All"], ["out", "Going out"], ["in", "Coming in"], ["exp", "Expected expenses"]].map(([k, l]) => `<button type="button" class="seg-chip${CF_F === k ? " on" : ""}" onclick="CF_F='${k}';cfList()">${l}</button>`).join("");
+  const rows = d.items.filter(F[CF_F]);
+  let lastM = "";
+  document.getElementById("cf-list").innerHTML = rows.length ? `<table class="cf-t"><thead><tr><th>Date</th><th class="l">What</th><th>Type</th><th>From</th><th class="n">In (AED)</th><th class="n">Out (AED)</th><th class="n">Balance after</th><th></th></tr></thead><tbody>` +
+    rows.map(i => { const m = i.date.slice(0, 7); const head = m !== lastM ? `<tr class="mh"><td colspan="8">${new Date(i.date).toLocaleString("en-GB", { month: "long", year: "numeric" })}</td></tr>` : ""; lastM = m;
+      const auto = /^(client|sub|sal):/.test(i.key), exp = i.type === "expected", eid = exp ? i.link.exp : null;
+      const act = auto ? `<button type="button" class="btn btn-gray btn-sm" onclick="cfMove('${i.key}')">Move date</button><button type="button" class="btn btn-gray btn-sm" onclick="cfSkip('${i.key}')">Leave out</button>`
+        : exp ? `${i.out ? `<button type="button" class="btn btn-gray btn-sm" onclick="cfCheque(${eid})">Make it a cheque</button>` : ""}<button type="button" class="btn btn-gray btn-sm" onclick="cfExp(${eid})">Change</button><button type="button" class="btn btn-gray btn-sm" onclick="cfPaid(${eid})">Paid</button>`
+        : i.link.dq ? `<button type="button" class="btn btn-gray btn-sm" onclick="dqGo('${i.link.dq}')">Open</button>` : "";
+      return head + `<tr><td>${cfD(i.date)}${i.late ? `<span class="cf-late" title="Date was ${cfD(i.was)}">past ${cfD(i.was)}</span>` : i.moved ? `<span class="cf-late" style="background:#EEF2FA;color:#3B5998">moved</span>` : ""}</td>
+        <td class="l">${escapeHtml(i.what)}${i.note ? `<div class="cf-src">${escapeHtml(i.note)}</div>` : ""}${i.sure !== "sure" ? `<div class="cf-src">${i.sure}</div>` : ""}</td>
+        <td><span class="cf-tag ty-${i.type}">${CF_TY[i.type] || i.type}</span></td><td class="cf-src">${escapeHtml(i.src)}</td>
+        <td class="n g">${i.in ? cfM2(i.in) : ""}</td><td class="n r">${i.out ? cfM2(i.out) : ""}</td><td class="n${i.after < d.keep ? " r" : ""}">${cfM2(i.after)}</td><td class="n cf-act">${act}</td></tr>`; }).join("") + `</tbody></table>`
+    : `<div class="sub" style="padding:12px">Nothing in these months.</div>`;
+}
+function cfModal(html) { const o = document.createElement("div"); o.className = "cf-ov"; o.innerHTML = `<div class="cf-mod">${html}</div>`; document.body.appendChild(o); o.addEventListener("click", e => { if (e.target === o) o.remove(); }); return o; }
+async function cfExp(id, pre) {
+  let x = pre || {};
+  if (id) x = (CF.expected || []).find(e => e.id === id) || {};
+  const kinds = (CF && CF.kinds) || ["Other"];
+  const o = cfModal(`<h3>${id ? "Change expected" : "+ Expected expense"}</h3><div class="sub">A payment that is coming but is not a cheque yet - insurance, a licence, a deposit, a fine ...</div>
+    <label>What for</label><input id="cfx-w" value="${escapeAttr(x.what || "")}" placeholder="e.g. Company insurance renewal">
+    <div class="g2"><div><label>Amount (AED)</label><input id="cfx-a" inputmode="decimal" value="${x.amount || ""}" placeholder="0.00" style="font-weight:700"></div><div><label>Expected on</label><input id="cfx-d" type="date" value="${x.on_date || (CF ? CF.today : "")}"></div></div>
+    <div class="g2"><div><label>Kind</label><select id="cfx-k">${kinds.map(k => `<option${k === x.kind ? " selected" : ""}>${k}</option>`).join("")}</select></div><div><label>Money</label><select id="cfx-dir"><option value="out">Going out</option><option value="in"${x.direction === "in" ? " selected" : ""}>Coming in</option></select></div></div>
+    <div class="g2"><div><label>How sure</label><select id="cfx-s"><option value="sure">Sure</option><option value="likely"${x.sure === "likely" ? " selected" : ""}>Likely</option><option value="maybe"${x.sure === "maybe" ? " selected" : ""}>Maybe</option></select></div>
+      <div><label>Repeats</label><select id="cfx-r">${[["once", "Once"], ["month", "Every month"], ["quarter", "Every 3 months"], ["year", "Every year"]].map(([v, l]) => `<option value="${v}"${x.repeat === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
+    <label>Note</label><input id="cfx-n" value="${escapeAttr(x.note || "")}" placeholder="Optional">
+    <div class="hint">When the cheque is written press <b>Make it a cheque</b> on its line - it goes on the PDC register and is counted from there, never twice. When it is paid, press <b>Paid</b>.</div>
+    <div class="status-msg" id="cfx-st"></div>
+    <div class="btns"><button type="button" class="btn btn-gray" id="cfx-x">Cancel</button><button type="button" class="btn btn-primary" id="cfx-go">Save</button></div>`);
+  o.querySelector("#cfx-x").onclick = () => o.remove();
+  o.querySelector("#cfx-go").onclick = async () => {
+    const g = s => o.querySelector(s).value;
+    const body = { what: g("#cfx-w"), amount: g("#cfx-a"), on_date: g("#cfx-d"), kind: g("#cfx-k"), direction: g("#cfx-dir"), sure: g("#cfx-s"), repeat: g("#cfx-r"), note: g("#cfx-n"), expiry_id: x.expiry_id || null };
+    try { await apiCall(id ? `/store/cash/expected/${id}` : "/store/cash/expected", { method: id ? "PUT" : "POST", body: JSON.stringify(body) }); o.remove(); showStatus("cf-status", "ok", `${body.what} - AED ${cfM2(+String(body.amount).replace(/,/g, ""))} on ${cfD(body.on_date)} added to the forecast.`); cfLoad(); }
+    catch (e) { showStatus("cfx-st", "err", errText(e)); }
+  };
+}
+function cfRenAll() { const keep = CF.renewals; const html = document.getElementById("cf-ren"); CF._all = true; html.innerHTML = keep.map(r => `<div class="cf-ren"><div><b>${escapeHtml(r.what)}</b><div class="cf-src">${r.late ? "expired " : "expires "}${cfD(r.date)}${r.number ? " · " + escapeHtml(r.number) : ""}</div></div><button type="button" class="btn btn-primary btn-sm" onclick="cfRen(${r.id})">Add cost</button></div>`).join(""); }
+function cfRen(id) {
+  const r = CF.renewals.find(x => x.id === id); if (!r) return;
+  cfExp(null, { what: "Renewal - " + r.what, on_date: r.late ? CF.today : r.date, expiry_id: r.id,
+    kind: /insur/i.test(r.what) ? "Insurance" : /vehicle|mulkiya/i.test(r.what) ? "Vehicle" : /licen|permit|card/i.test(r.what) ? "Licence / permit" : "Other" });
+}
+async function cfCheque(id) {
+  const it = CF.items.find(i => i.link && i.link.exp === id) || {};
+  const o = cfModal(`<h3>Make it a cheque</h3><div class="sub">${escapeHtml(it.what || "")} - it goes on the PDC register and is counted from there.</div>
+    <label>Payee</label><input id="cfc-p" value="${escapeAttr(it.what || "")}"><div class="g2"><div><label>Cheque no.</label><input id="cfc-n"></div><div><label>Cheque date</label><input id="cfc-d" type="date" value="${it.date || ""}"></div></div>
+    <label>Amount (AED)</label><input id="cfc-a" value="${it.out || ""}"><div class="status-msg" id="cfc-st"></div>
+    <div class="btns"><button type="button" class="btn btn-gray" id="cfc-x">Cancel</button><button type="button" class="btn btn-primary" id="cfc-go">Put on the PDC register</button></div>`);
+  o.querySelector("#cfc-x").onclick = () => o.remove();
+  o.querySelector("#cfc-go").onclick = async () => { const g = s => o.querySelector(s).value;
+    try { await apiCall(`/store/cash/expected/${id}/cheque`, { method: "POST", body: JSON.stringify({ payee: g("#cfc-p"), cheque_no: g("#cfc-n"), cheque_date: g("#cfc-d"), amount: g("#cfc-a") }) }); o.remove(); showStatus("cf-status", "ok", "On the PDC register now."); cfLoad(); }
+    catch (e) { showStatus("cfc-st", "err", errText(e)); } };
+}
+async function cfPaid(id) { if (!(await hrAsk("Mark this as paid? It comes off the forecast - the bank balance takes it.", "Paid"))) return; try { await apiCall(`/store/cash/expected/${id}`, { method: "PUT", body: JSON.stringify({ status: "paid" }) }); cfLoad(); } catch (e) { showStatus("cf-status", "err", errText(e)); } }
+async function cfMove(key) {
+  const it = CF.items.find(i => i.key === key) || {};
+  const o = cfModal(`<h3>Move to another date</h3><div class="sub">${escapeHtml(it.what || "")}</div><label>Expected on</label><input id="cfm-d" type="date" value="${it.date || ""}">
+    <div class="btns">${it.moved ? `<button type="button" class="btn btn-gray" id="cfm-r">Back as found</button>` : ""}<button type="button" class="btn btn-gray" id="cfm-x">Cancel</button><button type="button" class="btn btn-primary" id="cfm-go">Save</button></div>`);
+  o.querySelector("#cfm-x").onclick = () => o.remove();
+  const rb = o.querySelector("#cfm-r"); if (rb) rb.onclick = async () => { await apiCall("/store/cash/move", { method: "POST", body: JSON.stringify({ key, reset: true }) }); o.remove(); cfLoad(); };
+  o.querySelector("#cfm-go").onclick = async () => { try { await apiCall("/store/cash/move", { method: "POST", body: JSON.stringify({ key, on_date: o.querySelector("#cfm-d").value }) }); o.remove(); cfLoad(); } catch (e) { showStatus("cf-status", "err", errText(e)); } };
+}
+async function cfSkip(key) { if (!(await hrAsk("Leave this line out of the forecast?", "Leave out"))) return; try { await apiCall("/store/cash/move", { method: "POST", body: JSON.stringify({ key, skip: true }) }); cfLoad(); } catch (e) { showStatus("cf-status", "err", errText(e)); } }
+async function cfKeep() {
+  const o = cfModal(`<h3>Keep at least</h3><div class="sub">A month that goes below this is shown in red.</div><label>Amount (AED)</label><input id="cfk" value="${CF.keep}">
+    <div class="btns"><button type="button" class="btn btn-gray" id="cfk-x">Cancel</button><button type="button" class="btn btn-primary" id="cfk-go">Save</button></div>`);
+  o.querySelector("#cfk-x").onclick = () => o.remove();
+  o.querySelector("#cfk-go").onclick = async () => { try { await apiCall("/store/cash/keep", { method: "POST", body: JSON.stringify({ keep: o.querySelector("#cfk").value }) }); o.remove(); cfLoad(); } catch (e) { showStatus("cf-status", "err", errText(e)); } };
+}
+async function cfExport(kind) { await refreshDownloadToken(); window.open(`${API}/export/accounts/cash?format=${kind}&months=${CF_MO}&with_in=${CF_IN}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank"); }
 // ---- Accounts > Client bills ---------------------------------------------------------
 // Bills on their way QS -> Chief Accountant -> Contracts Manager; each opens on the approval page (PDF, Approve / Send back).
 let CB = null, CB_F = "";
