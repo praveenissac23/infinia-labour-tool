@@ -71,31 +71,100 @@ def _period(f):
     return f"{da:%B %Y} – {db_:%B %Y}" if (da.year, da.month) != (db_.year, db_.month) else f"{da:%B %Y}"
 
 
+def tank_colour(c, keep):
+    return "#E74C3C" if c < keep else "#F5B041" if c < keep * 2 else "#2ECC71"
+
+
+def tank_fill(f):
+    """One full ring = the most the bank holds over the period (at least twice the minimum)."""
+    mos = f["months"]
+    return max([f["bank"]["now"], f["keep"] * 2] + [m["opening"] for m in mos] + [m["closing"] for m in mos]) or 1
+
+
+def tank_word(m, keep):
+    c = m["closing"]
+    return "below zero" if c < 0 else f"below {short(keep)}" if c < keep else f"dips to {short(m['low'])}" if m["low"] < keep else f"end of {m['label']}"
+
+
+def weeks(f):
+    """The weeks ahead, as on the page: [(start, in, out, bank at the end)] - a week for 3 months, two weeks for 6, four for 12."""
+    from datetime import timedelta
+    mos = f["months"]
+    if not mos:
+        return 7, []
+    step = 28 if len(mos) >= 12 else 14 if len(mos) >= 6 else 7
+    t0, t1 = date.fromisoformat(f["today"]), date.fromisoformat(mos[-1]["to"])
+    n = max(1, -(-((t1 - t0).days + 1) // step))
+    out, bal = [], f["bank"]["now"]
+    for k in range(n):
+        a = t0 + timedelta(days=k * step); z = a + timedelta(days=step)
+        mine = [i for i in f["items"] if a.isoformat() <= i["date"] < z.isoformat()]
+        cin, cout = sum(i["in"] for i in mine), sum(i["out"] for i in mine); bal += cin - cout
+        out.append((a, cin, cout, bal))
+    return step, out
+
+
+def _ring_svg(m, keep, full, size):
+    import math
+    C = 2 * math.pi * 108; c = m["closing"]; fr = max(0, min(1, c / full)); col = tank_colour(c, keep)
+    arc = f'<circle cx="130" cy="130" r="108" stroke="{col}" stroke-width="22" fill="none" stroke-dasharray="{C * fr:.1f} {C:.1f}" transform="rotate(-90 130 130)" stroke-linecap="round"/>' if fr > 0 else ""
+    return (f'<svg viewBox="0 0 260 260" width="{size}" height="{size}"><circle cx="130" cy="130" r="108" stroke="#332E2B" stroke-width="22" fill="none"/>{arc}'
+            f'<text x="130" y="130" text-anchor="middle" font-size="42" font-weight="800" fill="{"#FF9C8F" if c < keep else "#fff"}">{"−" if c < 0 else ""}{short(abs(c))}</text>'
+            f'<text x="130" y="162" text-anchor="middle" font-size="16" fill="#B5A99F">{e(tank_word(m, keep))}</text></svg>')
+
+
+def weeks_svg(f, W=1000, H=210):
+    step, wk = weeks(f)
+    if not wk:
+        return ""
+    keep = f["keep"]; n = len(wk); colW = (W - 50) / n; bw = min(26, colW * .32)
+    maxF = max([1] + [max(w[1], w[2]) for w in wk]); balTop, balH, base, barH = 22, H * .28, H * .6, H * .2
+    bals = [w[3] for w in wk] + [f["bank"]["now"], keep]; hi, lo = max(bals), min(bals)
+    Yb = lambda v: balTop + balH * (hi - v) / ((hi - lo) or 1)
+    g = [f'<line x1="20" x2="{W}" y1="{base}" y2="{base}" stroke="#3a3330"/><line x1="20" x2="{W}" y1="{Yb(keep):.1f}" y2="{Yb(keep):.1f}" stroke="#FF9C8F" stroke-dasharray="4 4" opacity=".6"/>'
+         f'<text x="{W}" y="{Yb(keep) - 4:.1f}" text-anchor="end" font-size="10" fill="#FF9C8F">{short(keep)}</text>']
+    pts = []
+    for k, (a, cin, cout, bal) in enumerate(wk):
+        cx = 40 + colW * k + colW / 2; hIn = barH * cin / maxF; hOut = barH * cout / maxF
+        if cin:
+            g.append(f'<rect x="{cx - bw - 2:.1f}" y="{base - hIn:.1f}" width="{bw:.1f}" height="{max(2, hIn):.1f}" rx="3" fill="#2ECC71"/><text x="{cx - 2 - bw / 2:.1f}" y="{base - hIn - 4:.1f}" text-anchor="middle" font-size="9" fill="#8EEBB3">{short(cin)}</text>')
+        if cout:
+            g.append(f'<rect x="{cx + 2:.1f}" y="{base}" width="{bw:.1f}" height="{max(2, hOut):.1f}" rx="3" fill="#E74C3C"/>')
+            if hOut > 12:
+                g.append(f'<text x="{cx + 2 + bw / 2:.1f}" y="{base + hOut + 11:.1f}" text-anchor="middle" font-size="9" fill="#FF9C8F">{short(cout)}</text>')
+        if n <= 20 or k % 2 == 0:
+            g.append(f'<text x="{cx:.1f}" y="{H - 4}" text-anchor="middle" font-size="10" fill="#B5A99F">{a.day} {a:%b}</text>')
+        pts.append((cx, Yb(bal), bal))
+    g.append('<polyline fill="none" stroke="#fff" stroke-width="1.8" opacity=".85" points="' + " ".join(f"{x:.1f},{y:.1f}" for x, y, _ in pts) + '"/>')
+    for k, (x, y, v) in enumerate(pts):
+        c = "#FF9C8F" if v < keep else "#fff"
+        g.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.8" fill="{c}"/>' + (f'<text x="{x:.1f}" y="{y - 7:.1f}" text-anchor="middle" font-size="9.5" fill="{c}">{short(v)}</text>' if n <= 14 or k % 2 == 0 else ""))
+    return f'<svg viewBox="0 0 {W} {H}" width="100%" height="{H}">{"".join(g)}</svg>'
+
+
 def report_html(f, pdf_url="", excel_url="", logo="", stamp=""):
     keep = f["keep"]
     bank = f["bank"]
-    stmt = " · ".join(f"{b['bank']} statement {dmy(b['as_of'])}" for b in bank["banks"]) or "no statement uploaded"
-    kp = [f'<div class="k dark"><div class="l">In the bank now</div><div class="v">AED {m0(bank["now"])}</div><div class="s">{e(stmt)}</div></div>']
-    for m in f["months"][:3]:
-        bad = m["closing"] < keep
-        kp.append(f'<div class="k{" bad" if bad else ""}"><div class="l">End of {e(m["label"])}</div><div class="v{" r" if bad else ""}">{m0(m["closing"])}</div>'
-                  f'<div class="s"><span class="g">+{m0(m["in"])}</span> in · <span class="r">−{m0(m["out"])}</span> out</div></div>')
     mos = f["months"]
-    rows = []
-    for key, lab, col in TYPES:
-        vals = [-(m["by"].get(key) or 0) for m in mos]
-        if any(vals):
-            rows.append(f'<tr><td><span class="dot" style="background:{col}"></span>{lab}</td>' + "".join(f'<td class="n">{m0(v) if v else "-"}</td>' for v in vals) + f'<td class="n">{m0(sum(vals))}</td></tr>')
-    rows.append('<tr class="t"><td>Going out</td>' + "".join(f'<td class="n r">{m0(m["out"])}</td>' for m in mos) + f'<td class="n r">{m0(f["total_out"])}</td></tr>')
-    rows.append('<tr><td><span class="dot" style="background:#1E8449"></span>Coming in</td>' + "".join(f'<td class="n g">{m0(m["in"]) if m["in"] else "-"}</td>' for m in mos) + f'<td class="n g">{m0(f["total_in"])}</td></tr>')
-    tot = f["total_out"] or 1
-    strip = "".join(f'<div style="width:{100 * (f["by_type"].get(k) or 0) / tot:.2f}%;background:{c}"></div>' for k, _, c in TYPES if f["by_type"].get(k))
-    biggest_t = max(((f["by_type"].get(k) or 0, l) for k, l, _ in TYPES), default=(0, ""))
-    big = "".join(f'<tr><td>{"past date" if g["late"] else " · ".join(dmy(d)[:5] for d in g["dates"][:3])}</td><td>{e(g["what"])}{(" (" + str(g["n"]) + ")") if g["n"] > 1 and g["type"] == "sub" else ""}</td>'
-                  f'<td>{TYPE_WORD.get(g["type"], "")}</td><td class="n r">{m0(g["amount"])}</td></tr>' for g in f["biggest"][:5])
-    cin = "".join(f'<tr><td>{dmy(i["date"])[:5]}</td><td>{e(i["what"])}</td><td class="n g">{m0(i["in"])}</td></tr>' for i in f["coming"][:6])
-    watch = (f'<b>Watch:</b> the bank goes below AED {m0(keep)} on {dmy(f["below"]["date"])} ({e(f["below"]["what"])}).' if f.get("below")
-             else f'The bank stays above AED {m0(keep)} - lowest {m0(f["low"]["amount"])} on {dmy(f["low"]["date"])}.')
+    stmt = " · ".join(f"{b['bank']} statement {dmy(b['as_of'])}" for b in bank["banks"]) or "no statement uploaded"
+    full = tank_fill(f); shown = mos[:6]; many = len(shown) > 3; rs = 116 if not many else 68
+    tanks = "".join(f'<div class="tk">{_ring_svg(m, keep, full, rs)}<div class="tt">{e(m["label"])}</div><div class="ts"><span class="g">+{m0(m["in"])}</span> · <span class="r">−{m0(m["out"])}</span></div></div>' for m in shown)
+    bg = f["biggest"][0] if f["biggest"] else None
+    below = f.get("below")
+    tiles = (f'<div><span>Going out · {len(mos)} months</span><b>{m0(f["total_out"])}</b></div><div><span>Coming in</span><b class="g">{m0(f["total_in"])}</b></div>'
+             f'<div><span>Biggest</span><b>{e(bg["what"].split(" · ")[0][:24]) + " " + short(bg["amount"]) if bg else "-"}</b></div>'
+             f'<div class="{"warn" if below else "safe"}"><span>{"Watch" if below else "Safe"} · keep at least {short(keep)}</span><b class="{"r" if below else "g"}">{dmy(below["date"]) + " · below " + short(keep) if below else "lowest " + m0(f["low"]["amount"])}</b></div>')
+    ico = {"cheque": ("C", "#24345A", "#9DB7F0"), "salary": ("S", "#3B2A55", "#C9A8F0"), "sub": ("S", "#4A3A12", "#F5C76A"), "expected": ("F", "#4A1F1A", "#FF9C8F"), "client": ("B", "#163D25", "#8EEBB3")}
+    def li(t, what, sub, amt, cls):
+        i_, b_, c_ = ico.get(t, ("·", "#333", "#fff"))
+        return f'<div class="li"><i style="background:{b_};color:{c_}">{i_}</i><div class="w"><b>{e(what)}</b><small>{e(sub)}</small></div><div class="a {cls}">{amt}</div></div>'
+    big = "".join(li(g["type"], g["what"] + (f' ({g["n"]})' if g["n"] > 1 and g["type"] == "sub" else ""), ("date passed" if g["late"] else " · ".join(dmy(d)[:5] for d in g["dates"][:3])) + (" · forecast" if g["type"] == "expected" else " · cheque" if g["type"] == "cheque" else ""), m0(g["amount"]), "r") for g in f["biggest"][:5]) or '<div class="sub">Nothing going out.</div>'
+    cin = "".join(li("client", i["what"].split(" · ")[0], "expected " + dmy(i["date"])[:5], m0(i["in"]), "g") for i in f["coming"][:4]) or '<div class="sub">No client bill waiting for payment.</div>'
+    last_in = f["coming"][-1]["date"] if f["coming"] else None
+    quiet = (date.fromisoformat(mos[-1]["to"]) - date.fromisoformat(last_in)).days if (last_in and mos) else None
+    note = (f'<div class="note"><b class="r">{"Nothing expected in after " + dmy(last_in) + "." if last_in else "Nothing expected in."}</b><div>{"The bank goes below " + m0(keep) + " on " + dmy(below["date"]) + " - a client payment before then keeps it above." if below else "Payments still go out every month."}</div></div>'
+            if (not f["coming"] or quiet > 30) else f'<div class="note ok"><b class="g">Client money keeps coming in.</b><div>{len(f["coming"])} payment(s) expected in the period.</div></div>')
+    step, _ = weeks(f)
     # page 2+: every line
     lines, last = [], ""
     for i in f["items"]:
@@ -105,31 +174,34 @@ def report_html(f, pdf_url="", excel_url="", logo="", stamp=""):
         lines.append(f'<tr><td>{dmy(i["date"])}{" <span class=lt>past</span>" if i["late"] else ""}</td><td>{e(i["what"])}</td><td>{TYPE_WORD.get(i["type"], i["type"])}</td>'
                      f'<td class="n g">{m2(i["in"]) if i["in"] else ""}</td><td class="n r">{m2(i["out"]) if i["out"] else ""}</td><td class="n{" r" if i["after"] < keep else ""}">{m2(i["after"])}</td></tr>')
     css = """
-@page{size:A4 landscape;margin:0}*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;color:#2B2622;font-size:10.5pt;background:#E9E5E1}
+@page{size:A4 landscape;margin:0}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{margin:0;font-family:Inter,Arial,sans-serif;color:#2B2622;font-size:10.5pt;background:#E9E5E1}
 .bar{position:sticky;top:0;z-index:5;background:#2E2A27;color:#fff;display:flex;gap:10px;align-items:center;padding:10px 16px}.bar b{flex:1}
 .bar a{background:#FBEFED;color:#A93226;border:1px solid #E6B8B1;border-radius:8px;padding:7px 14px;text-decoration:none;font-weight:600;font-size:13px}
 .pg{width:297mm;min-height:210mm;padding:12mm 14mm 14mm;margin:14px auto;background:#fff;position:relative;box-shadow:0 2px 14px rgba(0,0,0,.12)}
 .hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #C0392B;padding-bottom:6px}.hd img{height:34px}.hd .t{text-align:right}.hd .t b{font-size:15pt;color:#C0392B}.hd .t div{font-size:8.5pt;color:#777}
-.band{display:grid;grid-template-columns:1.2fr repeat(3,1fr);gap:10px;margin-top:10px}
-.k{border-radius:12px;padding:10px 12px;border:1px solid #eee}.k .l{font-size:7.5pt;letter-spacing:.1em;text-transform:uppercase;color:#888}.k .v{font-size:17pt;font-weight:800;margin-top:2px}.k .s{font-size:8pt;color:#777}
-.k.dark{background:#2E2A27;color:#fff;border:0}.k.dark .l,.k.dark .s{color:#d8cfc8}.k.bad{background:#FDECEA;border-color:#F1B9B2}
-.g{color:#1E8449}.r{color:#B03A2E}.row{display:grid;grid-template-columns:1.45fr 1fr;gap:12px;margin-top:10px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
-.box{border:1px solid #eee;border-radius:12px;padding:10px 12px}.box h4{margin:0 0 4px;font-size:10.5pt}
+.g{color:#1E8449}.r{color:#B03A2E}
 table{width:100%;border-collapse:collapse;font-size:8.8pt}th{background:#C0392B;color:#fff;text-align:left;padding:4px 6px;font-weight:600}td{padding:4px 6px;border-bottom:1px solid #eee}td.n,th.n{text-align:right;white-space:nowrap}
-tr.t td{font-weight:800;border-top:1.5px solid #222}tr.mh td{background:#F6F2EE;font-weight:800}.lt{background:#FDECEA;color:#B03A2E;border-radius:6px;padding:0 5px;font-size:7.5pt}
-.strip{display:flex;height:14px;border-radius:4px;overflow:hidden;margin-top:8px}.dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px}
-.watch{margin-top:8px;border-radius:8px;padding:6px 10px;font-size:8.5pt}.ft{position:absolute;bottom:6mm;left:14mm;right:14mm;display:flex;justify-content:space-between;font-size:7.5pt;color:#999}
+tr.mh td{background:#F6F2EE;font-weight:800}.lt{background:#FDECEA;color:#B03A2E;border-radius:6px;padding:0 5px;font-size:7.5pt}
+.ft{position:absolute;bottom:6mm;left:14mm;right:14mm;display:flex;justify-content:space-between;font-size:7.5pt;color:#999}
+.dk{background:#1B1816;color:#F4EFEA;padding:7mm 12mm 11mm;height:210mm;overflow:hidden}.dk .g{color:#8EEBB3}.dk .r{color:#FF9C8F}.dk .sub{color:#B5A99F;font-size:8pt}
+.top{display:flex;justify-content:space-between;gap:8mm;align-items:center}.logo{background:#fff;border-radius:9px;padding:5px 10px;display:inline-block}.logo img{height:26px;display:block}
+.kk{font-size:7.5pt;letter-spacing:.16em;text-transform:uppercase;color:#B5A99F;margin-top:9px}.now{font-size:30pt;font-weight:800;letter-spacing:-1px;line-height:1.05;margin:2px 0}.now small{font-size:10pt;color:#B5A99F;font-weight:500;letter-spacing:0}
+.tanks{display:flex;gap:4mm}.tanks.wide{margin-top:3mm}.tanks.wide .tk{flex:1}.tk{background:#24201E;border-radius:14px;padding:6px 8px 7px;text-align:center}.tt{font-weight:700;font-size:10pt}.ts{font-size:7.5pt;color:#B5A99F}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:4mm;margin-top:3mm}.tiles div{background:#24201E;border-radius:11px;padding:6px 11px}.tiles span{font-size:6.8pt;color:#B5A99F;text-transform:uppercase;letter-spacing:.12em}.tiles b{display:block;font-size:13pt;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tiles .warn{background:#4A1F1A}.tiles .safe{background:#163D25}
+.pn{background:#24201E;border-radius:14px;padding:7px 12px;margin-top:3mm}.pn h4{margin:0;font-size:10.5pt;color:#fff}.two{display:grid;grid-template-columns:1fr 1fr;gap:4mm}
+.li{display:flex;align-items:center;gap:8px;padding:2.5px 0;border-bottom:1px solid #332E2B}.li:last-child{border:0}.li i{font-style:normal;width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:8pt;flex:none}
+.li .w{flex:1;min-width:0}.li .w b{display:block;font-size:8.6pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.li .w small{color:#B5A99F;font-size:7pt}.li .a{font-weight:800;font-size:9.5pt;white-space:nowrap}
+.note{margin-top:6px;border-radius:9px;padding:6px 10px;background:#4A1F1A;font-size:7.8pt;color:#F0D5CF}.note.ok{background:#163D25;color:#C6EFD5}.note b{display:block;font-size:8.6pt}
+.dk .ft{color:#7d726b}
 @media print{body{background:#fff}.bar{display:none}.pg{margin:0;box-shadow:none;page-break-after:always}}"""
     head = f'<div class="hd">{f"<img src={chr(34)}{logo}{chr(34)}>" if logo else "<b>INFINIA</b>"}<div class="t"><b>Cash Forecast</b><div>{e(_period(f))} · prepared {e(stamp)} · Accounts</div></div></div>'
-    p1 = f"""<div class="pg">{head}<div class="band">{"".join(kp)}</div>
-<div class="row"><div class="box"><h4>Month by month</h4>{waterfall_svg(f)}
-<div style="font-size:8pt;color:#777"><span class="dot" style="background:#2ECC71"></span>money in <span class="dot" style="background:#E74C3C;margin-left:8px"></span>money out <span class="dot" style="background:#5A4E48;margin-left:8px"></span>balance at month end <span style="margin-left:8px;color:#C0392B">┅ keep at least {m0(keep)}</span></div></div>
-<div class="box"><h4>Where the money goes</h4><table><tr><th></th>{"".join(f'<th class="n">{e(m["label"][:3])}</th>' for m in mos)}<th class="n">Total</th></tr>{"".join(rows)}</table>
-<div class="strip">{strip}</div><div style="font-size:8pt;color:#777;margin-top:4px">{e(biggest_t[1])} are {100 * biggest_t[0] / tot:.0f}% of what goes out.</div></div></div>
-<div class="row2"><div class="box"><h4>Biggest payments coming</h4><table><tr><th>Date</th><th>To</th><th>Type</th><th class="n">AED</th></tr>{big or '<tr><td colspan="4">Nothing going out.</td></tr>'}</table></div>
-<div class="box"><h4>Coming in</h4><table><tr><th>Expected</th><th>From</th><th class="n">AED</th></tr>{cin or '<tr><td colspan="3">Nothing expected in.</td></tr>'}
-<tr class="t"><td colspan="2">Total</td><td class="n g">{m0(f["total_in"])}</td></tr></table>
-<div class="watch" style="background:{"#FDECEA;color:#8E1F16" if f.get("below") else "#E8F6EE;color:#1E8449"}">{watch}</div></div></div>
+    p1 = f"""<div class="pg dk ink-keep"><div class="top"><div><div class="logo">{f"<img src={chr(34)}{logo}{chr(34)}>" if logo else "<b style='color:#C0392B'>INFINIA</b>"}</div>
+<div class="kk">Cash forecast · {e(_period(f))} · prepared {e(stamp)}</div><div class="now">AED {m0(bank["now"])} <small>in the bank today</small></div><div class="sub">{e(stmt)}</div></div>
+{"" if many else f'<div class="tanks">{tanks}</div>'}</div>{f'<div class="tanks wide">{tanks}</div>' if many else ""}
+<div class="tiles">{tiles}</div>
+<div class="pn"><div style="display:flex;justify-content:space-between"><h4>The weeks ahead</h4><div class="sub"><span class="g">■</span> in &nbsp;<span class="r">■</span> out &nbsp;<span style="color:#fff">●</span> bank at the end of each {"week" if step == 7 else "two weeks" if step == 14 else "four weeks"} &nbsp;<span class="r">┅</span> keep at least {short(keep)}</div></div>{weeks_svg(f, H=136 if many else 180)}</div>
+<div class="two"><div class="pn"><h4>Biggest payments coming</h4>{big}</div><div class="pn"><h4>Coming in</h4>{cin}{note}</div></div>
 <div class="ft"><span>Infinia Contracting LLC · Cash forecast · from the app: bank statement, PDC register, Estimation, payroll and Accounts' forecast</span><span>Page 1</span></div></div>"""
     p2 = f"""<div class="pg">{head}<h4 style="margin:10px 0 6px">Every payment and receipt</h4><table><tr><th>Date</th><th>What</th><th>Type</th><th class="n">In (AED)</th><th class="n">Out (AED)</th><th class="n">Balance after</th></tr>
 <tr><td>{dmy(f["today"])}</td><td><b>In the bank now</b></td><td></td><td></td><td></td><td class="n"><b>{m2(bank["now"])}</b></td></tr>{"".join(lines)}</table></div>"""
@@ -166,93 +238,126 @@ def report_pdf(f, logo_path="", stamp=""):
         cv.setStrokeColor(C(RED)); cv.setLineWidth(2.5); cv.line(M, H - 68, W - M, H - 68); cv.setLineWidth(1)
         txt(M, 18, "Infinia Contracting LLC · Cash forecast · from the app: bank statement, PDC register, Estimation, payroll and Accounts' forecast", 7, "#999999")
         txt(W - M, 18, f"Page {pno}", 7, "#999999", right=True)
-    header(1)
-    # KPI band
-    y = H - 140; bw = (W - 2 * M - 30) / 4.2
-    xs = [M, M + bw * 1.2 + 10]
-    for i in range(2, 4):
-        xs.append(xs[-1] + bw + 10)
-    bank = f["bank"]
-    rrect(M, y, bw * 1.2, 62, "#2E2A27")
-    txt(M + 10, y + 46, "IN THE BANK NOW", 7, "#D8CFC8"); txt(M + 10, y + 24, f"AED {m0(bank['now'])}", 17, "#FFFFFF", True)
-    txt(M + 10, y + 10, " · ".join(f"{b['bank']} statement {dmy(b['as_of'])}" for b in bank["banks"]) or "no statement", 7.5, "#D8CFC8")
-    for x, m in zip(xs[1:], f["months"][:3]):
-        bad = m["closing"] < keep
-        rrect(x, y, bw, 62, "#FDECEA" if bad else "#FFFFFF", "#F1B9B2" if bad else "#EEEEEE")
-        txt(x + 10, y + 46, f"END OF {m['label'].upper()}", 7, "#888888"); txt(x + 10, y + 24, m0(m["closing"]), 17, RED if bad else INK, True)
-        txt(x + 10, y + 10, f"+{m0(m['in'])} in", 7.5, GREEN); txt(x + 10 + 70, y + 10, f"-{m0(m['out'])} out", 7.5, RED)
-    # waterfall
-    bx, by, bwid, bh = M, 205, (W - 2 * M - 12) * .58, 180
-    rrect(bx, by, bwid, bh, None, "#EEEEEE"); txt(bx + 10, by + bh - 16, "Month by month", 10.5, INK, True)
-    bars = _bars(f); hi = max([b[3] for b in bars] + [keep]) * 1.08 or 1; lo = min([b[2] for b in bars] + [0])
-    gx, gy, gw, gh = bx + 34, by + 26, bwid - 46, bh - 58
-    Y = lambda v: gy + gh * (v - lo) / ((hi - lo) or 1)
-    for k in range(4):
-        v = lo + (hi - lo) * k / 3
-        cv.setStrokeColor(C("#F0EBE6")); cv.line(gx, Y(v), gx + gw, Y(v)); txt(bx + 6, Y(v) - 3, short(v), 7, "#999999")
-    cv.setStrokeColor(C("#E6B8B1")); cv.setDash(4, 3); cv.setLineWidth(1.5); cv.line(gx, Y(keep), gx + gw, Y(keep)); cv.setDash(); cv.setLineWidth(1)
-    slot = gw / max(1, len(bars)); bwd = min(36, slot * .72)
-    for i, (k, lab, a, b, t_) in enumerate(bars):
-        x = gx + slot * i + (slot - bwd) / 2
-        col = "#2ECC71" if k == "in" else "#E74C3C" if k == "out" else (RED if b < keep else ("#3A3330" if i == 0 else "#5A4E48"))
-        cv.setFillColor(C(col)); cv.roundRect(x, Y(min(a, b)), bwd, max(1.5, Y(max(a, b)) - Y(min(a, b))), 2.5, stroke=0, fill=1)
-        tc = GREEN if k == "in" else RED if (k == "out" or b < keep) else INK
-        txt(x + bwd / 2, (Y(max(a, b)) + 3) if k != "out" else (Y(min(a, b)) - 9), t_, 7, tc, True, center=True)
-        if lab:
-            txt(x + bwd / 2, gy - 12, lab, 7.5, "#666666", center=True)
-    # where the money goes
-    tx, tw = bx + bwid + 12, W - M - (bx + bwid + 12)
-    rrect(tx, by, tw, bh, None, "#EEEEEE"); txt(tx + 10, by + bh - 16, "Where the money goes", 10.5, INK, True)
-    mos = f["months"]; ncol = len(mos) + 1
-    cw = (tw - 20 - 92) / ncol; yy = by + bh - 36
-    rrect(tx + 8, yy - 4, tw - 16, 15, RED, r=2)
-    for j, m in enumerate(mos):
-        txt(tx + 100 + cw * (j + 1), yy, m["label"][:3], 7.5, "#FFFFFF", True, right=True)
-    txt(tx + 100 + cw * ncol, yy, "Total", 7.5, "#FFFFFF", True, right=True)
-    yy -= 15
-    lines_ = [(l, c, [-(m["by"].get(k) or 0) for m in mos]) for k, l, c in TYPES if any(m["by"].get(k) for m in mos)]
-    for l, c, vals in lines_:
-        cv.setFillColor(C(c)); cv.rect(tx + 12, yy - 1, 6, 6, stroke=0, fill=1); txt(tx + 22, yy, l, 7.8)
-        for j, v in enumerate(vals):
-            txt(tx + 100 + cw * (j + 1), yy, m0(v) if v else "-", 7.8, right=True)
-        txt(tx + 100 + cw * ncol, yy, m0(sum(vals)), 7.8, right=True); yy -= 14
-    cv.setStrokeColor(C(INK)); cv.line(tx + 10, yy + 10, tx + tw - 10, yy + 10)
-    txt(tx + 12, yy, "Going out", 8, INK, True)
-    for j, m in enumerate(mos):
-        txt(tx + 100 + cw * (j + 1), yy, m0(m["out"]), 8, RED, True, right=True)
-    txt(tx + 100 + cw * ncol, yy, m0(f["total_out"]), 8, RED, True, right=True); yy -= 14
-    txt(tx + 22, yy, "Coming in", 7.8, GREEN)
-    for j, m in enumerate(mos):
-        txt(tx + 100 + cw * (j + 1), yy, m0(m["in"]) if m["in"] else "-", 7.8, GREEN, right=True)
-    txt(tx + 100 + cw * ncol, yy, m0(f["total_in"]), 7.8, GREEN, right=True)
-    sx, sw = tx + 12, tw - 24; tot = f["total_out"] or 1
-    for k, _, c in TYPES:
-        v = f["by_type"].get(k) or 0
-        if v:
-            w_ = sw * v / tot; cv.setFillColor(C(c)); cv.rect(sx, by + 16, w_, 10, stroke=0, fill=1); sx += w_
-    # biggest + coming in
-    hx, hw, hy, hh = M, (W - 2 * M - 12) / 2, 40, 150
-    for col_i, (title, heads, rows_, foot) in enumerate([
-            ("Biggest payments coming", ["Date", "To", "Type", "AED"],
-             [("past date" if g["late"] else " · ".join(dmy(d)[:5] for d in g["dates"][:3]), g["what"][:44], TYPE_WORD.get(g["type"], ""), m0(g["amount"])) for g in f["biggest"][:5]], None),
-            ("Coming in", ["Expected", "From", "", "AED"], [(dmy(i["date"])[:5], i["what"][:52], "", m0(i["in"])) for i in f["coming"][:5]], True)]):
-        x0 = hx + col_i * (hw + 12)
-        rrect(x0, hy, hw, hh, None, "#EEEEEE"); txt(x0 + 10, hy + hh - 16, title, 10.5, INK, True)
-        yy = hy + hh - 36; rrect(x0 + 8, yy - 4, hw - 16, 15, RED, r=2)
-        cx = [x0 + 12, x0 + 90, x0 + hw - 150, x0 + hw - 12]
-        for j, hd in enumerate(heads):
-            txt(cx[j], yy, hd, 7.5, "#FFFFFF", True, right=(j == 3))
-        yy -= 15
-        for r_ in rows_ or [("", "Nothing", "", "")]:
-            for j, v in enumerate(r_):
-                txt(cx[j], yy, v, 7.8, (GREEN if col_i else RED) if j == 3 else INK, right=(j == 3))
-            yy -= 13
-        if foot:
-            below = f.get("below")
-            msg = (f"Watch: the bank goes below AED {m0(keep)} on {dmy(below['date'])} ({below['what'][:40]})." if below
-                   else f"The bank stays above AED {m0(keep)} - lowest {m0(f['low']['amount'])} on {dmy(f['low']['date'])}.")
-            rrect(x0 + 8, hy + 8, hw - 16, 20, "#FDECEA" if below else "#E8F6EE", r=5)
-            txt(x0 + 14, hy + 15, msg, 7.8, "#8E1F16" if below else GREEN, True)
+    # page 1 - the Tanks, the same page as the screen and the Preview
+    bank = f["bank"]; mos = f["months"]; shown = mos[:6]; many = len(shown) > 3; full = tank_fill(f)
+    BG, PN, MUT = "#1B1816", "#24201E", "#B5A99F"
+    G2, R2 = "#8EEBB3", "#FF9C8F"
+    cv.setFillColor(C(BG)); cv.rect(0, 0, W, H, stroke=0, fill=1)
+    rrect(M, H - 62, 118, 32, "#FFFFFF", r=7)
+    drawn = False
+    if logo_path:
+        try:
+            cv.drawImage(logo_path, M + 8, H - 58, height=24, width=102, preserveAspectRatio=True, anchor="w", mask="auto"); drawn = True
+        except Exception:
+            pass
+    if not drawn:
+        txt(M + 10, H - 51, "INFINIA", 14, RED, True)
+    txt(M, H - 80, f"CASH FORECAST · {_period(f).upper()} · PREPARED {stamp}", 7, MUT)
+    txt(M, H - 110, f"AED {m0(bank['now'])}", 27, "#FFFFFF", True)
+    cv.setFont("Helvetica-Bold", 27); nw = cv.stringWidth(f"AED {m0(bank['now'])}", "Helvetica-Bold", 27)
+    txt(M + nw + 8, H - 110, "in the bank today", 9.5, MUT)
+    txt(M, H - 124, " · ".join(f"{b['bank']} statement {dmy(b['as_of'])}" for b in bank["banks"]) or "no statement uploaded", 7.5, MUT)
+    import math
+    def ring(cx, cy, r, sw, m):
+        c = m["closing"]; fr = max(0, min(1, c / full))
+        cv.setLineWidth(sw); cv.setStrokeColor(C("#332E2B")); cv.circle(cx, cy, r, stroke=1, fill=0)
+        if fr > 0:
+            cv.setStrokeColor(C(tank_colour(c, keep))); cv.setLineCap(1)
+            pth = cv.beginPath(); pth.arc(cx - r, cy - r, cx + r, cy + r, startAng=90, extent=-359.9 * fr); cv.drawPath(pth, stroke=1, fill=0); cv.setLineCap(0)
+        cv.setLineWidth(1)
+        txt(cx, cy + 1, ("-" if c < 0 else "") + short(abs(c)), r * .42, R2 if c < keep else "#FFFFFF", True, center=True)
+        txt(cx, cy - r * .3, tank_word(m, keep), max(5, r * .15), MUT, center=True)
+    def tank_box(x, y, w, h, r, sw, m):
+        rrect(x, y, w, h, PN, r=10)
+        ring(x + w / 2, y + h - 10 - r - sw / 2, r, sw, m)
+        txt(x + w / 2, y + 20, m["label"], 9.5 if not many else 8.5, "#FFFFFF", True, center=True)
+        cv.setFont("Helvetica", 6.8); s1, s2 = f"+{m0(m['in'])}", f" · -{m0(m['out'])}"
+        w1, w2 = cv.stringWidth(s1, "Helvetica", 6.8), cv.stringWidth(s2, "Helvetica", 6.8); x0 = x + w / 2 - (w1 + w2) / 2
+        txt(x0, y + 9, s1, 6.8, G2); txt(x0 + w1, y + 9, s2, 6.8, R2)
+    if not many:
+        bw_, bh_, gap = 112, 130, 8
+        x = W - M - len(shown) * bw_ - (len(shown) - 1) * gap
+        for k, m in enumerate(shown):
+            tank_box(x + k * (bw_ + gap), H - 32 - bh_, bw_, bh_, 38, 9, m)
+        top = H - 32 - bh_ - 10
+    else:
+        gap = 8; bw_ = (W - 2 * M - gap * (len(shown) - 1)) / len(shown); bh_ = 94
+        for k, m in enumerate(shown):
+            tank_box(M + k * (bw_ + gap), H - 136 - bh_, bw_, bh_, 26, 7, m)
+        top = H - 136 - bh_ - 10
+    # four tiles
+    bg = f["biggest"][0] if f["biggest"] else None; below = f.get("below")
+    tiles = [(f"GOING OUT · {len(mos)} MONTHS", m0(f["total_out"]), "#FFFFFF", PN), ("COMING IN", m0(f["total_in"]), G2, PN),
+             ("BIGGEST", (bg["what"].split(" · ")[0][:22] + " " + short(bg["amount"])) if bg else "-", "#FFFFFF", PN),
+             ((f"WATCH · KEEP AT LEAST {short(keep)}", f"{dmy(below['date'])} · below {short(keep)}", R2, "#4A1F1A") if below
+              else (f"SAFE · KEEP AT LEAST {short(keep)}", f"lowest {m0(f['low']['amount'])}", G2, "#163D25"))]
+    tw_ = (W - 2 * M - 3 * 8) / 4; th = 38
+    for k, (l, v, col, fill) in enumerate(tiles):
+        x = M + k * (tw_ + 8); rrect(x, top - th, tw_, th, fill, r=9)
+        txt(x + 10, top - 13, l, 6.3, MUT); txt(x + 10, top - 30, v, 12.5, col, True)
+    top -= th + 10
+    # the weeks ahead
+    step, wk = weeks(f); ph = 128 if many else 150
+    rrect(M, top - ph, W - 2 * M, ph, PN, r=12)
+    txt(M + 12, top - 16, "The weeks ahead", 10, "#FFFFFF", True)
+    txt(W - M - 12, top - 16, f"green in · red out · white: the bank at the end of each {'week' if step == 7 else 'two weeks' if step == 14 else 'four weeks'} · dashed: keep at least {short(keep)}", 6.8, MUT, right=True)
+    if wk:
+        gx0, gx1 = M + 20, W - M - 20; n = len(wk); colW = (gx1 - gx0) / n; bwd = min(16, colW * .3)
+        base = top - ph * .62; barH = ph * .2; balTop = top - 30; balH = ph * .22
+        maxF = max([1] + [max(w_[1], w_[2]) for w_ in wk])
+        bals = [w_[3] for w_ in wk] + [bank["now"], keep]; hi, lo = max(bals), min(bals)
+        Yb = lambda v: balTop - balH * (hi - v) / ((hi - lo) or 1)
+        cv.setStrokeColor(C("#3A3330")); cv.line(gx0, base, gx1, base)
+        cv.setStrokeColor(C(R2)); cv.setDash(3, 3); cv.line(gx0, Yb(keep), gx1, Yb(keep)); cv.setDash(); txt(gx1, Yb(keep) + 3, short(keep), 6.5, R2, right=True)
+        pts = []
+        for k, (a_, cin, cout, bal) in enumerate(wk):
+            cx = gx0 + colW * k + colW / 2
+            if cin:
+                h_ = barH * cin / maxF; cv.setFillColor(C("#2ECC71")); cv.roundRect(cx - bwd - 1, base, bwd, max(1.5, h_), 2, stroke=0, fill=1); txt(cx - 1 - bwd / 2, base + h_ + 3, short(cin), 6, G2, center=True)
+            if cout:
+                h_ = barH * cout / maxF; cv.setFillColor(C("#E74C3C")); cv.roundRect(cx + 1, base - h_, bwd, max(1.5, h_), 2, stroke=0, fill=1)
+                if h_ > 8:
+                    txt(cx + 1 + bwd / 2, base - h_ - 8, short(cout), 6, R2, center=True)
+            if n <= 20 or k % 2 == 0:
+                txt(cx, top - ph + 8, f"{a_.day} {a_:%b}", 6.5, MUT, center=True)
+            pts.append((cx, Yb(bal), bal))
+        cv.setStrokeColor(C("#DDDDDD")); cv.setLineWidth(1.3)
+        for (x1, y1, _), (x2, y2, _) in zip(pts, pts[1:]):
+            cv.line(x1, y1, x2, y2)
+        cv.setLineWidth(1)
+        for k, (x_, y_, v) in enumerate(pts):
+            col = R2 if v < keep else "#FFFFFF"; cv.setFillColor(C(col)); cv.circle(x_, y_, 2.6, stroke=0, fill=1)
+            if n <= 14 or k % 2 == 0:
+                txt(x_, y_ + 5, short(v), 6.3, col, center=True)
+    top -= ph + 10
+    # biggest payments | coming in
+    hw = (W - 2 * M - 10) / 2; hh = top - 30
+    ico = {"cheque": ("C", "#24345A", "#9DB7F0"), "salary": ("S", "#3B2A55", "#C9A8F0"), "sub": ("S", "#4A3A12", "#F5C76A"), "expected": ("F", "#4A1F1A", "#FF9C8F"), "client": ("B", "#163D25", "#8EEBB3")}
+    def lines_box(x, title, rows_, amt_col):
+        rrect(x, 30, hw, hh, PN, r=12); txt(x + 12, top - 16, title, 10, "#FFFFFF", True)
+        yy = top - 34; rowh = 21 if not many else 18
+        for t_, what, sub, amt in rows_:
+            if yy < 30 + 8:
+                break
+            if t_:
+                i_, b_, c_ = ico.get(t_, ("·", "#333333", "#FFFFFF"))
+                rrect(x + 12, yy - 7, 15, 15, b_, r=4); txt(x + 19.5, yy - 3, i_, 7, c_, True, center=True)
+            txt(x + 33, yy + 1, what[:52], 8, "#FFFFFF", True); txt(x + 33, yy - 7, sub[:70], 6.3, MUT)
+            txt(x + hw - 12, yy - 3, amt, 9, amt_col, True, right=True)
+            cv.setStrokeColor(C("#332E2B")); cv.line(x + 12, yy - 11, x + hw - 12, yy - 11); yy -= rowh
+        return yy
+    lines_box(M, "Biggest payments coming", [(g["type"], g["what"] + (f" ({g['n']})" if g["n"] > 1 and g["type"] == "sub" else ""),
+              ("date passed" if g["late"] else " · ".join(dmy(d)[:5] for d in g["dates"][:3])) + (" · forecast" if g["type"] == "expected" else " · cheque" if g["type"] == "cheque" else ""), m0(g["amount"])) for g in f["biggest"][:5]] or [("", "Nothing going out", "", "")], R2)
+    x2 = M + hw + 10
+    yy = lines_box(x2, "Coming in", [("client", i["what"].split(" · ")[0], "expected " + dmy(i["date"])[:5], m0(i["in"])) for i in f["coming"][:3]] or [("", "No client bill waiting for payment", "", "")], G2)
+    last_in = f["coming"][-1]["date"] if f["coming"] else None
+    quiet = (date.fromisoformat(mos[-1]["to"]) - date.fromisoformat(last_in)).days if (last_in and mos) else None
+    bad_ = not f["coming"] or quiet > 30
+    rrect(x2 + 10, 38, hw - 20, 30, "#4A1F1A" if bad_ else "#163D25", r=7)
+    txt(x2 + 18, 56, ("Nothing expected in after " + dmy(last_in) + "." if last_in else "Nothing expected in.") if bad_ else "Client money keeps coming in.", 8, R2 if bad_ else G2, True)
+    txt(x2 + 18, 45, (f"The bank goes below {m0(keep)} on {dmy(below['date'])} - a client payment before then keeps it above." if below else "Payments still go out every month.") if bad_ else f"{len(f['coming'])} payment(s) expected in the period.", 6.8, "#F0D5CF" if bad_ else "#C6EFD5")
+    txt(M, 14, "Infinia Contracting LLC · Cash forecast · from the app: bank statement, PDC register, Estimation, payroll and Accounts' forecast", 6.5, "#7D726B")
+    txt(W - M, 14, "Page 1", 6.5, "#7D726B", right=True)
     cv.showPage()
     # page 2+: every line
     pno = 2; header(pno)
