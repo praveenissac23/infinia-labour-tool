@@ -1552,7 +1552,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #own-dash .od-hero .od-v { font-size: 82px; line-height: 1; }
   #own-dash .od-hero .od-v small { font-size: 38px; opacity: .7; }
   #own-dash .od-spark { position: absolute; left: 0; right: 0; bottom: 0; height: 150px; }
-  #own-dash .od-spark-l { position: absolute; right: 22px; top: 20px; font-size: 11px; color: rgba(255,255,255,.6); }
+  #own-dash .od-spark-l { position: absolute; left: 22px; bottom: 156px; font-size: 11px; color: rgba(255,255,255,.6); }
   #own-dash .od-needs { grid-column: 4 / 7; }
   #own-dash .od-n { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 15px; cursor: pointer; }
   #own-dash .od-n:last-child { border: 0; }
@@ -15378,8 +15378,12 @@ async function ownDash(role) {
   const col = d.collected || [], mx = Math.max(1, ...col.map(c => c.amount));
   const W = 600, H = 150, pts = col.map((c, i) => [col.length > 1 ? i * W / (col.length - 1) : W, H - 10 - (c.amount / mx) * (H - 40)]);
   const path = pts.length ? "M" + pts.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" L") : "";
+  // each month's stretch of the line: green when collections went up on the month before, red when they went down
+  const segs = pts.slice(1).map((p, i) => { const q = pts[i], up = col[i + 1].amount >= col[i].amount;
+    return `<path d="M${q[0].toFixed(1)},${q[1].toFixed(1)} L${p[0].toFixed(1)},${p[1].toFixed(1)}" stroke="${up ? "#5ee0a0" : "#ff6b6b"}" stroke-width="3" stroke-linecap="round" fill="none" vector-effect="non-scaling-stroke"/>`
+      + `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5" fill="${up ? "#5ee0a0" : "#ff6b6b"}"><title>${col[i + 1].month}: AED ${Math.round(col[i + 1].amount).toLocaleString("en-US")}</title></circle>`; }).join("");
   const spark = pts.length > 1 ? `<svg class="od-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="odf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".32"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
-    <path d="${path} L${W},${H} L0,${H}Z" fill="url(#odf)"/><path d="${path}" stroke="#fff" stroke-width="2.5" fill="none" vector-effect="non-scaling-stroke"/></svg><div class="od-spark-l">Collected from clients · last 12 months</div>` : "";
+    <path d="${path} L${W},${H} L0,${H}Z" fill="url(#odf)"/>${segs}</svg><div class="od-spark-l">Collected from clients · 12 months &nbsp;<span class="grn">▲ up</span> &nbsp;<span class="red">▼ down</span> on the month before</div>` : "";
   const needs = d.needs || [];
   const needsHtml = needs.length ? needs.map((n, i) => `<div class="od-n" data-i="${i}"><span>${esc(n.text)}</span><span class="od-pill ${n.lvl}">${n.amount != null ? "AED " + odK(n.amount) : esc(n.cta || "View")}</span></div>`).join("")
     : `<div class="od-ok"><span style="font-size:22px">✓</span> Nothing is waiting for you today.</div>`;
