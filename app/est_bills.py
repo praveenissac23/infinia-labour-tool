@@ -1193,7 +1193,8 @@ def bell_items(db, user):
     out = []
     try:
         bills = db.query(EstBill.id, EstBill.project_id, EstBill.label, EstBill.seq, EstBill.total_due, EstBill.signs,
-                         EstBill.updated_at, EstBill.created_at).filter(EstBill.status == "Awaiting approval").order_by(EstBill.id.desc()).limit(40).all()
+                         EstBill.updated_at, EstBill.created_at, EstBill.status).filter((EstBill.status == "Awaiting approval") |
+                         ((EstBill.status == "Draft") & EstBill.signs.like('%"back_note"%'))).order_by(EstBill.id.desc()).limit(40).all()
         if not bills:
             return out
         projects = {p.id: p for p in db.query(E.EstProject).filter(E.EstProject.id.in_({x.project_id for x in bills})).all()}
@@ -1203,6 +1204,15 @@ def bell_items(db, user):
             except ValueError:
                 continue
             chain = sorted(((v.get("step", 1), k, v) for k, v in sg.items() if isinstance(v, dict) and v.get("name")), key=lambda x: (x[2].get("ord", 99), x[0]))
+            if b.status == "Draft":                       # sent back: the QS who prepared it is told, with the note
+                prep = next((x for x in chain if x[0] == 0 and x[2].get("back_note")), None)
+                if prep and (same_person(user.full_name or "", prep[2]["name"]) or same_person(user.username or "", prep[2]["name"])):
+                    p = projects.get(b.project_id)
+                    out.append({"id": f"ipa-{b.id}-back-{prep[2].get('back_at', '')}", "kind": "bill",
+                                "title": f"Bill {b.label or b.seq} of {p.code if p else ''} sent back by {prep[2].get('back_by', '')}",
+                                "detail": prep[2].get("back_note", ""), "screen": "pgestproj", "target": f"ipa{b.id}",
+                                "pid": b.project_id, "bill": b.id, "when": (prep[2].get("back_at") or "")[:10], "level": "warn"})
+                continue
             nxt = next((x for x in chain if not x[2].get("signed_at")), None)
             if not nxt or nxt[0] == 0:
                 continue
@@ -1213,7 +1223,7 @@ def bell_items(db, user):
             word = {1: "check", 2: "certify", 3: "approve"}.get(nxt[0], "sign")
             when = b.updated_at or b.created_at
             out.append({"id": f"ipa-{b.id}-{nxt[1]}", "kind": "bill", "title": f"Bill {b.label or b.seq} of {p.code if p else ''} waits for you to {word} and sign",
-                        "detail": f"{p.name if p else ''} - AED {b.total_due or 0:,.2f}", "screen": "pgestproj", "target": f"ipa{b.id}",
+                        "detail": f"{p.name if p else ''} - AED {b.total_due or 0:,.2f}", "screen": "pcapprove", "url": f"/portal/approve.html?bill={b.id}",
                         "pid": b.project_id, "bill": b.id, "when": when.date().isoformat() if when else "", "level": "info"})
     except Exception as e:
         print("bills bell:", e)
@@ -2508,6 +2518,10 @@ def format_cells(bid: int, payload: dict = Body(...), db: Session = Depends(get_
 def sign_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
     """The person whose turn it is signs: Prepared by first, then Checked by, then Approved by. Only then does their
     signature print. {"key": signer key, "undo": true to take a signing back}."""
+    return _sign(bid, payload, db, user)
+
+
+def _sign(bid, payload, db, user):
     b = _get(db, EstBill, bid)
     fmt = _get(db, EstBillFormat, b.format_id)
     model = _bill_model(fmt, b)
@@ -2545,6 +2559,8 @@ def sign_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
         raise HTTPException(403, f"Only {x['name']} can sign here (the login's full name must match), or an admin.")
     from datetime import timezone as _tz
     cur.update({"signed_at": E.today().isoformat(), "signed_ts": datetime.now(_tz.utc).isoformat(), "signed_by": user.id, "signed_by_name": user.full_name or user.username})
+    for k_ in ("back_note", "back_by", "back_at"):        # sent back before: signing again clears it
+        cur.pop(k_, None)
     sg[x["key"]] = cur
     for i, y in enumerate(signers):                       # everyone in the chain kept with the bill, in order (for the bell)
         d = dict(sg.get(y["key"]) or {})
@@ -2564,6 +2580,128 @@ def sign_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
     out["next"] = {"name": nxt["name"], "label": nxt["labels"][0], "has_login": bool(_user_for(db, nxt["name"]))} if nxt else None
     out["warn"] = "" if (x["sig"] or x["format_has"]) else f"No signature picture for {x['name']} on file - the name prints without one until {x['name']} uploads it from their own login (Settings > My signature)."
     return out
+
+
+# ---------------------------------------------------------------------------------------------------- approval page
+# The chief accountant checks client bills without Estimation access (10 Nov 2026): QS prepares and signs -> the
+# Chief Accountant checks -> the Contracts Manager approves. Each opens the bill on /portal/approve.html?bill=ID
+# (the PDF, Approve / Send back) from the bell, or from Accounts > Client bills.
+
+def _in_chain(b, user):
+    sg = _signs(b)
+    return any(isinstance(v, dict) and v.get("name") and (same_person(user.full_name or "", v["name"]) or same_person(user.username or "", v["name"]))
+               for v in sg.values())
+
+
+def _may_see(db, b, user):
+    perms = set(E.M.effective_permissions(user))
+    return user.role == "admin" or E.RIGHT in perms or "accounts_bank" in perms or _in_chain(b, user)
+
+
+@router.get("/store/est/ipa/bill/{bid}/approval")
+def bill_approval(bid: int, db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    b = _get(db, EstBill, bid)
+    if not _may_see(db, b, user):
+        raise HTTPException(403, "This bill is not waiting for you.")
+    fmt = _get(db, EstBillFormat, b.format_id)
+    model = _bill_model(fmt, b)
+    signers = [x for x in _signers_out(b, model, _sig_store(db)) if not x.get("ext")]
+    sg = _signs(b)
+    p = db.query(E.EstProject).get(b.project_id)
+    nxt = next((x for x in signers if x["turn"]), None)
+    prep = next((x for x in signers if x["step"] == 0), None)
+    back = (sg.get(prep["key"]) or {}) if prep else {}
+    word = lambda x: {0: "Prepared", 1: "Checked"}.get(x["step"], "Approved")
+    stamps = [{"s": word(x), "by": x["name"], "at": (sg.get(x["key"]) or {}).get("signed_ts") or x["signed_at"]}
+              for x in signers if x["signed_at"]]
+    others = [r.id for r in db.query(EstBill).filter(EstBill.status == "Awaiting approval", EstBill.id != b.id).order_by(EstBill.id).all()
+              if (lambda n: n and (same_person(user.full_name or "", n) or same_person(user.username or "", n)))(_waits(r))]
+    return {"id": b.id, "project": p.code if p else "", "project_name": p.name if p else "", "label": b.label or str(b.seq),
+            "status": b.status or "Draft", "total": b.total_due or 0, "issue_date": b.issue_date.isoformat() if b.issue_date else "",
+            "stamps": stamps, "chain": [{"label": word(x), "name": x["name"], "title": x["title"],
+                                          "signed": bool(x["signed_at"]), "turn": x["turn"]} for x in signers],
+            "next": {"key": nxt["key"], "label": word(nxt), "name": nxt["name"], "step": nxt["step"]} if nxt else None,
+            "can_act": bool(nxt and nxt["step"] > 0 and b.status == "Awaiting approval" and can_sign(user, nxt)),
+            "back": {"note": back.get("back_note", ""), "by": back.get("back_by", ""), "at": back.get("back_at", "")} if back.get("back_note") else None,
+            "me": user.full_name or user.username, "others": others}
+
+
+@router.post("/store/est/ipa/bill/{bid}/approval")
+def bill_approval_act(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    """{"ok": true} signs the step that is this person's turn; {"back": true, "note": "..."} sends the bill back to the
+    QS who prepared it - every signature comes off and it is a draft again, with the note."""
+    b = _get(db, EstBill, bid)
+    if not _may_see(db, b, user):
+        raise HTTPException(403, "This bill is not waiting for you.")
+    fmt = _get(db, EstBillFormat, b.format_id)
+    model = _bill_model(fmt, b)
+    signers = [x for x in _signers_out(b, model, _sig_store(db)) if not x.get("ext")]
+    nxt = next((x for x in signers if x["turn"]), None)
+    if b.status != "Awaiting approval" or not nxt or nxt["step"] == 0:
+        raise HTTPException(400, f"Nothing to approve - the bill is {b.status or 'Draft'}.")
+    if not can_sign(user, nxt):
+        raise HTTPException(403, f"Waiting on {nxt['name']} ({nxt['labels'][0].replace('Signature / ', '')}) - not your step.")
+    if payload.get("back"):
+        note = " ".join(str(payload.get("note") or "").split())[:300]
+        if not note:
+            raise HTTPException(400, "Say why it goes back (one line).")
+        sg = _signs(b)
+        for x in signers:
+            d = dict(sg.get(x["key"]) or {})
+            d.setdefault("name", x["name"]); d.setdefault("title", x["title"]); d["step"] = x["step"]
+            for k_ in ("signed_at", "signed_ts", "signed_by", "signed_by_name"):
+                d.pop(k_, None)
+            if x["step"] == 0:
+                d.update(back_note=note, back_by=user.full_name or user.username, back_at=datetime.now().isoformat(timespec="minutes"))
+            sg[x["key"]] = d
+        b.signs = json.dumps(sg)
+        b.status = "Draft"
+        b.updated_by = user.id
+        db.commit()
+        E.M.log_action(db, user.id, "est_bill_back", f"bill #{bid} {b.label}: sent back by {user.full_name or user.username} - {note}")
+        return {"ok": True, "back": True}
+    out = _sign(bid, {"key": nxt["key"]}, db, user)
+    return {"ok": True, "status": out.get("status"), "next": out.get("next")}
+
+
+@router.get("/store/est/ipa/to-check")
+def bills_to_check(db: Session = Depends(get_db), user: models.User = Depends(E.M.require_any_screen("accounts_bank", E.RIGHT))):
+    """Accounts > Client bills: every bill on its way through QS -> Chief Accountant -> Contracts Manager, and the
+    ones approved or sent back in the last 30 days."""
+    from datetime import timedelta
+    since = datetime.now() - timedelta(days=30)
+    bills = db.query(EstBill).filter((EstBill.status == "Awaiting approval") | (EstBill.updated_at >= since)).order_by(EstBill.updated_at.desc()).limit(200).all()
+    projects = {p.id: p for p in db.query(E.EstProject).filter(E.EstProject.id.in_({x.project_id for x in bills} or {0})).all()}
+    out = []
+    for b in bills:
+        sg = _signs(b)
+        rows = [v for v in sg.values() if isinstance(v, dict) and v.get("name") and "step" in v and not _COMPANY.search(v["name"])]
+        if any("ord" in v for v in rows):                 # the chain as last signed (old picks left over are not in it)
+            rows = [v for v in rows if "ord" in v]
+        rows.sort(key=lambda v: (v.get("ord", 99), v.get("step", 1)))
+        prep = next((v for v in rows if v.get("step") == 0), {})
+        if b.status == "Awaiting approval":
+            state = "waiting"
+        elif b.status == "Draft" and prep.get("back_note"):
+            state = "back"
+        elif b.status in ("Approved", "Submitted", "Certified", "Paid") and any(v.get("signed_at") for v in rows if v.get("step", 0) > 0):
+            state = "approved"
+        else:
+            continue
+        nxt = next((v for v in rows if not v.get("signed_at")), None) if state == "waiting" else None
+        last = max((v for v in rows if v.get("signed_ts") or v.get("signed_at")), key=lambda v: v.get("signed_ts") or v.get("signed_at") or "", default=None)
+        p = projects.get(b.project_id)
+        waits = (nxt or {}).get("name", "")
+        since_ts = (last or {}).get("signed_ts") or (last or {}).get("signed_at") or ""
+        out.append({"id": b.id, "project": p.code if p else "", "project_name": p.name if p else "", "label": b.label or str(b.seq),
+                    "total": b.total_due or 0, "status": b.status, "state": state, "prepared_by": prep.get("name", ""),
+                    "prepared_at": prep.get("signed_ts") or prep.get("signed_at") or "",
+                    "waiting_on": waits, "waiting_title": (nxt or {}).get("title", ""), "since": since_ts,
+                    "mine": bool(waits and (same_person(user.full_name or "", waits) or same_person(user.username or "", waits))),
+                    "steps": [{"name": v.get("name"), "title": v.get("title", ""), "signed": bool(v.get("signed_at")), "at": v.get("signed_ts") or v.get("signed_at") or ""}
+                              for v in rows],
+                    "back": {"note": prep.get("back_note"), "by": prep.get("back_by"), "at": prep.get("back_at")} if state == "back" else None})
+    return {"rows": out, "me": user.full_name or user.username}
 
 
 # ---------------------------------------------------------------------------------------------------- signatures
@@ -2726,9 +2864,9 @@ def export_format(fid: int, token: str, format: str = "preview", embed: int = 0,
 @router.get("/export/est/ipa/{bid}")
 def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, db: Session = Depends(get_db)):
     u = auth.get_download_user_from_token(token, db)
-    if E.RIGHT not in set(E.M.effective_permissions(u)) and u.role != "admin":
-        raise HTTPException(403, "Estimation only.")
     b = _get(db, EstBill, bid)
+    if not _may_see(db, b, u):                       # Estimation, Accounts, or someone in the bill's chain of approval
+        raise HTTPException(403, "Estimation only.")
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
     model = _bill_model(fmt, inputs)

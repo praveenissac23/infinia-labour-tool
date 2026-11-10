@@ -720,6 +720,16 @@
     ]
    },
    {
+    "id": "accounts.clientbills",
+    "label": "Client bills",
+    "right": [
+     "accounts_bank"
+    ],
+    "grant": [
+     "accounts_bank"
+    ]
+   },
+   {
     "id": "accounts.zoho",
     "label": "Send to Zoho",
     "right": [

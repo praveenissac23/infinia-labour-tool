@@ -110,6 +110,8 @@ PAGES = {
         tab("bank", "bank", "Bank", "accounts_bank"),
         # Subcontractor payment certificates sent by Estimation: print, mark paid.
         tab("subpay", "pgsubpay", "Subcontractor payments", "accounts_bank"),
+        # Client bills on their way QS -> Chief Accountant -> Contracts Manager: open one to check and approve (10 Nov 2026).
+        tab("clientbills", "clientbills", "Client bills", "accounts_bank", go="cbLoad()"),
         tab("zoho", "zoho", "Send to Zoho", "accounts_zoho"),
         # Website and app logins: admin, the PRO and the chief accountant.
         tab("credentials", "credentials", "Credentials", "accounts_credentials"),

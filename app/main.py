@@ -228,6 +228,7 @@ def seed_on_startup():
         _grant_camp(db)
         _grant_ppe(db)
         _grant_diesel(db)
+        _grant_client_bills(db)
         _move_monthly_tick(db)
         _grant_admin_forms(db)
         _grant_docs_office(db)
@@ -865,6 +866,26 @@ def _grant_diesel(db):
             keys.append("store.store.diesel")
         setattr(obj, field, ",".join(keys))
     db.add(models.Setting(key="diesel_sub_granted", value="1"))
+    db.commit()
+
+
+def _grant_client_bills(db):
+    """Client bills now go QS -> Chief Accountant -> Contracts Manager (10 Nov 2026). The chief accountant's role
+    is told of bills waiting for him, and whoever has Accounts > Subcontractor payments gets Accounts > Client
+    bills beside it. Once."""
+    if db.query(models.Setting).filter(models.Setting.key == "client_bills_granted").first():
+        return
+    for r in db.query(models.AccessRole).all():
+        if (r.name or "").strip().lower() == "chief accountant" and r.notif is not None:
+            have = [x for x in (r.notif or "").split(",") if x]
+            if "bills" not in have:
+                r.notif = ",".join(have + ["bills"])
+    for obj in list(db.query(models.AccessRole).all()) + list(db.query(models.User).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        if "accounts.subpay" in keys and "accounts.clientbills" not in keys:
+            setattr(obj, field, ",".join(keys + ["accounts.clientbills"]))
+    db.add(models.Setting(key="client_bills_granted", value="1"))
     db.commit()
 
 
@@ -15023,7 +15044,7 @@ NOTIF_GROUPS = [
     ("zoho", "Zoho - lines not in Zoho after 3 days", ("zoho",), ("accounts_zoho",)),
     ("trello", "Trello - cards you are on, @mentions", ("board",), ("estimation_boards",)),
     ("subpc", "Subcontractor PCs waiting for you", ("subpc",), ("estimation_projects", "accounts_bank")),
-    ("bills", "Client bills (IPA) waiting for you to sign", ("bill",), ("estimation_projects",)),
+    ("bills", "Client bills (IPA) waiting for you to sign", ("bill",), ("estimation_projects", "accounts_bank")),
     ("watch", "Activity monitor - risky changes by staff", ("watch",), ("__admin__",)),
     ("chat", "Chat - private messages and @mentions", ("chat",), ("__any__",)),
 ]
@@ -15318,7 +15339,7 @@ def _work_out_notifications(db, user):
             out = _kb.bell_items(db, user) + out
         except Exception as _e:
             print("boards bell:", _e)
-    if "estimation_projects" in allowed:
+    if True:                                # a bill reaches whoever is named next in its chain - Estimation access or not
         try:
             import est_bills as _eb
             out = _eb.bell_items(db, user) + out

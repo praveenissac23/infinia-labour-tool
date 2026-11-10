@@ -799,6 +799,17 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .af-btns{display:flex;gap:6px;margin-top:auto;flex-wrap:wrap} .af-btns .btn{height:32px;padding:0 12px}
   @media (max-width:560px){ #screen-adminforms .af-grid{grid-template-columns:1fr} .af-thumb{width:96px;height:136px} }
   /* PPE register */
+  #screen-clientbills .cb-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}
+  #screen-clientbills table.cb-t{width:100%;border-collapse:collapse;font-size:13px}
+  #screen-clientbills .cb-t th{font-size:11px;color:#8A8079;text-transform:uppercase;text-align:left;padding:8px 10px;border-bottom:1px solid #F1ECE6;background:#FCFAF7;white-space:nowrap}
+  #screen-clientbills .cb-t td{padding:9px 10px;border-bottom:1px solid #F6F2EE;vertical-align:middle}
+  #screen-clientbills .cb-t .n{text-align:right;white-space:nowrap}
+  #screen-clientbills .cb-t td.l,#screen-clientbills .cb-t th.l{text-align:left !important}
+  #screen-clientbills .cb-chain{display:flex;flex-wrap:wrap;gap:4px}
+  #screen-clientbills .cb-chain span{font-size:11px;border-radius:9px;padding:2px 8px;white-space:nowrap;background:#F1EEEA;color:#6b625a}
+  #screen-clientbills .cb-chain span.ok{background:#E8F6EE;color:#1E8449} #screen-clientbills .cb-chain span.now{background:#FFF1D6;color:#7A5200;font-weight:700}
+  #screen-clientbills tr.mine td{background:#FFFBF3}
+  #screen-clientbills .cb-back{color:#B03A2E;font-size:12px}
   #screen-diesel .ds-new{border:1px solid #ECE6DF;border-radius:12px;background:#FCFAF7;padding:12px 14px;margin:12px 0}
   #screen-diesel .ds-new .ds-h{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
   #screen-diesel .ds-new .ds-h b{font-size:14px}
@@ -3964,6 +3975,14 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="grid-wrap" style="max-height:none;"><table class="pc-table dt-table dt2" data-nomove><thead><tr><th class="l" style="width:104px;">No.</th><th class="l" style="width:100px;">Date</th><th class="l">Documents</th><th class="l dt2-by" style="width:96px;">Sent by</th><th class="l" style="width:160px;">Office</th><th style="width:160px;"></th></tr></thead><tbody id="dt-body"><tr><td colspan="6" class="sub" style="padding:14px;">Loading...</td></tr></tbody></table></div>
           </div>
         </div>
+        <div class="screen" id="screen-clientbills">
+          <div class="card">
+            <div class="pc-head"><div class="pc-title"><h2 style="margin:0;">Client bills <span class="sub" style="display:inline;font-weight:400;font-size:12.5px;">QS prepares &rarr; Chief Accountant checks &rarr; Contracts Manager approves</span></h2></div></div>
+            <div class="status-msg" id="cb-status"></div>
+            <div class="cb-bar"><div class="seg-chips" id="cb-chips"></div><span class="sub" style="display:inline;margin-left:auto;" id="cb-count"></span></div>
+            <div class="grid-wrap" style="max-height:none;"><div id="cb-list"><div class="sub" style="padding:14px;">Loading...</div></div></div>
+          </div>
+        </div>
         <div class="screen" id="screen-diesel">
           <div class="card">
             <div class="pc-head">
@@ -5846,6 +5865,7 @@ function switchScreen(name) {
   if (name === "adminforms") formsOpen();
   if (name === "docsoffice") dtLoad();
   if (name === "diesel") dsLoad();
+  if (name === "clientbills") cbLoad();
   if (name === "pdc") pdcOpen();
   if (name === "seccheque") scOpen();
   if (name === "invoices") setTimeout(() => invOpen(), 0);
@@ -20727,6 +20747,36 @@ async function dtExport(id, kind) {
   await refreshDownloadToken();
   window.open(`${API}/export/store/docs/${id}?format=${kind}&token=${encodeURIComponent(cachedDownloadToken || "")}`, "_blank");
 }
+// ---- Accounts > Client bills ---------------------------------------------------------
+// Bills on their way QS -> Chief Accountant -> Contracts Manager; each opens on the approval page (PDF, Approve / Send back).
+let CB = null, CB_F = "";
+async function cbLoad() {
+  try { CB = await apiCall("/store/est/ipa/to-check"); } catch (e) { showStatus("cb-status", "err", errText(e)); return; }
+  if (!CB_F) CB_F = CB.rows.some(r => r.mine) ? "mine" : "waiting";
+  cbDraw();
+}
+function cbDays(ts) { if (!ts) return ""; const d = Math.floor((Date.now() - new Date(ts.length > 10 ? ts : ts + "T00:00").getTime()) / 864e5); return d <= 0 ? "today" : d === 1 ? "1 day" : d + " days"; }
+function cbD(ts) { if (!ts) return ""; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ts); return m ? `${m[3]}/${m[2]}/${m[1]}` : ts; }
+function cbDraw() {
+  const R = CB.rows, n = f => R.filter(f).length;
+  const F = { mine: r => r.mine, waiting: r => r.state === "waiting", back: r => r.state === "back", approved: r => r.state === "approved" };
+  const L = [["mine", "Waiting for me"], ["waiting", "All waiting"], ["back", "Sent back"], ["approved", "Approved - last 30 days"]];
+  document.getElementById("cb-chips").innerHTML = L.map(([k, l]) => `<button type="button" class="seg-chip${CB_F === k ? " on" : ""}" onclick="CB_F='${k}';cbDraw()">${l} <span>${n(F[k])}</span></button>`).join("");
+  const rows = R.filter(F[CB_F] || (() => true));
+  document.getElementById("cb-count").textContent = `${rows.length} bill${rows.length === 1 ? "" : "s"}`;
+  document.getElementById("cb-list").innerHTML = rows.length ? `<table class="cb-t"><thead><tr><th class="l">Project</th><th class="l">Bill</th><th class="n">Amount (AED)</th><th>Prepared by</th><th>Chain</th><th>${CB_F === "approved" ? "Approved" : CB_F === "back" ? "Sent back" : "Waiting on"}</th><th></th></tr></thead><tbody>${rows.map(r => {
+      const nowAt = r.steps.findIndex(x => !x.signed);
+      const chain = r.steps.map((x, i) => `<span class="${x.signed ? "ok" : (i === nowAt && r.state === "waiting" ? "now" : "")}" title="${escapeAttr(x.title || "")}">${x.signed ? "&#10003; " : ""}${escapeHtml(x.name)}</span>`).join("");
+      const col = r.state === "waiting" ? `<b>${escapeHtml(r.waiting_on)}</b><div class="sub">${escapeHtml(r.waiting_title || "")}${r.since ? " &middot; " + cbDays(r.since) : ""}</div>`
+        : r.state === "back" ? `<div class="cb-back">by ${escapeHtml(r.back.by || "")} &middot; ${cbD(r.back.at)}</div><div class="sub">${escapeHtml(r.back.note || "")}</div>`
+        : `${cbD(r.since)}`;
+      return `<tr class="${r.mine ? "mine" : ""}"><td class="l"><b>${escapeHtml(r.project)}</b><div class="sub">${escapeHtml(r.project_name || "")}</div></td><td class="l">IPA ${escapeHtml(r.label)}</td>
+        <td class="n"><b>${Number(r.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></td>
+        <td>${escapeHtml(r.prepared_by)}<div class="sub">${cbD(r.prepared_at)}</div></td><td><div class="cb-chain">${chain}</div></td><td>${col}</td>
+        <td class="n">${r.mine ? `<button type="button" class="btn btn-primary btn-sm" onclick="cbOpen(${r.id})">Check &amp; approve</button>` : `<button type="button" class="btn btn-gray btn-sm" onclick="cbOpen(${r.id})">Open</button>`}</td></tr>`; }).join("")}</tbody></table>`
+    : `<div class="sub" style="padding:14px;">${CB_F === "mine" ? "Nothing waiting for you." : "No bills here."}</div>`;
+}
+function cbOpen(id) { location.href = `/portal/approve.html?bill=${id}`; }
 // ---- Store > Diesel ------------------------------------------------------------
 // In and used, site by site, with the time of each fill. Kept in litres; typed and read in the unit chosen.
 let DS = null, DS_KIND = "use", DS_EDIT = null, DS_DIRECT = false;

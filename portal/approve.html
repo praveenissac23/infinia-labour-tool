@@ -66,6 +66,9 @@ textarea{height:80px;resize:vertical}
   try { TOKEN = sessionStorage.getItem("infinia_token") || localStorage.getItem("infinia_keep"); } catch (e) {}
   const q = new URLSearchParams(location.search);
   let ids = (q.get("pc") || "").split(",").map(x => parseInt(x, 10)).filter(x => x > 0);
+  // ?bill=ID: a client bill (IPA) - QS prepares, the Chief Accountant checks, the Contracts Manager approves (10 Nov 2026)
+  const BILL = (q.get("bill") || "").split(",").map(x => parseInt(x, 10)).filter(x => x > 0);
+  if (BILL.length) ids = BILL;
   let idx = 0, done = {}, D = null;
   $("#t-close").onclick = () => { if (history.length > 1) history.back(); else location.href = "/"; };
 
@@ -110,6 +113,7 @@ textarea{height:80px;resize:vertical}
     api("/auth/renew", { method: "POST" }).then(r => { if (r && r.access_token) { TOKEN = r.access_token; try { sessionStorage.setItem("infinia_token", TOKEN); localStorage.setItem("infinia_keep", TOKEN); } catch (e) {} } }).catch(() => {});
   }
   async function show() {
+    if (BILL.length) return showBill();
     if (!ids.length) { $("#app").innerHTML = `<div class="msg">No certificate in this link.</div>`; return; }
     if (!TOKEN) return login();
     const id = ids[idx];
@@ -207,6 +211,91 @@ textarea{height:80px;resize:vertical}
       ${nextI >= 0 ? `<button class="btn ok" id="d-next">Next certificate &rarr;</button><div style="color:#888;font-size:12.5px;margin-top:8px">${left.length} more waiting</div>` : `<button class="btn ok" id="d-home">Done</button>`}</div>`;
     if ($("#d-next")) $("#d-next").onclick = () => { idx = nextI; show(); };
     if ($("#d-home")) $("#d-home").onclick = () => { location.href = "/"; };
+    $("#t-pdf").classList.add("hide");
+  }
+
+  // ---- client bills -------------------------------------------------------------------------------
+  async function showBill() {
+    if (!TOKEN) return login();
+    const id = ids[idx];
+    $("#app").innerHTML = `<div class="msg">Opening the bill...</div>`;
+    try { D = await api(`/store/est/ipa/bill/${id}/approval`); }
+    catch (e) { if (e.signin) return login("Your sign-in has run out - sign in again."); $("#app").innerHTML = `<div class="msg">${esc(e.message)}</div>`; return; }
+    renewKept();
+    (D.others || []).forEach(o => { if (!ids.includes(o)) ids.push(o); });
+    const n = ids.length, word = D.next && D.next.step === 1 ? "Checked" : "Approve";
+    $("#t-title").innerHTML = `Client bill <small>&middot; ${idx + 1} of ${n}</small>`;
+    const st = done[id] ? `<div class="state done">${esc(done[id])}</div>` : D.can_act ? "" :
+      D.status === "Awaiting approval" && D.next ? `<div class="state wait">Waiting on ${esc(D.next.name)} (${esc(D.next.label)}) - not your step.</div>` :
+      D.back ? `<div class="state bad">Sent back by ${esc(D.back.by)} - ${esc(D.back.note)}</div>` : `<div class="state done">Now: ${esc(D.status)}.</div>`;
+    const chain = D.chain.map(x => `<span class="${x.signed ? "" : "back"}" style="${x.signed ? "" : x.turn ? "border-color:#B9770E;color:#7A5200" : "border-color:#ccc;color:#888"}">${x.signed ? "&#10003; " : x.turn ? "&#9203; " : ""}${esc(x.label)} &middot; ${esc(x.name)}${(D.stamps.find(s => s.by === x.name && x.signed) || {}).at ? `<small>${esc(when((D.stamps.find(s => s.by === x.name) || {}).at))}</small>` : ""}</span>`).join("");
+    $("#app").innerHTML = `<div class="info"><div class="card"><h1>${esc(D.project)} &middot; Interim bill ${esc(D.label)}</h1>
+      <div class="m">${esc(D.project_name || "")}${D.issue_date ? " &middot; " + esc(when(D.issue_date)) : ""}</div>
+      <div class="amt">AED ${money(D.total)}</div><div class="stamps">${chain}</div>${st}</div></div>
+      <div class="pages" id="pages"><div class="msg">Loading the PDF...</div></div>
+      ${D.can_act && !done[id] ? `<div class="bar"><div class="in"><div class="s"><span><b>${esc(D.project)} &middot; IPA ${esc(D.label)}</b> &middot; ${esc(D.next.label)}</span><b>AED ${money(D.total)}</b></div>
+        <div class="row2"><button class="btn no" id="b-no">&#8630; Send back</button><button class="btn ok" id="b-ok">&#10003; ${word === "Checked" ? "Checked - approve" : "Approve"}</button></div></div></div>` :
+        (idx + 1 < n ? `<div class="bar"><div class="in"><button class="btn ok" id="b-next">Next bill &rarr;</button></div></div>` : "")}`;
+    if ($("#b-ok")) $("#b-ok").onclick = billOk;
+    if ($("#b-no")) $("#b-no").onclick = billBack;
+    if ($("#b-next")) $("#b-next").onclick = () => { idx++; showBill(); };
+    billPdf(id);
+  }
+  async function billPdf(id) {
+    const box = $("#pages");
+    try {
+      const t = await api("/auth/download-token", { method: "POST" });
+      const url = `/export/est/ipa/${id}?token=${encodeURIComponent(t.token || t.download_token)}&format=pdf`;
+      const a = $("#t-pdf"); a.href = url; a.classList.remove("hide");
+      const L = window.pdfjsLib; L.GlobalWorkerOptions.workerSrc = "/portal/vendor/pdf.worker-3.11.174.min.js";
+      const doc = await L.getDocument({ url, isEvalSupported: false }).promise;
+      box.innerHTML = "";
+      const dpr = Math.min(window.devicePixelRatio || 1, 2) * 1.6;
+      for (let i = 1; i <= doc.numPages; i++) {
+        const pg = await doc.getPage(i), w = box.clientWidth || innerWidth - 16, v1 = pg.getViewport({ scale: 1 });
+        const vp = pg.getViewport({ scale: Math.min(w, 900) / v1.width * dpr }), c = document.createElement("canvas");
+        c.width = Math.floor(vp.width); c.height = Math.floor(vp.height); box.appendChild(c);
+        await pg.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+      }
+    } catch (e) { box.innerHTML = `<div class="msg">The PDF could not be shown here - tap <b>PDF</b> at the top to open it.</div>`; }
+  }
+  function billOk() {
+    const s = sheet(`<h2>${D.next.step === 1 ? "Checked" : "Approve"} - ${esc(D.project)} IPA ${esc(D.label)}?</h2>
+      <div style="color:#666;font-size:13px">AED ${money(D.total)} &middot; signed as ${esc(D.next.label)} by ${esc(D.me)} - your signature goes on the bill with the date.</div>
+      <button class="btn ok" id="c-go" style="margin-top:14px">Confirm</button><button class="btn no" id="c-x">Cancel</button>`);
+    s.querySelector("#c-x").onclick = () => s.remove();
+    s.querySelector("#c-go").onclick = async e => {
+      e.target.disabled = true;
+      try { const r = await api(`/store/est/ipa/bill/${D.id}/approval`, { method: "POST", body: JSON.stringify({ ok: true }) }); s.remove(); billDone(true, r.next); }
+      catch (x) { if (x.signin) return login(); e.target.disabled = false; alertIn(s, x.message); }
+    };
+  }
+  function billBack() {
+    const s = sheet(`<h2>Send back - ${esc(D.project)} IPA ${esc(D.label)}</h2>
+      <div style="color:#666;font-size:13px">It goes back to the QS as a draft; every signature comes off and it starts again.</div>
+      <div class="chips">${["Check the quantities", "Check the previous payments", "Check the retention / advance", "Talk to me first"].map(x => `<span>${esc(x)}</span>`).join("")}</div>
+      <textarea id="r-note" placeholder="Why it goes back (one line)"></textarea>
+      <button class="btn ok" id="r-go" style="margin-top:14px;background:#C0392B">Send back to the QS</button><button class="btn no" id="r-x">Cancel</button>`);
+    s.querySelectorAll(".chips span").forEach(c => c.onclick = () => { const t = s.querySelector("#r-note"); t.value = t.value ? t.value + " - " + c.textContent : c.textContent; });
+    s.querySelector("#r-x").onclick = () => s.remove();
+    s.querySelector("#r-go").onclick = async e => {
+      const note = s.querySelector("#r-note").value.trim();
+      if (!note) { alertIn(s, "Say why it goes back (one line)."); return; }
+      e.target.disabled = true;
+      try { await api(`/store/est/ipa/bill/${D.id}/approval`, { method: "POST", body: JSON.stringify({ back: true, note }) }); s.remove(); billDone(false); }
+      catch (x) { if (x.signin) return login(); e.target.disabled = false; alertIn(s, x.message); }
+    };
+  }
+  function billDone(ok, nxt) {
+    done[D.id] = ok ? "Done - signed by you." : "Sent back to the QS.";
+    const left = ids.filter((x, i) => i !== idx && !done[x]), nextI = ids.findIndex((x, i) => i > idx && !done[x]);
+    window.scrollTo(0, 0);
+    $("#app").innerHTML = `<div class="donebox"><div class="c ${ok ? "" : "r"}">${ok ? "&#10003;" : "&#8630;"}</div>
+      <h2 style="margin:0">${ok ? (D.next.step === 1 ? "Checked" : "Approved") : "Sent back"}</h2>
+      <div style="color:#666;margin:6px 0 18px">${esc(D.project)} IPA ${esc(D.label)} &middot; AED ${money(D.total)}<br>${ok ? (nxt ? esc(nxt.name) + " (" + esc(nxt.label.replace("Signature / ", "")) + ") has been told." : "The bill is approved - ready to submit to the client.") : "It is back with the QS, with your note."}</div>
+      ${nextI >= 0 ? `<button class="btn ok" id="d-next">Next bill &rarr;</button><div style="color:#888;font-size:12.5px;margin-top:8px">${left.length} more waiting</div>` : `<button class="btn ok" id="d-home">Done</button>`}</div>`;
+    if ($("#d-next")) $("#d-next").onclick = () => { idx = nextI; showBill(); };
+    if ($("#d-home")) $("#d-home").onclick = () => { if (history.length > 1) history.back(); else location.href = "/"; };
     $("#t-pdf").classList.add("hide");
   }
 
