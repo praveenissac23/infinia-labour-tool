@@ -5036,6 +5036,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <label style="font-size:12px; color:#666; cursor:pointer;">
               <input type="checkbox" onchange="togglePassword('pw-current', this); togglePassword('pw-new', this)" style="width:auto; margin-right:5px;"> Show passwords</label>
           </div>
+          <div class="card" id="ctypes-card" style="display:none;">
+            <h2>Contract types</h2>
+            <p class="sub">The list for <b>Type of contract</b> on every project (Estimation &gt; Projects &gt; Project details). One per line. "Other" is always offered, with a box to type in. A project keeps its type even if it is taken off this list.</p>
+            <textarea id="ct-list" rows="9" style="width:100%;max-width:420px;font-size:14px"></textarea>
+            <div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="btn btn-primary" onclick="ctSave()">Save</button><button type="button" class="btn btn-gray" onclick="ctReset()">Standard list</button></div>
+            <div class="status-msg" id="ct-status"></div>
+          </div>
           <div class="card md-list-card" id="companies-card" style="display:none;">
             <div class="md-list-head">
               <div><h2>Companies <span class="md-count" id="co-count"></span></h2>
@@ -14088,6 +14095,22 @@ function lpoLinkTicked() {
   };
 }
 
+// Settings > Contract types: the list for a project's Type of contract (admin).
+let CT_STD = [];
+async function ctLoad() {
+  const card = document.getElementById("ctypes-card"); if (!card) return;
+  if (CURRENT_ROLE !== "admin") { card.style.display = "none"; return; }
+  card.style.display = "";
+  try { const r = await apiCall("/store/est/contract-types"); CT_STD = r.standard; document.getElementById("ct-list").value = r.types.join("\n"); }
+  catch (e) { showStatus("ct-status", "err", errText(e)); }
+}
+function ctReset() { document.getElementById("ct-list").value = CT_STD.join("\n"); }
+async function ctSave() {
+  try { const r = await apiCall("/store/est/contract-types", { method: "PUT", body: JSON.stringify({ types: document.getElementById("ct-list").value }) });
+    document.getElementById("ct-list").value = r.types.join("\n"); showStatus("ct-status", "ok", `Saved - ${r.types.length} contract types.`); }
+  catch (e) { showStatus("ct-status", "err", errText(e)); }
+}
+
 // ---- LPO Register: the purchase register asked any way round -------
 let lprCatalog = null;
 let lprMeasures = ["orders", "sub_total", "vat", "total"];
@@ -15542,6 +15565,7 @@ function applySettingsCards() {
   const co = hasRight("settings_company");
   show("signature-card", co); show("company-card", co);
   if (co) { loadCompanySettings(); refreshSignatureState(); }
+  if (typeof ctLoad === "function") ctLoad();
 }
 
 // ---- The owner's dashboard (admin) ---------------------------------------

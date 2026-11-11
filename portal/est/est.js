@@ -100,6 +100,7 @@ $("#lg-p").onkeydown = e => { if (e.key === "Enter") doLogin(); };
 // ---------- modal: a form built from a list of fields ----------
 // field: {k, label, type: text|money|num|pct|date|select|combo|area|check, options, value, tip, full, hint, quick}
 function fieldHtml(f) {
+  if (f.type === "html") return f.html;              // a block of its own (the area statement), read by its form
   const v = f.value ?? "";
   const lab = `<label for="f-${f.k}">${esc(f.label)}${f.tip ? " " + tip(f.tip) : ""}</label>`;
   let inp;
@@ -137,6 +138,7 @@ function setField(k, v) {
 function readForm(fields) {
   const out = {};
   for (const f of fields) {
+    if (f.type === "html") { if (f.read) Object.assign(out, f.read()); continue; }
     const el = $("#f-" + f.k); if (!el) continue;
     if (f.type === "check") out[f.k] = el.checked;
     else if (["money", "num", "pct"].includes(f.type)) out[f.k] = el.value.replace(/,/g, "").trim();
@@ -440,12 +442,13 @@ async function loadDash() {
         ${kpi("Invoices at site", k.at_site, k.site_delays ? k.site_delays + " late back" : "none late", k.site_delays ? "red click" : "click", 'data-go="subs.inv"')}
         ${kpi("PCs being prepared", k.preparing, k.pc_delays ? k.pc_delays + " past due date" : "none late", k.pc_delays ? "red click" : "click", 'data-go="subs.inv"')}
       </div></div>
-    <div class="card"><h3>Projects</h3>
-      ${rows.length ? `<div class="tw"><table class="t"><thead><tr><th>Project</th><th>Client</th><th>Status</th><th class="r">Contract</th><th class="r">Certified</th><th>Progress</th><th class="r">Received</th><th class="r">Subcontracts</th><th class="r">Sub to pay</th>${ST.meta.me.admin ? `<th class="r">Margin</th>` : ""}</tr></thead><tbody>
-      ${rows.map(r => `<tr class="rowc" data-pid="${r.id}" data-sec="home.dash"><td class="nowrap"><b>${esc(r.code)}</b></td><td>${esc(r.client)}</td><td>${st(r.status)}</td>
+    <div class="card"><h3>Projects<span class="pfilt"><select id="pf-type" title="Type of contract"><option value="">All contract types</option>${[...new Set(rows.map(r => r.contract_type).filter(Boolean))].sort().map(t => `<option ${ST.pf && ST.pf.type === t ? "selected" : ""}>${esc(t)}</option>`).join("")}<option value="-" ${ST.pf && ST.pf.type === "-" ? "selected" : ""}>Not set</option></select>
+        <select id="pf-dur" title="Project duration">${[["", "Any duration"], ["12", "Up to 12 months"], ["24", "12 - 24 months"], ["99", "Over 24 months"], ["-", "Not set"]].map(([v, l]) => `<option value="${v}" ${ST.pf && ST.pf.dur === v ? "selected" : ""}>${l}</option>`).join("")}</select></span></h3>
+      ${rows.length ? `<div class="tw"><table class="t"><thead><tr><th>Project</th><th>Client</th><th>Status</th><th>Type of contract</th><th class="r">Duration</th><th class="r">Contract</th><th class="r">Certified</th><th>Progress</th><th class="r">Received</th><th class="r">Subcontracts</th><th class="r">Sub to pay</th>${ST.meta.me.admin ? `<th class="r">Margin</th>` : ""}</tr></thead><tbody>
+      ${rows.filter(pfOk).map(r => `<tr class="rowc" data-pid="${r.id}" data-sec="home.dash"><td class="nowrap"><b>${esc(r.code)}</b></td><td>${esc(r.client)}</td><td>${st(r.status)}</td><td>${r.contract_type ? esc(r.contract_type) : '<span class="muted">&ndash;</span>'}</td><td class="r nowrap">${+r.duration_months > 0 ? durTxt(r.duration_months) : '<span class="muted">&ndash;</span>'}</td>
         <td class="r">${money(r.revised)}</td><td class="r">${money(r.client_certified)}</td><td><div class="bar"><i style="width:${Math.min(100, r.progress)}%"></i></div><span class="small muted">${r.progress}%</span></td>
         <td class="r">${money(r.received)}</td><td class="r">${money(r.committed)}</td><td class="r">${money(r.sub_to_pay)}</td>${ST.meta.me.admin ? `<td class="r ${r.margin < 0 ? "neg" : ""}">${money(r.margin)}</td>` : ""}</tr>`).join("")}
-      <tr class="tot"><td>Total</td><td></td><td></td><td class="r">${money(t.revised)}</td><td class="r">${money(t.client_certified)}</td><td></td><td class="r">${money(t.received)}</td><td class="r">${money(t.committed)}</td><td class="r">${money(t.sub_to_pay)}</td>${ST.meta.me.admin ? "<td></td>" : ""}</tr>
+      <tr class="tot"><td>Total</td><td></td><td></td><td></td><td></td><td class="r">${money(t.revised)}</td><td class="r">${money(t.client_certified)}</td><td></td><td class="r">${money(t.received)}</td><td class="r">${money(t.committed)}</td><td class="r">${money(t.sub_to_pay)}</td>${ST.meta.me.admin ? "<td></td>" : ""}</tr>
       </tbody></table></div>` : `<div class="empty">No projects yet.<br><button class="btn btn-primary" onclick="goProject(0)">Add the first project</button></div>`}
     </div>
     <div class="card"><h3>Subcontractor invoices in hand ${tip("Every invoice not yet paid, oldest PC due date first. Site return is due " + d.rules.site_days + " days after it goes to site; the PC is due " + d.rules.pc_days + " days after the invoice arrives.")}<span class="spacer"></span><span class="small muted">${d.queue.length}</span></h3>
@@ -455,6 +458,7 @@ async function loadDash() {
     </div>
   </div>`;
   $$("[data-pid]", app).forEach(r => r.onclick = () => { const s = (r.dataset.sec || "").split("."); goProject(+r.dataset.pid, s[0], s[1]); });
+  ["#pf-type", "#pf-dur"].forEach(id => { const e = $(id, app); if (e) e.onchange = () => { ST.pf = { type: $("#pf-type", app).value, dur: $("#pf-dur", app).value }; loadDash(); }; });
   $$("[data-retp]", app).forEach(r => r.onclick = () => {
     const pid = +r.dataset.retp, bill = +r.dataset.retb;
     if (window.PG_EMBED) { try { parent.postMessage({ est: "go", view: "projects", pid, group: "bills", sec: "ipa", bill }, location.origin); return; } catch (e) {} }
@@ -466,6 +470,16 @@ async function loadDash() {
     const best = Object.entries(n).sort((a, b) => b[1] - a[1])[0];
     if (best) goProject(+best[0], s[0], s[1]); else toast("Nothing waiting there just now");
   });
+}
+// Projects list filter: type of contract, duration band. The totals row stays for all projects.
+function pfOk(r) {
+  const f = ST.pf || {}, m = +r.duration_months || 0;
+  if (f.type === "-" ? r.contract_type : f.type && r.contract_type !== f.type) return false;
+  if (f.dur === "-") return !m;
+  if (f.dur === "12") return m > 0 && m <= 12;
+  if (f.dur === "24") return m > 12 && m <= 24;
+  if (f.dur === "99") return m > 24;
+  return true;
 }
 function finalMatrix(d) {
   if (!d.matrix.length) return '<div class="empty">No projects yet.</div>';
@@ -536,6 +550,7 @@ function newProject() {
     { k: "contract_value", label: "Contract value (AED)", type: "money", tip: "Left empty, it is taken from Accounts > Project payments." },
     { k: "ret_pct", label: "Retention held by client %", type: "pct", value: 10, quick: [["5%", el => el.value = 5], ["10%", el => el.value = 10]] },
     { k: "adv_pct", label: "Advance from client %", type: "pct", value: 0, quick: [["0", el => el.value = 0], ["10%", el => el.value = 10], ["20%", el => el.value = 20]] },
+    areaField({}),
     { k: "qs", label: "QS in charge", type: "combo", options: ST.meta.users.map(u => u.name) },
   ], async v => {
     const f = ($("#np-boq") || {}).files; const file = f && f[0];
@@ -549,9 +564,91 @@ function newProject() {
       const fill = () => { const s = ST.meta.sites.find(x => x.code === $("#f-code").value.trim()); if (s && !$("#f-name").value) $("#f-name").value = s.name; if (s && s.plot && !$("#f-plot_no").value) $("#f-plot_no").value = s.plot; };
       $("#f-code").addEventListener("change", fill); $("#f-code").addEventListener("input", fill);
       $$("[data-site]").forEach(a => a.onclick = e => { e.preventDefault(); $("#f-code").value = a.dataset.site; $("#f-name").value = ""; $("#f-plot_no").value = ""; fill(); });
+      areaWire();
     }
   });
 }
+// ---------------- Area statement, type of contract, duration (11 Nov 2026) ----------------
+// What is typed is kept, in its unit; the other unit is worked out from it (1 Sqm = 10.7639 Sqft).
+const SQFT = 10.7639;
+const AREAS = [["plot_area", "Plot Area", "Plot area - the land of the plot"], ["bua", "BUA", "Built-Up Area"], ["gfa", "GFA", "Gross Floor Area"]];
+const n2 = v => Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function areaBoth(p, k) {            // [sqm, sqft] of one area, or null
+  const v = p[k]; if (v === null || v === undefined || v === "" || !(+v > 0)) return null;
+  return p[k + "_u"] === "sqft" ? [+v / SQFT, +v] : [+v, +v * SQFT];
+}
+function areaWarn(p) {               // GFA above BUA, BUA far above the plot: flagged, still allowed
+  const pl = areaBoth(p, "plot_area"), bu = areaBoth(p, "bua"), gf = areaBoth(p, "gfa"), w = {};
+  if (gf && bu && gf[0] > bu[0] + 0.005) w.gfa = "GFA is bigger than the BUA - check the figures.";
+  if (bu && pl && bu[0] > pl[0] * 4) w.bua = "BUA is more than 4 times the plot area - check the figures.";
+  return w;
+}
+function addMonths(iso, m) {         // start + duration (months, decimals allowed) -> ISO date
+  if (!iso || !(+m > 0)) return "";
+  const d = new Date(iso + "T00:00:00"), whole = Math.floor(+m), part = +m - whole;
+  const day = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + whole);
+  d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  if (part) d.setDate(d.getDate() + Math.round(part * 30.44));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const durTxt = m => +m > 0 ? `${+(+m).toFixed(2)} month${+m === 1 ? "" : "s"}` : "";
+// Project details (view): the three rows, below "Retention by client". Empty: "-" and a muted Add that opens Edit.
+function areaRows(p, s) {
+  const add = `<span class="muted">&ndash;</span> <a href="#" class="add-link" data-pedit>Add</a>`, w = areaWarn(p);
+  const lines = AREAS.map(([k, l, full]) => { const b = areaBoth(p, k); return b ? `<tr><td class="ar-l">${l} ${tip(full)}</td><td class="r">${n2(b[0])} Sqm</td><td class="muted">/</td><td class="r">${n2(b[1])} Sqft</td><td>${w[k] ? `<span class="ar-warn" title="${esc(w[k])}">&#9888;</span>` : ""}</td></tr>` : ""; }).join("");
+  const bua = areaBoth(p, "bua"), cv = s ? (s.revised || s.contract) : p.contract_value;
+  const per = bua && cv ? `<div class="small muted" style="margin-top:3px">Contract value per Sqft of BUA: <b>AED ${n2(cv / bua[1])}</b> / Sqft</div>` : "";
+  const end = addMonths(p.start_date, p.duration_months);
+  return `<tr><th>Area statement</th><td>${lines ? `<table class="ar-v">${lines}</table>${per}` : add}</td></tr>
+    <tr><th>Type of contract</th><td>${p.contract_type ? esc(p.contract_type) : add}</td></tr>
+    <tr><th>Project duration</th><td>${+p.duration_months > 0 ? durTxt(p.duration_months) + (end ? ` <span class="muted small">· planned completion ${dt(end)}</span>` : "") : add}</td></tr>`;
+}
+// The Edit / New project form: the area table, the type of contract (with Other), the duration.
+function areaField(p) {
+  const types = (ST.meta.contract_types || []);
+  const cur = p.contract_type || "", other = cur && !types.includes(cur);
+  const row = ([k, l, full]) => { const b = areaBoth(p, k), u = p[k + "_u"] || "sqm";
+    const typed = b ? String(+p[k]) : "", calc = b ? n2(u === "sqft" ? b[0] : b[1]) : "";
+    return `<tr data-ar="${k}" data-u="${b ? u : ""}"><td>${l} ${tip(full)}</td>
+      <td><input class="money ar-in" data-un="sqm" inputmode="decimal" placeholder="Sqm" value="${b ? (u === "sqm" ? typed : calc) : ""}"></td>
+      <td><input class="money ar-in" data-un="sqft" inputmode="decimal" placeholder="Sqft" value="${b ? (u === "sqft" ? typed : calc) : ""}"></td>
+      <td class="ar-w"></td></tr>`; };
+  return {
+    type: "html",
+    html: `<div class="f full"><label>Area statement ${tip("Type Sqm or Sqft - the other fills in (1 Sqm = 10.7639 Sqft). What you type is kept exactly.")}</label>
+      <table class="ar-t"><thead><tr><th></th><th>Sqm</th><th>Sqft</th><th></th></tr></thead><tbody>${AREAS.map(row).join("")}</tbody></table></div>
+      <div class="f"><label for="ar-ct">Type of contract</label><select id="ar-ct"><option value="">-</option>${types.map(t => `<option ${t === cur ? "selected" : ""}>${esc(t)}</option>`).join("")}<option value="__other" ${other ? "selected" : ""}>Other</option></select>
+        <input id="ar-cto" placeholder="Type the contract type" value="${other ? esc(cur) : ""}" style="margin-top:6px;${other ? "" : "display:none"}"></div>
+      <div class="f"><label for="ar-dur">Project duration (months)</label><input id="ar-dur" class="money" inputmode="decimal" placeholder="e.g. 14.5" value="${+p.duration_months > 0 ? +p.duration_months : ""}"><div class="hint" id="ar-end"></div></div>`,
+    read: () => {
+      const out = {};
+      $$(".ar-t tr[data-ar]").forEach(tr => { const k = tr.dataset.ar, u = tr.dataset.u, inp = tr.querySelector(`[data-un="${u || "sqm"}"]`);
+        const v = u ? inp.value.replace(/,/g, "").trim() : ""; out[k] = v; out[k + "_u"] = v ? u : ""; });
+      const ct = $("#ar-ct").value; out.contract_type = ct === "__other" ? $("#ar-cto").value.trim() : ct;
+      if (ct === "__other" && !out.contract_type) throw new Error("Type the contract type, or pick one from the list.");
+      out.duration_months = $("#ar-dur").value.replace(/,/g, "").trim();
+      for (const [k, l] of AREAS) if (out[k] && !(+out[k] > 0)) throw new Error(`${l}: only a number above zero.`);
+      if (out.duration_months && !(+out.duration_months > 0)) throw new Error("Project duration: only a number of months above zero.");
+      return out;
+    },
+  };
+}
+function areaWire() {                // live: the other unit, the warnings, the planned completion
+  const vals = () => { const p = {}; $$(".ar-t tr[data-ar]").forEach(tr => { const k = tr.dataset.ar, u = tr.dataset.u; if (!u) return; const v = tr.querySelector(`[data-un="${u}"]`).value.replace(/,/g, ""); if (+v > 0) { p[k] = +v; p[k + "_u"] = u; } }); return p; };
+  const warn = () => { const w = areaWarn(vals()); $$(".ar-t tr[data-ar]").forEach(tr => { const m = w[tr.dataset.ar]; tr.querySelector(".ar-w").innerHTML = m ? `<span class="ar-warn" title="${esc(m)}">&#9888;</span>` : ""; }); };
+  $$(".ar-t .ar-in").forEach(inp => inp.addEventListener("input", () => {
+    const tr = inp.closest("tr"), other = tr.querySelector(`[data-un="${inp.dataset.un === "sqm" ? "sqft" : "sqm"}"]`), v = inp.value.replace(/,/g, "").trim();
+    tr.dataset.u = v ? inp.dataset.un : "";
+    other.value = +v > 0 ? n2(inp.dataset.un === "sqm" ? +v * SQFT : +v / SQFT) : "";
+    inp.classList.toggle("bad", !!v && !(+v > 0)); warn();
+  }));
+  const ct = $("#ar-ct"); if (ct) ct.onchange = () => { $("#ar-cto").style.display = ct.value === "__other" ? "" : "none"; if (ct.value === "__other") $("#ar-cto").focus(); };
+  const end = () => { const st = ($("#f-start_date") || {}).value, m = $("#ar-dur").value.replace(/,/g, ""); const e = addMonths(st, m);
+    $("#ar-end").textContent = e ? `Planned completion ${dt(e)} (start + duration)` : (+m > 0 ? "Add the start date to see the planned completion." : ""); };
+  $("#ar-dur").addEventListener("input", end); const sd = $("#f-start_date"); if (sd) sd.addEventListener("input", end), sd.addEventListener("change", end);
+  end(); warn();
+}
+const AREA_KEYS = ["plot_area", "plot_area_u", "bua", "bua_u", "gfa", "gfa_u", "contract_type", "duration_months"];
 // Details: every figure of the project in one place (they used to fill the top of the screen), and its details.
 function projectInfo() {
   const b = ST.b, s = b.summary, p = b.project;
@@ -570,10 +667,11 @@ function projectInfo() {
       ${fig("Overdue", s.overdue, "RFIs / submittals", s.overdue ? "red" : "")}
     </div>
     <div class="card"><h3>Details</h3><table class="kv">${row("Name", esc(p.name))}${row("Client", esc(p.client))}${row("Consultant", esc(p.consultant))}${row("Location", esc(p.location))}
-      ${row("Status", esc(p.status))}${row("QS", esc(p.qs))}${row("Advance from client", p.adv_pct ? p.adv_pct + "%" : "")}${row("Retention held by client", p.ret_pct ? p.ret_pct + "%" : "")}${row("VAT", p.vat_pct + "%")}
+      ${row("Status", esc(p.status))}${row("QS", esc(p.qs))}${row("Advance from client", p.adv_pct ? p.adv_pct + "%" : "")}${row("Retention held by client", p.ret_pct ? p.ret_pct + "%" : "")}${areaRows(p, s)}${row("VAT", p.vat_pct + "%")}
       ${row("Start", dt(p.start_date))}${row("Completion", dt(p.end_date))}${row("Notes", esc(p.notes))}</table>
       <div style="margin-top:10px"><button class="btn btn-primary btn-sm" id="pi-edit">Edit details</button></div></div>`);
   $("#pi-edit").onclick = editProject;
+  $$("[data-pedit]").forEach(a => a.onclick = e => { e.preventDefault(); editProject(); });
 }
 function editProject() {
   const p = ST.b.project;
@@ -585,12 +683,23 @@ function editProject() {
     { k: "status", label: "Status", type: "select", options: ["Running", "Tender", "On hold", "Handed over", "Closed"], value: p.status },
     { k: "contract_value", label: "Contract value (AED)", type: "money", value: p.contract_value },
     { k: "ret_pct", label: "Retention %", type: "pct", value: p.ret_pct }, { k: "adv_pct", label: "Advance %", type: "pct", value: p.adv_pct },
+    areaField(p),
     { k: "vat_pct", label: "VAT %", type: "pct", value: p.vat_pct },
     { k: "start_date", label: "Start", type: "date", value: p.start_date }, { k: "end_date", label: "Completion", type: "date", value: p.end_date },
     { k: "qs", label: "QS in charge", type: "combo", options: ST.meta.users.map(u => u.name), value: p.qs },
     { k: "notes", label: "Notes", type: "area", value: p.notes },
-  ], async v => { await PATCH(`/store/est/projects/${p.id}`, v); ST.meta = await GET("/store/est/meta"); reload(); toast("Saved"); },
-  { doc: { kind: "project", what: "letter of award or main contract", want: [["name", "Project name"], ["client", "Client"], ["contract_value", "Contract value"], ["start_date", "Start"], ["end_date", "Completion"]] } },
+  ], async v => {
+    // only what changed is sent; Undo puts those back as they were
+    const was = {}, send = {};
+    Object.keys(v).forEach(k => { const o = p[k] === null || p[k] === undefined ? "" : String(p[k]), n = v[k] === null || v[k] === undefined ? "" : String(v[k]);
+      const same = AREA_KEYS.includes(k) && !k.endsWith("_u") && k !== "contract_type" ? (+o || 0) === (+n || 0) : o === n;
+      if (!same) { send[k] = v[k]; was[k] = p[k] ?? ""; } });
+    AREAS.forEach(([k]) => { if (k in send || k + "_u" in send) { send[k] = v[k]; send[k + "_u"] = v[k + "_u"]; was[k] = p[k] ?? ""; was[k + "_u"] = p[k + "_u"] ?? ""; } });
+    if (!Object.keys(send).length) { toast("Nothing changed"); return; }
+    await PATCH(`/store/est/projects/${p.id}`, send); ST.meta = await GET("/store/est/meta"); reload();
+    toast("Saved", { undo: async () => { try { await PATCH(`/store/est/projects/${p.id}`, was); ST.meta = await GET("/store/est/meta"); reload(); toast("Put back"); } catch (e) { fail(e); } } });
+  },
+  { doc: { kind: "project", what: "letter of award or main contract", want: [["name", "Project name"], ["client", "Client"], ["contract_value", "Contract value"], ["start_date", "Start"], ["end_date", "Completion"]] }, after: areaWire },
   { del: ST.meta.me.admin ? async () => { await DEL(`/store/est/projects/${p.id}`); ST.meta = await GET("/store/est/meta"); ST.pid = null; try { localStorage.removeItem("est_pid"); } catch (e) {} renderProjectShell(); const nx = ST.meta.projects.find(x => x.status === "Running") || ST.meta.projects[0]; if (nx) openProject(nx.id); } : null });
 }
 function renderProject() {
@@ -648,7 +757,7 @@ function homeDash(el) {
     </div></div>
     <div class="dgrid">
       ${contractsCard()}
-      <div class="card"><h3>Project details<span class="go" id="pd-edit">Edit</span></h3><table class="kv">${row("Name", esc(p.name))}${row("Client", esc(p.client))}${row("Consultant", esc(p.consultant))}${row("Location", esc(p.location))}${row("Plot no.", esc(p.plot_no || ""))}${row("Status", st(p.status))}${row("QS", esc(p.qs))}${CTRS().length ? row("Contracts", CTRS().length + " - see above") : row("Retention by client", p.ret_pct ? p.ret_pct + "%" : "") + row("Advance from client", p.adv_pct ? p.adv_pct + "%" : "")}${row("Start", dt(p.start_date))}${row("Completion", dt(p.end_date))}</table></div>
+      <div class="card"><h3>Project details<span class="go" id="pd-edit">Edit</span></h3><table class="kv">${row("Name", esc(p.name))}${row("Client", esc(p.client))}${row("Consultant", esc(p.consultant))}${row("Location", esc(p.location))}${row("Plot no.", esc(p.plot_no || ""))}${row("Status", st(p.status))}${row("QS", esc(p.qs))}${CTRS().length ? row("Contracts", CTRS().length + " - see above") : row("Retention by client", p.ret_pct ? p.ret_pct + "%" : "") + row("Advance from client", p.adv_pct ? p.adv_pct + "%" : "")}${areaRows(p, s)}${row("Start", dt(p.start_date))}${row("Completion", dt(p.end_date))}</table></div>
       <div class="card"><h3>Variations<span class="go" data-go="site.vo">Open</span></h3>
         <div class="vs"><div><span>Approved</span><b class="ok">${money(sum(vs("Approved"), "approved_amount"), false)}</b><small class="muted">${vs("Approved").length} lines</small></div>
           <div><span>Waiting</span><b>${money(sum(vs("Submitted"), "submitted_amount"), false)}</b><small class="muted">${vs("Submitted").length} submitted</small></div>
@@ -669,6 +778,7 @@ function homeDash(el) {
       </div>
     </div>`;
   $("#pd-edit", el).onclick = editProject;
+  $$("[data-pedit]", el).forEach(a => a.onclick = e => { e.preventDefault(); editProject(); });
   const ca = $("#ctr-add", el); if (ca) ca.onclick = () => contractForm();
   $$("[data-ctr]", el).forEach(r => r.onclick = () => { ctrSet(+r.dataset.ctr); go("bills.ipa"); });
   $$("[data-go]", el).forEach(x => x.onclick = () => go(x.dataset.go));

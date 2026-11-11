@@ -1072,3 +1072,18 @@ body.glass .freeze-head th, body.glass .freeze-head td { background: transparent
 .est-retrow { display: block; width: 100%; text-align: left; background: rgba(192, 57, 43, .12); border: 1px solid rgba(241, 120, 105, .45); border-radius: 10px; padding: 10px 12px; margin-top: 8px; cursor: pointer; color: inherit; font: inherit; }
 .est-retrow b { display: block; } .est-retrow span { display: block; opacity: .8; font-size: 12.5px; margin-top: 2px; }
 #ipa-st.ret { border-color: #C0392B; color: #A93226; background: #FDECEA; font-weight: 700; }
+/* Area statement (Project details / Edit) */
+.ar-t { border-collapse: collapse; width: 100%; max-width: 520px; }
+.ar-t th { font-size: 11px; color: var(--muted); font-weight: 600; text-align: left; padding: 2px 6px; }
+.ar-t td { padding: 3px 6px 3px 0; font-size: 13px; white-space: nowrap; }
+.ar-t td:first-child { width: 90px; }
+.ar-t input { width: 100%; min-width: 110px; }
+.ar-t input.bad { border-color: #C0392B; }
+.ar-t .ar-w { width: 22px; }
+.ar-v { border-collapse: collapse; }
+.ar-v td { padding: 1px 8px 1px 0; font-size: 13px; white-space: nowrap; }
+.ar-v td.ar-l { color: var(--muted); padding-right: 14px; }
+.ar-warn { color: #B9770E; cursor: help; font-size: 14px; }
+.add-link { color: var(--muted); font-size: 12px; text-decoration: underline; }
+.pfilt { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: auto; font-weight: 400; }
+.pfilt select { font-size: 12.5px; padding: 4px 8px; }

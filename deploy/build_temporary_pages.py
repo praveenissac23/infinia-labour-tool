@@ -183,6 +183,7 @@ PAGES = {
         tab("general", "settings", "General", "settings",
             ["#pg-mysig-card", "#pg-notif-card", "#pg-push-card", "#pg-agent-card", "#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"]),
         tab("companies", "settings", "Companies & sites", "settings_companies", ["#companies-card", "#pg-sites-block"]),
+        tab("ctypes", "settings", "Contract types", "settings_companies", ["#ctypes-card"], go="ctLoad()"),
         tab("logins", "pglogins", "Logins", "settings_logins"),
         tab("access", "pgaccess", "Access", "settings_access"),
         tab("activity", "activity", "Activity monitor", "activity")]),
@@ -1195,6 +1196,7 @@ pgLazy("renderLiveCardWorkerList", ["livecard"]);
 pgLazy("renderMasterDataLists", ["masterdata", "settings"]);
 pgLazy("initReportColumnPicker", ["reports"]);
 pgLazy("loadCompanySettings", ["settings"]);
+pgLazy("ctLoad", ["settings"]);
 pgLazy("refreshSignatureState", ["settings"]);
 
 // ---- The reports page: tabs inside tabs, the working screen underneath ------

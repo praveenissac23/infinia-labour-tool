@@ -1072,6 +1072,16 @@
     ]
    },
    {
+    "id": "settings.ctypes",
+    "label": "Contract types",
+    "right": [
+     "settings_companies"
+    ],
+    "grant": [
+     "settings_companies"
+    ]
+   },
+   {
     "id": "settings.logins",
     "label": "Logins",
     "right": [

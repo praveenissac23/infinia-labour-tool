@@ -92,6 +92,16 @@ class EstProject(Base):
     qs = Column(String, default="")             # the QS looking after it
     notes = Column(Text, default="")
     boq_tally = Column(Text, default="")        # the internal BOQ's own summary (per bill), from the last upload - to tally against
+    # Area statement (11 Nov 2026): what was typed, in the unit it was typed in ("sqm" / "sqft") - the other unit is
+    # worked out from it (1 sqm = 10.7639 sqft), so the two never drift apart. Empty until filled in.
+    plot_area = Column(Float, nullable=True)
+    plot_area_u = Column(String, nullable=True)
+    bua = Column(Float, nullable=True)          # built-up area
+    bua_u = Column(String, nullable=True)
+    gfa = Column(Float, nullable=True)          # gross floor area
+    gfa_u = Column(String, nullable=True)
+    contract_type = Column(String, nullable=True)       # Lump Sum | Re-measured | ... (Settings > Contract types), or what was typed for Other
+    duration_months = Column(Float, nullable=True)      # 14.5
     locals().update(_audit())
 
 
@@ -723,13 +733,48 @@ def flow_info(pc, rules, now=None):
             "log": log}
 
 
+PROJ_LABEL = {"plot_area": "Plot area", "bua": "BUA", "gfa": "GFA", "contract_type": "Type of contract", "duration_months": "Project duration",
+              "contract_value": "Contract value", "ret_pct": "Retention %", "adv_pct": "Advance %", "vat_pct": "VAT %", "start_date": "Start",
+              "end_date": "Completion", "plot_no": "Plot no.", "qs": "QS"}
+
+
+def _shown(k, v, row):
+    """A project's value as the activity log shows it: '-' when empty, an area with its unit, a date DD/MM/YYYY."""
+    if v in (None, "", 0) and k in ("plot_area", "bua", "gfa", "duration_months", "contract_type"):
+        return "-"
+    if k in ("plot_area", "bua", "gfa"):
+        return f"{v:,.2f} {'Sqft' if row.get(k + '_u') == 'sqft' else 'Sqm'}"
+    if k == "duration_months":
+        return f"{v:g} months"
+    if k in ("start_date", "end_date") and v:
+        return "/".join(reversed(str(v).split("-")))
+    return str(v) if v not in (None, "") else "-"
+
+
+def contract_types(db):
+    """The Type of contract list - Settings > Contract types; the standard list until an admin changes it."""
+    import json as _j
+    r = db.query(models.Setting).filter(models.Setting.key == "est_contract_types").first()
+    try:
+        v = [str(x).strip() for x in _j.loads(r.value) if str(x).strip()] if r and r.value else []
+    except Exception:
+        v = []
+    return v or list(CONTRACT_TYPES)
+
+
 # ---- the generic save: field lists per kind ------------------------------------------
 
 S, F, D, I, B = "s", "f", "d", "i", "b"
+A = "a"             # an area or a duration: kept exactly as typed, empty stays empty (None), never below zero
+SQFT = 10.7639
+CONTRACT_TYPES = ["Lump Sum", "Re-measured", "Design & Build", "Cost Plus", "Unit Rate", "Labour Only"]
+AREA_FIELDS = (("plot_area", "Plot area"), ("bua", "BUA"), ("gfa", "GFA"))
+AREA_NAME = dict(AREA_FIELDS, duration_months="Project duration")
 KINDS = {
     "projects": (EstProject, None, {"code": S, "name": S, "client": S, "consultant": S, "location": S, "plot_no": S, "contract_value": F,
                                     "adv_pct": F, "ret_pct": F, "vat_pct": F, "start_date": D, "end_date": D, "status": S,
-                                    "qs": S, "notes": S}),
+                                    "qs": S, "notes": S, "plot_area": A, "plot_area_u": S, "bua": A, "bua_u": S, "gfa": A, "gfa_u": S,
+                                    "contract_type": S, "duration_months": A}),
     "subs": (EstSub, "project_id", {"supplier_id": I, "name": S, "address": S, "phone": S, "mobile": S, "trn": S, "scope": S, "trade": S, "kind": S, "agreement": S, "lpo": S,
                                     "value": F, "cancelled": F, "adv_pct": F, "adv_rec_pct": F, "adv_rec_mode": S, "adv_rec_from": I, "ret_pct": F, "vat_pct": F, "pay_days": I,
                                     "status": S, "start_date": D, "agreement_date": D, "contract_type": S, "pay_terms": S,
@@ -766,6 +811,21 @@ MONEY_LIMIT = 1e10
 
 
 def _coerce(t, v, field):
+    if t == A:
+        if v in (None, "") or str(v).strip() == "":
+            return None
+        try:
+            x = float(str(v).replace(",", ""))
+        except ValueError:
+            raise HTTPException(400, f"{AREA_NAME.get(field, field)}: that is not a number.")
+        if x <= 0:
+            raise HTTPException(400, f"{AREA_NAME.get(field, field)} must be above zero.")
+        if x > (1200 if field == "duration_months" else 1e9):
+            raise HTTPException(400, f"{AREA_NAME.get(field, field)}: that number is too big.")
+        return x
+    if t == S and field.endswith("_u") and field[:-2] in AREA_NAME:
+        u = str(v or "").strip().lower()
+        return u if u in ("sqm", "sqft") else None
     if t == S:
         return "" if v is None else str(v).strip()[:4000]
     if t == F:
@@ -820,7 +880,7 @@ def _plain(row, fields):
     out = {"id": row.id}
     for k, t in fields.items():
         v = getattr(row, k)
-        out[k] = _iso(v) if t == D else (None if (v is None and k == "adv_rec_pct") else (round(float(v or 0), 4) if k.endswith("_pct") else r2(v)) if t == F else v)
+        out[k] = v if t == A else _iso(v) if t == D else (None if (v is None and k == "adv_rec_pct") else (round(float(v or 0), 4) if k.endswith("_pct") else r2(v)) if t == F else v)
     return out
 
 
@@ -1312,6 +1372,37 @@ def _dummy_count(db):
         return 0
 
 
+@router.get("/store/est/contract-types")
+def get_contract_types(db: Session = Depends(get_db), user: models.User = VIEW):
+    return {"types": contract_types(db), "standard": CONTRACT_TYPES}
+
+
+@router.put("/store/est/contract-types")
+def put_contract_types(data: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
+    """Settings > Contract types: the admin keeps the list. Projects keep the type they have even if it leaves the list."""
+    import json as _j
+    if user.role != "admin":
+        raise HTTPException(403, "Only an admin can change the contract types.")
+    raw = data.get("types") or []
+    if isinstance(raw, str):
+        raw = raw.splitlines()
+    seen, out = set(), []
+    for x in raw:
+        t = str(x).strip()[:60]
+        if t and t.lower() != "other" and t.lower() not in seen:
+            seen.add(t.lower()); out.append(t)
+    if not out:
+        raise HTTPException(400, "Keep at least one contract type.")
+    was = contract_types(db)
+    r = db.query(models.Setting).filter(models.Setting.key == "est_contract_types").first()
+    if not r:
+        r = models.Setting(key="est_contract_types"); db.add(r)
+    r.value = _j.dumps(out)
+    db.add(models.AuditLog(user_id=user.id, action="est_contract_types", details=f"Contract types: {', '.join(was)} -> {', '.join(out)}"))
+    db.commit()
+    return {"types": out}
+
+
 @router.get("/store/est/meta")
 def meta(db: Session = Depends(get_db), user: models.User = VIEW):
     perms = M.effective_permissions(user)
@@ -1341,7 +1432,7 @@ def meta(db: Session = Depends(get_db), user: models.User = VIEW):
         "sub_names": sorted(n for n in names if n),
         "users": [{"id": u.id, "name": u.full_name} for u in users],
         "trades": TRADES, "scopes": SCOPES, "parties": PARTIES, "disciplines": DISCIPLINES, "doc_categories": DOC_CATEGORIES,
-        "log_status": LOG_STATUS, "steps": SUB_STEPS, "rules": _rules(db),
+        "log_status": LOG_STATUS, "steps": SUB_STEPS, "rules": _rules(db), "contract_types": contract_types(db),
         "dummy": _dummy_count(db),
         "me": {"id": user.id, "name": user.full_name, "username": user.username, "admin": user.role == "admin",
                "accounts": "accounts_invoices" in perms, "boards": "estimation_boards" in perms,
@@ -1387,6 +1478,7 @@ def dashboard(db: Session = Depends(get_db), user: models.User = VIEW):
         if user is None or user.role != "admin":
             s.pop("margin", None)                   # the margin is for the admin only (and not on the exports)
         rows.append({"id": p.id, "code": p.code, "name": p.name, "status": p.status, "client": p.client, **s,
+                     "contract_type": p.contract_type or "", "duration_months": p.duration_months,
                      "subs": len(b["subs"]), "progress": round(100.0 * s["client_work"] / s["revised"], 1) if s["revised"] else 0.0})
         for sb in b["subs"]:
             for pc in sb["pcs"]:
@@ -1491,6 +1583,7 @@ def add_project(data: dict = Body(...), db: Session = Depends(get_db), user: mod
         _, pp = _received_for(db, code)
         p.contract_value = pp
     db.add(p)
+    db.add(models.AuditLog(user_id=user.id, action="est_project_add", details=f"Project {code} added" + (f" - {p.contract_type}" if p.contract_type else "")))
     db.commit()
     _seed_project(db, p, user)
     return {"id": p.id}
@@ -1801,7 +1894,14 @@ def edit_row(kind: str, rid: int, data: dict = Body(...), db: Session = Depends(
     if kind == "contracts" and user.role != "admin" and any(k in data and _coerce(F, data[k], k) != round(getattr(row, k) or 0, 4) for k in ("adv_pct", "ret_pct", "vat_pct")) \
             and db.query(EstClientPC).filter(EstClientPC.contract_id == row.id, EstClientPC.status.in_(LOCKED_STATUS)).first():
         raise HTTPException(400, "This contract has invoiced or paid certificates - its advance, retention and VAT % are locked. Ask an admin if they must change.")
+    was = _plain(row, fields) if kind == "projects" else None
     _apply(row, fields, data)
+    if was is not None:
+        now = _plain(row, fields)
+        ch = [f"{PROJ_LABEL.get(k, k.replace('_', ' '))}: {_shown(k, was[k], was)} -> {_shown(k, now[k], now)}"
+              for k in fields if k in data and was[k] != now[k] and not (k.endswith("_u") and k[:-2] in AREA_NAME)]
+        if ch:
+            db.add(models.AuditLog(user_id=user.id, action="est_project_edit", details=f"Project {row.code}: " + "; ".join(ch)))
     if vo_typed is not None and (str(vo_typed).strip().upper() != (row.ref or "").strip().upper() or (not str(vo_typed).strip() and kind == "variations" and row.ref_typed)):
         was = row.ref
         vo_number_in(db, row, vo_typed, sub=(kind == "subvos"))
