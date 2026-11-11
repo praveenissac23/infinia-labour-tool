@@ -247,6 +247,10 @@ def seed_on_startup():
             _fix_lpo_0153(db)
         except Exception as e:
             db.rollback(); print("LPO 0153 requests:", e)
+        try:
+            _fix_lpo_0199(db)
+        except Exception as e:
+            db.rollback(); print("LPO 0199 renamed pipes:", e)
         # _hire_in_to_requests_once(db) - the October data is put right once the purchaser's answers are in
         try:
             import zohoapi as _zn
@@ -9186,6 +9190,91 @@ class _SystemUser:
     permissions = ""
 
 
+def _link_request_lines(db, o, pairs, user):
+    """Put request lines on an LPO, each as the LPO line it was ordered as (see /store/purchase/link-lines)."""
+    ids = [int(x) for x in (o.request_line_ids or "").split(",") if x.strip().isdigit()]
+    done = []
+    for l, pl in pairs:
+        asked = (l.description or "").strip()
+        l.supplier_id = o.supplier_id
+        if pl.item_id and pl.item_id != l.item_id:
+            l.item_id = pl.item_id
+            l.description = (pl.description or "").strip() or l.description
+            l.notes = ((l.notes or "") + ("; " if l.notes else "") + f"Asked as '{asked}', ordered as '{l.description}' on {o.ref}")[:500]
+        if l.id not in ids:
+            ids.append(l.id)
+        mr = l.request
+        if mr:
+            mr.expected_on = o.delivery_date or mr.expected_on
+            if mr.status in ("pending", "approved"):
+                mr.status = "ordered"
+            sup_ids = {x.supplier_id for x in mr.lines if (x.status or "") != "rejected"}
+            mr.supplier_id = o.supplier_id if sup_ids == {o.supplier_id} else None
+        done.append((mr.ref if mr else "", asked, pl.description or ""))
+    o.request_line_ids = "," + ",".join(map(str, ids)) + ","
+    _track_lpo(db, o, user)
+    return done
+
+
+def _fix_lpo_0199(db):
+    """IC/LPO/20260199 (10 Nov 2026): MR-0109's two pipes were ticked and ordered, then renamed on an edit to the
+    supplier's names - the edit sent them back to 'LPO not raised' and made 'Ordered direct' MR-0112 for the same
+    pipes. Put right once: MR-0109's lines go back on the LPO as the renamed pipes, MR-0112 is taken off."""
+    key = "fix_lpo_0199_rename"
+    if db.query(models.Setting).filter(models.Setting.key == key).first():
+        return
+    o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.ref == "IC/LPO/20260199").first()
+    mr = db.query(models.MaterialRequest).filter(models.MaterialRequest.ref == "MR-0109").first()
+    if o and mr and (o.status or "") != "cancelled":
+        waiting = sorted([l for l in mr.lines if (l.status or "") == "approved" and not l.supplier_id and (l.qty_received or 0) <= 0], key=lambda l: l.id)
+        direct = [x for r in _lpo_tracked_requests(db, o) if r.site == mr.site for x in sorted(r.lines, key=lambda x: x.id)]
+        lpo_by_item = {l.item_id: l for l in o.lines if l.item_id}
+        pairs = [(w, lpo_by_item[d.item_id]) for w, d in zip(waiting, direct) if d.item_id in lpo_by_item]
+        if pairs and len(pairs) == len(waiting):
+            done = _link_request_lines(db, o, pairs, None)
+            log_action(db, None, "lpo_link_lines", f"{o.ref} (put right once): " + "; ".join(f"{r} '{a}' = '{b}'" for r, a, b in done))
+    db.add(models.Setting(key=key, value="done"))
+    db.commit()
+
+
+@app.post("/store/purchase/link-lines")
+def lpo_link_lines(payload: dict = Body(...), db: Session = Depends(get_db),
+                   user: models.User = Depends(require_screen("approvals"))):
+    """Request lines that were ordered on an LPO already raised - typed in by hand, often under the supplier's
+    own name - put on that LPO: {"order_id", "links": [{"line_id", "lpo_line_id"}]}. The request line is marked
+    ordered and takes the LPO line's material (what was asked is kept in its note), so the request follows that
+    LPO; the 'Ordered direct' request the LPO made for the same material is taken off (unless some of it came)."""
+    o = db.get(models.PurchaseOrder, int(payload.get("order_id") or 0))
+    if not o:
+        raise HTTPException(404, "LPO not found.")
+    if (o.status or "") == "cancelled":
+        raise HTTPException(400, f"{o.ref} is cancelled.")
+    links = payload.get("links") or []
+    if not links:
+        raise HTTPException(400, "Tick the materials, then choose the LPO line for each.")
+    import purchasing as _pu
+    try:
+        freed = _pu.freed_lines(db)
+    except Exception:
+        freed = {}
+    by_line = {l.id: l for l in o.lines}
+    pairs = []
+    for k in links:
+        l = db.get(models.MaterialRequestLine, int(k.get("line_id") or 0))
+        pl = by_line.get(int(k.get("lpo_line_id") or 0))
+        if not l or not pl:
+            raise HTTPException(400, "Choose the LPO line for every ticked material.")
+        if (l.status or "pending") != "approved" or (l.request and (l.request.status or "") in ("rejected", "cancelled", "closed")):
+            raise HTTPException(400, f"{l.description} is not an approved request line.")
+        if l.supplier_id and l.id not in freed:
+            raise HTTPException(400, f"{l.description} is already on another LPO.")
+        pairs.append((l, pl))
+    done = _link_request_lines(db, o, pairs, user)
+    db.commit()
+    log_action(db, user.id, "lpo_link_lines", f"{o.ref}: " + "; ".join(f"{r} '{a}' = '{b}'" for r, a, b in done))
+    return {"ok": True, "ref": o.ref, "linked": len(done)}
+
+
 @app.get("/store/purchase/orders/{order_id}")
 def get_purchase_order(order_id: int, db: Session = Depends(get_db),
                         user: models.User = Depends(require_screen("approvals"))):
@@ -9744,6 +9833,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     amount_was = _lpo_amt(o.lines)
     before = _lpo_snap(o)
     items_before = {l.item_id for l in o.lines if l.item_id}
+    order_before = [l.item_id for l in o.lines if l.item_id]          # in the LPO's own order, for a line renamed in place
 
     supplier = _find_or_create_supplier(db, payload.supplier_name)
     if not (supplier is not None and supplier.id == o.supplier_id):    # the order's own supplier stays, deleted or not
@@ -9810,6 +9900,27 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
         gone = [l for l in db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id.in_(ids)).all()
                 if l.item_id not in on_lpo and l.item_id in items_before and not fits(l)
                 and (l.qty_received or 0) <= 0 and (l.status or "pending") != "rejected"]
+        if gone:
+            # Renamed, not taken off (11 Nov 2026, IC/LPO/20260199: MR-0109's '2" U PVC CLASS E PIPE' renamed to the
+            # supplier's 'PVC Pipe 2"X 6mtr Grey H/P Cosmoplast' went back to 'LPO not raised'): a material that
+            # came onto the LPO in this edit takes the place of the one that left it, in the LPO's order - the
+            # request line follows it as that material; only what has no new line in its place is taken off.
+            fresh = [i for i in dict.fromkeys(l.item_id for l in o.lines if l.item_id)
+                     if i not in items_before and not any(r.item_id == i for r in db.query(models.MaterialRequestLine)
+                                                           .filter(models.MaterialRequestLine.id.in_(ids)).all())]
+            pos = {i: k for k, i in enumerate(order_before)}
+            renamed = []
+            for g in sorted(gone, key=lambda g: pos.get(g.item_id, 999)):
+                if not fresh:
+                    break
+                ni = fresh.pop(0)
+                nl = next((x for x in o.lines if x.item_id == ni), None)
+                asked = (g.description or "").strip()
+                g.item_id = ni
+                g.description = ((nl.description if nl else "") or "").strip() or g.description
+                g.notes = ((g.notes or "") + ("; " if g.notes else "") + f"Asked as '{asked}', ordered as '{g.description}' on {o.ref}")[:500]
+                renamed.append(g)
+            gone = [g for g in gone if g not in renamed]
         if gone:
             _settle_request_lines(db, o, gone, False, "")
             keep = [i for i in ids if i not in {g.id for g in gone}]

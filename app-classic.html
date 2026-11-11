@@ -3232,6 +3232,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             </div>
             <div class="form-row" style="margin-top:8px; align-items:center; gap:10px;">
               <button class="btn btn-primary" onclick="lpoFromTicked()">Generate LPO from ticked</button>
+              <button class="btn btn-gray" onclick="lpoLinkTicked()" title="The ticked materials were already ordered on an LPO raised by hand - put them on it">Already on an LPO</button>
               <span id="lpo-pending-note" style="font-size:12px; color:#888;"></span>
             </div>
           </div>
@@ -14045,6 +14046,46 @@ async function lpoFromTicked() {
   lpoLines.forEach((l, i) => lookupLpoRate(i));
   showStatus("lpo-status", "ok",
     `${picked.length} material(s) brought in from ${[...new Set(picked.map(p => p.ref))].join(", ")} - choose the supplier and enter the rates.`);
+}
+
+// Materials ordered on an LPO that was raised by hand (often under the supplier's own name): the ticked request
+// lines are put on that LPO, each matched to the LPO line it was ordered as - they leave this list, and the
+// request follows that LPO to delivery.
+function lpoLinkTicked() {
+  const ids = [...document.querySelectorAll(".lpo-pick:checked")].map(b => Number(b.value));
+  if (!ids.length) { showStatus("lpo-status", "warn", "Tick the materials that are already on an LPO first."); return; }
+  const picked = lpoPending.filter(p => ids.includes(p.line_id));
+  const lpos = (lpoRegister || []).filter(o => o.status !== "cancelled")
+    .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id).slice(0, 80);
+  const sites = new Set(picked.map(p => p.site));
+  const o = cfModal(`<h3>Already on an LPO</h3><div class="sub">${picked.length} material(s) from ${[...new Set(picked.map(p => p.ref))].join(", ")}. Choose the LPO they were ordered on, then the line each one was ordered as.</div>
+    <label>LPO</label><select id="lk-o"><option value="">Choose the LPO…</option>${lpos.map(x => `<option value="${x.id}">${escapeHtml(x.ref)} · ${dmy(x.date)} · ${escapeHtml(x.supplier || "")} · ${escapeHtml(x.site || "")}${String(x.site || "").split(",").some(t => sites.has(t.trim())) ? " ★" : ""}</option>`).join("")}</select>
+    <div id="lk-lines" style="margin-top:10px"></div>
+    <div class="status-msg" id="lk-st"></div>
+    <div class="btns"><button type="button" class="btn btn-gray" id="lk-x">Cancel</button><button type="button" class="btn btn-primary" id="lk-go">Put on this LPO</button></div>`);
+  let L = null;
+  const words = t => new Set(String(t || "").toLowerCase().replace(/[^a-z0-9"]+/g, " ").split(" ").filter(w => w.length > 1));
+  const guess = p => { let best = null, sc = 0;
+    (L.lines || []).forEach(l => { const a = words(p.description), b = words(l.description); let n = 0; a.forEach(w => { if (b.has(w)) n++; });
+      n += (+l.qty === +p.qty ? 1 : 0) + (l.item_id && l.item_id === p.item_id ? 5 : 0); if (n > sc) { sc = n; best = l.id; } });
+    return sc >= 2 ? best : null; };
+  o.querySelector("#lk-o").onchange = async e => {
+    const box = o.querySelector("#lk-lines"); L = null; box.innerHTML = "";
+    if (!e.target.value) return;
+    try { L = await apiCall(`/store/purchase/orders/${e.target.value}`); } catch (er) { showStatus("lk-st", "err", errText(er)); return; }
+    box.innerHTML = picked.map(p => { const g = guess(p);
+      return `<label>${escapeHtml(p.ref)} · ${escapeHtml(p.description)} · ${num(p.qty)} ${escapeHtml(p.unit || "")}</label><select class="lk-l" data-id="${p.line_id}"><option value="">Ordered as…</option>${(L.lines || []).map(l => `<option value="${l.id}"${l.id === g ? " selected" : ""}>${escapeHtml(l.description || "")} · ${num(l.qty)} ${escapeHtml(l.unit || "")}</option>`).join("")}</select>`; }).join("");
+  };
+  o.querySelector("#lk-x").onclick = () => o.remove();
+  o.querySelector("#lk-go").onclick = async () => {
+    const oid = +o.querySelector("#lk-o").value;
+    if (!oid) return showStatus("lk-st", "warn", "Choose the LPO.");
+    const links = [...o.querySelectorAll(".lk-l")].map(x => ({ line_id: +x.dataset.id, lpo_line_id: +x.value }));
+    if (links.some(k => !k.lpo_line_id)) return showStatus("lk-st", "warn", "Choose the LPO line for every material.");
+    try { const r = await apiCall("/store/purchase/link-lines", { method: "POST", body: JSON.stringify({ order_id: oid, links }) });
+      o.remove(); showStatus("lpo-status", "ok", `${r.linked} material(s) put on ${r.ref} - they follow that LPO now.`); loadPurchase(); }
+    catch (er) { showStatus("lk-st", "err", errText(er)); }
+  };
 }
 
 // ---- LPO Register: the purchase register asked any way round -------
