@@ -2389,7 +2389,7 @@ def build_lpo_pdf(po: dict):
         ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
     ]
     _r, _st = _with_ban(data, line_style)
-    lt = Table(_r, colWidths=widths, repeatRows=1)
+    lt = Table(_r, colWidths=widths, repeatRows=1, splitInRow=1)   # a scope longer than a page carries on to the next (IC/LPO/20260201)
     lt.setStyle(TableStyle(_st))
     el.append(lt)
     lines_at = len(el) - 1
@@ -2476,7 +2476,7 @@ def build_lpo_pdf(po: dict):
     gap = doc.height - 12 - used - 10
     if gap > 12:
         _r, _st = _with_ban(data + [[""] * len(widths)], line_style)
-        filled = Table(_r, colWidths=widths, repeatRows=1,
+        filled = Table(_r, colWidths=widths, repeatRows=1, splitInRow=1,
                        rowHeights=[None] * len(data) + [gap] + [None] * len(ban_rows))
         filled.setStyle(TableStyle(_st))
         el[lines_at] = filled
