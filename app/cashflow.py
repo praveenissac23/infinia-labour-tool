@@ -13,7 +13,7 @@ Everything the app already knows is collected by itself, so the chief accountant
   coming in         payment certificates sent to clients and not paid (Estimation) - due 30 days after certified,
                     45 after submitted; money expected typed here
 A line found by itself can be moved to another date or left out (CashMove); nothing is counted twice: a cheque
-the forecast expenses typed here stay here (nothing is sent to another page); a subcontractor certificate with a cheque already written is the PDC.
+the forecast lines typed here (money in or out) stay here (nothing is sent to another page); a subcontractor certificate with a cheque already written is the PDC.
 """
 import re
 from datetime import date, timedelta
@@ -183,13 +183,15 @@ def collect(db, months=3, with_in=True):
     except Exception as e:
         print("cash forecast - payroll:", e)
 
-    # ---- expected expenses typed here (and the cost of renewals)
+    # ---- money in and out typed here by Accounts - on the forecast only
     exp = db.query(models.CashExpected).filter(models.CashExpected.status == "open").all()
     step = {"month": 1, "quarter": 3, "year": 12}
     for x in exp:
+        if x.direction == "in" and not with_in:          # "Out only": no money in at all
+            continue
         d, n = x.on_date, 0
-        while d <= end and n < 60:
-            if not x.until or d <= x.until:
+        while d <= end and n < 240:
+            if (not x.until or d <= x.until) and (x.repeat not in step or d >= t):   # a repeat started earlier counts from now on
                 add(f"exp:{x.id}:{n}", d, x.what + (f" ({x.kind})" if x.kind and x.kind.lower() not in x.what.lower() else ""), "expected",
                     "Expected", x.amount or 0, x.direction or "out", x.sure or "sure", link={"exp": x.id}, note=x.note or "", fixed=True)
             if x.repeat not in step:
@@ -254,6 +256,7 @@ def forecast(months: int = 3, with_in: int = 1, db: Session = Depends(get_db), u
     out["expected"] = [{"id": x.id, "what": x.what, "kind": x.kind, "amount": x.amount, "on_date": x.on_date.isoformat(), "sure": x.sure, "repeat": x.repeat,
                         "direction": x.direction, "note": x.note, "expiry_id": x.expiry_id}
                        for x in db.query(models.CashExpected).filter(models.CashExpected.status == "open").all()]
+    out["kinds_in"] = ["Client payment", "Advance", "Retention release", "Loan / capital", "Deposit back / refund", "Cash in hand", "Other"]
     out["kinds"] = ["Supplier", "Subcontractor", "Insurance", "Licence / permit", "Visa / labour", "Rent", "Deposit / guarantee", "Vehicle", "Tax / VAT", "Loan / bank", "Other"]
     return out
 

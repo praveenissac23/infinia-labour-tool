@@ -4037,7 +4037,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
         </div>
         <div class="screen" id="screen-cashfc">
           <div class="cf-top"><div><div class="cf-k" id="cf-asof">Cash forecast</div><div class="cf-now" id="cf-now">&nbsp;</div><div class="sub" id="cf-bsrc"></div></div>
-            <div class="pc-btns" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="cfExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="cfExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="cfExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="cfExport('view')">Share</button></div><button type="button" class="btn btn-primary" onclick="cfExp()">+ Forecast expense</button></div></div>
+            <div class="pc-btns" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="cfExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="cfExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="cfExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="cfExport('view')">Share</button></div><button type="button" class="btn btn-primary" onclick="cfExp(0,'in')">+ Money in</button><button type="button" class="btn btn-primary" onclick="cfExp(0,'out')">+ Money out</button></div></div>
           <div class="cf-ctl"><div class="seg-chips" id="cf-mo"></div><div class="seg-chips" id="cf-in"></div></div>
           <div class="status-msg" id="cf-status"></div>
           <div class="cf-tanks" id="cf-tanks"></div>
@@ -4045,7 +4045,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           <div class="cf-panel"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h3 id="cf-wk-t">The weeks ahead</h3><div class="sub" id="cf-wk-s">each pair of bars is one week - what comes in, what goes out, and what is left in the bank at the end of it</div></div>
             <div class="sub"><span class="g">&#9632;</span> in &nbsp; <span class="r">&#9632;</span> out &nbsp; <span style="color:#2B2622">&#9679;</span> left at the end &nbsp; <span class="r">&#9476;</span> <span id="cf-keep-l">keep at least</span></div></div><div id="cf-chart" class="cf-wk"></div></div>
           <div class="cf-2"><div class="cf-panel"><h3>Biggest payments coming</h3><div class="sub" id="cf-big-s"></div><div id="cf-big"></div></div>
-            <div class="cf-panel"><h3>Coming in</h3><div class="sub">client bills waiting for payment</div><div id="cf-inbox"></div></div></div>
+            <div class="cf-panel"><h3>Coming in</h3><div class="sub">client bills waiting for payment, and money you expect</div><div id="cf-inbox"></div></div></div>
           <div class="cf-panel" id="cf-all"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3 id="cf-all-t">Every payment and receipt</h3><div class="sub">In date order, with the bank balance after each. &#9998; changes any line here only - nothing leaves the forecast.</div></div><div class="seg-chips" id="cf-f"></div></div><div id="cf-list" style="margin-top:6px;overflow-x:auto"></div></div>
         </div>
         <div class="screen" id="screen-clientbills">
@@ -20877,7 +20877,7 @@ function cfDraw() {
   const end = mos.length ? mos[mos.length - 1].to : d.today, lastIn = d.coming.length ? d.coming[d.coming.length - 1].date : null;
   const quiet = lastIn ? Math.round((new Date(end) - new Date(lastIn)) / 864e5) : null;
   document.getElementById("cf-inbox").innerHTML = !CF_IN ? `<div class="sub" style="padding:12px 0">Showing money out only - choose In &amp; out to see client payments.</div>`
-    : (d.coming.length ? d.coming.slice(0, 6).map(i => `<div class="cf-big"><div class="ico ty-client">B</div><div class="w"><b>${escapeHtml(i.what.split(" · ")[0])}</b><small>${escapeHtml(i.what.split(" · ").slice(1).join(" · ") || i.src || "")}${i.what.includes(" · ") ? " · " : ""}expected ${cfD(i.date).slice(0, 5)}${i.sure !== "sure" ? " · " + escapeHtml(i.sure) : ""}</small></div><div class="a g">${cfM(i.in)}</div></div>`).join("") + (d.coming.length > 6 ? `<div class="sub" style="padding-top:8px">+ ${d.coming.length - 6} more in the list below</div>` : "") : `<div class="sub" style="padding:12px 0">No client bill waiting for payment.</div>`)
+    : (d.coming.length ? d.coming.slice(0, 6).map(i => `<div class="cf-big"><div class="ico ty-${i.type}">${CF_ICO[i.type] || "·"}</div><div class="w"><b>${escapeHtml(i.what.split(" · ")[0])}</b><small>${escapeHtml(i.type === "expected" ? "forecast" : (i.what.split(" · ").slice(1).join(" · ") || i.src || ""))} · expected ${cfD(i.date).slice(0, 5)}${i.sure !== "sure" ? " · " + escapeHtml(i.sure) : ""}</small></div><div class="a g">${cfM(i.in)}</div></div>`).join("") + (d.coming.length > 6 ? `<div class="sub" style="padding-top:8px">+ ${d.coming.length - 6} more in the list below</div>` : "") : `<div class="sub" style="padding:12px 0">No client bill waiting for payment.</div>`)
       + (!d.coming.length || quiet > 30 ? `<div class="cf-note"><b class="r">${d.coming.length ? `Nothing expected in after ${cfD(lastIn)}.` : "Nothing expected in."}</b><div class="sub">${d.below ? `The bank goes below ${cfM(keep)} on ${cfD(d.below.date)} - a client payment before then keeps it above.` : "Payments still go out every month - the next client bills keep the tanks full."}</div></div>`
         : `<div class="cf-note ok"><b class="g">Client money keeps coming in.</b><div class="sub">${d.coming.length} payment${d.coming.length > 1 ? "s" : ""} expected over the next ${CF_MO} months.</div></div>`);
   cfChart(); cfList();
@@ -20939,28 +20939,39 @@ function cfList() {
     : `<div class="sub" style="padding:12px">Nothing in these months.</div>`;
 }
 function cfModal(html) { const o = document.createElement("div"); o.className = "cf-ov"; o.innerHTML = `<div class="cf-mod">${html}</div>`; document.body.appendChild(o); o.addEventListener("click", e => { if (e.target === o) o.remove(); }); return o; }
-function cfExp(id) {
+function cfExp(id, dir) {
   const x = id ? ((CF.expected || []).find(e => e.id === id) || {}) : {};
-  const kinds = (CF && CF.kinds) || ["Other"];
-  const o = cfModal(`<h3>${id ? "Change forecast" : "+ Forecast expense"}</h3><div class="sub">A payment that is coming - insurance, a licence, a deposit, a fine ... It is counted here, on the Cash forecast only.</div>
-    <label>What for</label><input id="cfx-w" value="${escapeAttr(x.what || "")}" placeholder="e.g. Company insurance renewal">
-    <div class="g2"><div><label>Amount (AED)</label><input id="cfx-a" inputmode="decimal" value="${x.amount || ""}" placeholder="0.00" style="font-weight:700"></div><div><label>Expected on</label><input id="cfx-d" type="date" value="${x.on_date || CF.today}"></div></div>
-    <div class="g2"><div><label>Kind</label><select id="cfx-k">${kinds.map(k => `<option${k === x.kind ? " selected" : ""}>${k}</option>`).join("")}</select></div><div><label>Money</label><select id="cfx-dir"><option value="out">Going out</option><option value="in"${x.direction === "in" ? " selected" : ""}>Coming in</option></select></div></div>
-    <div class="g2"><div><label>How sure</label><select id="cfx-s">${[["sure", "Sure"], ["likely", "Likely"], ["maybe", "Maybe"]].map(([v, l]) => `<option value="${v}"${x.sure === v ? " selected" : ""}>${l}</option>`).join("")}</select></div>
-      <div><label>Repeats</label><select id="cfx-r">${[["once", "Once"], ["month", "Every month"], ["quarter", "Every 3 months"], ["year", "Every year"]].map(([v, l]) => `<option value="${v}"${x.repeat === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
-    <label>Note</label><input id="cfx-n" value="${escapeAttr(x.note || "")}" placeholder="Optional">
-    <div class="hint">When it is paid, press <b>Paid</b> on its line - it comes off the forecast and the bank balance takes it.</div>
+  let d0 = x.direction || dir || "out";
+  const kindsOf = d => (d === "in" ? CF.kinds_in : CF.kinds) || ["Other"];
+  const o = cfModal(`<h3 id="cfx-h"></h3><div class="sub">Anything you expect - type what you like. It stays here, on the Cash forecast only; nothing is sent to any other page.</div>
+    <div class="seg-chips" id="cfx-dirs" style="margin-top:12px"><button type="button" class="seg-chip" data-d="in">Money in</button><button type="button" class="seg-chip" data-d="out">Money out</button></div>
+    <label>What for</label><input id="cfx-w" value="${escapeAttr(x.what || "")}">
+    <div class="g2"><div><label>Amount (AED)</label><input id="cfx-a" inputmode="decimal" value="${x.amount || ""}" placeholder="0.00" style="font-weight:700"></div><div><label id="cfx-dl"></label><input id="cfx-d" type="date" value="${x.on_date || CF.today}"></div></div>
+    <div class="g2"><div><label>Kind</label><select id="cfx-k"></select></div>
+      <div><label>How sure</label><select id="cfx-s">${[["sure", "Sure"], ["likely", "Likely"], ["maybe", "Maybe"]].map(([v, l]) => `<option value="${v}"${x.sure === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
+    <div class="g2"><div><label>Repeats</label><select id="cfx-r">${[["once", "Once"], ["month", "Every month"], ["quarter", "Every 3 months"], ["year", "Every year"]].map(([v, l]) => `<option value="${v}"${x.repeat === v ? " selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div><label>Note</label><input id="cfx-n" value="${escapeAttr(x.note || "")}" placeholder="Optional"></div></div>
+    <div class="hint">Dated today or earlier, it is counted from today - e.g. cash in hand, or a payment not yet on the bank statement.</div>
     <div class="status-msg" id="cfx-st"></div>
     <div class="btns"><button type="button" class="btn btn-gray" id="cfx-x">Cancel</button><button type="button" class="btn btn-primary" id="cfx-go">Save</button></div>`);
+  const setDir = d => { d0 = d;
+    o.querySelectorAll("#cfx-dirs .seg-chip").forEach(b => b.classList.toggle("on", b.dataset.d === d));
+    o.querySelector("#cfx-h").textContent = id ? "Change forecast line" : d === "in" ? "+ Money in" : "+ Money out";
+    o.querySelector("#cfx-dl").textContent = d === "in" ? "Expected in on" : "Going out on";
+    o.querySelector("#cfx-w").placeholder = d === "in" ? "e.g. Advance from client, loan, deposit back" : "e.g. Company insurance renewal";
+    const ks = kindsOf(d), cur = x.kind && ks.includes(x.kind) ? x.kind : ks[0];
+    o.querySelector("#cfx-k").innerHTML = ks.map(k => `<option${k === cur ? " selected" : ""}>${escapeHtml(k)}</option>`).join(""); };
+  o.querySelectorAll("#cfx-dirs .seg-chip").forEach(b => b.onclick = () => setDir(b.dataset.d));
+  setDir(d0);
   o.querySelector("#cfx-x").onclick = () => o.remove();
   o.querySelector("#cfx-go").onclick = async () => {
     const g = s => o.querySelector(s).value;
-    const body = { what: g("#cfx-w"), amount: g("#cfx-a"), on_date: g("#cfx-d"), kind: g("#cfx-k"), direction: g("#cfx-dir"), sure: g("#cfx-s"), repeat: g("#cfx-r"), note: g("#cfx-n") };
+    const body = { what: g("#cfx-w"), amount: g("#cfx-a"), on_date: g("#cfx-d"), kind: g("#cfx-k"), direction: d0, sure: g("#cfx-s"), repeat: g("#cfx-r"), note: g("#cfx-n") };
     try {
       try { await apiCall(id ? `/store/cash/expected/${id}` : "/store/cash/expected", { method: id ? "PUT" : "POST", body: JSON.stringify(body) }); }
       catch (e) { if (!/add it anyway\?$/.test(errText(e)) || !(await hrAsk(errText(e), "Add anyway"))) throw e;
         await apiCall("/store/cash/expected", { method: "POST", body: JSON.stringify(Object.assign(body, { force: 1 })) }); }
-      o.remove(); showStatus("cf-status", "ok", `${body.what} - AED ${cfM2(+String(body.amount).replace(/,/g, ""))} on ${cfD(body.on_date)} is in the forecast.`); cfLoad(); }
+      o.remove(); showStatus("cf-status", "ok", `${body.what} - AED ${cfM2(+String(body.amount).replace(/,/g, ""))} ${d0 === "in" ? "coming in" : "going out"} on ${cfD(body.on_date)} is in the forecast.`); cfLoad(); }
     catch (e) { showStatus("cfx-st", "err", errText(e)); }
   };
 }
