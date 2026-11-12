@@ -48,12 +48,33 @@ def run_one(name, data):
     return name, not bad, round(time.time() - t0, 1), tail
 
 
+REAL = ("/tmp/full.db", "/tmp/claude-0/full.db", "/tmp/full_base.db", "/tmp/aud.db")
+
+
+def prepare():
+    """Folders and made-up workbooks some tests read (tests/make_ipa_*.py), made once if missing."""
+    for d in ("/tmp/claude-0/bills", "/tmp/claude-0/rt"):
+        os.makedirs(d, exist_ok=True)
+    for script, out in (("make_ipa_like_913.py", "913-like.xlsx"), ("make_ipa_like_914.py", "914-like.xlsx"),
+                        ("make_ipa_like_915_div.py", "div3.xlsx"), ("make_ipa_with_appab.py", "ab-like.xlsx")):
+        dst = "/tmp/claude-0/bills/" + out
+        if os.path.exists(os.path.join(TESTS, script)) and not os.path.exists(dst):
+            subprocess.run([sys.executable, os.path.join(TESTS, script), dst], cwd=ROOT, capture_output=True, timeout=300)
+
+
+def needs_real(name):
+    """A test that reads a copy of real data it cannot find is skipped, not failed."""
+    src = open(os.path.join(TESTS, name), encoding="utf-8", errors="ignore").read()
+    return any(p in src and not os.path.exists(p) for p in REAL)
+
+
 def main():
     want = [a.lower() for a in sys.argv[1:]]
     needs, known = _list("needs_data.txt"), _list("known_failing.txt")
     data = os.environ.get("INFINIA_TEST_DATA")
+    prepare()
     names = sorted(f for f in os.listdir(TESTS) if f.endswith("_test.py") and (not want or any(w in f.lower() for w in want)))
-    skipped = [n for n in names if n in needs and not data]
+    skipped = [n for n in names if (n in needs and not data) or (n not in needs and needs_real(n))]
     names = [n for n in names if n not in skipped]
     jobs = int(os.environ.get("INFINIA_TEST_JOBS") or max(2, (os.cpu_count() or 2)))
     print(f"Running {len(names)} tests ({len(skipped)} skipped - need real data), {jobs} at a time", flush=True)
