@@ -99,7 +99,11 @@ ck("wrong-password burst -> one alert", sum(1 for x in alerts() if x[0] == "logi
 
 # The settings list shows the group to the admin only
 g = {x["id"]: x for x in c.get("/notifications/settings", headers=B).json()["groups"]}
+ck("Watch is offered to the admin while switched on", "watch" in g, g)
+watch.ENABLED = False
+g = {x["id"]: x for x in c.get("/notifications/settings", headers=B).json()["groups"]}
 ck("Watch is not offered while switched off", "watch" not in g, g.get("watch"))
+watch.ENABLED = True
 g = {x["id"]: x for x in c.get("/notifications/settings", headers=A).json()["groups"]}
 ck("staff cannot", not g.get("watch", {}).get("allowed"), g.get("watch"))
 # Switched off (12 Oct 2026): nothing raised, nothing on the bell

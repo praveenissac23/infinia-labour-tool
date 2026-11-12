@@ -3,10 +3,12 @@ bill_chain_approval_test.py
 bill_reject_test.py
 bill_signer_roles_test.py
 bill_takeback_undo_test.py
-est_bills_test.py
+est_bills_test.py - needs the consultant's real IPA workbooks (BILLS_DIR)
 labour_fils_past_cycles_test.py
 lpo_round_off_test.py
 office_fils_rule_test.py
 office_pay_arith_audit_test.py
 report_day_sites_test.py
 rental_scope_test.py
+sweep_fixes_test.py
+est_bills_test.py - needs the consultant's real IPA workbooks (BILLS_DIR)

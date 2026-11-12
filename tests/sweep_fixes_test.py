@@ -71,9 +71,14 @@ H = A
 inv = lambda n: next(x for x in c.get("/employees/accounts/invoices?kind=tax", headers=H).json()["rows"] if x["number"] == n)
 x = c.post(f"/employees/accounts/invoices/{inv('IC/26/915/01')['id']}/cancel", headers=H, json={"reason": "test"})
 ck("an invoice with money received on it cannot be cancelled until the receipt is changed", x.status_code == 400, x.text)
-pdcs = c.post("/employees/pdc", headers=H, json={"payee": "Landlord", "cheque_no": "000901", "bank": "ADCB", "date": "2026-10-01", "amount": 1000, "status": "cleared", "repeat": 3}).json()
+from datetime import timedelta as _td
+_first = (main._dubai_today() - _td(days=20)).isoformat()      # one cheque already due, the next two not yet
+pdcs = c.post("/employees/pdc", headers=H, json={"payee": "Landlord", "cheque_no": "000901", "bank": "ADCB", "date": _first, "amount": 1000, "status": "cleared", "repeat": 3}).json()
 got = [p for p in c.get("/employees/pdc", headers=H).json()["rows"] if p["id"] in pdcs["ids"]]
-ck("a cheque series marked cleared clears only the cheques already due", sorted(p["status"] for p in got) == ["cleared", "pending", "pending"], [(p["date"], p["status"]) for p in got])
+_today = main._dubai_today().isoformat()
+ck("a cheque series marked cleared clears only the cheques already due",
+   all(p["status"] == ("cleared" if p["date"] <= _today else "pending") for p in got) and any(p["status"] == "pending" for p in got),
+   [(p["date"], p["status"]) for p in got])
 aug = c.get("/store/petty-cash?book=pro&month=2026-08", headers=H).json()
 ck("PRO petty cash: visa payments made in October are not taken off August", (aug.get("visa_held") or 0) == 0, aug.get("visa_held"))
 vs = c.get("/store/visa/files?status=ongoing", headers=H).json()

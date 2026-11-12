@@ -27,10 +27,11 @@ db.query(E.EstVariation).filter(E.EstVariation.project_id == pid).delete(); db.c
 ids = [c.post("/store/est/variations", json={"project_id": pid, "title": t, "ref": r}, headers=H).json()["id"]
        for t, r in [("Lift", "CP01"), ("Blockwork", ""), ("OHP for lift", "OHP-1")]]
 refs = [db.get(E.EstVariation, i).ref for i in ids]
-ck("new variations are V01, V02, V03 whatever is typed", refs == ["V01", "V02", "V03"], refs)
+# since 05/11/2026 the number can be typed (the numbers sent to the consultant); left empty -> the next free V number
+ck("a typed number is kept, an empty one gets the next V number", refs == ["CP01", "V01", "OHP-1"], refs)
 c.patch(f"/store/est/variations/{ids[0]}", json={"ref": "CP09", "title": "Lift (4 stops)"}, headers=H)
 db.expire_all(); v = db.get(E.EstVariation, ids[0])
-ck("editing keeps the number (title still changes)", v.ref == "V01" and v.title == "Lift (4 stops)", (v.ref, v.title))
+ck("the number can be corrected on an edit (title changes too)", v.ref == "CP09" and v.title == "Lift (4 stops)", (v.ref, v.title))
 
 # old data the way the QS log had it, then the one-time renumbering
 for i, (r, sq) in enumerate([("CP02", 2), ("CP01", 1), ("V01", 3), ("OHP-1", 4), ("", 5)]):
@@ -58,7 +59,9 @@ ck("item lines follow (Var 01 -> V01), an LPO no. stays", it == {"Handrail": "V0
 E.renumber_variations(SessionLocal); db.expire_all()
 ck("runs once only", db.get(E.EstSubVO, sv[0].id).ref == "V01" and old["old 0"].notes.count("QS log ref.") == 1)
 r = c.post("/store/est/subvos", json={"sub_id": sid, "ref": "X", "title": "More", "amount": 10}, headers=H).json()
-ck("a new subcontract variation is the next number (V03)", db.get(E.EstSubVO, r["id"]).ref == "V03")
+ck("a new subcontract variation keeps the number typed", db.get(E.EstSubVO, r["id"]).ref == "X", db.get(E.EstSubVO, r["id"]).ref)
+r = c.post("/store/est/subvos", json={"sub_id": sid, "ref": "", "title": "More 2", "amount": 10}, headers=H).json()
+ck("and with none typed it takes the next number after all of them (4th variation: V04)", db.get(E.EstSubVO, r["id"]).ref == "V04", db.get(E.EstSubVO, r["id"]).ref)
 c.delete(f"/store/est/subs/{sid}", headers=H)
 print(f"\n{len(fails)} FAILED: {fails}" if fails else "\nALL PASS")
 sys.exit(1 if fails else 0)

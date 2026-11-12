@@ -139,7 +139,9 @@ ck("Excel: merged B2:C2, column C width 30, row 4 height 40, page break after ro
 pdf6 = BR.render_pdf(m6, v6, "t", inp6); pdf6 = pdf6.getvalue() if hasattr(pdf6, "getvalue") else pdf6
 import pdfplumber
 pg = pdfplumber.open(io.BytesIO(pdf6)).pages
-ck("PDF: a new page after the break (row 4 on page 2)", len(pg) >= 2 and "Milestone" in (pg[1].extract_text() or "") and "Milestone" not in (pg[0].extract_text() or ""), [p.extract_text() for p in pg])
+# since 07/11/2026 a sheet that fits on one page is printed on one page even with a break in it (no pages with two
+# or three rows on them); the break is still kept in the Excel file (checked above)
+ck("PDF: a sheet that fits one page stays on one page, break or not", len(pg) == 1 and "Milestone" in (pg[0].extract_text() or ""), [p.extract_text() for p in pg])
 sft2 = BE.shift_inputs(inp6[sh], sh, 2, 1)
 ck("a row put in: the merge, height and break move with their rows", ["add", 3, 2, 3, 3] in sft2["_merge"] and sft2["_rowh"] == {"5": 40} and sft2["_brk"]["add"] == [4], (sft2.get("_merge"), sft2.get("_rowh"), sft2.get("_brk")))
 print("ALL PASS" if not bad else f"{bad} FAILED")

@@ -270,7 +270,8 @@ with TestClient(main.app) as c:
     ck("supplier details fetched (contact, phone, email)", po2.get("supplier_contact") == "Ravi" and po2.get("supplier_phone") == "0501112233" and po2.get("supplier_email") == "hire@xl.ae",
        (po2.get("supplier_contact"), po2.get("supplier_phone"), po2.get("supplier_email")))
     reqs = g("/store/requests").json()
-    linked = [x for x in reqs if po2.get("request_id") and x["id"] == po2["request_id"]]
+    # the LPO makes its own request ("Stock for the store, ordered on <LPO>"), linked by lpo_id since 30/10/2026
+    linked = [x for x in reqs if (po2.get("request_id") and x["id"] == po2["request_id"]) or po2.get("ref", "~") in (x.get("notes") or "")]
     ck("order follow-up tracks the store LPO", bool(linked) and linked[0]["lines"][0].get("supplier"), linked[:1] and linked[0].get("status"))
     if linked:
         L2 = linked[0]["lines"][0]["id"]

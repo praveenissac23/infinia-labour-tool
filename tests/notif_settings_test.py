@@ -35,7 +35,7 @@ kinds = lambda h: sorted({n['kind'] for n in c.get('/notifications', headers=h).
 ck('bell: new request and a purchasing item for an office login', 'request' in kinds(P) and 'purchase' in kinds(P), kinds(P))
 s = c.get('/notifications/settings', headers=P).json()
 ck('settings list the groups, purchasing allowed and on', any(g['id'] == 'purchase' and g['allowed'] and g['on'] for g in s['groups']), s)
-ck('a group the login has no right for is greyed', any(g['id'] == 'attendance' and not g['allowed'] for g in s['groups']))
+ck('a group the login has no right for is not offered', not any(g['id'] == 'attendance' for g in s['groups']), s['groups'])
 # the PRO switches purchasing off for himself
 on = [g['id'] for g in s['groups'] if g['id'] != 'purchase']
 s2 = c.post('/notifications/settings', headers=P, json={'on': on}).json()
@@ -51,7 +51,7 @@ ck('role saved with its notification list', role['notif'] == ['expiry', 'store']
 c.post('/permissions/roles/assign', headers=A, json={'user_id': u.id, 'role_id': role['id']})
 ck('requests gone from the bell once the role disallows them', 'request' not in kinds(P), kinds(P))
 s3 = c.get('/notifications/settings', headers=P).json()
-ck('and shown as not allowed in his settings', not next(g for g in s3['groups'] if g['id'] == 'requests')['allowed'])
+ck('and no longer offered in his settings', not any(g['id'] == 'requests' for g in s3['groups']), s3['groups'])
 ck('a role never set keeps everything (old roles unchanged)', c.post('/permissions/roles', headers=A, json={'name': 'Old', 'tabs': ['store.store.home']}).json()['notif'] is None)
 ck('admin sees everything', 'purchase' in kinds(A) and 'request' in kinds(A), kinds(A))
 print('\nALL PASS' if not FAIL else f'\n{len(FAIL)} FAILED: {FAIL}')

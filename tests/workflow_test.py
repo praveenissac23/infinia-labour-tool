@@ -91,8 +91,9 @@ st = {s['code']: s for s in c.get('/store/stock', headers=K).json()}
 ck('none of it is in the central store',
    st[i1['code']]['central'] == 0 and st[i2['code']]['central'] == 0,
    {k: st[k]['central'] for k in (i1['code'], i2['code'])})
-ck('and none of it is left standing at the site',
-   st[i1['code']]['by_site'] == {} and st[i2['code']]['by_site'] == {},
+# since 27/10/2026 (Praveen) a consumable sent to a site is counted there until it is returned or written off
+ck('and it is counted at the site it went to (910)',
+   st[i1['code']]['by_site'] == {'910': 10.0} and st[i2['code']]['by_site'] == {'910': 10.0},
    {k: st[k]['by_site'] for k in (i1['code'], i2['code'])})
 sent = {r['code']: r for r in c.get('/store/at-site?site=910', headers=K).json()['recent']}
 ck('the site shows what was last sent to it',

@@ -35,7 +35,8 @@ s.add_all([admin, jomon, viewer]); s.commit()
 # leave: F-716 away now, F-726 goes in 20 days, F-754 came back yesterday
 s.add(models.LeaveRecord(employee_id=E["F-716"].id, leave_on=today - timedelta(days=40), return_on=today + timedelta(days=50), status="approved"))
 s.add(models.LeaveRecord(employee_id=E["F-726"].id, leave_on=today + timedelta(days=20), status="pending"))
-s.add(models.LeaveRecord(employee_id=E["F-754"].id, leave_on=today - timedelta(days=30), return_on=today - timedelta(days=1), status="approved"))
+# came back = marked returned on the leave register (an approved leave past its return date is overdue, still away)
+s.add(models.LeaveRecord(employee_id=E["F-754"].id, leave_on=today - timedelta(days=30), return_on=today - timedelta(days=1), status="returned"))
 s.commit()
 
 n = camp.seed(s)

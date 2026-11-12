@@ -15227,8 +15227,11 @@ def notif_settings(db: Session = Depends(get_db), user: models.User = Depends(au
     allowed, off = notif_groups_for(db, user)
     rights = set(effective_permissions(user)) if user.role != "admin" else set(ALL_SCREENS) | {"__admin__"}
     # only what this login can have: its access gives it the feature and its role lets it be told
+    import watch as _watch
+    # the activity monitor is offered only while it is switched on (watch.ENABLED) - no switch for a feature that is off
     return {"groups": [{"id": g, "label": l, "allowed": True, "on": g not in off}
-                       for g, l, _, needs in NOTIF_GROUPS if g in allowed and ("__any__" in needs or any(r in rights for r in needs))]}
+                       for g, l, _, needs in NOTIF_GROUPS if g in allowed and ("__any__" in needs or any(r in rights for r in needs))
+                       and (g != "watch" or _watch.ENABLED)]}
 
 
 @app.post("/notifications/settings")
