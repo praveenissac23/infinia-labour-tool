@@ -4309,7 +4309,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <button class="btn btn-dark" onclick="rrExport('excel')">Export Excel</button>
                 <button class="btn btn-dark" onclick="rrExport('view')">Share</button></span>
             </div>
-            <p class="sub" style="margin:6px 0 10px;">Every material the store asked for, exactly as asked - it stays here after it is ordered and delivered. <b>Ordered as</b> is what went on the LPO; a line ordered differently (another name or quantity) is marked <span class="pill" style="background:#FFF3D6; color:#8A6100;">changed</span>.</p>
+            <p class="sub" style="margin:6px 0 10px;">Every material the store asked for, exactly as asked - it stays here after it is ordered and delivered. <b>Ordered as</b> is what went on the LPO; a line whose name or quantity was changed on the LPO is marked <span class="pill" style="background:#FFF3D6; color:#8A6100;">changed</span>.</p>
             <div class="form-row" style="margin:4px 0 8px;">
               <div class="seg-chips" id="rr-chips"></div>
               <select id="rr-site" onchange="rrDraw()" style="width:160px;"><option value="">All sites</option></select>
@@ -14140,10 +14140,11 @@ async function ctSave() {
 }
 
 // Purchasing > Requests register: what the store asked for, against what was ordered and what came. Chips as on the
-// Order tracker - Late / All open / Done & closed - plus Ordered differently and Everything, each with its count.
+// Order tracker - Late / All open / Done & closed - plus Everything, each with its count. A line changed on the LPO
+// carries its own "changed" mark, so it needs no button of its own (12 Nov 2026).
 let RR = [], RR_VIEW = "open";
 const RR_VIEWS = [["late", "Late", r => r.days_late], ["open", "All open", r => !r._done], ["done", "Done & closed", r => r._done],
-                  ["changed", "Ordered differently", r => r.changed], ["all", "Everything", r => true]];
+                  ["all", "Everything", r => true]];
 async function rrLoad() {
   try { RR = (await apiCall("/store/requests/report?kind=asked")).rows || []; }
   catch (e) { showStatus("rr-status", "err", errText(e)); return; }
@@ -14178,7 +14179,7 @@ function rrDraw() {
       <td class="l" style="font-size:12.5px;">${escapeHtml(r.ordered_as || "-")}${r.changed ? ' <span class="pill" style="background:#FFF3D6; color:#8A6100;">changed</span>' : ""}</td>
       <td class="r">${num(r.received)}</td></tr>`).join("") : `<tr><td colspan="13" class="empty-note">Nothing here.</td></tr>`;
   const ch = list.filter(r => r.changed).length;
-  document.getElementById("rr-foot").textContent = `${num(list.length)} material line(s)` + (ch ? ` · ${num(ch)} ordered differently` : "") + (q ? ` · matching "${q}"` : "");
+  document.getElementById("rr-foot").textContent = `${num(list.length)} material line(s)` + (ch ? ` · ${num(ch)} changed on the LPO` : "") + (q ? ` · matching "${q}"` : "");
 }
 async function rrExport(fmt) {
   if (!cachedDownloadToken) await refreshDownloadToken();
