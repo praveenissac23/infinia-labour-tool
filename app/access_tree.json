@@ -496,6 +496,16 @@
       ]
      },
      {
+      "id": "store.purchasing.reqreg",
+      "label": "Requests register",
+      "right": [
+       "approvals"
+      ],
+      "grant": [
+       "approvals"
+      ]
+     },
+     {
       "id": "store.purchasing.suppliers",
       "label": "Suppliers",
       "right": [

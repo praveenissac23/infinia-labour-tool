@@ -711,10 +711,30 @@ class MaterialRequestLine(Base):
     # petty cash bill line it was paid on when known. No LPO cost is made up for it.
     source = Column(String, nullable=True)
     petty_cash_id = Column(Integer, nullable=True)
+    # What the store asked for, as it asked (12 Nov 2026): kept when the line is made and never changed - the line
+    # itself may later take the LPO's material (renamed on the order) or a smaller approved quantity, but the
+    # Requests register still shows what was asked next to what was ordered and what came.
+    asked_name = Column(String, nullable=True)
+    asked_qty = Column(Float, nullable=True)
 
     request = relationship("MaterialRequest", back_populates="lines")
     item = relationship("StoreItem")
     supplier = relationship("Supplier")
+
+
+def _keep_what_was_asked(mapper, connection, target):
+    if target.asked_name is None:
+        name = (target.description or "").strip()
+        if not name and target.item_id:
+            r = connection.execute(StoreItem.__table__.select().where(StoreItem.__table__.c.id == target.item_id)).first()
+            name = (r.name if r else "") or ""
+        target.asked_name = name
+    if target.asked_qty is None:
+        target.asked_qty = target.qty_requested
+
+
+from sqlalchemy import event as _event  # noqa: E402
+_event.listen(MaterialRequestLine, "before_insert", _keep_what_was_asked)
 
 
 # ======================================================================

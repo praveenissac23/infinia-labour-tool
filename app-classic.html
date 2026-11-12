@@ -4296,6 +4296,34 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 
         </div>
 
+        <div class="screen" id="screen-reqreg">
+          <!-- Purchasing > Requests register (12 Nov 2026): every material the store asked for, as asked, kept after it
+               is ordered and delivered - next to what went on the LPO and what came, to cross-check. -->
+          <div class="card">
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <h2 style="margin:0;">Requests register</h2>
+              <span style="flex:1;"></span>
+              <span class="exp-btns">
+                <button class="btn btn-dark" onclick="rrExport('view')">Preview</button>
+                <button class="btn btn-dark" onclick="rrExport('pdf')">Export PDF</button>
+                <button class="btn btn-dark" onclick="rrExport('excel')">Export Excel</button>
+                <button class="btn btn-dark" onclick="rrExport('view')">Share</button></span>
+            </div>
+            <p class="sub" style="margin:6px 0 10px;">Every material the store asked for, exactly as asked - it stays here after it is ordered and delivered. <b>Ordered as</b> is what went on the LPO; a line ordered differently (another name or quantity) is marked <span class="pill" style="background:#FFF3D6; color:#8A6100;">changed</span>.</p>
+            <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
+              <div class="field"><label for="rr-show">Show</label><select id="rr-show" onchange="rrLoad()" style="width:190px;">
+                <option value="asked">All requests</option><option value="asked_open">Still open</option>
+                <option value="asked_done">Delivered / closed / rejected</option><option value="asked_changed">Ordered differently</option></select></div>
+              <div class="field" style="flex:1; min-width:220px;"><label for="rr-q">Search</label><input type="text" id="rr-q" placeholder="Request, site, material, LPO, who asked..." oninput="rrDraw()" autocomplete="off" style="width:100%;"></div>
+            </div>
+            <div class="status-msg" id="rr-status"></div>
+            <div class="table-wrap" style="margin-top:10px; overflow-x:auto;"><table class="data-table" id="rr-table"><thead><tr>
+              <th>Request</th><th>Asked on</th><th>Site</th><th>Material asked</th><th class="r">Qty asked</th><th>What for</th><th>Asked by</th>
+              <th class="r">Approved</th><th>Status</th><th>LPO</th><th>Ordered as</th><th class="r">Received</th></tr></thead>
+              <tbody id="rr-body"><tr><td colspan="12" class="empty-note">Loading...</td></tr></tbody></table></div>
+            <div class="sub" id="rr-foot" style="margin-top:8px;"></div>
+          </div>
+        </div>
         <div class="screen" id="screen-lporegister">
           <!-- one compact card for every filter (2 Nov 2026: three cards took half the screen before the list) -->
           <div class="card lpr-filters">
@@ -14109,6 +14137,36 @@ async function ctSave() {
   try { const r = await apiCall("/store/est/contract-types", { method: "PUT", body: JSON.stringify({ types: document.getElementById("ct-list").value }) });
     document.getElementById("ct-list").value = r.types.join("\n"); showStatus("ct-status", "ok", `Saved - ${r.types.length} contract types.`); }
   catch (e) { showStatus("ct-status", "err", errText(e)); }
+}
+
+// Purchasing > Requests register: what the store asked for, against what was ordered and what came.
+let RR = [];
+async function rrLoad() {
+  const kind = (document.getElementById("rr-show") || {}).value || "asked";
+  try { RR = (await apiCall(`/store/requests/report?kind=${kind}`)).rows || []; rrDraw(); }
+  catch (e) { showStatus("rr-status", "err", errText(e)); }
+}
+function rrDraw() {
+  const q = ((document.getElementById("rr-q") || {}).value || "").trim().toLowerCase();
+  const list = q ? RR.filter(r => Object.values(r).join(" ").toLowerCase().includes(q)) : RR;
+  const body = document.getElementById("rr-body"); if (!body) return;
+  body.innerHTML = list.length ? list.map(r => `<tr>
+      <td class="kl nowrap"><strong>${requestLink(r.ref)}</strong></td><td class="kl nowrap">${r.asked_on ? accDmy(r.asked_on) : "-"}</td>
+      <td class="kl">${escapeHtml(r.site || "-")}</td><td class="l"><b>${escapeHtml(r.asked)}</b></td>
+      <td class="r nowrap">${num(r.asked_qty)} ${escapeHtml(r.unit)}</td><td class="l" style="font-size:12.5px;">${escapeHtml(r.what_for || "")}</td>
+      <td class="kl">${escapeHtml(r.asked_by || "")}</td><td class="r">${r.approved === "" ? "-" : num(r.approved)}</td>
+      <td class="kl" style="font-size:12.5px;">${escapeHtml(r.status)}</td><td class="kl nowrap">${escapeHtml(r.lpo || "-")}</td>
+      <td class="l" style="font-size:12.5px;">${escapeHtml(r.ordered_as || "-")}${r.changed ? ' <span class="pill" style="background:#FFF3D6; color:#8A6100;">changed</span>' : ""}</td>
+      <td class="r">${num(r.received)}</td></tr>`).join("") : `<tr><td colspan="12" class="empty-note">Nothing here.</td></tr>`;
+  const ch = list.filter(r => r.changed).length;
+  document.getElementById("rr-foot").textContent = `${num(list.length)} material line(s)` + (ch ? ` · ${num(ch)} ordered differently` : "") + (q ? ` · matching "${q}"` : "");
+}
+async function rrExport(fmt) {
+  if (!cachedDownloadToken) await refreshDownloadToken();
+  const kind = (document.getElementById("rr-show") || {}).value || "asked";
+  const q = ((document.getElementById("rr-q") || {}).value || "").trim();
+  const path = fmt === "view" ? "/export/store/report/view" : "/export/store/report";
+  window.open(`${API}${path}?kind=mr_${kind}&token=${encodeURIComponent(cachedDownloadToken)}` + (fmt === "view" ? "" : `&format=${fmt}`) + (q ? `&q=${encodeURIComponent(q)}` : ""), "_blank");
 }
 
 // ---- LPO Register: the purchase register asked any way round -------

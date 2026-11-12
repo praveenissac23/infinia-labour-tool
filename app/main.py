@@ -251,6 +251,10 @@ def seed_on_startup():
             _fix_lpo_0199(db)
         except Exception as e:
             db.rollback(); print("LPO 0199 renamed pipes:", e)
+        try:
+            _backfill_asked(db)
+        except Exception as e:
+            db.rollback(); print("Requests register backfill:", e)
         # _hire_in_to_requests_once(db) - the October data is put right once the purchaser's answers are in
         try:
             import zohoapi as _zn
@@ -7862,6 +7866,71 @@ def material_request_report(kind: str = "open", status: str = "", q: str = "",
                               "needed_by": m.needed_by.isoformat() if m.needed_by else ""})
         return {"title": "Outstanding materials", "rows": rows}
 
+    if kind in ("asked", "asked_open", "asked_done", "asked_changed"):
+        # The Requests register (Purchasing > Requests register, 12 Nov 2026): every material the store asked for,
+        # one line each, ordered or not - what was asked, against what went on the LPO and what came. Requests the
+        # LPO made itself ("Ordered direct", stock for the store) are not the store's asking and are left out.
+        if user is not None and "approvals" not in effective_permissions(user):
+            raise HTTPException(403, "The Requests register is for the purchasing office.")
+        DONE = ("delivered", "received", "closed", "rejected")
+        needle = (q or "").strip().lower()
+        lpos = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.request_line_ids.isnot(None),
+                                                     models.PurchaseOrder.status != "cancelled").all()
+        line_item = dict(db.query(models.MaterialRequestLine.id, models.MaterialRequestLine.item_id).all())
+        on_lpo = {}
+        for o in lpos:
+            for x in (o.request_line_ids or "").split(","):
+                if x.strip().isdigit():
+                    on_lpo.setdefault(int(x), []).append(o)
+        rows = []
+        for m in reqs:
+            if m.lpo_id:
+                continue
+            for l in m.lines:
+                st = (l.status or "pending")
+                word = "Rejected" if st == "rejected" else MR_WORDS.get(m.status, m.status or "")
+                done = st == "rejected" or m.status in DONE
+                if kind == "asked_open" and done or kind == "asked_done" and not done:
+                    continue
+                asked = (l.asked_name or l.description or (l.item.name if l.item else "") or "").strip()
+                asked_q = l.asked_qty if l.asked_qty is not None else l.qty_requested
+                os_ = on_lpo.get(l.id, [])
+                ordered, shared = [], False
+                for o in os_:
+                    pl = next((x for x in o.lines if l.item_id and x.item_id == l.item_id), None) \
+                        or next((x for x in o.lines if (x.description or "").strip().lower() == asked.lower()), None)
+                    if pl:
+                        ordered.append((o.ref, (pl.description or "").strip(), float(pl.qty or 0), pl.unit or l.unit or ""))
+                        # one LPO line for the same material of several requests: its quantity is theirs together
+                        others = [int(x) for x in (o.request_line_ids or "").split(",") if x.strip().isdigit() and int(x) != l.id]
+                        shared = shared or any(pl.item_id and line_item.get(x) == pl.item_id for x in others)
+                    else:
+                        ordered.append((o.ref, "", None, ""))
+                if l.source == "petty" and not os_:
+                    ordered_txt = "Petty cash (no LPO)"
+                else:
+                    ordered_txt = "; ".join(f"{d or '(on the LPO)'}" + (f" · {_clean_export_qty(qq)} {u}" if qq is not None else "")
+                                            for _, d, qq, u in ordered)
+                # changed: ordered under another name, or a different quantity in all (a line split over two LPOs is
+                # added up; an LPO line shared with other requests is not compared on quantity)
+                qs = [qq for _, _d, qq, _u in ordered if qq is not None]
+                changed = asked == RENAMED_UNKNOWN or any(d and d.strip().lower() != asked.lower() for _, d, _q, _u in ordered) \
+                    or (bool(qs) and not shared and abs(sum(qs) - (asked_q or 0)) > 1e-6)
+                if kind == "asked_changed" and not changed:
+                    continue
+                row = {"ref": m.ref, "asked_on": m.requested_on.isoformat() if m.requested_on else "", "site": m.site or "",
+                       "asked_by": m.requested_by or "", "asked": asked, "asked_qty": round(asked_q or 0, 3), "unit": l.unit or "",
+                       "what_for": (l.purpose or "").strip(), "needed_by": m.needed_by.isoformat() if m.needed_by else "",
+                       # approved as asked leaves qty_approved at 0 - the line then asks for qty_requested
+                       "approved": "" if st == "pending" else 0 if st == "rejected" else round((l.qty_approved or l.qty_requested or 0), 3),
+                       "status": word, "lpo": ", ".join(dict.fromkeys(r for r, *_ in ordered)) or "",
+                       "ordered_as": ordered_txt, "received": round(l.qty_received or 0, 3),
+                       "changed": "Yes" if changed else ""}
+                if needle and needle not in " ".join(str(v) for k, v in row.items() if not k.startswith("_")).lower():
+                    continue
+                rows.append(row)
+        return {"title": "Requests register - what the store asked for", "rows": rows}
+
     if kind in ("history", "history_open", "history_done"):
         # One line per request, the materials by name, the way the screen
         # reads it. Open: still moving; done: delivered, closed or rejected.
@@ -9215,7 +9284,7 @@ def _link_request_lines(db, o, pairs, user):
     ids = [int(x) for x in (o.request_line_ids or "").split(",") if x.strip().isdigit()]
     done = []
     for l, pl in pairs:
-        asked = (l.description or "").strip()
+        asked = ((l.description or "").strip() or (l.item.name if l.item else "") or (l.asked_name or "")).strip()
         l.supplier_id = o.supplier_id
         if pl.item_id and pl.item_id != l.item_id:
             l.item_id = pl.item_id
@@ -9234,6 +9303,31 @@ def _link_request_lines(db, o, pairs, user):
     o.request_line_ids = "," + ",".join(map(str, ids)) + ","
     _track_lpo(db, o, user)
     return done
+
+
+RENAMED_UNKNOWN = "(renamed on the LPO - the name asked was not kept)"
+
+
+def _backfill_asked(db):
+    """Request lines made before 12/11/2026 get what was asked: the name a rename on an LPO recorded in the note
+    ("Asked as '...'"), else the line as it stands; the quantity as it stands (the first figure was not kept)."""
+    import re as _re
+    todo = db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.asked_name.is_(None)).all()
+    for l in todo:
+        m = _re.search(r"Asked as '(.*?)', ordered as '", l.notes or "")      # the first rename: what the store asked
+        if m and m.group(1).strip():
+            l.asked_name = m.group(1).strip()
+        elif m:
+            # renamed before 12/11/2026 from a line picked from the list: the note kept no name and the line took
+            # the LPO's material - what was asked is not known any more; said so, and shown as ordered differently
+            l.asked_name = RENAMED_UNKNOWN
+        else:
+            l.asked_name = (l.description or "").strip() or (l.item.name if l.item else "")
+        if l.asked_qty is None:
+            l.asked_qty = l.qty_requested
+    if todo:
+        db.commit()
+        print(f"Requests register: what was asked filled for {len(todo)} older request line(s)")
 
 
 def _fix_lpo_0199(db):
@@ -9935,7 +10029,7 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
                     break
                 ni = fresh.pop(0)
                 nl = next((x for x in o.lines if x.item_id == ni), None)
-                asked = (g.description or "").strip()
+                asked = ((g.description or "").strip() or (g.item.name if g.item else "") or (g.asked_name or "")).strip()
                 g.item_id = ni
                 g.description = ((nl.description if nl else "") or "").strip() or g.description
                 g.notes = ((g.notes or "") + ("; " if g.notes else "") + f"Asked as '{asked}', ordered as '{g.description}' on {o.ref}")[:500]
@@ -10954,7 +11048,7 @@ def view_store_report(kind: str = "stock", date_from: str = None, date_to: str =
         if v:
             extra += f"&{k}={quote(str(v), safe='')}"
     if kind.startswith("mr_"):
-        data = material_request_report(kind=kind[3:], status=status, q=q, db=db, user=None)
+        data = material_request_report(kind=kind[3:], status=status, q=q, db=db, user=user if kind.startswith("mr_asked") else None)
     else:
         data = store_report(kind=kind, date_from=date_from, date_to=date_to, site=site, move=move, db=db, user=None)
     rows = []
@@ -11267,11 +11361,11 @@ def export_store_report(kind: str = "stock", format: str = "excel",
                          q: str = "", token: str = None, inline: bool = False,
                          site: str = None, move: str = None, status: str = "",
                          db: Session = Depends(get_db)):
-    auth.get_download_user_from_token(token, db)
+    user = auth.get_download_user_from_token(token, db)
     # Material-request reports live under a different builder to the
     # stock ones, but both export through the same formatter.
     if kind.startswith("mr_"):
-        data = material_request_report(kind=kind[3:], status=status, q=q, db=db, user=None)
+        data = material_request_report(kind=kind[3:], status=status, q=q, db=db, user=user if kind.startswith("mr_asked") else None)
     else:
         data = store_report(kind=kind, date_from=date_from, date_to=date_to, site=site, move=move, db=db, user=None)
     # Dates read the way they are said, here as on the rows themselves.

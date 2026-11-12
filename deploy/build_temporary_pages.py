@@ -150,6 +150,7 @@ PAGES = {
         tab("purchasing", "purchase", "Purchasing", "approvals", subs=[
             sub("purchase", "Purchase orders", screen="purchase", right="approvals"),
             sub("lporegister", "LPO register", screen="lporegister", right="approvals"),
+            sub("reqreg", "Requests register", screen="reqreg", right="approvals", go="rrLoad()"),
             sub("suppliers", "Suppliers", screen="suppliers", right="approvals")]),
         # Every open request and LPO on one line: its step, who is next, late, part delivery, supplier contact -
         # the same screen for the purchaser, the store keeper and accounts (2 Nov 2026). Last tab, after Purchasing;
