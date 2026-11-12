@@ -232,6 +232,10 @@ def seed_on_startup():
         _grant_cash(db)
         _move_monthly_tick(db)
         _grant_admin_forms(db)
+        try:
+            _grant_requests_register(db)
+        except Exception as e:
+            db.rollback(); print("requests register access:", e)
         _grant_docs_office(db)
         _docs_office_to_admin(db)
         _invoices_one_tab(db)
@@ -1043,6 +1047,20 @@ def _grant_zoho_notice(db):
             if "zoho" not in have:
                 r.notif = ",".join(have + ["zoho"])
     db.add(models.Setting(key="zoho_notice_granted", value="1"))
+    db.commit()
+
+
+def _grant_requests_register(db):
+    """Purchasing > Requests register (12 Nov 2026) is new, and a saved role or login lists its tabs one by one, so
+    nobody would see it. Whoever has the LPO register beside it gets it too. Once - after that the ticks decide."""
+    if db.query(models.Setting).filter(models.Setting.key == "reqreg_granted").first():
+        return
+    for obj in list(db.query(models.AccessRole).all()) + list(db.query(models.User).all()):
+        field = "permissions" if isinstance(obj, models.User) else "screens"
+        keys = [k for k in (getattr(obj, field) or "").split(",") if k]
+        if "store.purchasing.lporegister" in keys and "store.purchasing.reqreg" not in keys:
+            setattr(obj, field, ",".join(keys + ["store.purchasing.reqreg"]))
+    db.add(models.Setting(key="reqreg_granted", value="1"))
     db.commit()
 
 
