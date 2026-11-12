@@ -259,6 +259,10 @@ def seed_on_startup():
             _backfill_asked(db)
         except Exception as e:
             db.rollback(); print("Requests register backfill:", e)
+        try:
+            _fix_asked_mr0110(db)
+        except Exception as e:
+            db.rollback(); print("MR-0110 asked name:", e)
         # _hire_in_to_requests_once(db) - the October data is put right once the purchaser's answers are in
         try:
             import zohoapi as _zn
@@ -9415,6 +9419,21 @@ def _backfill_asked(db):
     if todo:
         db.commit()
         print(f"Requests register: what was asked filled for {len(todo)} older request line(s)")
+
+
+def _fix_asked_mr0110(db):
+    """MR-0110's tyre line (for trolleys) lost the name the store asked when it was renamed on IC/LPO/20260199 on
+    10/11/2026. The office confirmed on 12/11/2026 it was 'Wheel for Wheel Barrow'. Once; only the line still
+    showing 'name not kept'."""
+    if db.query(models.Setting).filter(models.Setting.key == "asked_mr0110_fixed").first():
+        return
+    m = db.query(models.MaterialRequest).filter(models.MaterialRequest.ref == "MR-0110").first()
+    for l in (m.lines if m else []):
+        if l.asked_name == RENAMED_UNKNOWN and "tyre" in (l.description or (l.item.name if l.item else "")).lower():
+            l.asked_name = "Wheel for Wheel Barrow"
+            log_action(db, None, "asked_name_fix", f"MR-0110 line {l.id}: asked as 'Wheel for Wheel Barrow' (confirmed by the office)")
+    db.add(models.Setting(key="asked_mr0110_fixed", value="1"))
+    db.commit()
 
 
 def _fix_lpo_0199(db):

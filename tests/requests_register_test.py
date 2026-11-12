@@ -107,6 +107,22 @@ c.post('/store/purchase/orders', json={'supplier_name': 'Survey Co', 'order_date
     'lines': [{'description': 'Survey Team For FF Block work layout & levels, Roof Point marking', 'qty': 1, 'unit': 'pcs', 'rate': 500, 'tax_pct': 5}]}, headers=H)
 rs = [r for r in c.get('/store/requests/report?kind=asked', headers=H).json()['rows'] if r['ref'] in {r for r, _i in svl}]
 ck('one survey line on the LPO for two sites: both show it', len(rs) == 2 and all(r['ordered_as'].startswith('Survey Team For FF Block') for r in rs), rs)
+# One-time: MR-0110's tyre line gets the name the office confirmed (12 Nov 2026); other lines untouched
+ty = it('Air Type Tyre For Barrow Urbana Brand')
+db = database.SessionLocal()
+import datetime as _dt
+mr = models.MaterialRequest(ref='MR-0110', site='', requested_by='Amal', status='partial', requested_on=_dt.date(2026, 11, 10))
+db.add(mr); db.flush()
+tl = models.MaterialRequestLine(request_id=mr.id, item_id=ty['id'], description='Air Type Tyre For Barrow Urbana Brand', qty_requested=10, unit='pcs')
+gl = models.MaterialRequestLine(request_id=mr.id, item_id=g9['id'], description='Angle Grinder 9 Inch', qty_requested=1, unit='pcs')
+db.add_all([tl, gl]); db.commit()
+tl.asked_name = main.RENAMED_UNKNOWN; db.commit()
+main._fix_asked_mr0110(db); db.refresh(tl); db.refresh(gl)
+ck('MR-0110 tyre now shows Wheel for Wheel Barrow', tl.asked_name == 'Wheel for Wheel Barrow', tl.asked_name)
+ck('its other lines are untouched', gl.asked_name == 'Angle Grinder 9 Inch', gl.asked_name)
+tl.asked_name = 'x'; db.commit(); main._fix_asked_mr0110(db); db.refresh(tl)
+ck('the fix runs only once', tl.asked_name == 'x')
+db.close()
 # Late / All open / Done & closed chips (12 Nov 2026): an open request past its needed-by date is late
 m3 = c.post('/store/requests', json={'site': '921', 'requested_by': 'Amal', 'needed_by': '2020-01-01', 'urgency': 'normal', 'notes': '',
     'lines': [{'item_id': nail['id'], 'qty_requested': 3, 'unit': 'kg', 'purpose': 'old one'}]}, headers=H).json()
