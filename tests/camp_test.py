@@ -131,7 +131,7 @@ d = camp.get_camp(s, viewer)
 ok(len(data) == d["totals"]["beds"], f"Excel: room-by-room sheet, one row per bed ({len(data)} = {d['totals']['beds']})")
 ok(sum(1 for r in data if r[2] == "FREE") == d["totals"]["free"], "free beds in Excel = free beds on screen")
 ok(any("Total vacant beds: %d" % d["totals"]["free"] == (r[2] or "") for r in rows), "Excel ends with the vacant-bed total, as Jomon's sheet")
-from pypdf import PdfReader
+from pdfread import PdfReader
 pv = camp.export(tok, "view", s).body.decode()
 ok(pv.count('class="room"') == len(d["rooms"]) and "Download PDF" in pv and "pv-share" in pv, "Preview shows room cards with PDF / Excel / Share")
 pdf = asyncio.run(body(camp.export(tok, "pdf", s)))
