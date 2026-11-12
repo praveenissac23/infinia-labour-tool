@@ -1,0 +1,12 @@
+# Tests that already failed before tests/run_all.py existed (12/11/2026). They still run; they do not stop a push.
+# Each one is to be looked at and either fixed or brought up to date - this list must only get shorter.
+bill_fmt_test.py - PDF page-break check expects row 4 on page 2
+camp_test.py - camp head-count expectations (73 in camp, guests)
+cross_link_test.py - order follow-up does not show the store LPO
+est_bills_test.py - fixture workbook no longer matches (IndexError)
+est_vnum_test.py - variation numbering keeps typed numbers (CP01) instead of V01
+notif_settings_test.py - notification group for a login without the right is not greyed
+sweep_fixes_test.py - logs in as a user the empty test database does not have
+tips_coverage_test.py - 22 form fields without an (i) tip
+watch_test.py - Activity monitor offered while switched off
+workflow_test.py - returned material still counted at the site

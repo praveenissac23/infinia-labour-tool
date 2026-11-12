@@ -1,0 +1,24 @@
+# Every push to GitHub runs all the tests. A red cross on the commit = do not pull it to live.
+name: tests
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Tools the app uses (PDF text, scans, Excel recalculation)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr libreoffice-calc-nogui fonts-dejavu >/dev/null
+      - run: pip install -r requirements.txt
+      - name: All tests (each on its own empty database)
+        env:
+          TZ: Asia/Dubai
+          INFINIA_TEST_JOBS: "4"
+        run: python3 tests/run_all.py

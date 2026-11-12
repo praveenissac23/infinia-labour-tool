@@ -374,6 +374,26 @@ async def count_writes(request, call_next):
     return await call_next(request)
 
 
+_STAGING = os.environ.get("INFINIA_STAGING") == "1"
+_STAGING_BAR = (b'<div style="position:fixed;left:0;right:0;bottom:0;z-index:2147483647;background:#B9770E;color:#fff;'
+                b'font:600 12px/24px Arial,sans-serif;text-align:center;pointer-events:none">TEST COPY - data copied from live, '
+                b'nothing here reaches Zoho, email or phones</div>')
+
+
+@app.middleware("http")
+async def staging_bar(request, call_next):
+    """The test copy (deploy/install-staging.sh) says so on every page, so nobody takes it for live."""
+    response = await call_next(request)
+    if not _STAGING or "text/html" not in (response.headers.get("content-type") or ""):
+        return response
+    body = b"".join([c async for c in response.body_iterator])
+    if b"</body>" in body:
+        body = body.replace(b"</body>", _STAGING_BAR + b"</body>", 1)
+    h = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+    from starlette.responses import Response as _Resp
+    return _Resp(content=body, status_code=response.status_code, headers=h, media_type=response.media_type)
+
+
 @app.middleware("http")
 async def never_cache_api(request, call_next):
     """Every answer from this API is live data and must be fetched fresh.
