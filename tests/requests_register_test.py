@@ -83,6 +83,25 @@ for q in (25, 20):
         'lines': [{'item_id': nail['id'], 'description': 'Wire Nail 2.5 Inch', 'qty': q, 'unit': 'kg', 'rate': 6, 'tax_pct': 5}]}, headers=H)
 rr = [r for r in c.get('/store/requests/report?kind=asked', headers=H).json()['rows'] if r['ref'] == m2['ref']]
 ck('45 kg ordered as 25 + 20 on two LPOs is not "changed"', rr and rr[0]['changed'] == '' and rr[0]['lpo'].count('IC/LPO') == 2, rr)
+# Late / All open / Done & closed chips (12 Nov 2026): an open request past its needed-by date is late
+m3 = c.post('/store/requests', json={'site': '921', 'requested_by': 'Amal', 'needed_by': '2020-01-01', 'urgency': 'normal', 'notes': '',
+    'lines': [{'item_id': nail['id'], 'qty_requested': 3, 'unit': 'kg', 'purpose': 'old one'}]}, headers=H).json()
+m4 = c.post('/store/requests', json={'site': '921', 'requested_by': 'Amal', 'needed_by': '2099-01-01', 'urgency': 'normal', 'notes': '',
+    'lines': [{'item_id': nail['id'], 'qty_requested': 4, 'unit': 'kg', 'purpose': 'not due'}]}, headers=H).json()
+late = {r['ref']: r for r in c.get('/store/requests/report?kind=asked_late', headers=H).json()['rows']}
+ck('a request past its needed-by date shows under Late, with its days', m3['ref'] in late and late[m3['ref']]['days_late'] > 2000, late.get(m3['ref']))
+ck('one not yet due is not late', m4['ref'] not in late)
+allr = {r['ref']: r for r in c.get('/store/requests/report?kind=asked', headers=H).json()['rows']}
+ck('open lines carry done = False for the chips', allr[m4['ref']]['_done'] is False and allr[m4['ref']]['days_late'] == '')
+c.post(f"/store/requests/{m3['id']}/status", json={'status': 'rejected'}, headers=H)
+late = {r['ref'] for r in c.get('/store/requests/report?kind=asked_late', headers=H).json()['rows']}
+done = {r['ref'] for r in c.get('/store/requests/report?kind=asked_done', headers=H).json()['rows']}
+ck('rejected: no longer late, now under Done & closed', m3['ref'] not in late and m3['ref'] in done)
+tk = c.post('/auth/download-token', headers=H).json().get('token') or ''
+x = c.get(f'/export/store/report/view?kind=mr_asked_late&token={tk}')
+ck('the Late list previews', x.status_code == 200 and '_done' not in x.text, x.status_code)
+x = c.get(f'/export/store/report?kind=mr_asked&format=excel&token={tk}')
+ck('Excel downloads without the inner done flag', x.status_code == 200, x.status_code)
 db = database.SessionLocal()
 u = models.User(username='hr', hashed_password=auth.hash_password('p'), full_name='HR', role='office', permissions='staff'); db.add(u); db.commit(); db.close()
 HR = {'Authorization': 'Bearer ' + c.post('/auth/login', data={'username': 'hr', 'password': 'p'}).json()['access_token']}

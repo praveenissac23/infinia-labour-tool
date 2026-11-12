@@ -4310,17 +4310,17 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <button class="btn btn-dark" onclick="rrExport('view')">Share</button></span>
             </div>
             <p class="sub" style="margin:6px 0 10px;">Every material the store asked for, exactly as asked - it stays here after it is ordered and delivered. <b>Ordered as</b> is what went on the LPO; a line ordered differently (another name or quantity) is marked <span class="pill" style="background:#FFF3D6; color:#8A6100;">changed</span>.</p>
-            <div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
-              <div class="field"><label for="rr-show">Show</label><select id="rr-show" onchange="rrLoad()" style="width:190px;">
-                <option value="asked">All requests</option><option value="asked_open">Still open</option>
-                <option value="asked_done">Delivered / closed / rejected</option><option value="asked_changed">Ordered differently</option></select></div>
-              <div class="field" style="flex:1; min-width:220px;"><label for="rr-q">Search</label><input type="text" id="rr-q" placeholder="Request, site, material, LPO, who asked..." oninput="rrDraw()" autocomplete="off" style="width:100%;"></div>
+            <div class="form-row" style="margin:4px 0 8px;">
+              <div class="seg-chips" id="rr-chips"></div>
+              <select id="rr-site" onchange="rrDraw()" style="width:160px;"><option value="">All sites</option></select>
+              <input type="text" id="rr-q" placeholder="Search request, material, LPO, who asked" oninput="rrDraw()" autocomplete="off" style="width:270px;">
+              <span style="flex:1;"></span>
             </div>
             <div class="status-msg" id="rr-status"></div>
             <div class="table-wrap" style="margin-top:10px; overflow-x:auto;"><table class="data-table" id="rr-table"><thead><tr>
-              <th>Request</th><th>Asked on</th><th>Site</th><th>Material asked</th><th class="r">Qty asked</th><th>What for</th><th>Asked by</th>
+              <th>Request</th><th>Asked on</th><th>Site</th><th>Material asked</th><th class="r">Qty asked</th><th>What for</th><th>Asked by</th><th>Needed by</th>
               <th class="r">Approved</th><th>Status</th><th>LPO</th><th>Ordered as</th><th class="r">Received</th></tr></thead>
-              <tbody id="rr-body"><tr><td colspan="12" class="empty-note">Loading...</td></tr></tbody></table></div>
+              <tbody id="rr-body"><tr><td colspan="13" class="empty-note">Loading...</td></tr></tbody></table></div>
             <div class="sub" id="rr-foot" style="margin-top:8px;"></div>
           </div>
         </div>
@@ -14139,32 +14139,52 @@ async function ctSave() {
   catch (e) { showStatus("ct-status", "err", errText(e)); }
 }
 
-// Purchasing > Requests register: what the store asked for, against what was ordered and what came.
-let RR = [];
+// Purchasing > Requests register: what the store asked for, against what was ordered and what came. Chips as on the
+// Order tracker - Late / All open / Done & closed - plus Ordered differently and Everything, each with its count.
+let RR = [], RR_VIEW = "open";
+const RR_VIEWS = [["late", "Late", r => r.days_late], ["open", "All open", r => !r._done], ["done", "Done & closed", r => r._done],
+                  ["changed", "Ordered differently", r => r.changed], ["all", "Everything", r => true]];
 async function rrLoad() {
-  const kind = (document.getElementById("rr-show") || {}).value || "asked";
-  try { RR = (await apiCall(`/store/requests/report?kind=${kind}`)).rows || []; rrDraw(); }
-  catch (e) { showStatus("rr-status", "err", errText(e)); }
+  try { RR = (await apiCall("/store/requests/report?kind=asked")).rows || []; }
+  catch (e) { showStatus("rr-status", "err", errText(e)); return; }
+  const sel = document.getElementById("rr-site");
+  if (sel) {
+    const cur = sel.value, list = [...new Set(RR.map(r => r.site).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    sel.innerHTML = `<option value="">All sites</option>` + list.map(x => `<option value="${escapeAttr(x)}"${x === cur ? " selected" : ""}>${/^\d+$/.test(x) ? "Site " + escapeHtml(x) : escapeHtml(x)}</option>`).join("");
+  }
+  rrDraw();
+}
+function rrBase() {
+  const site = (document.getElementById("rr-site") || {}).value || "";
+  const q = ((document.getElementById("rr-q") || {}).value || "").trim().toLowerCase();
+  return RR.filter(r => (!site || r.site === site) &&
+    (!q || Object.entries(r).filter(([k]) => !k.startsWith("_")).map(([, v]) => v).join(" ").toLowerCase().includes(q)));
 }
 function rrDraw() {
-  const q = ((document.getElementById("rr-q") || {}).value || "").trim().toLowerCase();
-  const list = q ? RR.filter(r => Object.values(r).join(" ").toLowerCase().includes(q)) : RR;
+  const base = rrBase(), q = ((document.getElementById("rr-q") || {}).value || "").trim();
+  const chips = document.getElementById("rr-chips");
+  if (chips) chips.innerHTML = RR_VIEWS.map(([k, l, f]) =>
+    `<button type="button" class="seg-chip${RR_VIEW === k ? " on" : ""}" onclick="RR_VIEW='${k}'; rrDraw()">${l} <span>${num(base.filter(f).length)}</span></button>`).join("");
+  const list = base.filter((RR_VIEWS.find(v => v[0] === RR_VIEW) || RR_VIEWS[1])[2]);
   const body = document.getElementById("rr-body"); if (!body) return;
   body.innerHTML = list.length ? list.map(r => `<tr>
       <td class="kl nowrap"><strong>${requestLink(r.ref)}</strong></td><td class="kl nowrap">${r.asked_on ? accDmy(r.asked_on) : "-"}</td>
       <td class="kl">${escapeHtml(r.site || "-")}</td><td class="l"><b>${escapeHtml(r.asked)}</b></td>
       <td class="r nowrap">${num(r.asked_qty)} ${escapeHtml(r.unit)}</td><td class="l" style="font-size:12.5px;">${escapeHtml(r.what_for || "")}</td>
-      <td class="kl">${escapeHtml(r.asked_by || "")}</td><td class="r">${r.approved === "" ? "-" : num(r.approved)}</td>
+      <td class="kl">${escapeHtml(r.asked_by || "")}</td>
+      <td class="kl nowrap">${r.needed_by ? accDmy(r.needed_by) : "-"}${r.days_late ? `<div style="font-size:11px; color:#C0392B; font-weight:600;">${r.days_late} day${r.days_late === 1 ? "" : "s"} late</div>` : ""}</td>
+      <td class="r">${r.approved === "" ? "-" : num(r.approved)}</td>
       <td class="kl" style="font-size:12.5px;">${escapeHtml(r.status)}</td><td class="kl nowrap">${escapeHtml(r.lpo || "-")}</td>
       <td class="l" style="font-size:12.5px;">${escapeHtml(r.ordered_as || "-")}${r.changed ? ' <span class="pill" style="background:#FFF3D6; color:#8A6100;">changed</span>' : ""}</td>
-      <td class="r">${num(r.received)}</td></tr>`).join("") : `<tr><td colspan="12" class="empty-note">Nothing here.</td></tr>`;
+      <td class="r">${num(r.received)}</td></tr>`).join("") : `<tr><td colspan="13" class="empty-note">Nothing here.</td></tr>`;
   const ch = list.filter(r => r.changed).length;
   document.getElementById("rr-foot").textContent = `${num(list.length)} material line(s)` + (ch ? ` · ${num(ch)} ordered differently` : "") + (q ? ` · matching "${q}"` : "");
 }
 async function rrExport(fmt) {
   if (!cachedDownloadToken) await refreshDownloadToken();
-  const kind = (document.getElementById("rr-show") || {}).value || "asked";
-  const q = ((document.getElementById("rr-q") || {}).value || "").trim();
+  const kind = { late: "asked_late", open: "asked_open", done: "asked_done", changed: "asked_changed", all: "asked" }[RR_VIEW] || "asked";
+  const site = (document.getElementById("rr-site") || {}).value || "";
+  const q = [site, ((document.getElementById("rr-q") || {}).value || "").trim()].filter(Boolean).join(" ");
   const path = fmt === "view" ? "/export/store/report/view" : "/export/store/report";
   window.open(`${API}${path}?kind=mr_${kind}&token=${encodeURIComponent(cachedDownloadToken)}` + (fmt === "view" ? "" : `&format=${fmt}`) + (q ? `&q=${encodeURIComponent(q)}` : ""), "_blank");
 }

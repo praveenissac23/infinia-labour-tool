@@ -7866,7 +7866,7 @@ def material_request_report(kind: str = "open", status: str = "", q: str = "",
                               "needed_by": m.needed_by.isoformat() if m.needed_by else ""})
         return {"title": "Outstanding materials", "rows": rows}
 
-    if kind in ("asked", "asked_open", "asked_done", "asked_changed"):
+    if kind in ("asked", "asked_open", "asked_late", "asked_done", "asked_changed"):
         # The Requests register (Purchasing > Requests register, 12 Nov 2026): every material the store asked for,
         # one line each, ordered or not - what was asked, against what went on the LPO and what came. Requests the
         # LPO made itself ("Ordered direct", stock for the store) are not the store's asking and are left out.
@@ -7874,6 +7874,7 @@ def material_request_report(kind: str = "open", status: str = "", q: str = "",
             raise HTTPException(403, "The Requests register is for the purchasing office.")
         DONE = ("delivered", "received", "closed", "rejected")
         needle = (q or "").strip().lower()
+        today = _dubai_today()
         lpos = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.request_line_ids.isnot(None),
                                                      models.PurchaseOrder.status != "cancelled").all()
         line_item = dict(db.query(models.MaterialRequestLine.id, models.MaterialRequestLine.item_id).all())
@@ -7890,7 +7891,9 @@ def material_request_report(kind: str = "open", status: str = "", q: str = "",
                 st = (l.status or "pending")
                 word = "Rejected" if st == "rejected" else MR_WORDS.get(m.status, m.status or "")
                 done = st == "rejected" or m.status in DONE
-                if kind == "asked_open" and done or kind == "asked_done" and not done:
+                # late: still open and past the date the site needed it by (the Order tracker's Late, line by line)
+                late = (today - m.needed_by).days if (not done and m.needed_by and m.needed_by < today) else 0
+                if kind == "asked_open" and done or kind == "asked_done" and not done or kind == "asked_late" and not late:
                     continue
                 asked = (l.asked_name or l.description or (l.item.name if l.item else "") or "").strip()
                 asked_q = l.asked_qty if l.asked_qty is not None else l.qty_requested
@@ -7925,7 +7928,7 @@ def material_request_report(kind: str = "open", status: str = "", q: str = "",
                        "approved": "" if st == "pending" else 0 if st == "rejected" else round((l.qty_approved or l.qty_requested or 0), 3),
                        "status": word, "lpo": ", ".join(dict.fromkeys(r for r, *_ in ordered)) or "",
                        "ordered_as": ordered_txt, "received": round(l.qty_received or 0, 3),
-                       "changed": "Yes" if changed else ""}
+                       "changed": "Yes" if changed else "", "days_late": late or "", "_done": done}
                 if needle and needle not in " ".join(str(v) for k, v in row.items() if not k.startswith("_")).lower():
                     continue
                 rows.append(row)
@@ -11053,7 +11056,7 @@ def view_store_report(kind: str = "stock", date_from: str = None, date_to: str =
         data = store_report(kind=kind, date_from=date_from, date_to=date_to, site=site, move=move, db=db, user=None)
     rows = []
     for r in data["rows"]:
-        r = {k: v for k, v in r.items() if k not in ("low", "overdue")}
+        r = {k: v for k, v in r.items() if k not in ("low", "overdue", "_done")}
         if r.get("_type_label"):
             r["item_type"] = r["_type_label"]          # 'Rental - Desarch', 'Asset', 'Consumable'
         if isinstance(r.get("by_site"), dict):
@@ -11380,7 +11383,7 @@ def export_store_report(kind: str = "stock", format: str = "excel",
     # raw mapping.
     rows = []
     for r in data["rows"]:
-        r = {k: v for k, v in r.items() if k not in ("low", "overdue")}
+        r = {k: v for k, v in r.items() if k not in ("low", "overdue", "_done")}
         if r.get("_type_label"):
             r["item_type"] = r["_type_label"]          # 'Rental - Desarch', 'Asset', 'Consumable'
         if isinstance(r.get("by_site"), dict):
