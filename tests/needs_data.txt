@@ -9,3 +9,4 @@ lpo_round_off_test.py
 office_fils_rule_test.py
 office_pay_arith_audit_test.py
 report_day_sites_test.py
+rental_scope_test.py
