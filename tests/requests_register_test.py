@@ -83,6 +83,30 @@ for q in (25, 20):
         'lines': [{'item_id': nail['id'], 'description': 'Wire Nail 2.5 Inch', 'qty': q, 'unit': 'kg', 'rate': 6, 'tax_pct': 5}]}, headers=H)
 rr = [r for r in c.get('/store/requests/report?kind=asked', headers=H).json()['rows'] if r['ref'] == m2['ref']]
 ck('45 kg ordered as 25 + 20 on two LPOs is not "changed"', rr and rr[0]['changed'] == '' and rr[0]['lpo'].count('IC/LPO') == 2, rr)
+# Renamed on the LPO with nothing in common but the word (live IC/LPO/20260202, 20260205, 12 Nov 2026): the register
+# must still show what each was ordered as, not "(on the LPO)"
+h250, h100, sv = it('Hollow 250MM'), it('Hollow 100MM'), it('Survey Team For Levels Marking')
+mh = c.post('/store/requests', json={'site': '912', 'requested_by': 'Akhil', 'needed_by': '2026-11-11', 'urgency': 'normal', 'notes': '',
+    'lines': [{'item_id': h250['id'], 'qty_requested': 500, 'unit': 'pcs', 'purpose': 'FF BLOCK WORK'},
+              {'item_id': h100['id'], 'qty_requested': 1600, 'unit': 'pcs', 'purpose': 'FF BLOCK WORK'}]}, headers=H).json()
+c.post(f"/store/requests/{mh['id']}/status", json={'status': 'approved'}, headers=H)
+hl = [l['id'] for l in [x for x in c.get('/store/requests', headers=H).json() if x['id'] == mh['id']][0]['lines']]
+c.post('/store/purchase/orders', json={'supplier_name': 'Blocks LLC', 'order_date': '2026-11-11', 'project_location': '912', 'request_line_ids': hl,
+    'lines': [{'description': 'Hollow Block 10"', 'qty': 450, 'unit': 'pcs', 'rate': 3, 'tax_pct': 5},
+              {'description': 'Hollow Block 4"', 'qty': 1512, 'unit': 'pcs', 'rate': 2, 'tax_pct': 5}]}, headers=H)
+rh = {r['asked']: r for r in c.get('/store/requests/report?kind=asked', headers=H).json()['rows'] if r['ref'] == mh['ref']}
+ck('Hollow 250MM shows it was ordered as Hollow Block 10" (450), changed', rh['Hollow 250MM']['ordered_as'].startswith('Hollow Block 10"') and '450' in rh['Hollow 250MM']['ordered_as'] and rh['Hollow 250MM']['changed'] == 'Yes', rh['Hollow 250MM'])
+ck('Hollow 100MM shows Hollow Block 4" (1,512)', rh['Hollow 100MM']['ordered_as'].startswith('Hollow Block 4"') and '1512' in rh['Hollow 100MM']['ordered_as'].replace(',', ''), rh['Hollow 100MM'])
+svl = []
+for site, what in (('925', 'FF BLOCK LAYOUT (1 VISIT)'), ('926', 'ROOF POINT MARKING (1 VISIT)')):
+    ms = c.post('/store/requests', json={'site': site, 'requested_by': 'Akhil', 'needed_by': '2026-11-12', 'urgency': 'normal', 'notes': '',
+        'lines': [{'item_id': sv['id'], 'qty_requested': 1, 'unit': 'pcs', 'purpose': what}]}, headers=H).json()
+    c.post(f"/store/requests/{ms['id']}/status", json={'status': 'approved'}, headers=H)
+    svl.append((ms['ref'], [x for x in c.get('/store/requests', headers=H).json() if x['id'] == ms['id']][0]['lines'][0]['id']))
+c.post('/store/purchase/orders', json={'supplier_name': 'Survey Co', 'order_date': '2026-11-11', 'project_location': '925', 'request_line_ids': [i for _r, i in svl],
+    'lines': [{'description': 'Survey Team For FF Block work layout & levels, Roof Point marking', 'qty': 1, 'unit': 'pcs', 'rate': 500, 'tax_pct': 5}]}, headers=H)
+rs = [r for r in c.get('/store/requests/report?kind=asked', headers=H).json()['rows'] if r['ref'] in {r for r, _i in svl}]
+ck('one survey line on the LPO for two sites: both show it', len(rs) == 2 and all(r['ordered_as'].startswith('Survey Team For FF Block') for r in rs), rs)
 # Late / All open / Done & closed chips (12 Nov 2026): an open request past its needed-by date is late
 m3 = c.post('/store/requests', json={'site': '921', 'requested_by': 'Amal', 'needed_by': '2020-01-01', 'urgency': 'normal', 'notes': '',
     'lines': [{'item_id': nail['id'], 'qty_requested': 3, 'unit': 'kg', 'purpose': 'old one'}]}, headers=H).json()

@@ -7850,6 +7850,72 @@ MR_WORDS = {"pending": "Waiting on office", "approved": "Office approved", "orde
             "received": "Delivered to store"}
 
 
+_WORD_RE = re.compile(r"[a-z]+|\d+(?:\.\d+)?")
+_WORD_SKIP = {"for", "the", "and", "with", "of", "to", "in", "on", "a", "an", "pcs", "nos", "no", "size", "make", "type"}
+
+
+def _lpo_request_pairs(db, lpos):
+    """Which LPO line each request line on an LPO became - {(lpo id, request line id): (LPO line, shared)}.
+    The LPO does not record it line by line, so: same store item or same name first; then, for what is left (the
+    purchaser renamed it on the LPO - 'Hollow 250MM' ordered as 'Hollow Block 10"'), the LPO line sharing the most
+    words, then the nearest quantity, then the same place in the list. When the LPO has fewer lines left than
+    requests (one 'Survey team' line for two sites), a line may serve several requests - it is then shared."""
+    ids = {int(x) for o in lpos for x in (o.request_line_ids or "").split(",") if x.strip().isdigit()}
+    if not ids:
+        return {}
+    rl = {l.id: l for l in db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id.in_(ids)).all()}
+
+    def name(l):
+        return (l.asked_name if l.asked_name and l.asked_name != RENAMED_UNKNOWN else None) \
+            or l.description or (l.item.name if l.item else "") or ""
+
+    def words(t):
+        return {w for w in _WORD_RE.findall((t or "").lower()) if w not in _WORD_SKIP and (len(w) > 2 or w[0].isdigit())}
+
+    out = {}
+    for o in lpos:
+        req = [rl[int(x)] for x in (o.request_line_ids or "").split(",") if x.strip().isdigit() and int(x) in rl]
+        req = list(dict.fromkeys(req))
+        lines = sorted(o.lines, key=lambda x: x.id)
+        if not req or not lines:
+            continue
+        left, free = [], list(lines)
+        for l in req:
+            nm = name(l).strip().lower()
+            pl = next((x for x in lines if l.item_id and x.item_id == l.item_id), None) \
+                or next((x for x in lines if nm and (x.description or "").strip().lower() == nm), None)
+            if pl:
+                out[(o.id, l.id)] = pl
+                if pl in free:
+                    free.remove(pl)
+            else:
+                left.append(l)
+        if not left or not free:
+            continue
+        reuse = len(left) > len(free)
+        scored = []
+        for i, l in enumerate(left):
+            lw, q = words(name(l)), float(l.qty_approved or l.qty_requested or 0)
+            for j, x in enumerate(free):
+                common = len(lw & words(x.description))
+                near = -abs(float(x.qty or 0) - q) / max(q, float(x.qty or 0), 1)
+                scored.append((common, near, -abs(i - j), i, j))
+        scored.sort(reverse=True)
+        taken_l, taken_x = set(), set()
+        for common, near, _p, i, j in scored:
+            if i in taken_l or (j in taken_x and not reuse):
+                continue
+            # words in common, or nothing else it could be (one request left, one LPO line left)
+            if common == 0 and not (len(left) == 1 and len(free) == 1) and not (len(left) == len(free)):
+                continue
+            out[(o.id, left[i].id)] = free[j]
+            taken_l.add(i); taken_x.add(j)
+    count = {}
+    for (oid, _lid), pl in out.items():
+        count[pl.id] = count.get(pl.id, 0) + 1
+    return {k: (pl, count[pl.id] > 1) for k, pl in out.items()}
+
+
 @app.get("/store/requests/report")
 def material_request_report(kind: str = "open", status: str = "", q: str = "",
                             db: Session = Depends(get_db),
@@ -7901,6 +7967,7 @@ def material_request_report(kind: str = "open", status: str = "", q: str = "",
             for x in (o.request_line_ids or "").split(","):
                 if x.strip().isdigit():
                     on_lpo.setdefault(int(x), []).append(o)
+        lpo_pairs = _lpo_request_pairs(db, lpos)
         rows = []
         for m in reqs:
             if m.lpo_id:
@@ -7918,13 +7985,12 @@ def material_request_report(kind: str = "open", status: str = "", q: str = "",
                 os_ = on_lpo.get(l.id, [])
                 ordered, shared = [], False
                 for o in os_:
-                    pl = next((x for x in o.lines if l.item_id and x.item_id == l.item_id), None) \
-                        or next((x for x in o.lines if (x.description or "").strip().lower() == asked.lower()), None)
+                    pl, many = lpo_pairs.get((o.id, l.id), (None, False))
                     if pl:
                         ordered.append((o.ref, (pl.description or "").strip(), float(pl.qty or 0), pl.unit or l.unit or ""))
                         # one LPO line for the same material of several requests: its quantity is theirs together
                         others = [int(x) for x in (o.request_line_ids or "").split(",") if x.strip().isdigit() and int(x) != l.id]
-                        shared = shared or any(pl.item_id and line_item.get(x) == pl.item_id for x in others)
+                        shared = shared or many or any(pl.item_id and line_item.get(x) == pl.item_id for x in others)
                     else:
                         ordered.append((o.ref, "", None, ""))
                 if l.source == "petty" and not os_:
