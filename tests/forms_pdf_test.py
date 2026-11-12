@@ -3,7 +3,7 @@ pictures (card and preview) are there."""
 import io, os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 import forms_pdf as F
-from pypdf import PdfReader
+from pdfread import PdfReader
 fails = 0
 def ok(c, m):
     global fails

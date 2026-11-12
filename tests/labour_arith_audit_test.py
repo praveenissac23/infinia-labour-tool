@@ -354,7 +354,7 @@ for lab in cycles:
 say('report table rows and Excel checked, totals = sum of shown rows')
 
 # ---- 5. salary card Excel / PDF / preview: the final figure on every card -------------------------------------------
-from pypdf import PdfReader
+from pdfread import PdfReader
 for lab in cycles:
     want = {no: x for (no, l2), x in EXP.items() if l2 == lab}
     xr = c.get(f'/export/{lab}/excel', params={'token': dl()})

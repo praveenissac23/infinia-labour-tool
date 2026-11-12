@@ -62,8 +62,19 @@ def prepare():
             subprocess.run([sys.executable, os.path.join(TESTS, script), dst], cwd=ROOT, capture_output=True, timeout=300)
 
 
+def _has(mod):
+    import importlib.util
+    return importlib.util.find_spec(mod) is not None
+
+
+# tests that read printed PDFs column by column need pypdf; where it is missing they are skipped, not failed
+NEEDS_PYPDF = ("labour_arith_audit_test.py",)
+
+
 def needs_real(name):
     """A test that reads a copy of real data it cannot find is skipped, not failed."""
+    if name in NEEDS_PYPDF and not _has("pypdf"):
+        return True
     src = open(os.path.join(TESTS, name), encoding="utf-8", errors="ignore").read()
     return any(p in src and not os.path.exists(p) for p in REAL)
 

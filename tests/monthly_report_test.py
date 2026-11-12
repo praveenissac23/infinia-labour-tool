@@ -97,7 +97,7 @@ pdf = c.get(base + '&format=pdf&monthly=1')
 ck('monthly PDF builds', pdf.status_code == 200 and pdf.content[:4] == b'%PDF', pdf.status_code)
 ck('named as the monthly report', 'Monthly_Report' in pdf.headers.get('content-disposition', ''))
 import warnings; warnings.simplefilter('ignore')
-from pypdf import PdfReader
+from pdfread import PdfReader
 pages = PdfReader(io.BytesIO(pdf.content)).pages
 # Wrapped lines come back with newlines inside a sentence, so read it flat.
 text = ' '.join(' '.join((p.extract_text() or '').split()) for p in pages)
@@ -142,7 +142,7 @@ ck('the figures are the ones in the file',
 ck('and the total is on it', 'TOTAL' in body)
 
 # The preview and the file must agree which way up the page goes.
-from pypdf import PdfReader as _PR
+from pdfread import PdfReader as _PR
 box = _PR(io.BytesIO(c.get(base + '&format=pdf&monthly=1').content)).pages[0].mediabox
 pdf_turn = 'landscape' if box.width > box.height else 'portrait'
 pv_turn = 'portrait' if 'width:210mm' in body else 'landscape'
