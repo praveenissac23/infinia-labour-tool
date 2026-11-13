@@ -560,12 +560,17 @@ def seed_projects(SessionLocal, first=901, last=927):
 
 # ---- the lists people pick from (so nothing is typed that can be picked) ---------------
 
-TRADES = ["Civil", "MEP", "Finishes", "Joinery", "Aluminium & Glazing", "Steel", "External", "Manpower", "Supply", "Other"]
-SCOPES = ["Shoring", "Piling", "PT Works", "Dewatering", "Anti Termite", "Waterproofing", "Blockwork", "Plaster", "Tiling", "Painting",
-          "False Ceiling", "Gypsum", "Joinery", "Wooden Doors", "Metal Doors", "Kitchen Cabinets", "Wardrobes", "Aluminium & Glazing",
-          "Glass Partition", "Cladding", "Stone Cladding", "MEP", "Plumbing", "Electrical", "HVAC", "Fire Fighting", "Lift / Elevators",
-          "Swimming Pool", "Landscaping", "Hardscape", "Signage", "Scaffolding", "Steel Structure", "Insulation", "Manpower Supply",
-          "Laboratory", "Gym Flooring", "Steam & Sauna", "Play Equipment", "Fire Stop", "Cutting & Chasing", "Other"]
+TRADES = ["Civil", "MEP", "Finishes", "Joinery", "Aluminium & Glazing", "Steel", "External", "Cleaning", "Manpower", "Supply", "Other"]
+# The Work list on a subcontract / LPO - alphabetical, Other last. Settings > Work types replaces it once an admin saves one.
+SCOPES = ["Aluminium & Glazing", "Anti Termite", "Blockwork", "Cladding", "Cutting & Chasing", "Deep Cleaning Works",
+          "Dewatering", "Electrical", "False Ceiling", "Fire Fighting", "Fire Stop", "Glass Partition", "Gym Flooring",
+          "Gypsum", "Hardscape", "HVAC", "Insulation", "Joinery", "Kitchen Cabinets", "Laboratory", "Landscaping",
+          "Lift / Elevators", "Manpower Supply", "MEP", "Metal Doors", "Painting", "Piling", "Plaster",
+          "Play Equipment", "Plumbing", "PT Works", "Scaffolding", "Shoring", "Signage", "Steam & Sauna",
+          "Steel Structure", "Stone Cladding", "Swimming Pool", "Tiling", "Wardrobes", "Waterproofing", "Wooden Doors",
+          "Other"]
+# A work that has its own trade: picking it fills Trade (13/11/2026). Settings > Work types: "Work | Trade".
+SCOPE_TRADE = {"Deep Cleaning Works": "Cleaning"}
 PARTIES = ["Consultant", "Client", "Developer", "DM (Dubai Municipality)", "DEWA", "RTA", "Etisalat / du", "Civil Defence",
            "Trakhees", "Nakheel", "Emaar", "Dubai Properties", "Meraas", "Subcontractor", "Supplier", "Other"]
 DISCIPLINES = ["Architectural", "Structural", "MEP", "Electrical", "Plumbing", "HVAC", "Civil", "Landscape", "Interior", "General"]
@@ -760,6 +765,30 @@ def contract_types(db):
     except Exception:
         v = []
     return v or list(CONTRACT_TYPES)
+
+
+def work_types(db):
+    """The Work list for subcontracts / LPOs / manpower, every project - Settings > Work types, else the standard list.
+    Returns ([names], {name: trade}) - a work with a trade fills the Trade box when picked."""
+    import json as _j
+    r = db.query(models.Setting).filter(models.Setting.key == "est_work_types").first()
+    try:
+        v = _j.loads(r.value) if r and r.value else None
+    except Exception:
+        v = None
+    if not v:
+        return list(SCOPES), dict(SCOPE_TRADE)
+    names = [str(x.get("name", "")).strip() for x in v if str(x.get("name", "")).strip()]
+    return names, {str(x["name"]).strip(): str(x.get("trade") or "").strip() for x in v if str(x.get("name", "")).strip() and str(x.get("trade") or "").strip()}
+
+
+def canon_work(db, typed):
+    """'deep cleaning works', ' Deep  Cleaning Works ' -> the list's own spelling, so reports group it as one."""
+    t = " ".join(str(typed or "").split())
+    if not t:
+        return t
+    names, _tr = work_types(db)
+    return next((n for n in names if n.lower() == t.lower()), t)
 
 
 # ---- the generic save: field lists per kind ------------------------------------------
@@ -1403,6 +1432,47 @@ def put_contract_types(data: dict = Body(...), db: Session = Depends(get_db), us
     return {"types": out}
 
 
+@router.get("/store/est/work-types")
+def get_work_types(db: Session = Depends(get_db), user: models.User = VIEW):
+    names, tr = work_types(db)
+    return {"types": [{"name": n, "trade": tr.get(n, "")} for n in names], "trades": TRADES,
+            "standard": [{"name": n, "trade": SCOPE_TRADE.get(n, "")} for n in SCOPES]}
+
+
+@router.put("/store/est/work-types")
+def put_work_types(data: dict = Body(...), db: Session = Depends(get_db), user: models.User = VIEW):
+    """Settings > Work types (admin): add, rename or remove. A rename carries every subcontract with the old name
+    to the new one, so reports keep them together; a removed work stays on the subcontracts that have it."""
+    import json as _j
+    if user.role != "admin":
+        raise HTTPException(403, "Only an admin can change the work types.")
+    seen, out = set(), []
+    for x in data.get("types") or []:
+        n = " ".join(str(x.get("name") or "").split())[:60]
+        t = " ".join(str(x.get("trade") or "").split())[:40]
+        if n and n.lower() not in seen:
+            seen.add(n.lower()); out.append({"name": n, "trade": t})
+    if not out:
+        raise HTTPException(400, "Keep at least one work type.")
+    others = [x for x in out if x["name"].lower() == "other"]
+    out = sorted([x for x in out if x["name"].lower() != "other"], key=lambda x: x["name"].lower()) + others
+    was, _t = work_types(db)
+    moved = 0
+    for old, new in (data.get("renames") or {}).items():
+        old, new = " ".join(str(old).split()), " ".join(str(new).split())
+        if old and new and old != new and new.lower() in seen:
+            for sb in db.query(EstSub).filter(func.lower(EstSub.scope) == old.lower()).all():
+                sb.scope = new; moved += 1
+    r = db.query(models.Setting).filter(models.Setting.key == "est_work_types").first()
+    if not r:
+        r = models.Setting(key="est_work_types"); db.add(r)
+    r.value = _j.dumps(out)
+    db.add(models.AuditLog(user_id=user.id, action="est_work_types", details=f"Work types: {len(was)} -> {len(out)}; "
+                           f"{', '.join(x['name'] for x in out)}" + (f"; renamed on {moved} subcontract(s)" if moved else "")))
+    db.commit()
+    return {"types": out, "moved": moved}
+
+
 @router.get("/store/est/meta")
 def meta(db: Session = Depends(get_db), user: models.User = VIEW):
     perms = M.effective_permissions(user)
@@ -1431,7 +1501,7 @@ def meta(db: Session = Depends(get_db), user: models.User = VIEW):
                        "trn": "".join(ch for ch in (s.trn or "") if ch.isdigit())} for s in sups],
         "sub_names": sorted(n for n in names if n),
         "users": [{"id": u.id, "name": u.full_name} for u in users],
-        "trades": TRADES, "scopes": SCOPES, "parties": PARTIES, "disciplines": DISCIPLINES, "doc_categories": DOC_CATEGORIES,
+        "trades": TRADES, "scopes": work_types(db)[0], "scope_trade": work_types(db)[1], "parties": PARTIES, "disciplines": DISCIPLINES, "doc_categories": DOC_CATEGORIES,
         "log_status": LOG_STATUS, "steps": SUB_STEPS, "rules": _rules(db), "contract_types": contract_types(db),
         "dummy": _dummy_count(db),
         "me": {"id": user.id, "name": user.full_name, "username": user.username, "admin": user.role == "admin",
@@ -1705,6 +1775,8 @@ def add_row(kind: str, data: dict = Body(...), db: Session = Depends(get_db), us
         _parent_ok(db, kind, pid)
         setattr(row, parent, pid)
     _apply(row, fields, data)
+    if kind == "subs":
+        row.scope = canon_work(db, row.scope)
     if kind == "subs" and str(data.get("adv_rec_pct", "")).strip() in ("", "None"):
         row.adv_rec_pct = None                  # blank: recovered at the advance %
     if kind == "subs" and "adv_rec_mode" in data and (row.adv_rec_mode or "") != "pct":
@@ -1906,6 +1978,8 @@ def edit_row(kind: str, rid: int, data: dict = Body(...), db: Session = Depends(
         was = row.ref
         vo_number_in(db, row, vo_typed, sub=(kind == "subvos"))
         db.add(models.AuditLog(user_id=user.id, action="est_vo_number", details=f"{'subcontract ' if kind == 'subvos' else ''}variation #{row.id} {(row.title or '')[:60]}: number {was or '-'} -> {row.ref}"))
+    if kind == "subs" and "scope" in data:
+        row.scope = canon_work(db, row.scope)
     if kind == "subs" and "adv_rec_pct" in data and str(data.get("adv_rec_pct")).strip() in ("", "None"):
         row.adv_rec_pct = None
     if kind == "subs" and "adv_rec_mode" in data and (row.adv_rec_mode or "") != "pct":

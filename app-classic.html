@@ -5071,6 +5071,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="btn btn-primary" onclick="ctSave()">Save</button><button type="button" class="btn btn-gray" onclick="ctReset()">Standard list</button></div>
             <div class="status-msg" id="ct-status"></div>
           </div>
+          <div class="card" id="wtypes-card" style="display:none;">
+            <h2>Work types</h2>
+            <p class="sub">The <b>Work</b> list on every subcontract, LPO and manpower agreement, in every project (Estimation &gt; Projects &gt; Subcontracts). Kept in alphabetical order. A work with a <b>Trade</b> fills the Trade box when it is picked. Renaming a work renames it on every subcontract that has it; a removed work stays on the subcontracts that already have it.</p>
+            <div id="wt-rows" style="max-width:560px;"></div>
+            <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button type="button" class="btn btn-gray" onclick="wtAdd()">+ Add work</button><button type="button" class="btn btn-primary" onclick="wtSave()">Save</button><button type="button" class="btn btn-gray" onclick="wtReset()">Standard list</button></div>
+            <div class="status-msg" id="wt-status"></div>
+          </div>
           <div class="card md-list-card" id="companies-card" style="display:none;">
             <div class="md-list-head">
               <div><h2>Companies <span class="md-count" id="co-count"></span></h2>
@@ -14139,6 +14146,38 @@ async function ctSave() {
   catch (e) { showStatus("ct-status", "err", errText(e)); }
 }
 
+// Settings > Work types (13/11/2026): the Work list on subcontracts / LPOs / manpower in every project, each with the
+// Trade it fills when picked. A row keeps the name it was loaded with, so a rename moves the subcontracts with it.
+let WT_STD = [], WT_TRADES = [];
+async function wtLoad() {
+  const card = document.getElementById("wtypes-card"); if (!card) return;
+  if (CURRENT_ROLE !== "admin") { card.style.display = "none"; return; }
+  card.style.display = "";
+  try { const r = await apiCall("/store/est/work-types"); WT_STD = r.standard; WT_TRADES = r.trades; wtDraw(r.types, true); }
+  catch (e) { showStatus("wt-status", "err", errText(e)); }
+}
+function wtRow(x, keep) {
+  const tr = [""].concat(WT_TRADES.includes(x.trade) || !x.trade ? WT_TRADES : WT_TRADES.concat([x.trade]));
+  return `<div class="wt-row" data-orig="${keep ? escapeAttr(x.name) : ""}" style="display:flex;gap:6px;margin-bottom:6px;align-items:center;">
+    <input type="text" class="wt-n" value="${escapeAttr(x.name)}" placeholder="Work, e.g. Deep Cleaning Works" style="flex:1;min-width:0;" autocomplete="off">
+    <select class="wt-t" style="width:150px;" title="Trade it fills when picked">${tr.map(t => `<option value="${escapeAttr(t)}"${t === (x.trade || "") ? " selected" : ""}>${t ? escapeHtml(t) : "- no trade -"}</option>`).join("")}</select>
+    <button type="button" class="btn btn-gray btn-sm" title="Take off the list" onclick="this.parentElement.remove()">&times;</button></div>`;
+}
+function wtDraw(list, keep) { document.getElementById("wt-rows").innerHTML = list.map(x => wtRow(x, keep)).join(""); }
+function wtAdd() { const box = document.getElementById("wt-rows"); box.insertAdjacentHTML("afterbegin", wtRow({ name: "", trade: "" }, false)); box.querySelector(".wt-n").focus(); }
+function wtReset() { wtDraw(WT_STD, false); }
+async function wtSave() {
+  const rows = [...document.querySelectorAll("#wt-rows .wt-row")];
+  const types = rows.map(r => ({ name: r.querySelector(".wt-n").value.trim(), trade: r.querySelector(".wt-t").value })).filter(x => x.name);
+  const renames = {};
+  rows.forEach(r => { const o = r.dataset.orig, n = r.querySelector(".wt-n").value.trim(); if (o && n && o !== n) renames[o] = n; });
+  try {
+    const r = await apiCall("/store/est/work-types", { method: "PUT", body: JSON.stringify({ types, renames }) });
+    wtDraw(r.types, true);
+    showStatus("wt-status", "ok", `Saved - ${r.types.length} work types` + (r.moved ? `; ${r.moved} subcontract(s) renamed with it.` : "."));
+  } catch (e) { showStatus("wt-status", "err", errText(e)); }
+}
+
 // Purchasing > Requests register: what the store asked for, against what was ordered and what came. Chips as on the
 // Order tracker - Late / All open / Done & closed - plus Everything, each with its count. A line changed on the LPO
 // carries its own "changed" mark, so it needs no button of its own (12 Nov 2026).
@@ -15645,6 +15684,7 @@ function applySettingsCards() {
   show("signature-card", co); show("company-card", co);
   if (co) { loadCompanySettings(); refreshSignatureState(); }
   if (typeof ctLoad === "function") ctLoad();
+  if (typeof wtLoad === "function") wtLoad();
 }
 
 // ---- The owner's dashboard (admin) ---------------------------------------

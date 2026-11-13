@@ -185,6 +185,7 @@ PAGES = {
             ["#pg-mysig-card", "#pg-notif-card", "#pg-push-card", "#pg-agent-card", "#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"]),
         tab("companies", "settings", "Companies & sites", "settings_companies", ["#companies-card", "#pg-sites-block"]),
         tab("ctypes", "settings", "Contract types", "settings_companies", ["#ctypes-card"], go="ctLoad()"),
+        tab("wtypes", "settings", "Work types", "settings_companies", ["#wtypes-card"], go="wtLoad()"),
         tab("logins", "pglogins", "Logins", "settings_logins"),
         tab("access", "pgaccess", "Access", "settings_access"),
         tab("activity", "activity", "Activity monitor", "activity")]),

@@ -872,6 +872,19 @@ SECTIONS["subs.reg"] = el => {
   const a = $("#add-sub", el); if (a) a.onclick = () => subForm();
   $$("[data-sub]", el).forEach(r => r.onclick = () => openSub(+r.dataset.sub));
 };
+// Work picked from the list (Settings > Work types): spelt as the list has it, and a work with its own trade fills Trade
+// ("Deep Cleaning Works" -> Cleaning). Trade can still be changed after (13/11/2026).
+function workTrade() {
+  const w = $("#f-scope"); if (!w) return;
+  const pick = () => {
+    const t = w.value.replace(/\s+/g, " ").trim().toLowerCase(); if (!t) return;
+    const name = (ST.meta.scopes || []).find(x => x.toLowerCase() === t); if (!name) return;
+    if (w.value !== name) w.value = name;
+    const tr = (ST.meta.scope_trade || {})[name];
+    if (tr && w.dataset.traded !== name) { w.dataset.traded = name; setField("trade", tr); }
+  };
+  w.addEventListener("change", pick); w.addEventListener("input", pick); w.addEventListener("blur", pick);
+}
 function recMode(s) { return s.adv_rec_mode || (s.adv_rec_pct === 0 ? "none" : s.adv_rec_pct != null && s.adv_rec_pct !== undefined ? "pct" : ""); }
 function recShow() { const m = $("#f-adv_rec_mode"); if (!m) return; const f = $("#f-adv_rec_pct"); const box = f && (f.closest(".f") || f.parentElement); if (box) box.style.display = m.value === "pct" ? "" : "none";
   const fr = $("#f-adv_rec_from"); const fb = fr && (fr.closest(".f") || fr.parentElement); if (fb) fb.style.display = m.value === "none" || m.value === "manual" ? "none" : ""; }
@@ -933,7 +946,7 @@ function subForm(s, pre) {
     await reload(); toast((edit ? "Saved" : "Subcontract added") + (n ? ` with its ${n}-line schedule` : ""));
     if (ST.openAfter) { openSub(ST.openAfter); ST.openAfter = null; }
   }, { del: edit ? async () => { await DEL(`/store/est/subs/${s.id}`); closeDrawer(); reload(); toast("Removed"); } : null, wide: true,
-    after: () => { subAutoFill(edit, s); agreementBar(edit, s, r => { ag = r; }); recShow(); const m = $("#f-adv_rec_mode"); if (m) m.addEventListener("change", recShow); } });
+    after: () => { subAutoFill(edit, s); agreementBar(edit, s, r => { ag = r; }); recShow(); const m = $("#f-adv_rec_mode"); if (m) m.addEventListener("change", recShow); workTrade(); } });
 }
 // Read from a document - on any Estimation form. A contract / letter of award (project) or a payment certificate
 // (clientpc) goes to the server and is read there (app/docread), the form becoming the confirm screen (confirm.js);
@@ -1104,7 +1117,7 @@ function openSub(sid) {
         <div class="small muted">${s.items ? `${s.items} lines - certificates are made on the sheet, line by line.` : "None yet - certificates use the quick form (one figure for the work done). Upload the agreement BOQ or a payment certificate Excel to certify line by line."}</div></div>
       <div class="card"><h3>Variations to this subcontract</h3>
       ${s.vos.length ? `<div class="tw"><table class="t"><thead><tr><th>Date</th><th>Ref.</th><th>Description</th><th class="r">Amount</th></tr></thead><tbody>${s.vos.map(v => `<tr class="rowc" data-vo="${v.id}"><td>${dt(v.on_date)}</td><td>${esc(v.ref)}</td><td>${esc(v.title)}</td><td class="r">${money(v.amount, false)}</td></tr>`).join("")}<tr class="tot"><td colspan="3">Total</td><td class="r">${money(s.vo_total, false)}</td></tr></tbody></table></div>` : '<div class="muted small">None.</div>'}</div>
-      <div class="card"><h3>Details</h3><div class="small">${esc(s.kind)} · ${esc(s.trade)} · Agreement ${esc(s.agreement || "-")} · LPO ${esc(s.lpo || "-")} · Advance ${s.adv_pct}%${({ none: " (not recovered)", manual: " (recovery typed on each PC)", pct: ` (recovered at ${s.adv_rec_pct}% of the work)` })[recMode(s)] || ""}${(s.adv_rec_from || 1) > 1 && !["none", "manual"].includes(recMode(s)) ? ` from PC ${s.adv_rec_from}` : ""} · Retention ${s.ret_pct}% · VAT ${s.vat_pct}%${s.notes ? "<br>" + esc(s.notes) : ""}</div></div>`);
+      <div class="card"><h3>Details</h3><div class="small">${esc(s.kind)} · ${s.scope ? "Work " + esc(s.scope) + " · " : ""}${esc(s.trade)} · Agreement ${esc(s.agreement || "-")} · LPO ${esc(s.lpo || "-")} · Advance ${s.adv_pct}%${({ none: " (not recovered)", manual: " (recovery typed on each PC)", pct: ` (recovered at ${s.adv_rec_pct}% of the work)` })[recMode(s)] || ""}${(s.adv_rec_from || 1) > 1 && !["none", "manual"].includes(recMode(s)) ? ` from PC ${s.adv_rec_from}` : ""} · Retention ${s.ret_pct}% · VAT ${s.vat_pct}%${s.notes ? "<br>" + esc(s.notes) : ""}</div></div>`);
     $("#s-inv").onclick = () => invoiceForm(s.id);
     const sa = $("#s-adv"); if (sa) sa.onclick = () => modal("Advance payment certificate", [
       { k: "adv_amount", label: "Advance amount (AED)", type: "money", value: s.adv_pct ? r2(s.value * s.adv_pct / 100) : "", focus: true,

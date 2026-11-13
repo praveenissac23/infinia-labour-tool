@@ -260,6 +260,10 @@ def seed_on_startup():
         except Exception as e:
             db.rollback(); print("Requests register backfill:", e)
         try:
+            _fix_manzel_work(db)
+        except Exception as e:
+            db.rollback(); print("Manzel work type:", e)
+        try:
             _fix_asked_mr0110(db)
         except Exception as e:
             db.rollback(); print("MR-0110 asked name:", e)
@@ -9419,6 +9423,21 @@ def _backfill_asked(db):
     if todo:
         db.commit()
         print(f"Requests register: what was asked filled for {len(todo)} older request line(s)")
+
+
+def _fix_manzel_work(db):
+    """M/s. Manzel Al Rabhee Technical Services & Cleaning, LPO IC/LPO/20260201: Work = "Deep Cleaning Works" and its
+    Trade, Cleaning (asked 13/11/2026). Once; only while its Work is still blank."""
+    if db.query(models.Setting).filter(models.Setting.key == "manzel_work_set").first():
+        return
+    import estimation as E
+    for sb in db.query(E.EstSub).filter(E.EstSub.name.ilike("%manzel al rabhee%"), E.EstSub.lpo.ilike("%IC/LPO/20260201%")).all():
+        if not (sb.scope or "").strip():
+            was = sb.trade
+            sb.scope, sb.trade = "Deep Cleaning Works", "Cleaning"
+            log_action(db, None, "est_sub_work", f"{sb.name} ({(sb.lpo or '').strip(': ')}): Work blank -> Deep Cleaning Works; Trade {was or '-'} -> Cleaning")
+    db.add(models.Setting(key="manzel_work_set", value="1"))
+    db.commit()
 
 
 def _fix_asked_mr0110(db):

@@ -1092,6 +1092,16 @@
     ]
    },
    {
+    "id": "settings.wtypes",
+    "label": "Work types",
+    "right": [
+     "settings_companies"
+    ],
+    "grant": [
+     "settings_companies"
+    ]
+   },
+   {
     "id": "settings.logins",
     "label": "Logins",
     "right": [
