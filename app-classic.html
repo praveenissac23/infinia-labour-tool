@@ -21199,7 +21199,7 @@ function cbDraw() {
 function cbOpen(id) { location.href = `/portal/approve.html?bill=${id}`; }
 // ---- Store > Diesel ------------------------------------------------------------
 // In and used, site by site, with the time of each fill. Kept in litres; typed and read in the unit chosen.
-let DS = null, DS_KIND = "use", DS_EDIT = null, DS_DIRECT = false;
+let DS = null, DS_KIND = "in", DS_EDIT = null, DS_DIRECT = true;   // Received, straight into a machine first - the usual case (13/11/2026)
 function dsUnits() { return (DS && DS.units) || [{ id: "L", label: "Litres", short: "L", litres: 1 }]; }
 function dsUnitOf(id) { return dsUnits().find(u => u.id === id) || dsUnits()[0]; }
 function dsShowUnit() { let u = ""; try { u = localStorage.getItem("ds_unit") || ""; } catch (e) {} return dsUnits().some(x => x.id === u) ? u : "IG"; }
@@ -21224,8 +21224,8 @@ function dsFormDraw() {
   const siteSel = `<select id="ds-f-site"><option value="">Pick the site</option>${DS.sites.map(c => `<option${c === site ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select>`;
   const mac = `<label class="pc-f" style="flex:1 1 200px;"><span>Machine</span><input type="text" id="ds-f-mac" list="ds-mac-list" autocomplete="off" data-spell="off" placeholder="e.g. Generator G-1" value="${escapeAttr(v.machine || "")}"></label>`;
   document.getElementById("ds-form").innerHTML = `<div class="ds-new"><div class="ds-h"><b>${ed ? "Change entry" : "Book diesel"}</b>
-      <div class="seg-chips"><button type="button" class="seg-chip${DS_KIND === "use" ? " on" : ""}" onclick="DS_KIND='use';dsFormDraw()">Used</button><button type="button" class="seg-chip${DS_KIND === "in" ? " on" : ""}" onclick="DS_KIND='in';dsFormDraw()">Received</button></div>
-      ${DS_KIND === "in" ? `<span class="sub" style="display:inline;">Filled into</span><div class="seg-chips"><button type="button" class="seg-chip${!DS_DIRECT ? " on" : ""}" onclick="DS_DIRECT=false;dsFormDraw()">Jars / tank</button><button type="button" class="seg-chip${DS_DIRECT ? " on" : ""}" onclick="DS_DIRECT=true;dsFormDraw()">Straight into a machine</button></div>` : ""}</div>
+      <div class="seg-chips"><button type="button" class="seg-chip${DS_KIND === "in" ? " on" : ""}" onclick="DS_KIND='in';dsFormDraw()">Received</button><button type="button" class="seg-chip${DS_KIND === "use" ? " on" : ""}" onclick="DS_KIND='use';dsFormDraw()">Used</button></div>
+      ${DS_KIND === "in" ? `<span class="sub" style="display:inline;">Filled into</span><div class="seg-chips"><button type="button" class="seg-chip${DS_DIRECT ? " on" : ""}" onclick="DS_DIRECT=true;dsFormDraw()">Straight into a machine</button><button type="button" class="seg-chip${!DS_DIRECT ? " on" : ""}" onclick="DS_DIRECT=false;dsFormDraw()">Jars / tank</button></div>` : ""}</div>
     <div class="ds-f">
       <label class="pc-f"><span>Site</span>${siteSel}</label>
       <label class="pc-f"><span>Date</span><input type="date" id="ds-f-date" value="${escapeAttr(v.date || (document.getElementById("ds-f-date") || {}).value || pcToday())}" max="${pcToday()}"></label>
@@ -21252,7 +21252,7 @@ async function dsSave() {
     DS_EDIT ? await apiCall(`/store/diesel/${DS_EDIT}`, { method: "PUT", body: JSON.stringify(body) }) : await apiCall("/store/diesel", { method: "POST", body: JSON.stringify(body) });
     const u = dsUnitOf(body.unit);
     showStatus("ds-status", "ok", `${was ? "Changed" : "Saved"}: ${body.qty} ${u.short} ${DS_KIND === "use" ? "used in " + body.machine : "received"} at ${body.site}.`);
-    DS_EDIT = null; DS_DIRECT = false; await dsLoad();
+    DS_EDIT = null; DS_KIND = "in"; DS_DIRECT = true; await dsLoad();
     const q = document.getElementById("ds-f-qty"); if (q) q.value = "";
   } catch (e) { showStatus("ds-status", "err", errText(e)); b.disabled = false; }
 }
