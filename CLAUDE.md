@@ -1,7 +1,9 @@
 # Working on the Infinia app
 
 Live system (app.infinia.ae) used every day - no regressions. Praveen deploys with
-`cd ~/infinia-labour-tool && git pull && sudo systemctl restart infinia`.
+`cd ~/infinia-labour-tool && git pull && sudo systemctl reload-or-restart infinia`
+(reload = no gap for users, deploy/install-zero-gap.sh; the app runs with a 2.5 GB memory cap - never load all backups
+or other whole-data copies at once, especially at start: that froze the server 14/11/2026).
 
 ## Before every push
 1. `python3 deploy/build_temporary_pages.py` if app-classic.html changed (app.html is built from it).
@@ -14,7 +16,7 @@ Live system (app.infinia.ae) used every day - no regressions. Praveen deploys wi
    columns or one-time data fixes - fix what it finds before pushing.
 5. Push, then reply straight away - do not wait for GitHub's run. Check it at the start of the next task
    (`gh run list -L 1`) and fix it first if red. Target: a normal change done in 2-4 minutes.
-6. Tell Praveen: not working -> corrected -> result, and the deploy command.
+6. Tell Praveen: not working -> corrected -> result, and the deploy command (reload-or-restart).
 
 ## Stage, then live
 The test copy at https://app.infinia.ae:8443 (deploy/install-staging.sh) follows GitHub main by itself within two

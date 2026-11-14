@@ -13,6 +13,8 @@ REMOTE=$(git rev-parse origin/main)
 if [ "$LOCAL" != "$REMOTE" ]; then
     echo "$(date '+%F %T') new commit $REMOTE - deploying"
     git pull --ff-only --quiet
-    systemctl restart infinia
-    echo "$(date '+%F %T') deployed and restarted"
+    # reload: the new copy takes over before the old one stops (deploy/install-zero-gap.sh); a plain restart
+    # where that is not set up yet
+    systemctl reload-or-restart infinia
+    echo "$(date '+%F %T') deployed and reloaded"
 fi
