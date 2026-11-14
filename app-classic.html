@@ -4216,7 +4216,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <label class="pc-f"><span>Show</span><select id="pc-range" onchange="pcRangeChanged()"><option value="dates">Between dates</option><option value="month">This month</option><option value="all">Full history</option></select></label>
                 <label class="pc-f" id="pc-from-f"><span>From</span><input type="date" id="pc-from" onchange="loadPettyCash()"></label>
                 <label class="pc-f" id="pc-to-f"><span>To</span><input type="date" id="pc-to" onchange="loadPettyCash()"></label>
-                <label class="pc-f pc-qf"><span>Search</span><input type="search" id="pc-q" placeholder="A name, supplier, site, amount…" autocomplete="off" data-spell="off" oninput="pcSearchTyped()"></label>
+                <label class="pc-f pc-qf"><span>Search</span><input type="search" id="pc-q" placeholder="e.g. Guddu" title="A name, supplier, site, receipt no. or amount" autocomplete="off" data-spell="off" oninput="pcSearchTyped()"></label>
                 <label class="pc-f" id="pc-qscope-f" style="display:none"><span>In</span><select id="pc-qscope" onchange="loadPettyCash()"><option value="all">All petty cash</option><option value="book">This book</option></select></label>
               </div>
               <div class="pc-btns">
@@ -22138,7 +22138,8 @@ async function loadPettyCash() {
   for (const id of ["pc-from-f", "pc-to-f"]) document.getElementById(id).style.visibility = all ? "hidden" : "";
   if (!all && f.value > t.value) { showStatus("pc-status", "warn", "The From date is after the To date - swapped them round."); [f.value, t.value] = [t.value, f.value]; }
   document.getElementById("pc-qscope-f").style.display = pcQ() ? "" : "none";
-  document.getElementById("pc-form").style.display = pcQ() ? "none" : "";
+  const pf = document.getElementById("pc-form"); pf.style.display = pcQ() ? "none" : "";
+  [pf.previousElementSibling, pf.nextElementSibling].forEach(x => { if (x && x.classList.contains("dr-bar")) x.style.display = pcQ() ? "none" : ""; });   // Read from receipt goes with the form
   if (pcQ()) {                        // searching: the lines found, not the register
     const sq = pcSearchQuery();
     let r; try { r = await apiCall(`/store/petty-cash/search?${sq}`); } catch (e) { showStatus("pc-status", "err", errText(e)); return; }
