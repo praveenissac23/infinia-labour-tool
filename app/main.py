@@ -260,6 +260,10 @@ def seed_on_startup():
         except Exception as e:
             db.rollback(); print("Requests register backfill:", e)
         try:
+            _fix_rest_mr0134(db)
+        except Exception as e:
+            db.rollback(); print("MR-0134 rest:", e)
+        try:
             _fix_manzel_work(db)
         except Exception as e:
             db.rollback(); print("Manzel work type:", e)
@@ -7982,7 +7986,9 @@ def material_request_report(kind: str = "open", status: str = "", q: str = "",
                 continue
             for l in m.lines:
                 st = (l.status or "pending")
-                word = "Rejected" if st == "rejected" else MR_WORDS.get(m.status, m.status or "")
+                # a line still to decide reads so, even on a request already approved in part (the rest of an
+                # 'approve less', 14/11/2026)
+                word = "Rejected" if st == "rejected" else "Waiting on office" if st == "pending" else MR_WORDS.get(m.status, m.status or "")
                 done = st == "rejected" or m.status in DONE
                 # late: still open and past the date the site needed it by (the Order tracker's Late, line by line)
                 late = (today - m.needed_by).days if (not done and m.needed_by and m.needed_by < today) else 0
@@ -8015,7 +8021,8 @@ def material_request_report(kind: str = "open", status: str = "", q: str = "",
                     continue
                 row = {"ref": m.ref, "asked_on": m.requested_on.isoformat() if m.requested_on else "", "site": m.site or "",
                        "asked_by": m.requested_by or "", "asked": asked, "asked_qty": round(asked_q or 0, 3), "unit": l.unit or "",
-                       "what_for": (l.purpose or "").strip(), "needed_by": m.needed_by.isoformat() if m.needed_by else "",
+                       "what_for": ((f"{(l.notes or '').split('|')[0].split(':', 1)[-1].strip()} - " if l.source == "rest" else "")
+                                    + (l.purpose or "").strip()).strip(" -"), "needed_by": m.needed_by.isoformat() if m.needed_by else "",
                        # approved as asked leaves qty_approved at 0 - the line then asks for qty_requested
                        "approved": "" if st == "pending" else 0 if st == "rejected" else round((l.qty_approved or l.qty_requested or 0), 3),
                        "status": word, "lpo": ", ".join(dict.fromkeys(r for r, *_ in ordered)) or "",
@@ -9423,6 +9430,24 @@ def _backfill_asked(db):
     if todo:
         db.commit()
         print(f"Requests register: what was asked filled for {len(todo)} older request line(s)")
+
+
+def _fix_rest_mr0134(db):
+    """MR-0134 Black Sand: 6 m3 asked, 3 approved on 14/11/2026 to split between two suppliers - the other 3 m3 had
+    gone. Put it back, waiting on the office (as every 'approve less' now does). Once; only that line, only if the
+    request is still open and nothing has been put back already."""
+    if db.query(models.Setting).filter(models.Setting.key == "rest_mr0134").first():
+        return
+    import purchtrack
+    m = db.query(models.MaterialRequest).filter(models.MaterialRequest.ref == "MR-0134").first()
+    if m and m.status not in ("delivered", "received", "closed", "rejected") and not any(l.source == "rest" for l in m.lines):
+        for l in m.lines:
+            if "sand" in (l.asked_name or l.description or "").lower() and (l.notes or "").startswith("Asked for 6, approved 3") \
+                    and abs(float(l.asked_qty or 0) - 6) < 1e-9 and abs(float(l.qty_requested or 0) - 3) < 1e-9:
+                r = purchtrack.rest_line(db, l, 3.0)
+                log_action(db, None, "request_line_rest", f"MR-0134 line {l.id}: the other 3 m3 back, waiting on the office (line {r.id})")
+    db.add(models.Setting(key="rest_mr0134", value="1"))
+    db.commit()
 
 
 def _fix_manzel_work(db):

@@ -260,17 +260,37 @@ def approve_less(line_id: int, payload: dict = Body(...), db: Session = Depends(
     mr = line.request
     line.status = "approved"
     line.reject_reason = ""
+    rest = None
     if abs(qty - asked) > EPS:
         line.qty_requested = line.qty_approved = qty
         note = f"Asked for {_qty(asked)}, approved {_qty(qty)}" + (f": {why}" if why else "")
         line.notes = ((line.notes or "") + (" | " if line.notes else "") + note)[:1000]
+        # The rest is not turned down - it stays on the request, waiting on the office, until it is approved (to a
+        # second supplier, say) or rejected (14/11/2026: 6 m3 sand asked, 3 approved first, the other 3 had gone).
+        rest = rest_line(db, line, asked - qty)
     if mr.status in ("pending", "approved", "rejected"):
         states = [l.status or "pending" for l in mr.lines]
         mr.status = "approved" if any(s == "approved" for s in states) else "pending"
     db.commit()
     M.log_action(db, user.id, "request_line_decision",
-                 f"{mr.ref} line {line_id} approved {_qty(qty)} of {_qty(asked)}" + (f" ({why})" if why else ""))
+                 f"{mr.ref} line {line_id} approved {_qty(qty)} of {_qty(asked)}" + (f" ({why})" if why else "")
+                 + (f"; the other {_qty(rest.qty_requested)} waits on the office" if rest else ""))
     return M._mr_out(mr)
+
+
+def rest_line(db, line, left):
+    """A new line on the same request for what was not approved yet: same material, unit and purpose, waiting on the
+    office. It keeps the name the store asked; its own 'asked' is the part still to decide."""
+    if left <= EPS:
+        return None
+    r = models.MaterialRequestLine(request_id=line.request_id, item_id=line.item_id, description=line.description or "",
+                                   qty_requested=left, qty_approved=0, unit=line.unit, purpose=line.purpose or "",
+                                   status="pending", source="rest", asked_name=line.asked_name, asked_qty=left,
+                                   notes=f"Rest of line {line.id}: {_qty(line.asked_qty if line.asked_qty is not None else line.qty_requested + left)} {line.unit or ''} asked, "
+                                         f"{_qty(line.qty_requested)} approved first".replace("  ", " "))
+    db.add(r)
+    db.flush()
+    return r
 
 
 @router.post("/store/purchase/orders/{order_id}/close-rest")
