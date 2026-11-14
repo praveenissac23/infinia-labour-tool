@@ -15745,9 +15745,9 @@ async function ownDash(role) {
   const nm = /^(admin|administrator)$/i.test(d.name || "") ? "" : d.name;
   box.innerHTML = `<div class="od-hd"><h1>${greet}${nm ? `, <b>${esc(nm)}</b>` : ""}</h1><span>${esc(day)} · ${d.contracts.count} live projects · AED ${odK(d.contracts.value)} under contract</span></div>
   <div class="od-g">
-    <div class="od-c od-hero go" data-go='{"dq":"projpay"}' title="Coming in less going out, over the next 30 days"><div class="od-l">Net position · next 30 days</div>
-      <div class="od-v">${net < 0 ? "−" : ""}${nnum}<small>${unit}</small></div>
-      <div class="od-in">AED · <span class="grn">in ${odK(m.coming)}</span> · <span class="red">out ${odK(m.going)}</span></div>${spark}</div>
+    <div class="od-c od-hero go" data-go='{"pg":["accounts","bank"]}' title="The bank balance today: the last bank statement, plus what was paid and received on the Bank tab since"><div class="od-l" id="od-bank-l">In the bank today</div>
+      <div class="od-v" id="od-bank-v">…</div>
+      <div class="od-in" id="od-bank-s">&nbsp;</div>${spark}</div>
     <div class="od-c od-cash go" data-go='{"pg":["accounts","cash"]}' title="The cash forecast - what is left in the bank at the end of each month"><div class="od-l">Cash forecast · 3 months</div><div class="od-tanks" id="od-tanks"><div class="od-s">Loading…</div></div><div class="od-s" id="od-cash-s"></div></div>
     <div class="od-c od-needs"><div class="od-l">Needs you${needs.length ? " · " + needs.length : ""}</div>${needsHtml}</div>
     <div class="od-c od-k go" data-go='${esc(JSON.stringify(m.coming_go || { pg: ["estimation", "estdash"] }))}' title="Certified by the consultants on the running projects, not yet paid by the clients"><div class="od-l">Coming in</div><div class="od-v grn">${odK(m.coming)}</div><div class="od-s">certified, not yet paid</div></div>
@@ -15767,11 +15767,21 @@ async function ownDash(role) {
 // the owner's dashboard: the cash forecast's three tanks, small - what is left in the bank at the end of each month
 async function odCash() {
   const box = document.getElementById("od-tanks"), sub = document.getElementById("od-cash-s"); if (!box) return;
-  let f; try { f = await apiCall("/store/cash/forecast?months=3&with_in=1"); } catch (e) { box.closest(".od-cash").style.display = "none"; return; }
+  let f; try { f = await apiCall("/store/cash/forecast?months=3&with_in=1"); } catch (e) { box.closest(".od-cash").style.display = "none"; const v = document.getElementById("od-bank-v"); if (v) v.textContent = "–"; return; }
   const keep = f.keep, mos = (f.months || []).slice(0, 3), full = Math.max(f.bank.now, keep * 2, ...mos.map(m => m.opening), ...mos.map(m => m.closing)) || 1, C = 2 * Math.PI * 100;
   box.innerHTML = mos.map(m => { const c = m.closing, fr = Math.max(0, Math.min(1, c / full)), col = c < keep ? "#ff6b6b" : c < keep * 2 ? "#ffc35c" : "#5ee0a0";
     return `<div class="od-tank" title="${m.label}: +${odK(m.in)} in, -${odK(m.out)} out, ${odK(c)} left"><svg viewBox="0 0 240 240"><circle cx="120" cy="120" r="100" stroke="rgba(255,255,255,.12)" stroke-width="20" fill="none"/>${fr > 0 ? `<circle cx="120" cy="120" r="100" stroke="${col}" stroke-width="20" fill="none" stroke-dasharray="${(C * fr).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 120 120)" stroke-linecap="round"/>` : ""}<text x="120" y="134" text-anchor="middle" font-size="46" font-weight="700" fill="${c < keep ? "#ff9a9a" : "#fff"}">${c < 0 ? "−" : ""}${odK(Math.abs(c))}</text></svg>${m.label.slice(0, 3)}</div>`; }).join("");
+  odBank(f.bank);
   sub.innerHTML = `Bank today <b>${odK(f.bank.now)}</b> · ${f.below ? `<span class="red">below ${odK(keep)} on ${cfD(f.below.date).slice(0, 5)}</span>` : `<span class="grn">stays above ${odK(keep)}</span>`}`;
+}
+// the owner's dashboard, first card: what is in the bank account today (statement + Bank tab since), per bank
+function odBank(b) {
+  const v = document.getElementById("od-bank-v"), s = document.getElementById("od-bank-s"); if (!v || !b) return;
+  const amt = b.in_bank != null ? b.in_bank : b.now, k = odK(Math.abs(amt));
+  v.innerHTML = `${amt < 0 ? "−" : ""}${k.replace(/[A-Z]/g, "")}<small>${k.replace(/[\d.,]/g, "")}</small>`;
+  const banks = (b.banks || []).map(x => `${escapeHtml(x.bank)} statement ${cfD(x.as_of)}`).join(" · ");
+  const since = b.paid_since ? ` · ${b.paid_since > 0 ? "+" : "−"}${odK(Math.abs(b.paid_since))} since` : "";
+  s.innerHTML = `AED · ${banks || "no bank statement yet"}${since}${b.cash ? ` · <span class="grn">cash in hand ${odK(b.cash)}</span>` : ""}`;
 }
 // ---- Dashboard skyline: the greeting and today's figures ----------------
 async function dashSky() {
