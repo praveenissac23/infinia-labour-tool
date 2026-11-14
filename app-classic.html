@@ -838,6 +838,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #screen-cashfc .cf-big .w{flex:1;min-width:0} #screen-cashfc .cf-big .w b{display:block;font-size:14px;color:#2B2622} #screen-cashfc .cf-big .w small{color:#7A7069;font-size:12px} #screen-cashfc .cf-big .a{font-weight:800;font-size:15px;white-space:nowrap}
   #screen-cashfc .ty-cheque{background:#EEF2FA;color:#3B5998} #screen-cashfc .ty-salary{background:#F3EEFA;color:#6B3FA0} #screen-cashfc .ty-sub{background:#FFF1D6;color:#8A5A00}
   #screen-cashfc .ty-expected{background:#FDECEA;color:#C0392B} #screen-cashfc .ty-client{background:#E8F6EE;color:#1E8449}
+  #screen-cashfc .cf-askp{border:1px solid #F5CBA7;background:#FFFBF5} #screen-cashfc .cfa{padding:10px 0;border-top:1px solid #F0E6DC} #screen-cashfc .cfa:first-of-type{border-top:0}
+  #screen-cashfc .cfa-b{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px} #screen-cashfc .cfa-d{height:32px;border:1px solid #DDD6CF;border-radius:8px;padding:0 8px}
   #screen-cashfc .cf-note{margin-top:14px;border-radius:14px;padding:13px 16px;background:#FDECEA} #screen-cashfc .cf-note.ok{background:#E8F6EE}
   #screen-cashfc .cf-note b{display:block} #screen-cashfc .cf-note .sub{color:#8E1F16} #screen-cashfc .cf-note.ok .sub{color:#1E6B3A}
   #screen-cashfc table.cf-t{width:100%;border-collapse:collapse}
@@ -4049,6 +4051,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="pc-btns" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><div class="exp-btns"><button type="button" class="btn btn-dark" onclick="cfExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="cfExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="cfExport('excel')">Export Excel</button><button type="button" class="btn btn-dark" onclick="cfExport('view')">Share</button></div><button type="button" class="btn btn-primary" onclick="cfExp(0,'in')">+ Money in</button><button type="button" class="btn btn-primary" onclick="cfExp(0,'out')">+ Money out</button></div></div>
           <div class="cf-ctl"><div class="seg-chips" id="cf-mo"></div><div class="seg-chips" id="cf-in"></div></div>
           <div class="status-msg" id="cf-status"></div>
+          <div class="cf-panel cf-askp" id="cf-ask" style="display:none"></div>
           <div class="cf-tanks" id="cf-tanks"></div>
           <div class="cf-foot" id="cf-foot"></div>
           <div class="cf-panel"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h3 id="cf-wk-t">The weeks ahead</h3><div class="sub" id="cf-wk-s">each pair of bars is one week - what comes in, what goes out, and what is left in the bank at the end of it</div></div>
@@ -21055,8 +21058,8 @@ function cfDraw() {
   document.getElementById("cf-mo").innerHTML = [[3, "3 months"], [6, "6 months"], [12, "12 months"]].map(([v, l]) => `<button type="button" class="seg-chip${CF_MO === v ? " on" : ""}" onclick="CF_MO=${v};CF_MON='';cfLoad()">${l}</button>`).join("");
   document.getElementById("cf-in").innerHTML = [[1, "In &amp; out"], [0, "Out only"]].map(([v, l]) => `<button type="button" class="seg-chip${CF_IN === v ? " on" : ""}" onclick="CF_IN=${v};cfLoad()">${l}</button>`).join("");
   const days = b.as_of ? Math.round((new Date(d.today) - new Date(b.as_of)) / 864e5) : null;
-  document.getElementById("cf-now").innerHTML = `AED ${cfM(b.now)} <small>in the bank today</small>`;
-  document.getElementById("cf-bsrc").innerHTML = `${b.banks.map(x => `${escapeHtml(x.bank)} statement of ${cfD(x.as_of)}`).join(" · ") || "No bank statement uploaded yet - Accounts &gt; Bank"}${b.since.length ? ` · ${b.paid_since < 0 ? "&minus;" : "+"}${cfM(Math.abs(b.paid_since))} entered on the Bank tab since` : ""}
+  document.getElementById("cf-now").innerHTML = `AED ${cfM(b.now)} <small>${b.cash ? "in the bank and cash in hand today" : "in the bank today"}</small>`;
+  document.getElementById("cf-bsrc").innerHTML = `${b.cash ? `Bank ${cfM(b.in_bank)} · cash in hand ${cfM(b.cash)} (cash register) · ` : ""}${b.banks.map(x => `${escapeHtml(x.bank)} statement of ${cfD(x.as_of)}`).join(" · ") || "No bank statement uploaded yet - Accounts &gt; Bank"}${b.since.length ? ` · ${b.paid_since < 0 ? "&minus;" : "+"}${cfM(Math.abs(b.paid_since))} entered on the Bank tab since` : ""}
     ${days === null ? "" : days <= 3 ? ` &nbsp;<span class="cf-pill">&#9679; up to date</span>` : ` &nbsp;<span class="cf-pill old">&#9679; statement is ${days} days old - upload the latest on Accounts &gt; Bank</span>`}`;
   // the tanks - one ring per month, filled by what is left at the end of it
   const mos = d.months, full = Math.max(b.now, ...mos.map(m => m.opening), ...mos.map(m => m.closing), keep * 2) || 1, C = 2 * Math.PI * 108;
@@ -21083,7 +21086,27 @@ function cfDraw() {
     : (d.coming.length ? d.coming.slice(0, 6).map(i => `<div class="cf-big"><div class="ico ty-${i.type}">${CF_ICO[i.type] || "·"}</div><div class="w"><b>${escapeHtml(i.what.split(" · ")[0])}</b><small>${escapeHtml(i.type === "expected" ? "forecast" : (i.what.split(" · ").slice(1).join(" · ") || i.src || ""))} · expected ${cfD(i.date).slice(0, 5)}${i.sure !== "sure" ? " · " + escapeHtml(i.sure) : ""}</small></div><div class="a g">${cfM(i.in)}</div></div>`).join("") + (d.coming.length > 6 ? `<div class="sub" style="padding-top:8px">+ ${d.coming.length - 6} more in the list below</div>` : "") : `<div class="sub" style="padding:12px 0">No client bill waiting for payment.</div>`)
       + (!d.coming.length || quiet > 30 ? `<div class="cf-note"><b class="r">${d.coming.length ? `Nothing expected in after ${cfD(lastIn)}.` : "Nothing expected in."}</b><div class="sub">${d.below ? `The bank goes below ${cfM(keep)} on ${cfD(d.below.date)} - a client payment before then keeps it above.` : "Payments still go out every month - the next client bills keep the tanks full."}</div></div>`
         : `<div class="cf-note ok"><b class="g">Client money keeps coming in.</b><div class="sub">${d.coming.length} payment${d.coming.length > 1 ? "s" : ""} expected over the next ${CF_MO} months.</div></div>`);
-  cfChart(); cfList();
+  cfChart(); cfList(); cfAsk();
+}
+// typed lines whose month is over, or that the bank shows paid: one click each (paid / move the rest / move / not happening)
+function cfAsk() {
+  const box = document.getElementById("cf-ask"), rows = CF.ask || [];
+  if (!rows.length) { box.style.display = "none"; box.innerHTML = ""; return; }
+  const t = new Date(CF.today), nx = new Date(t.getFullYear(), t.getMonth() + 1, 1), nxt = `${nx.getFullYear()}-${String(nx.getMonth() + 1).padStart(2, "0")}-01`;
+  const fnd = r => (r.found || []).map(f => `${escapeHtml(f.src)} ${cfD(f.date).slice(0, 5)} ${escapeHtml(f.party.slice(0, 40))} ${cfM(f.amount)}`).join(" · ");
+  box.style.display = "";
+  box.innerHTML = `<h3>What happened? <span class="sub" style="font-weight:400">${rows.length} forecast line${rows.length > 1 ? "s" : ""} to answer - each stays counted until you do</span></h3>` + rows.map(r => {
+    const io = r.direction === "in" ? "in" : "out", head = `<b>${escapeHtml(r.what)}</b> <span class="sub">~${cfM(r.amount)} ${io === "in" ? "coming in" : "going out"} on ${cfD(r.on_date)}</span>`;
+    const dt = `<input type="date" class="cfa-d" value="${nxt}" min="${CF.today}">`;
+    const body = r.ask === "done" ? `<div class="sub">Found: ${fnd(r)}</div><div class="cfa-b"><button type="button" class="btn btn-primary btn-sm" onclick="cfSettle(${r.id},'paid',this)">&#10003; Paid - close it</button></div>`
+      : r.ask === "part" ? `<div class="sub">Paid ${cfM(r.paid)} so far: ${fnd(r)}. <b>${cfM(r.left)} left.</b></div><div class="cfa-b"><button type="button" class="btn btn-primary btn-sm" onclick="cfSettle(${r.id},'rest',this)">Move the rest (${cfM(r.left)}) to</button>${dt}<button type="button" class="btn btn-gray btn-sm" onclick="cfSettle(${r.id},'paid',this)">That was all</button></div>`
+      : `<div class="sub">The date is past and nothing to match it was found in the bank, the cheques or the cash register.</div><div class="cfa-b"><button type="button" class="btn btn-primary btn-sm" onclick="cfSettle(${r.id},'move',this)">Move to</button>${dt}<button type="button" class="btn btn-gray btn-sm" onclick="cfSettle(${r.id},'paid',this)">Paid (not in the bank yet)</button><button type="button" class="btn btn-gray btn-sm" onclick="cfExp(${r.id})">Change amount</button><button type="button" class="btn btn-gray btn-sm" style="color:#B7322A" onclick="cfSettle(${r.id},'drop',this)">Not happening</button></div>`;
+    return `<div class="cfa">${head}${body}</div>`; }).join("");
+}
+async function cfSettle(id, how, btn) {
+  const d = btn && btn.parentNode.querySelector(".cfa-d");
+  try { await apiCall(`/store/cash/expected/${id}/settle`, { method: "POST", body: JSON.stringify({ how, on_date: d ? d.value : "" }) }); cfLoad(); }
+  catch (e) { showStatus("cf-status", "err", errText(e)); }
 }
 
 function cfMon(m) { CF_MON = CF_MON === m ? "" : m; cfDraw(); if (CF_MON) document.getElementById("cf-all").scrollIntoView({ behavior: "smooth", block: "start" }); }

@@ -41,6 +41,162 @@ def _same_party(a, b):
     return bool(x and y) and (x <= y or y <= x or len(x & y) >= 2)
 
 
+# ---- what was really paid, set against what Accounts typed (14 Nov 2026) -----------------------------------------
+# A typed line is a rough guess ("Sub contractor's payment ~320,000 a month", "Desarch Scaffolding 28,080"). The money
+# that really went - the Bank tab, the cash register, cheques on the PDC register - is set against it: the forecast
+# counts only what is left of the guess. A guess that names someone takes that party's payments; one that names no one
+# ("Sub contractor's payment") takes every payment of its kind (subcontractors / suppliers) not taken by a named one;
+# a petty cash line takes the transfers to petty cash. A once-only line whose month is over with money left on it is
+# asked about: paid / move the rest / not happening - it stays counted (on today) until Accounts answers.
+_STOP = set("""petty cash payment payments paid pay to from for of sub contractor contractors subcontractor subcontractors
+supplier suppliers s m ms balance al services service technical general contracting construction works work industries
+industry international group uae dubai llc l c fze fzc co company's trading est establishment the and""".split())
+_COMMON_PETTY = {"company"}
+
+
+def _words(s, petty=False):
+    s = re.sub(r"pettycash", "petty cash", (s or "").lower())
+    w = {x for x in re.split(r"[^a-z0-9]+", s) if x and not x.isdigit() and len(x) > 1}
+    w -= _STOP
+    if not petty:
+        w.discard("company")
+    return w
+
+
+def _named_match(a, b):
+    """Two names the same party: the same words, or the shorter (2+ words) inside the longer, or 2+ words shared."""
+    if not a or not b:
+        return False
+    x, y = (a, b) if len(a) <= len(b) else (b, a)
+    return x == y or (len(x) >= 2 and x <= y) or len(x & y) >= 2
+
+
+def _month_end(d):
+    return _add_months(date(d.year, d.month, 1), 1) - timedelta(days=1)
+
+
+def _payments(db, start):
+    """Every payment and receipt from `start` on (later dates too: a cheque or transfer already planned)."""
+    out = []
+    subs = []
+    try:
+        import estimation as ES
+        subs = [_words(n) for (n,) in db.query(ES.EstSub.name).filter(ES.EstSub.kind != "LPO").distinct().all() if n]
+    except Exception as e:
+        print("cash forecast - subcontractor names:", e)
+    subs = [s for s in subs if s]
+
+    def cls_of(party):
+        w = _words(party)
+        return "sub" if any(_named_match(w, s) for s in subs) else "supplier"
+
+    pdcs = db.query(models.Pdc).filter(models.Pdc.status == "pending", models.Pdc.cheque_date >= start).all()
+    pdc_nos = {(c.cheque_no or "").strip().lstrip("0") for c in db.query(models.Pdc).filter(models.Pdc.status == "pending").all() if (c.cheque_no or "").strip()}
+    for c in pdcs:
+        if SAL.search(c.payee or ""):
+            continue
+        out.append({"date": c.cheque_date, "party": c.payee or "", "amount": c.amount or 0, "dir": "out", "cls": cls_of(c.payee),
+                    "src": "Cheque" + (f" {c.cheque_no}" if c.cheque_no else "")})
+    for e in db.query(models.BankEntry).filter(models.BankEntry.on_date >= start).all():
+        if (e.reference or "").strip().lstrip("0") in pdc_nos:
+            continue                                                  # the same cheque as a PDC
+        if e.kind == "transfer":
+            if "petty" not in (e.account or "").lower():
+                continue                                              # between our own accounts
+            out.append({"date": e.on_date, "party": e.account or "", "amount": e.amount or 0, "dir": "out", "cls": "petty", "src": "Bank"})
+            continue
+        if e.kind == "expense" and SAL.search(e.account or ""):
+            continue                                                  # salaries: the payroll lines
+        cls = "client" if e.kind == "customer" else cls_of(e.party) if e.kind == "vendor" else "other"
+        out.append({"date": e.on_date, "party": e.party or e.account or "", "amount": e.amount or 0,
+                    "dir": "in" if e.kind == "customer" else "out", "cls": cls, "src": "Bank"})
+    try:
+        import accounts as A
+        for r in db.query(A.CashEntry).filter(A.CashEntry.on_date >= start).all():
+            desc = r.description or ""
+            if r.kind == "paid" and re.search(r"deposit(ed)?\s+(in)?to\s+(the\s+)?(adcb|bank)", desc, re.I):
+                continue                                              # cash into our own bank
+            petty = bool(re.search(r"petty\s*cash", desc, re.I))
+            out.append({"date": r.on_date, "party": desc, "amount": r.amount or 0, "dir": "in" if r.kind == "received" else "out",
+                        "cls": "petty" if petty else ("client" if r.kind == "received" else cls_of(desc)), "src": "Cash", "free": True})
+    except Exception as e:
+        print("cash forecast - cash register:", e)
+    for p in out:
+        p["w"] = _words(p["party"], p["cls"] == "petty")
+        p["left"] = round(float(p["amount"] or 0), 2)
+    out.sort(key=lambda p: (p["date"], p["src"]))
+    return out
+
+
+def _occurrences(x, t, end):
+    """The dates a typed line falls on: once, or every month / 3 months / year (from this month on)."""
+    step = {"month": 1, "quarter": 3, "year": 12}
+    first = date(t.year, t.month, 1)
+    d, n, out = x.on_date, 0, []
+    while d <= end and n < 240:
+        if (not x.until or d <= x.until) and (x.repeat not in step or d >= first):
+            out.append((n, d))
+        if x.repeat not in step:
+            break
+        d = _add_months(x.on_date, step[x.repeat] * (n + 1)); n += 1
+    return out
+
+
+def settle(db, t=None, end=None):
+    """Each open typed line, each date it falls on: what was really paid against it and what is left.
+    {(id, n): {"amount", "paid", "left", "found": [...], "ask": "part" | "none" | "", "done": bool}}"""
+    t = t or M._dubai_today()
+    exp = db.query(models.CashExpected).filter(models.CashExpected.status == "open").all()
+    if not exp:
+        return {}
+    end = end or _add_months(date(t.year, t.month, 1), 12)
+    occ = []
+    for x in exp:
+        petty = bool(re.search(r"petty\s*cash", f"{x.what} {x.kind}", re.I))
+        w = _words(x.what, petty)
+        mode = "petty" if petty else "named" if w else {"subcontractor": "sub", "supplier": "supplier"}.get((x.kind or "").lower(), "")
+        for n, d in _occurrences(x, t, end):
+            if x.repeat in ("month", "quarter", "year"):
+                lo, hi = date(d.year, d.month, 1), _month_end(d)
+            else:
+                lo = d - timedelta(days=15)                              # but not before it was typed: a payment
+                if x.created_at:                                         # made earlier was for something else
+                    lo = max(lo, x.created_at.date())
+                hi = _month_end(d) if _month_end(d) >= t else end      # over and not settled: a late payment still counts
+            occ.append({"x": x, "n": n, "date": d, "lo": lo, "hi": hi, "w": w, "mode": mode})
+    if not occ:
+        return {}
+    pays = _payments(db, min(o["lo"] for o in occ))
+    rank = {"named": 0, "petty": 1, "sub": 2, "supplier": 2, "": 9}
+    res = {}
+    for o in sorted(occ, key=lambda o: (rank[o["mode"]], o["date"], o["x"].id)):
+        x, need = o["x"], round(float(o["x"].amount or 0), 2)
+        found = []
+        if o["mode"]:
+            for p in pays:
+                if need <= 0.005:
+                    break
+                if p["left"] <= 0.005 or p["dir"] != (x.direction or "out") or not (o["lo"] <= p["date"] <= o["hi"]):
+                    continue
+                m = o["mode"]
+                ok = (p["cls"] == "petty" and (not o["w"] or bool(o["w"] & p["w"]))) if m == "petty" else \
+                     (p["cls"] != "petty" and _named_match(o["w"], p["w"]) and (not p.get("free") or len(o["w"]) >= 2 or o["w"] <= p["w"])) if m == "named" else \
+                     p["cls"] == m
+                if not ok:
+                    continue
+                take = round(min(need, p["left"]), 2)
+                p["left"] = round(p["left"] - take, 2); need = round(need - take, 2)
+                found.append({"date": p["date"].isoformat(), "party": p["party"][:80], "amount": take, "src": p["src"]})
+        paid = round(float(x.amount or 0) - need, 2)
+        if x.repeat == "once" and o["mode"] == "named" and found and paid >= 0.9 * float(x.amount or 0):
+            need = 0.0                                           # the real payment replaces the rough guess
+        over = x.repeat == "once" and _month_end(o["date"]) < t
+        res[(x.id, o["n"])] = {"amount": round(float(x.amount or 0), 2), "paid": paid, "left": max(need, 0.0), "found": found,
+                               "done": need <= 0.005,
+                               "ask": ("" if need <= 0.005 else "part" if found else "none") if over else ""}
+    return res
+
+
 def _add_months(d, n):
     y, m = divmod(d.month - 1 + n, 12)
     y += d.year; m += 1
@@ -106,8 +262,8 @@ def collect(db, months=3, with_in=True):
     pdc_nos = {(c.cheque_no or "").strip().lstrip("0") for c in pdcs if (c.cheque_no or "").strip()}
     paid_since = 0.0
     for e in ent:
-        if e.kind == "transfer":
-            continue
+        if e.kind == "transfer" and "petty" not in (e.account or "").lower():
+            continue                                                # between our own accounts (to petty cash: spent)
         if (e.reference or "").strip().lstrip("0") in pdc_nos:
             continue                                                # the PDC is the same cheque
         sign = 1 if e.kind == "customer" else -1
@@ -115,10 +271,25 @@ def collect(db, months=3, with_in=True):
             paid_since += sign * (e.amount or 0)
             bank["since"].append({"date": e.on_date.isoformat(), "party": e.party or e.kind, "amount": r2(sign * (e.amount or 0))})
         else:
-            add(f"bank:{e.id}", e.on_date, e.party or e.kind.title(), "cheque" if e.kind != "customer" else "client", "Bank tab",
+            add(f"bank:{e.id}", e.on_date, e.party or e.account or e.kind.title(), "cheque" if e.kind != "customer" else "client", "Bank tab",
                 e.amount or 0, "in" if sign > 0 else "out", link={"pg": ["accounts", "bank"]}, fixed=True)
     bank["paid_since"] = r2(paid_since)
-    bank["now"] = r2(bank["balance"] + paid_since)
+    # ---- the cash register: cash in hand today counts with the bank; a cash line dated later is in / out on its day
+    cash = 0.0
+    try:
+        import accounts as A
+        for r in db.query(A.CashEntry).all():
+            sign = 1 if r.kind == "received" else -1
+            if r.on_date <= t:
+                cash += sign * (r.amount or 0)
+            elif not re.search(r"deposit(ed)?\s+(in)?to\s+(the\s+)?(adcb|bank)", r.description or "", re.I):
+                add(f"cash:{r.id}", r.on_date, r.description or "Cash", "client" if sign > 0 else "cheque", "Cash register",
+                    r.amount or 0, "in" if sign > 0 else "out", link={"pg": ["accounts", "cashreg"]}, fixed=True)
+    except Exception as e:
+        print("cash forecast - cash register:", e)
+    bank["cash"] = r2(cash)
+    bank["in_bank"] = r2(bank["balance"] + paid_since)
+    bank["now"] = r2(bank["balance"] + paid_since + cash)
 
     # ---- Estimation: client certificates not paid (in), subcontractor certificates certified and not paid (out)
     try:
@@ -185,18 +356,17 @@ def collect(db, months=3, with_in=True):
 
     # ---- money in and out typed here by Accounts - on the forecast only
     exp = db.query(models.CashExpected).filter(models.CashExpected.status == "open").all()
-    step = {"month": 1, "quarter": 3, "year": 12}
+    st = settle(db, t, end)
     for x in exp:
         if x.direction == "in" and not with_in:          # "Out only": no money in at all
             continue
-        d, n = x.on_date, 0
-        while d <= end and n < 240:
-            if (not x.until or d <= x.until) and (x.repeat not in step or d >= t):   # a repeat started earlier counts from now on
-                add(f"exp:{x.id}:{n}", d, x.what + (f" ({x.kind})" if x.kind and x.kind.lower() not in x.what.lower() else ""), "expected",
-                    "Expected", x.amount or 0, x.direction or "out", x.sure or "sure", link={"exp": x.id}, note=x.note or "", fixed=True)
-            if x.repeat not in step:
-                break
-            d = _add_months(x.on_date, step[x.repeat] * (n + 1)); n += 1
+        for n, d in _occurrences(x, t, end):             # a repeat started earlier: from this month on
+            s = st.get((x.id, n)) or {"paid": 0, "left": x.amount or 0, "found": []}
+            note = x.note or ""
+            if s["found"]:
+                note = "; ".join(filter(None, [f"paid so far {s['paid']:,.0f} of ~{x.amount:,.0f}", note]))
+            add(f"exp:{x.id}:{n}", d, x.what + (f" ({x.kind})" if x.kind and x.kind.lower() not in x.what.lower() else ""), "expected",
+                "Expected", s["left"], x.direction or "out", x.sure or "sure", link={"exp": x.id, "n": n}, note=note, fixed=True)
     items.sort(key=lambda x: (x["date"], -x["in"], x["out"]))
     bal = bank["now"]
     for it in items:
@@ -244,7 +414,7 @@ def collect(db, months=3, with_in=True):
     for i in items:
         if i["out"]:
             by_type[i["type"]] = r2(by_type.get(i["type"], 0) + i["out"])
-    return {"today": t.isoformat(), "bank": bank, "items": items, "months": mo, "keep": keep,
+    return {"_settle": st, "today": t.isoformat(), "bank": bank, "items": items, "months": mo, "keep": keep,
             "low": {"date": low["date"], "amount": r2(low["after"]), "what": low["what"]},
             "below": {"date": below["date"], "what": below["what"], "amount": below["after"]} if below else None,
             "biggest": biggest, "coming": coming, "total_out": tot_out, "total_in": r2(sum(i["in"] for i in items)), "by_type": by_type}
@@ -253,9 +423,19 @@ def collect(db, months=3, with_in=True):
 @router.get("/store/cash/forecast")
 def forecast(months: int = 3, with_in: int = 1, db: Session = Depends(get_db), user: models.User = ACC):
     out = collect(db, max(1, min(12, months)), bool(with_in))
-    out["expected"] = [{"id": x.id, "what": x.what, "kind": x.kind, "amount": x.amount, "on_date": x.on_date.isoformat(), "sure": x.sure, "repeat": x.repeat,
-                        "direction": x.direction, "note": x.note, "expiry_id": x.expiry_id}
-                       for x in db.query(models.CashExpected).filter(models.CashExpected.status == "open").all()]
+    st = out.pop("_settle")
+    out["expected"] = []
+    out["ask"] = []
+    for x in db.query(models.CashExpected).filter(models.CashExpected.status == "open").all():
+        row = {"id": x.id, "what": x.what, "kind": x.kind, "amount": x.amount, "on_date": x.on_date.isoformat(), "sure": x.sure, "repeat": x.repeat,
+               "direction": x.direction, "note": x.note, "expiry_id": x.expiry_id}
+        s = st.get((x.id, 0)) if x.repeat == "once" else None
+        if s:
+            row.update(paid=s["paid"], left=s["left"], found=s["found"], ask=s["ask"] or ("done" if s["done"] else ""))
+            if row["ask"]:
+                out["ask"].append(row)
+        out["expected"].append(row)
+    out["ask"].sort(key=lambda r: r["on_date"])
     out["kinds_in"] = ["Client payment", "Advance", "Retention release", "Loan / capital", "Deposit back / refund", "Cash in hand", "Other"]
     out["kinds"] = ["Supplier", "Subcontractor", "Insurance", "Licence / permit", "Visa / labour", "Rent", "Deposit / guarantee", "Vehicle", "Tax / VAT", "Loan / bank", "Other"]
     return out
@@ -307,6 +487,53 @@ def edit_expected(xid: int, payload: dict = Body(...), db: Session = Depends(get
     x.updated_by = user.id
     db.commit()
     M.log_action(db, user.id, "cash_expected_edit", f"Expected {x.what}: {x.status} AED {x.amount:,.2f} on {x.on_date:%d/%m/%Y}")
+    return {"ok": True}
+
+
+@router.post("/store/cash/expected/{xid}/settle")
+def settle_expected(xid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = ACC):
+    """A once-only line whose month is over (or fully paid), answered with one click:
+    paid      - done; what was paid is in the bank already
+    rest      - done for what was paid; what is left goes to a new line on `on_date`
+    move      - nothing paid yet: the whole line moves to `on_date`
+    drop      - not happening"""
+    x = db.query(models.CashExpected).get(xid)
+    if not x or x.status != "open":
+        raise HTTPException(404, "Not found - refresh the page.")
+    how = payload.get("how")
+    s = settle(db).get((x.id, 0)) or {"paid": 0.0, "left": x.amount or 0, "found": []}
+    if how in ("rest", "move"):
+        d = M._as_date(payload.get("on_date")) if payload.get("on_date") else None
+        if not d:
+            raise HTTPException(400, "Pick the date it is now expected.")
+        if d < M._dubai_today():
+            raise HTTPException(400, "Pick today or a later date.")
+    if how == "paid":
+        x.status = "paid"
+        msg = f"paid ({s['paid']:,.2f} found)"
+    elif how == "drop":
+        x.status = "dropped"
+        msg = "not happening"
+    elif how == "move":
+        if s["found"]:
+            raise HTTPException(409, "Part of it is paid already - move the rest instead.")
+        x.on_date = d
+        msg = f"moved to {d:%d/%m/%Y}"
+    elif how == "rest":
+        if s["left"] <= 0.005:
+            raise HTTPException(409, "Nothing is left on it.")
+        new = models.CashExpected(what=x.what, kind=x.kind, amount=round(s["left"], 2), on_date=d, sure=x.sure, repeat="once", direction=x.direction,
+                                  bank=x.bank, note=f"rest of {x.amount:,.0f} expected {x.on_date:%d/%m/%Y} ({s['paid']:,.0f} paid)"[:500],
+                                  created_by=user.id, updated_by=user.id)
+        db.add(new)
+        x.status, x.amount = "paid", round(s["paid"], 2)
+        x.note = (f"{x.note} · " if x.note else "") + f"rest {s['left']:,.0f} moved to {d:%d/%m/%Y}"
+        msg = f"rest {s['left']:,.2f} moved to {d:%d/%m/%Y}"
+    else:
+        raise HTTPException(400, "Paid, move the rest, move, or not happening?")
+    x.updated_by = user.id
+    db.commit()
+    M.log_action(db, user.id, "cash_expected_settle", f"Expected {x.what}: {msg}")
     return {"ok": True}
 
 
@@ -370,6 +597,7 @@ def export(token: str, format: str = "pdf", months: int = 3, with_in: int = 1, d
     if u.role != "admin" and "accounts_cash" not in set(M.effective_permissions(u)):
         raise HTTPException(403, "Accounts only.")
     f = collect(db, max(1, min(12, months)), bool(with_in))
+    f.pop("_settle", None)
     TY = {"cheque": "Cheque", "salary": "Salaries", "sub": "Subcontractor", "client": "Client bill", "expected": "Expected"}
     rows = [{"Date": "/".join(reversed(i["date"].split("-"))), "What": i["what"] + (" (past date)" if i["late"] else ""), "Type": TY.get(i["type"], i["type"]),
              "From": i["src"], "In (AED)": i["in"] or "", "Out (AED)": i["out"] or "", "Balance after (AED)": i["after"]} for i in f["items"]]
