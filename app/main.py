@@ -4092,9 +4092,23 @@ def _backup_dump(data: dict) -> str:
 def scrub_chat_from_backups(SessionLocal) -> int:
     """Backups taken before the chat was left out of them: the chat tables and the chat lines of the
     activity log are taken out, so the chat is gone from everywhere after its day."""
+    # 14/11/2026: this ran on EVERY start and loaded every backup (each a full copy of the data) into memory at
+    # once - the app grew to 7.5 GB within seconds, was killed, restarted, did it again: the server went dark for
+    # 15-30 minutes many times a day. Now: once (a setting remembers it), one backup at a time, let go after each.
+    import gc
     db = SessionLocal(); n = 0
     try:
-        for b in db.query(models.Backup).all():
+        if get_setting(db, "chat_scrubbed_from_backups"):
+            return 0
+        ids = [i for (i,) in db.query(models.Backup.id).order_by(models.Backup.id).all()]
+    finally:
+        db.close()
+    for bid in ids:
+        db = SessionLocal()
+        try:
+            b = db.get(models.Backup, bid)
+            if not b:
+                continue
             try:
                 txt = _backup_text(b.data)
                 if '"chat_messages"' not in txt and '"chat_reads"' not in txt and '"chat_seen"' not in txt and '"action": "chat_' not in txt:
@@ -4107,8 +4121,16 @@ def scrub_chat_from_backups(SessionLocal) -> int:
                 if isinstance(d.get("audit_log"), list):
                     d["audit_log"] = [r for r in d["audit_log"] if not str((r or {}).get("action") or "").startswith("chat_")]
                 b.data = _backup_dump(d); db.commit(); n += 1
+                del d
             except Exception as e:
                 db.rollback(); print(f"backup #{b.id}: chat not taken out - {e}")
+        finally:
+            db.close()
+            txt = None
+            gc.collect()
+    db = SessionLocal()
+    try:
+        put_setting(db, "chat_scrubbed_from_backups", "1"); db.commit()
     finally:
         db.close()
     return n
@@ -4313,7 +4335,8 @@ ROUTINE_TRIGGERS = ("auto", "daily")
 
 def _todays_routine_backup(db: Session):
     """Today's routine snapshot, if one has already been taken."""
-    return (db.query(models.Backup)
+    # only the id - loading the snapshot itself on every login cost a full copy of the data in memory
+    return (db.query(models.Backup.id)
               .filter(models.Backup.trigger.in_(ROUTINE_TRIGGERS),
                       func.date(models.Backup.created_at) == _dubai_today())
               .first())
@@ -4340,16 +4363,12 @@ def maybe_create_auto_backup(db: Session):
         db.commit()
 
     # Prune: keep only the newest N automatic backups.
-    old_auto = (
-        db.query(models.Backup)
-        .filter(models.Backup.trigger.in_(ROUTINE_TRIGGERS))
-        .order_by(models.Backup.created_at.desc())
-        .offset(AUTO_BACKUP_KEEP_DAYS)
-        .all()
-    )
+    old_auto = [i for (i,) in db.query(models.Backup.id)        # ids only - not a copy of the data each
+                .filter(models.Backup.trigger.in_(ROUTINE_TRIGGERS))
+                .order_by(models.Backup.created_at.desc())
+                .offset(AUTO_BACKUP_KEEP_DAYS).all()]
     if old_auto:
-        for b in old_auto:
-            db.delete(b)
+        db.query(models.Backup).filter(models.Backup.id.in_(old_auto)).delete(synchronize_session=False)
         db.commit()
 
 
@@ -4555,11 +4574,8 @@ def download_latest_backup(token: str = None, db: Session = Depends(get_db)):
         # copy of itself every day. Manual backups are left alone: those
         # were taken deliberately, usually before something risky.
         cutoff = datetime.now(timezone.utc) - timedelta(days=BACKUP_KEEP_DAYS)
-        old_ones = (db.query(models.Backup)
-                      .filter(models.Backup.trigger.in_(ROUTINE_TRIGGERS),
-                              models.Backup.created_at < cutoff).all())
-        for b in old_ones:
-            db.delete(b)
+        db.query(models.Backup).filter(models.Backup.trigger.in_(ROUTINE_TRIGGERS),
+                                       models.Backup.created_at < cutoff).delete(synchronize_session=False)
         db.commit()
     buf = io.BytesIO(body.encode("utf-8"))
     return StreamingResponse(
