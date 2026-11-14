@@ -3,7 +3,7 @@
 The app on a computer that lost the server keeps each save and sends it again when the server is back
 (sw.js). Every save carries its own id (X-Req-Id). If the first try did reach the server just before the
 line dropped, the server has already done it: the same id coming again gets the answer it got the first
-time, and nothing is saved a second time. Kept 14 days.
+time, and nothing is saved a second time. Kept 7 days (was 14 - it had grown past 100 MB, 14/11/2026).
 """
 from datetime import datetime, timedelta
 
@@ -27,7 +27,7 @@ def create_tables(engine):
     OfflineReq.__table__.create(bind=engine, checkfirst=True)
     db = SessionLocal()
     try:
-        db.query(OfflineReq).filter(OfflineReq.created_at < datetime.utcnow() - timedelta(days=14)).delete(synchronize_session=False)
+        db.query(OfflineReq).filter(OfflineReq.created_at < datetime.utcnow() - timedelta(days=7)).delete(synchronize_session=False)
         db.commit()
     except Exception:
         db.rollback()

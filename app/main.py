@@ -3961,7 +3961,9 @@ BACKUP_KEEP_DAYS = 7
 # Only the backups table itself is left out - a backup of backups grows
 # on itself every time one is taken.
 # The chat is kept for a day only and deleted from everywhere - so it is never put in a backup either.
-BACKUP_SKIP_TABLES = {"backups", "chat_messages", "chat_reads", "chat_seen"}
+# offline_requests: the answers kept so a save resent after a dropped line is not made twice - a few days' working
+# data, 100+ MB, of no use in a restore (14/11/2026)
+BACKUP_SKIP_TABLES = {"backups", "chat_messages", "chat_reads", "chat_seen", "offline_requests"}
 
 
 def _backup_models():
@@ -4361,7 +4363,7 @@ def maybe_create_auto_backup(db: Session):
     """
     if not _todays_routine_backup(db):
         data = build_backup_data(db)
-        db.add(models.Backup(created_by=None, trigger="auto", data=json.dumps(data, default=str)))
+        db.add(models.Backup(created_by=None, trigger="auto", data=_backup_dump(data)))   # compressed, like the others
         db.commit()
 
     # Prune: keep only the newest N automatic backups.

@@ -113,7 +113,7 @@ skipped = main.BACKUP_SKIP_TABLES
 missing = sorted(declared - skipped - set(raw.keys()))
 ck(f'every one of the {len(declared - skipped)} tables is in the snapshot', not missing, missing)
 ck('the activity log is kept too', 'audit_log' in raw, sorted(raw.keys()))
-ck('only the backups table (and the day-only chat) is skipped', skipped == {'backups', 'chat_messages', 'chat_reads', 'chat_seen'}, skipped)
+ck('only the backups table, the day-only chat and the resend answers are skipped', skipped == {'backups', 'chat_messages', 'chat_reads', 'chat_seen', 'offline_requests'}, skipped)
 ck('the snapshot names the tables it carries', set(raw.get('tables', [])) == declared - skipped,
    sorted(set(raw.get('tables', [])) ^ (declared - skipped)))
 
