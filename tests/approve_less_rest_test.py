@@ -64,6 +64,24 @@ ln = req(m2['id'])['lines']
 ck('rejected: gone from what waits, the approved parts stay', r.status_code == 200 and not [l for l in ln if l['status'] == 'pending'] and sorted(l['qty_requested'] for l in ln if l['status'] == 'approved') == [2.5, 4], ln)
 ck('approving in full makes no rest line', c.post(f'/store/request-lines/{l0}/approve-less', json={'qty': 4}, headers=H).status_code == 200 and len(req(m2['id'])['lines']) == 3)
 
+# review 14/11/2026: the approved part is on the tracker to order while the rest waits; stock arriving cannot fill the
+# rest; the 3 m3 comes, then the rest is rejected - the request closes as delivered, not stuck at part delivered
+m3 = c.post('/store/requests', json={'site': '925', 'requested_by': 'Akhil', 'needed_by': '2026-11-15', 'urgency': 'normal', 'notes': '',
+    'lines': [{'item_id': sand['id'], 'qty_requested': 6, 'unit': 'm3', 'purpose': 'FF BLOCK WORK'}]}, headers=H).json()
+a = req(m3['id'])['lines'][0]['id']
+c.post(f'/store/request-lines/{a}/approve-less', json={'qty': 3}, headers=H)
+rest3 = [l for l in req(m3['id'])['lines'] if l['status'] == 'pending'][0]['id']
+tr = [r for r in c.get('/store/purchase/tracker', headers=H).json()['rows'] if r.get('kind') == 'mr' and r['id'] == m3['id']]
+ck('tracker: the rest under Approve and the 3 m3 under To order, both', sorted(r['stage'] for r in tr) == [0, 1] and len({r['key'] for r in tr}) == 2, [(r['stage'], r['key']) for r in tr])
+ck('the To order row lists only the approved 3', [l['qty'] for r in tr if r['stage'] == 1 for l in r['lines']] == [3])
+x = c.post(f"/store/requests/{m3['id']}/receive?line_id={rest3}&qty=3", headers=H)
+ck('the rest cannot be booked in while it waits on the office', x.status_code == 400, x.text)
+x = c.post(f"/store/requests/{m3['id']}/receive?line_id={a}&qty=3&supplier=Sand+Co", headers=H)
+ck('the approved 3 m3 is booked in', x.status_code == 200, x.text)
+ck('... part delivered while the rest waits', req(m3['id'])['status'] == 'partial', req(m3['id'])['status'])
+c.post(f'/store/request-lines/{rest3}/decision', json={'decision': 'rejected', 'reason': 'One load is enough'}, headers=H)
+ck('rest rejected after the 3 came: the request is delivered, not stuck', req(m3['id'])['status'] == 'delivered', req(m3['id'])['status'])
+
 # one-time put-back: MR-0134's Black Sand (approved 3 of 6 before this change)
 db = database.SessionLocal()
 import datetime as _dt

@@ -187,19 +187,24 @@ def build(db):
         to_order = [l for l in loose if not l.supplier_id or l.id in freed]
         no_lpo = [l for l in loose if l.supplier_id and l.id not in freed]
         if pending:
-            stage, show = 0, pending
+            plan = [(0, pending)]
+            # part approved now, the rest still to decide (approve less, 14/11/2026): the approved part goes on to be
+            # ordered meanwhile, as its own row
+            if to_order:
+                plan.append((1, to_order))
         elif to_order:
-            stage, show = 1, to_order
+            plan = [(1, to_order)]
         elif no_lpo:
-            stage, show = 2, no_lpo
+            plan = [(2, no_lpo)]
         else:
             continue
-        sup = sups.get(show[0].supplier_id) if stage == 2 else None
-        role, act = NEXT[stage]
-        if stage == 2:
+        for stage, show in plan:
+          sup = sups.get(show[0].supplier_id) if stage == 2 else None
+          role, act = NEXT[stage]
+          if stage == 2:
             act = "Mark arrived"                  # ordered on the request itself (no LPO): booked in on the request
-        rows.append({
-            "key": f"mr{mr.id}", "kind": "mr", "id": mr.id, "ref": mr.ref, "requests": [mr.ref],
+          rows.append({
+            "key": f"mr{mr.id}" + ("o" if stage == 1 and len(plan) > 1 else ""), "kind": "mr", "id": mr.id, "ref": mr.ref, "requests": [mr.ref],
             "site": "Store" if (mr.site or "").upper() == "STORE" else (mr.site or ""),
             "what": _what([name(l) for l in show]),
             "supplier": sup.name if sup else "", "contact": _clean(sup.contact_person) if sup else "",
@@ -213,8 +218,9 @@ def build(db):
             "untouched": mr.id not in with_lpo and all((l.status or "pending") == "pending" and not (l.qty_received or 0)
                                                         and not l.supplier_id for l in every),
             "lines": [{"id": l.id, "name": name(l), "qty": float(l.qty_requested or 0), "unit": l.unit or "",
-                       "purpose": l.purpose or "", "status": l.status or "pending"} for l in lines],
-        })
+                       "purpose": l.purpose or "", "status": l.status or "pending"}
+                      for l in (lines if len(plan) == 1 else show)],
+          })
     # the most recently raised first (4 Nov 2026) - an LPO or request made today is at the top, the oldest at the bottom
     rows.sort(key=lambda r: (r.get("created") or r.get("date") or "", r.get("date") or "", r["id"]), reverse=True)
     counts = [sum(1 for r in rows if r["stage"] == i) for i in range(6)]

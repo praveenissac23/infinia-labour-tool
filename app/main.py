@@ -5406,6 +5406,13 @@ def decide_request_line(line_id: int, payload: schemas.LineDecisionIn,
     elif mr.status in ("pending", "approved", "rejected"):
         # Anything approved moves the request forward; otherwise it waits.
         mr.status = "approved" if any(s == "approved" for s in states) else "pending"
+    elif mr.status in ("ordered", "partial", "delivered"):
+        # the rest of an 'approve less' decided after the first part was ordered or came (14/11/2026): settle as
+        # 'not needed' does, so a request whose rest is rejected closes instead of staying part delivered
+        if not [l for l in mr.lines if (l.status or "pending") != "rejected"]:
+            mr.status, mr.closed_on = ("delivered" if any((l.qty_received or 0) > 0 for l in mr.lines) else "rejected"), _dubai_today()
+        else:
+            _settle_status(mr)
     db.commit()
     log_action(db, user.id, "request_line_decision",
                f"{mr.ref} line {line_id} {payload.decision}")
@@ -6033,7 +6040,7 @@ def _hire_to_requests(db, sup, location, moves, order=None):
         if own:
             q = q.filter(models.MaterialRequestLine.request_id.in_(own))
     loc = (location or "").strip().upper()
-    cands = [l for l in q.all() if (l.status or "pending") != "rejected"
+    cands = [l for l in q.all() if (l.status or "pending") not in ("rejected", "pending")
              and (l.qty_requested or 0) - (l.qty_received or 0) > 1e-9
              and ((l.request.site or "").strip().upper() in ("", "STORE", "CENTRAL", loc) or ids)]
     if not cands:
@@ -7810,6 +7817,8 @@ def receive_against_request(req_id: int, line_id: int, qty: float, supplier: str
                    "Create the item first, then edit the request.")
     if (line.status or "pending") == "rejected":
         raise HTTPException(status_code=400, detail="The office rejected this material - it cannot be received.")
+    if (line.status or "pending") == "pending" and (mr.status or "pending") not in ("pending", "rejected", "cancelled"):
+        raise HTTPException(status_code=400, detail="This part is still waiting on the office - approve it before booking a delivery.")
     if (mr.status or "pending") in ("pending", "rejected", "cancelled"):
         raise HTTPException(status_code=400, detail="This request is not approved yet - approve it before booking a delivery.")
 
@@ -9442,10 +9451,13 @@ def _fix_rest_mr0134(db):
     m = db.query(models.MaterialRequest).filter(models.MaterialRequest.ref == "MR-0134").first()
     if m and m.status not in ("delivered", "received", "closed", "rejected") and not any(l.source == "rest" for l in m.lines):
         for l in m.lines:
-            if "sand" in (l.asked_name or l.description or "").lower() and (l.notes or "").startswith("Asked for 6, approved 3") \
+            if "sand" in (l.asked_name or l.description or "").lower() and "Asked for 6, approved 3" in (l.notes or "") \
                     and abs(float(l.asked_qty or 0) - 6) < 1e-9 and abs(float(l.qty_requested or 0) - 3) < 1e-9:
                 r = purchtrack.rest_line(db, l, 3.0)
                 log_action(db, None, "request_line_rest", f"MR-0134 line {l.id}: the other 3 m3 back, waiting on the office (line {r.id})")
+                break
+        else:
+            print("MR-0134 rest: no 'approved 3 of 6' sand line found - nothing put back")
     db.add(models.Setting(key="rest_mr0134", value="1"))
     db.commit()
 

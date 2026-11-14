@@ -660,7 +660,7 @@ def _words_in(short, long_):
 def _mr_line_for(book, o, l, it, exclude=()):
     """The request line an LPO line stands for, with something still to come on it."""
     cands = [book.mrl[i] for i in book.of(o)["related"] if i in book.mrl]
-    cands = [m for m in cands if m.id not in exclude and (m.status or "pending") != "rejected"
+    cands = [m for m in cands if m.id not in exclude and (m.status or "pending") not in ("rejected", "pending")
              and (m.qty_requested or 0) - (m.qty_received or 0) > EPS]
     for mrl in cands:
         if _fits(l, it, mrl, book.items.get(mrl.item_id)):
