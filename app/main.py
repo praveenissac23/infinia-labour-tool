@@ -16024,8 +16024,8 @@ try:
         chat.purge_old(_d)               # a day only - older chat is deleted at once, not 30 seconds later
     finally:
         _d.close()
-    threading.Thread(target=lambda: print(f"chat taken out of {scrub_chat_from_backups(SessionLocal)} backup(s)"),
-                     daemon=True, name="chat-backup-scrub").start()
+    # No longer run at start (14/11/2026): even one backup at a time, a single snapshot opened in full grew the app
+    # past its memory cap and it was killed again on every start. New backups leave the chat out already.
     chat.start_cleaner(SessionLocal)      # files and voice messages are removed after chat.KEEP_DAYS days
 except Exception as _e:
     print("chat tables:", _e)
