@@ -16,7 +16,8 @@ or other whole-data copies at once, especially at start: that froze the server 1
    columns or one-time data fixes - fix what it finds before pushing.
 5. Push, then reply straight away - do not wait for GitHub's run. Check it at the start of the next task
    (`gh run list -L 1`) and fix it first if red. Target: a normal change done in 2-4 minutes.
-6. Tell Praveen: not working -> corrected -> result, and the deploy command (reload-or-restart).
+6. Tell Praveen: not working -> corrected -> result, and the deploy command (reload-or-restart) - every command in its
+   own fenced code block (```bash), alone, so it copies in one tap; never inline in a sentence.
 
 ## Stage, then live
 The test copy at https://app.infinia.ae:8443 (deploy/install-staging.sh) follows GitHub main by itself within two
