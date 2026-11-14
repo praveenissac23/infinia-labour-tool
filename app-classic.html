@@ -1668,6 +1668,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #own-dash .od-k { grid-column: span 1; }
   #own-dash .od-k .od-v { font-size: 38px; }
   #own-dash .od-proj { grid-column: 1 / 5; }
+  #own-dash .od-w2 { grid-column: span 2; }
+  #own-dash .od-pill.grnp { background: rgba(94,224,160,.15); color: #8ff0bd; }
   #own-dash .od-dep { grid-column: 5 / 7; grid-row: span 2; }
   #own-dash .od-rings { display: flex; gap: 22px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
   #own-dash .od-ring { text-align: center; font-size: 12px; color: rgba(255,255,255,.75); cursor: pointer; }
@@ -1681,7 +1683,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #own-dash .od-more { font-size: 13px; color: rgba(255,255,255,.7); cursor: pointer; }
   @media (max-width: 1100px) { #own-dash .od-g { grid-template-columns: repeat(2, minmax(0,1fr)); }
     #own-dash .od-hero, #own-dash .od-cash { grid-column: span 1; }
-    #own-dash .od-needs, #own-dash .od-proj, #own-dash .od-dep { grid-column: 1 / -1; grid-row: auto; }
+    #own-dash .od-needs, #own-dash .od-proj, #own-dash .od-dep, #own-dash .od-w2 { grid-column: 1 / -1; grid-row: auto; }
     #own-dash .od-hero .od-v { font-size: 38px; } }
   @media (max-width: 640px) { #own-dash .od-hero, #own-dash .od-cash { grid-column: 1 / -1; } }
   .dash-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 12px; margin-bottom: 16px; }
@@ -15757,12 +15759,44 @@ async function ownDash(role) {
     <div class="od-c od-dep"><div class="od-l">Departments</div>${dep.map((x, i) => `<div class="od-dl" data-d="${i}"><span>${esc(x.name)}<small>${esc(x.note)}</small></span><span class="${lc[x.light] || ""}" style="white-space:nowrap"><span class="od-dot" style="background:currentColor"></span>${esc(x.value)}</span></div>`).join("")}</div>
     <div class="od-c od-proj"><div class="od-l">Projects · % of the contract certified · ring colour = how much of it the client has paid</div>
       <div class="od-rings">${show.map(ring).join("")}${projs.length > show.length ? `<span class="od-more" data-go='{"pg":["estimation","estdash"]}'>+${projs.length - show.length} more →</span>` : ""}</div></div>
+    <div class="od-c od-w2" id="od-profit"><div class="od-l">Project profit · certified vs cost so far</div><div class="od-s">Loading…</div></div>
+    <div class="od-c od-w2 go" id="od-spend" data-go='{"pg":["accounts","projexp"]}'><div class="od-l">Spend · ${new Date().toLocaleDateString("en-GB", { month: "long" })} so far</div><div class="od-s">Loading…</div></div>
+    <div class="od-c od-w2 go" id="od-exp" data-go='{"dq":"expiry"}'><div class="od-l">Expiring · next 30 days</div><div class="od-s">Loading…</div></div>
   </div>`;
   box.querySelectorAll("[data-go]").forEach(el => el.onclick = () => odGo(JSON.parse(el.dataset.go)));
   box.querySelectorAll(".od-n").forEach(el => el.onclick = () => odGo(needs[+el.dataset.i].go));
   box.querySelectorAll(".od-dl").forEach(el => el.onclick = () => odGo(dep[+el.dataset.d].go));
   box.querySelectorAll(".od-ring").forEach(el => el.onclick = () => odGo({ est: { pid: +el.dataset.p, group: "home", sec: "dash" } }));
-  odCash();
+  odCash(); odMore();
+}
+// the owner's dashboard, last row (loaded after the page shows - they read every payroll cycle and LPO):
+// project profit, spend this month, documents expiring
+async function odMore() {
+  const P = document.getElementById("od-profit"), S = document.getElementById("od-spend"), E = document.getElementById("od-exp"); if (!P) return;
+  let d; try { d = await apiCall("/permissions/owner/more"); } catch (e) { [P, S, E].forEach(x => x && (x.style.display = "none")); return; }
+  const esc = escapeHtml, row = (a, b, sm, cls) => `<div class="od-dl"><span>${a}${sm ? `<small>${sm}</small>` : ""}</span><span class="${cls || ""}" style="white-space:nowrap">${b}</span></div>`;
+  const pr = d.profit || [];
+  P.innerHTML = `<div class="od-l">Project profit · certified vs cost so far</div>` + (pr.length ? pr.slice(0, 5).map(r => {
+    const m = r.margin, cls = m == null ? "" : m < 0 ? "od-pill red" : m < 10 ? "od-pill amber" : "od-pill grnp";
+    return `<div class="od-dl od-pp" data-p="${r.id}" title="Cost: labour ${odK(r.labour)} · materials ${odK(r.materials)} · petty cash ${odK(r.petty)} · subcontract ${odK(r.subs)}"><span>${esc(r.code)}${r.name ? " · " + esc(r.name.slice(0, 28)) : ""}<small>certified ${odK(r.certified)} · cost ${odK(r.cost)}</small></span><span class="${cls}">${m == null ? "no certificate yet" : (m > 0 ? "+" : "") + m + "%"}</span></div>`; }).join("")
+    + (pr.length > 5 ? `<div class="od-s">+${pr.length - 5} more projects</div>` : "") : `<div class="od-s">No project has a certificate or a cost yet.</div>`);
+  P.querySelectorAll(".od-pp").forEach(el => el.onclick = () => odGo({ est: { pid: +el.dataset.p, group: "home", sec: "dash" } }));
+  const sp = d.spend;
+  if (sp) {
+    const k = odK(sp.total), vs = sp.vs_prev_pct;
+    S.innerHTML = `<div class="od-l">Spend · ${new Date().toLocaleDateString("en-GB", { month: "long" })} so far</div><div class="od-v" style="font-size:34px">${k.replace(/[A-Z]/g, "")}<small style="font-size:17px;opacity:.7">${k.replace(/[\d.,]/g, "")}</small></div>
+      <div class="od-s">${vs == null ? "AED" : `<span class="${vs > 0 ? "red" : "grn"}">${vs > 0 ? "▲" : "▼"} ${Math.abs(vs)}%</span> on ${esc(sp.prev_label)} by this date (without labour)`}</div>`
+      + row("Materials", odK(sp.materials), "LPOs + issued from the store") + row("Subcontractors", odK(sp.subs), "certified this month")
+      + row("Labour", sp.labour ? odK(sp.labour) : "–", sp.labour ? "" : "in once the payroll is run") + row("Petty cash", odK(sp.petty))
+      + (sp.top ? `<div class="od-s">Most spent: ${esc(sp.top.code)} · ${odK(sp.top.amount)}</div>` : "");
+  } else S.style.display = "none";
+  const ex = d.expiring;
+  if (ex) {
+    const when = n => n < 0 ? `<span class="od-pill red">expired ${-n} d ago</span>` : `<span class="od-pill ${n <= 7 ? "red" : "amber"}">in ${n} day${n === 1 ? "" : "s"}</span>`;
+    E.innerHTML = `<div class="od-l">Expiring · next 30 days</div><div class="od-v ${ex.count ? (ex.expired ? "red" : "amb") : "grn"}" style="font-size:34px">${ex.count}</div><div class="od-s">${ex.count ? "documents to renew" + (ex.expired ? ` · ${ex.expired} already expired` : "") : "nothing to renew"}</div>`
+      + (ex.company || []).map(c => row(esc(c.what), when(c.days))).join("")
+      + (ex.people ? row("Visas / Emirates IDs", `<span class="od-pill amber">${ex.people} ${ex.people === 1 ? "person" : "people"}</span>`, ex.people_first != null ? (ex.people_first < 0 ? "first one expired" : `first in ${ex.people_first} days`) : "") : "");
+  } else E.style.display = "none";
 }
 // the owner's dashboard: the cash forecast's three tanks, small - what is left in the bank at the end of each month
 async function odCash() {

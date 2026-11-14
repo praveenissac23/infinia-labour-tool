@@ -197,6 +197,103 @@ def overview(db: Session = Depends(get_db), user: models.User = Depends(_owner))
     return out
 
 
+# ---- the slower cards, loaded after the page shows (14 Nov 2026): project profit, spend this month, expiring ----
+_EXTRA = {}                      # one copy for a few minutes - the figures come from all the payroll cycles and LPOs
+_EXTRA_SECONDS = 300
+
+
+def _prev_month_same_day(t):
+    first = t.replace(day=1)
+    pm_end = first - timedelta(days=1)
+    return pm_end.replace(day=1), pm_end.replace(day=min(t.day, pm_end.day))
+
+
+@router.get("/permissions/owner/more")
+def overview_more(db: Session = Depends(get_db), user: models.User = Depends(_owner)):
+    import time
+    t = M._dubai_today()
+    hit = _EXTRA.get(t)
+    if hit and time.monotonic() - hit[0] < _EXTRA_SECONDS:
+        return hit[1]
+    out = {"today": t.isoformat()}
+    import estimation as ES
+    import projexpense as PX
+
+    def bundles():
+        rules = ES._rules(db)
+        projects = db.query(ES.EstProject).filter(ES.EstProject.status != "Closed").order_by(ES.EstProject.code).all()
+        pre = ES._preload(db, projects, with_files=False)
+        return [(p, ES.project_bundle(db, p, rules, pre)) for p in projects]
+    bl = _safe(bundles, [])
+    m1 = t.replace(day=1)
+    p1, p2 = _prev_month_same_day(t)
+
+    # ---- project profit: work certified to the client vs what the project has cost so far -----------------
+    # cost = Accounts > Project expense (labour, LPOs, store issues, petty cash) + subcontract work certified
+    def profit():
+        g = PX.gather(db)
+        cost = {r["code"]: r for r in g["rows"]}
+        rows = []
+        for p, b in bl:
+            s_ = b["summary"]
+            subs = r2(sum(sb.get("work_done") or 0 for sb in b.get("subs") or [] if sb.get("status") != "Cancelled"))
+            px = cost.get(str(p.code or "").strip(), {})
+            spent = r2((px.get("total") or 0) + subs)
+            work = r2(s_.get("client_work") or 0)
+            if not work and not spent:
+                continue
+            rows.append({"id": p.id, "code": p.code, "name": p.name or "", "certified": work, "cost": spent,
+                         "labour": r2(px.get("labour")), "materials": r2((px.get("lpo") or 0) + (px.get("store") or 0)),
+                         "petty": r2(px.get("petty")), "subs": subs,
+                         "margin": round(100.0 * (work - spent) / work, 1) if work else None})
+        # losing first, then the biggest
+        rows.sort(key=lambda r: (0 if r["margin"] is not None and r["margin"] < 0 else 1, -(r["certified"] or 0)))
+        return rows
+    out["profit"] = _safe(profit, [])
+
+    # ---- spend this month (and last month to the same day) --------------------------------------------------
+    def spend(d1, d2):
+        g = PX.gather(db, d1.isoformat(), d2.isoformat())
+        tt = g["totals"]
+        sub = 0.0
+        for p, b in bl:
+            for sb in b.get("subs") or []:
+                for pc in sb.get("pcs") or []:
+                    on = str(pc.get("certified_on") or "")[:10]
+                    if on and d1.isoformat() <= on <= d2.isoformat():
+                        sub += pc.get("this") or 0
+        top = max(g["rows"], key=lambda r: r["total"], default=None)
+        return {"labour": r2(tt.get("labour")), "materials": r2((tt.get("lpo") or 0) + (tt.get("store") or 0)),
+                "petty": r2(tt.get("petty")), "subs": r2(sub),
+                "top": {"code": top["code"], "amount": r2(top["total"])} if top and top["total"] else None}
+    now_ = _safe(lambda: spend(m1, t), None)
+    was = _safe(lambda: spend(p1, p2), None)
+    if now_:
+        now_["total"] = r2(now_["labour"] + now_["materials"] + now_["petty"] + now_["subs"])
+        if was:   # like for like without labour: this month's payroll is only in once it is run
+            a = now_["materials"] + now_["petty"] + now_["subs"]
+            b_ = was["materials"] + was["petty"] + was["subs"]
+            now_["vs_prev_pct"] = round(100.0 * (a - b_) / b_, 0) if b_ else None
+            now_["prev_label"] = p1.strftime("%B")
+    out["spend"] = now_
+
+    # ---- expiring in 30 days (HR > Expiry): company documents one by one, people's visas / IDs as a count -----
+    def expiring():
+        import expiry as EX
+        marks = EX.started_keys(db)
+        its = [i for i in EX._items(db) if not EX._held(i, marks) and i["days_left"] <= 30]
+        comp = sorted([i for i in its if i["type"] == "company"], key=lambda i: i["days_left"])
+        ppl = [i for i in its if i["type"] == "person"]
+        return {"count": len(its), "expired": sum(1 for i in its if i["days_left"] < 0),
+                "company": [{"what": f"{i['who']}" + (f" · {i['what']}" if i.get("what") and i["what"] not in i["who"] else ""),
+                             "days": i["days_left"]} for i in comp[:4]],
+                "people": len({i["who"] for i in ppl}), "people_first": min((i["days_left"] for i in ppl), default=None)}
+    out["expiring"] = _safe(expiring, None)
+    _EXTRA.clear()
+    _EXTRA[t] = (time.monotonic(), out)
+    return out
+
+
 def _k(v):
     v = float(v or 0)
     if abs(v) >= 1e6:
