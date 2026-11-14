@@ -21095,7 +21095,7 @@ function cfAsk() {
   const t = new Date(CF.today), nx = new Date(t.getFullYear(), t.getMonth() + 1, 1), nxt = `${nx.getFullYear()}-${String(nx.getMonth() + 1).padStart(2, "0")}-01`;
   const fnd = r => (r.found || []).map(f => `${escapeHtml(f.src)} ${cfD(f.date).slice(0, 5)} ${escapeHtml(f.party.slice(0, 40))} ${cfM(f.amount)}`).join(" · ");
   box.style.display = "";
-  box.innerHTML = `<h3>What happened? <span class="sub" style="font-weight:400">${rows.length} forecast line${rows.length > 1 ? "s" : ""} to answer - each stays counted until you do</span></h3>` + rows.map(r => {
+  box.innerHTML = `<h3>What happened? <span class="sub" style="font-weight:400">${rows.length} forecast line${rows.length > 1 ? "s" : ""} to answer - until you do, each moves on to the next month by itself and stays counted</span></h3>` + rows.map(r => {
     const io = r.direction === "in" ? "in" : "out", head = `<b>${escapeHtml(r.what)}</b> <span class="sub">~${cfM(r.amount)} ${io === "in" ? "coming in" : "going out"} on ${cfD(r.on_date)}</span>`;
     const dt = `<input type="date" class="cfa-d" value="${nxt}" min="${CF.today}">`;
     const body = r.ask === "done" ? `<div class="sub">Found: ${fnd(r)}</div><div class="cfa-b"><button type="button" class="btn btn-primary btn-sm" onclick="cfSettle(${r.id},'paid',this)">&#10003; Paid - close it</button></div>`

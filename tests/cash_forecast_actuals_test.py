@@ -61,7 +61,8 @@ ck("Company & site petty cash: the site petty cash from the register, not Jomon'
 ck("Desarch: a payment within 10% of the guess settles it (28,000 of ~28,081) - off the forecast", cur(des) is None, cur(des))
 ck("an LPO supplier's payment is not a subcontractor payment - it goes to the supplier bucket", cur(gem) and abs(cur(gem)["out"] - 13000) < 0.01, cur(gem))
 ask = {a["id"]: a for a in d["ask"]}
-ck("last month, nothing found: asked 'none' and still counted today", ask.get(old, {}).get("ask") == "none" and cur(old) and cur(old)["late"] and cur(old)["out"] == 50000, (ask.get(old), cur(old)))
+ck("last month, nothing found: asked 'none', moved on to this month by itself, still counted", ask.get(old, {}).get("ask") == "none" and cur(old) and cur(old)["out"] == 50000
+   and t.isoformat() <= cur(old)["date"] <= (m1 + timedelta(days=31)).replace(day=1).isoformat() and cur(old)["date"][:7] == t.isoformat()[:7] and "moved on by itself" in cur(old)["note"], (ask.get(old), cur(old)))
 ck("last month, part paid: asked 'part', 200,000 left counted", ask.get(roy, {}).get("ask") == "part" and abs(ask[roy]["left"] - 200000) < 0.01 and abs(cur(roy)["out"] - 200000) < 0.01, ask.get(roy))
 ck("...the payment found is listed", ask.get(roy) and ask[roy]["found"] and ask[roy]["found"][0]["amount"] == 300000, ask.get(roy))
 ck("...and asked to close it (found in the bank)", ask.get(des, {}).get("ask") == "done", ask.get(des))
@@ -135,5 +136,19 @@ H2 = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "cfon
 d5 = c.get("/store/cash/forecast", headers=H2).json()
 ck("no cash register right: cash in hand not shown, no cash lines", d5["bank"]["cash"] == 0 and d5["bank"]["cash_hidden"] and not any(i["key"].startswith("cash:") for i in d5["items"])
    and not any(f["src"] == "Cash" for a in d5["ask"] for f in a.get("found") or []), d5["bank"])
+
+# client cash on the register takes the client's open bill down
+db.expire_all()
+pz = ES.EstProject(code="931", name="Zenith villa", client="M/s. Zenith Homes LLC", status="Running", ret_pct=0, vat_pct=5); db.add(pz); db.commit()
+db.add(ES.EstClientPC(project_id=pz.id, seq=1, claimed_cum=100000, certified_cum=100000, status="Certified", submitted=t - timedelta(days=20))); db.commit()
+bill = lambda h=H: next((i for i in c.get("/store/cash/forecast", headers=h, params={"months": 3}).json()["items"] if i["what"].startswith("931 - client certificate")), None)
+b0 = bill()
+ck("client bill coming in", b0 and b0["in"] > 0, b0)
+db.add(A.CashEntry(kind="received", on_date=t - timedelta(days=30), description="Zenith Homes - 931 old bill", amount=10000)); db.commit()
+ck("...cash received before the bill was sent: not set against it", bill() and abs(bill()["in"] - b0["in"]) < 0.01, bill())
+db.add(A.CashEntry(kind="received", on_date=t - timedelta(days=5), description="Received from Zenith Homes - 931 IPA01", amount=40000)); db.commit()
+b1 = bill()
+ck("...cash received from the client: the bill is 40,000 less to come", b1 and abs(b0["in"] - 40000 - b1["in"]) < 0.01 and "cash received 40,000" in b1["note"], b1)
+ck("...a login without the cash register still sees the full bill", bill(H2) and abs(bill(H2)["in"] - b0["in"]) < 0.01, bill(H2))
 print("\nFAILED: " + ", ".join(fails) if fails else "\nall passed")
 sys.exit(1 if fails else 0)

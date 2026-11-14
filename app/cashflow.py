@@ -163,7 +163,7 @@ def settle(db, t=None, end=None, cash_book=True):
                 if x.created_at:                                         # made earlier was for something else
                     lo = max(lo, x.created_at.date())
                 hi = max(_month_end(d), d + timedelta(days=15))       # a cheque dated a few days later is the same payment
-                if hi < t:
+                if _month_end(d) < t:
                     hi = end                                           # over and not settled: a late payment still counts
             occ.append({"x": x, "n": n, "date": d, "lo": lo, "hi": hi, "w": w, "mode": mode})
     if not occ:
@@ -219,6 +219,41 @@ def _bank_now(db, today):
         out["balance"] += last.balance or 0
         out["as_of"] = max(out["as_of"] or last.on_date, last.on_date)
     return out
+
+
+def _client_cash(db, bills, cash_book):
+    """Cash from a client on the cash register while his bill is still open in Estimation: the bill is that much
+    less to come. The receipt names the project (914, 915-919 ...) or the client (Emkaan Design ...); it is set
+    against that project's open bills, oldest first, and only bills sent on or before the day the cash came."""
+    if not cash_book or not bills:
+        return
+    import accounts as A
+    start = min((date.fromisoformat(str(x["c"].get("submitted"))[:10]) for x in bills if x["c"].get("submitted")), default=None)
+    if not start:
+        return
+    codes = {}
+    for x in bills:
+        codes.setdefault(str(x["p"].code or "").strip(), []).append(x)
+    cl = {}
+    for x in bills:
+        w = _words(x["p"].client or "")
+        if w:
+            cl.setdefault(frozenset(w), []).append(x)
+    for r in db.query(A.CashEntry).filter(A.CashEntry.kind == "received", A.CashEntry.on_date >= start).order_by(A.CashEntry.on_date, A.CashEntry.id).all():
+        desc, left = r.description or "", round(float(r.amount or 0), 2)
+        named = [k for k in re.findall(r"(?<![\d/])(\d{3})(?!\d)", desc) if k in codes]
+        pool = [x for k in dict.fromkeys(named) for x in codes[k]]
+        if not pool:
+            w = _words(desc)
+            pool = [x for k, xs in cl.items() if _named_match(set(k), w) for x in xs]
+        pool = sorted([x for x in pool if x["left"] > 0.005 and str(x["c"].get("submitted") or "")[:10] <= r.on_date.isoformat()],
+                      key=lambda x: (str(x["c"].get("submitted") or ""), x["c"].get("seq") or 0))
+        for x in pool:
+            if left <= 0.005:
+                break
+            take = round(min(left, x["left"]), 2)
+            x["left"] = round(x["left"] - take, 2); left = round(left - take, 2)
+            x["got"].append({"date": r.on_date.isoformat(), "amount": take})
 
 
 def _cash_book(user):
@@ -309,6 +344,7 @@ def collect(db, months=3, with_in=True, cash_book=True):
         rules = ES._rules(db)
         projects = db.query(ES.EstProject).filter(ES.EstProject.status != "Closed").all()
         pre = ES._preload(db, projects, with_files=False)
+        bills = []                                        # open client bills: (project, bill, due date)
         for p in projects:
             b = ES.project_bundle(db, p, rules, pre)
             if with_in:
@@ -319,8 +355,7 @@ def collect(db, months=3, with_in=True, cash_book=True):
                             d = date.fromisoformat(str(base)[:10]) + timedelta(days=30 if c.get("certified_on") else 45)
                         except ValueError:
                             d = t + timedelta(days=30)
-                        add(f"client:{c.get('id')}", d, f"{p.code} - client certificate {c.get('seq')} ({c['status'].lower()})", "client", "Estimation",
-                            c["payable"], "in", "likely", link={"est": {"pid": p.id, "group": "bills", "sec": "cpc"}})
+                        bills.append({"p": p, "c": c, "d": d, "left": round(float(c["payable"]), 2), "got": []})
             for sb in b.get("subs") or []:
                 for pc in sb.get("pcs") or []:
                     if pc.get("status") not in ("Certified", "Prepared", "CM approved", "Verified", "MD approved") or not (pc.get("payable") or 0) > 0:
@@ -336,6 +371,12 @@ def collect(db, months=3, with_in=True, cash_book=True):
                     add(f"sub:{pc.get('id')}", d, f"{p.code} - {nm} certificate {pc.get('seq') or ''} ({pc['status']})".replace("  ", " "), "sub", "Estimation",
                         pc["payable"], "out", "sure" if pc["status"] in ("MD approved", "Verified") else "likely",
                         link={"est": {"pid": p.id, "group": "subs", "sec": "inv"}})
+        _client_cash(db, bills, cash_book)
+        for x in bills:
+            p, c = x["p"], x["c"]
+            note = "; ".join(f"cash received {g['amount']:,.0f} on {date.fromisoformat(g['date']):%d/%m/%Y}" for g in x["got"])
+            add(f"client:{c.get('id')}", x["d"], f"{p.code} - client certificate {c.get('seq')} ({c['status'].lower()})", "client", "Estimation",
+                x["left"], "in", "likely", link={"est": {"pid": p.id, "group": "bills", "sec": "cpc"}}, note=note)
     except Exception as e:
         print("cash forecast - estimation:", e)
 
@@ -377,6 +418,12 @@ def collect(db, months=3, with_in=True, cash_book=True):
             note = x.note or ""
             if s["found"]:
                 note = "; ".join(filter(None, [f"paid so far {s['paid']:,.0f} of ~{x.amount:,.0f}", note]))
+            if x.repeat == "once" and _month_end(d) < t and s["left"] > 0.005:
+                # month over, not answered yet: it moves on to this month by itself (same day, or today if that is past)
+                import calendar
+                nd = date(t.year, t.month, min(d.day, calendar.monthrange(t.year, t.month)[1]))
+                note = "; ".join(filter(None, [f"moved on by itself from {d:%d/%m/%Y} - answer 'What happened?'", note]))
+                d = max(nd, t)
             add(f"exp:{x.id}:{n}", d, x.what + (f" ({x.kind})" if x.kind and x.kind.lower() not in x.what.lower() else ""), "expected",
                 "Expected", s["left"], x.direction or "out", x.sure or "sure", link={"exp": x.id, "n": n}, note=note, fixed=True)
     items.sort(key=lambda x: (x["date"], -x["in"], x["out"]))
