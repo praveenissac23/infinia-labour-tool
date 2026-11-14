@@ -710,3 +710,218 @@ def view_petty_cash(token: str, month: str = "", book: str = "site", date_from: 
     base = "/export/store/petty-cash?" + urlencode({"month": "all" if r["all"] else "", "date_from": "" if r["all"] else r["from"],
                                                    "date_to": "" if r["all"] else r["to"], "book": book, "token": t})
     return HTMLResponse(_html(r, base + "&format=pdf", base + "&format=excel"))
+
+
+# ---- Search (14 Nov 2026): a word anywhere in the petty cash - a worker's name, a supplier, a site, a receipt no. ----
+# Every book this login may open (or the one open), for the dates shown; every word typed must be on the line
+# (description, supplier, site, receipt no., TRN, the visa's person, the amount). The lines found, with Received and
+# Paid totalled at the bottom - on screen, in the preview, PDF and Excel. A director's book keeps its own sense
+# (Paid = what he paid for the company), so the book is named on every line.
+def _q_words(q):
+    import re
+    return [w for w in re.split(r"\s+", (q or "").strip().lower()) if w][:8]
+
+
+def search(db, user, q, scope="all", month="", date_from="", date_to=""):
+    words = _q_words(q)
+    if not words:
+        raise HTTPException(400, "Type a word to search for.")
+    perms = set(M.effective_permissions(user))
+    books = [b for b, (_, right) in BOOKS.items() if right in perms]
+    if scope and scope != "all":
+        books = [_book(user, scope)]
+    if not books:
+        raise HTTPException(403, "You do not have access to any petty cash.")
+    a, b, whole = _period(month, date_from, date_to)
+    qy = db.query(models.PettyCash).filter(models.PettyCash.on_date >= a, models.PettyCash.on_date <= b)
+    vf = {v.id: v.person or "" for v in db.query(models.VisaFile).all()}
+    rows = []
+    for x in qy.order_by(models.PettyCash.on_date, models.PettyCash.id).all():
+        bk = (x.book or "site") or "site"
+        if bk not in books:
+            continue
+        amt = x.paid or x.received or 0
+        hay = " ".join([x.description or "", x.supplier or "", x.site or "", x.receipt_no or "", x.trn or "",
+                        vf.get(x.visa_file_id, "") if x.visa_file_id else "", f"{amt:.2f}", f"{amt:,.2f}"]).lower()
+        if all(w in hay for w in words):
+            rows.append({"id": x.id, "book": bk, "book_label": BOOKS[bk][0], "date": x.on_date.isoformat(),
+                         "description": x.description or "", "supplier": x.supplier or "", "site": x.site or "",
+                         "receipt_no": x.receipt_no or "", "received": round(x.received or 0, 2), "paid": round(x.paid or 0, 2)})
+    by_book = {}
+    for r in rows:
+        k = by_book.setdefault(r["book"], {"book": r["book"], "book_label": r["book_label"], "lines": 0, "received": 0.0, "paid": 0.0})
+        k["lines"] += 1; k["received"] = round(k["received"] + r["received"], 2); k["paid"] = round(k["paid"] + r["paid"], 2)
+    first = rows[0]["date"] if rows else None
+    label = (f"Full history" if whole else f"{a:%d/%m/%Y} to {b:%d/%m/%Y}")
+    return {"q": " ".join(words), "scope": "all" if not scope or scope == "all" else scope,
+            "books": [BOOKS[b][0] for b in books], "label": label, "from": a.isoformat(), "to": b.isoformat(), "all": whole,
+            "rows": rows, "received": round(sum(r["received"] for r in rows), 2), "paid": round(sum(r["paid"] for r in rows), 2),
+            "by_book": list(by_book.values()), "first": first}
+
+
+@router.get("/store/petty-cash/search")
+def search_petty_cash(q: str = "", scope: str = "all", month: str = "", date_from: str = "", date_to: str = "",
+                      db: Session = Depends(get_db), user: models.User = PC):
+    return search(db, user, q, scope, month, date_from, date_to)
+
+
+def _s_title(s):
+    return f'Petty cash search: "{s["q"]}"'
+
+
+def _s_html(s, pdf_url, excel_url):
+    logo = export_web.logo_data_uri()
+    many = len({r["book"] for r in s["rows"]}) > 1 or s["scope"] == "all"
+    head = "<th>Date</th>" + ("<th class='l'>Book</th>" if many else "") + "<th class='l'>Description</th><th class='l'>Supplier / Contact</th><th>Site</th><th class='n'>Received (AED)</th><th class='n'>Paid (AED)</th>"
+    m = lambda v: _money(v) if v else ""
+    body = "".join(f"<tr><td>{_dmy(r['date'])}</td>" + (f"<td class='l'>{escape(r['book_label'])}</td>" if many else "")
+                   + f"<td class='l'>{escape(r['description'])}</td><td class='l'>{escape(r['supplier'])}</td><td>{escape(r['site'])}</td>"
+                   f"<td class='n'>{m(r['received'])}</td><td class='n'>{m(r['paid'])}</td></tr>" for r in s["rows"]) \
+        or f"<tr><td colspan='{6 + many}' style='padding:18px;color:#888'>Nothing found.</td></tr>"
+    ntext = 4 + many
+    books = "".join(f"<div><span>{escape(b['book_label'])} · {b['lines']} line{'s' if b['lines'] != 1 else ''}</span><b>{_money(b['paid'])}</b></div>" for b in s["by_book"]) if len(s["by_book"]) > 1 else ""
+    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{escape(_s_title(s))}</title><style>
+*{{box-sizing:border-box}} body{{margin:0;background:#ECEEF1;font:12.5px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#1d1d1d}}
+.page{{max-width:1000px;margin:18px auto;background:#fff;padding:30px 36px;box-shadow:0 2px 10px rgba(0,0,0,.08)}}
+.top{{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid {RED};padding-bottom:10px}} .top img{{height:30px}}
+h1{{margin:0;font-size:17px;letter-spacing:.06em;color:{RED};text-align:right}}
+.meta{{display:flex;justify-content:space-between;gap:20px;margin:12px 0;flex-wrap:wrap}} .meta span{{color:#777}} .meta b{{margin-left:6px}}
+.wrap{{overflow-x:auto}} table{{width:100%;border-collapse:collapse;min-width:640px}}
+th{{background:{RED};color:#fff;font-size:11px;padding:7px 8px;text-align:center}} th.l{{text-align:left}} th.n{{text-align:right}}
+td{{padding:6px 8px;border-bottom:1px solid #e3e3e3;text-align:center}} td.l{{text-align:left}} td.n{{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}}
+td:first-child{{white-space:nowrap}} tbody tr:nth-child(even) td{{background:#FAFAFA}}
+tfoot td{{font-weight:700;background:#F3F1EF;border-top:1.5px solid #222}}
+.sum{{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}} .sum div{{flex:1;min-width:150px;border:1px solid #e3e3e3;border-radius:6px;padding:8px 10px}}
+.sum span{{display:block;font-size:10.5px;color:#777;text-transform:uppercase;letter-spacing:.04em}} .sum b{{font-size:15px}}
+@media print{{body{{background:#fff}} .page{{box-shadow:none;margin:0;max-width:none;padding:0}}}} @page{{size:A4 landscape;margin:10mm}}
+@media(max-width:640px){{.page{{padding:16px;margin:0}}}}
+</style></head><body>
+{export_web.preview_bar("Petty cash search", s["q"], pdf_url, excel_url)}
+<div class="page">
+ <div class="top"><div>{f'<img src="{logo}" alt="">' if logo else '<b>INFINIA</b>'}</div><h1>PETTY CASH SEARCH</h1></div>
+ <div class="meta"><div><span>Searched for</span><b>&ldquo;{escape(s['q'])}&rdquo;</b></div><div><span>In</span><b>{escape(', '.join(s['books']))}</b></div><div><span>Period</span><b>{escape(s['label'])}</b></div></div>
+ <div class="wrap"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody>
+ <tfoot><tr><td colspan="{ntext}" class="l">TOTAL · {len(s['rows'])} line{'s' if len(s['rows']) != 1 else ''}</td><td class="n">{_money(s['received'])}</td><td class="n">{_money(s['paid'])}</td></tr></tfoot></table></div>
+ <div class="sum"><div><span>Lines found</span><b>{len(s['rows'])}</b></div><div><span>Received</span><b>{_money(s['received'])}</b></div><div><span>Paid</span><b>{_money(s['paid'])}</b></div>{books}</div>
+</div></body></html>"""
+
+
+def _s_pdf(s):
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.units import mm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_RIGHT, TA_CENTER
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    R = colors.HexColor(RED)
+    base = ParagraphStyle("b", fontName="Helvetica", fontSize=8.5, leading=10.5)
+    bold = ParagraphStyle("bb", parent=base, fontName="Helvetica-Bold")
+    cen = ParagraphStyle("c", parent=base, alignment=TA_CENTER)
+    rt = ParagraphStyle("r", parent=base, alignment=TA_RIGHT)
+    rtb = ParagraphStyle("rb", parent=bold, alignment=TA_RIGHT)
+    hd = ParagraphStyle("h", parent=bold, fontSize=8, textColor=colors.white, alignment=TA_CENTER)
+    hdl = ParagraphStyle("hl", parent=hd, alignment=0)
+    hdr = ParagraphStyle("hr", parent=hd, alignment=TA_RIGHT)
+    P = lambda t, st=base: Paragraph(escape(str(t)), st)
+    page = landscape(A4)
+    W = page[0] - 24 * mm
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=page, leftMargin=12 * mm, rightMargin=12 * mm, topMargin=10 * mm, bottomMargin=10 * mm, title=_s_title(s))
+    logo = export_web._logo_image(42)
+    top = Table([[logo or P("INFINIA", bold), Paragraph("PETTY CASH SEARCH", ParagraphStyle("t", parent=bold, fontSize=15, leading=19, textColor=R, alignment=TA_RIGHT))]], colWidths=[W / 2, W / 2])
+    top.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "BOTTOM"), ("LINEBELOW", (0, 0), (-1, 0), 1.5, R),
+                             ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+    meta = Paragraph(f"<font color='#777777'>Searched for</font> <b>&quot;{escape(s['q'])}&quot;</b> &nbsp;&nbsp; <font color='#777777'>In</font> <b>{escape(', '.join(s['books']))}</b>"
+                     f" &nbsp;&nbsp; <font color='#777777'>Period</font> <b>{escape(s['label'])}</b>", base)
+    many = s["scope"] == "all" or len({r["book"] for r in s["rows"]}) > 1
+    cols = [("Date", .08, hd)] + ([("Book", .12, hdl)] if many else []) + [("Description", 0, hdl), ("Supplier / Contact", .17, hdl), ("Site", .06, hd),
+                                                                           ("Received (AED)", .10, hdr), ("Paid (AED)", .10, hdr)]
+    rest = 1 - sum(w for _, w, _ in cols)
+    widths = [W * (w or rest) for _, w, _ in cols]
+    data = [[P(c.upper(), st) for c, _, st in cols]]
+    m = lambda v: _money(v) if v else ""
+    for r in s["rows"]:
+        data.append([P(_dmy(r["date"]), cen)] + ([P(r["book_label"])] if many else []) + [P(r["description"]), P(r["supplier"]), P(r["site"], cen),
+                                                                                          P(m(r["received"]), rt), P(m(r["paid"]), rt)])
+    if not s["rows"]:
+        data.append([P("Nothing found.")] + [""] * (len(cols) - 1))
+    nt = len(cols) - 2
+    data.append([P(f"TOTAL · {len(s['rows'])} lines", bold)] + [""] * (nt - 1) + [P(_money(s["received"]), rtb), P(_money(s["paid"]), rtb)])
+    t = Table(data, colWidths=widths, repeatRows=1)
+    st = [("BACKGROUND", (0, 0), (-1, 0), R), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LINEBELOW", (0, 1), (-1, -2), .3, colors.HexColor("#DDDDDD")),
+          ("SPAN", (0, -1), (nt - 1, -1)), ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F3F1EF")), ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black)]
+    if not s["rows"]:
+        st.append(("SPAN", (0, 1), (-1, 1)))
+    t.setStyle(TableStyle(st))
+    parts = [top, Spacer(1, 6), meta, Spacer(1, 8), t]
+    if len(s["by_book"]) > 1:
+        parts += [Spacer(1, 10), P("By book: " + " · ".join(f"{b['book_label']} {b['lines']} lines, received {_money(b['received'])}, paid {_money(b['paid'])}" for b in s["by_book"]))]
+    doc.build(parts)
+    buf.seek(0)
+    return buf
+
+
+def _s_excel(s):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter as L
+    wb = Workbook(); ws = wb.active; ws.title = "Search"
+    R = RED.lstrip("#")
+    many = s["scope"] == "all" or len({r["book"] for r in s["rows"]}) > 1
+    heads = [("Date", 12)] + ([("Book", 20)] if many else []) + [("Description", 56), ("Supplier / Contact", 28), ("Site", 10), ("Received (AED)", 16), ("Paid (AED)", 16)]
+    N = len(heads)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=N)
+    ws["A1"] = f'PETTY CASH SEARCH - "{s["q"]}"'; ws["A1"].font = Font(bold=True, size=14, color=R)
+    ws["A2"] = f"In: {', '.join(s['books'])}   ·   Period: {s['label']}"; ws["A2"].font = Font(color="777777")
+    for i, (h, w) in enumerate(heads, 1):
+        c = ws.cell(4, i, h.upper()); c.font = Font(bold=True, color="FFFFFF"); c.fill = PatternFill("solid", fgColor=R)
+        c.alignment = Alignment(horizontal="right" if "AED" in h else "left", vertical="center", wrap_text=True)
+        ws.column_dimensions[L(i)].width = w
+    thin = Side(style="thin", color="DDDDDD")
+    row = 5
+    for r in s["rows"]:
+        vals = [M._as_date(r["date"])] + ([r["book_label"]] if many else []) + [r["description"], r["supplier"], r["site"], r["received"] or None, r["paid"] or None]
+        for i, v in enumerate(vals, 1):
+            c = ws.cell(row, i, v); c.border = Border(bottom=thin)
+            c.alignment = Alignment(wrap_text=True, vertical="center")
+            if i == 1: c.number_format = "dd/mm/yyyy"
+            if i >= N - 1: c.number_format = "#,##0.00"
+        row += 1
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=N - 2)
+    ws.cell(row, 1, f"TOTAL · {len(s['rows'])} lines").font = Font(bold=True)
+    for col in (N - 1, N):
+        Lc = L(col)
+        c = ws.cell(row, col, f"=SUM({Lc}5:{Lc}{row - 1})" if s["rows"] else 0)
+        c.number_format = "#,##0.00"; c.font = Font(bold=True)
+    for col in range(1, N + 1):
+        ws.cell(row, col).fill = PatternFill("solid", fgColor="F3F1EF"); ws.cell(row, col).border = Border(top=Side(style="medium", color="000000"))
+    ws.freeze_panes = "A5"
+    ws.page_setup.orientation = "landscape"; ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 0
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return buf
+
+
+@router.get("/export/store/petty-cash/search")
+def export_petty_search(token: str, q: str = "", scope: str = "all", month: str = "", date_from: str = "", date_to: str = "",
+                        format: str = "pdf", db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    s = search(db, user, q, scope, month, date_from, date_to)
+    import re
+    name = "Petty_cash_search_" + (re.sub(r"[^A-Za-z0-9]+", "_", s["q"]).strip("_") or "search")
+    if format == "excel":
+        return StreamingResponse(_s_excel(s), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                 headers={"Content-Disposition": f"attachment; filename={name}.xlsx"})
+    return StreamingResponse(_s_pdf(s), media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename={name}.pdf"})
+
+
+@router.get("/export/store/petty-cash/search/view", response_class=HTMLResponse)
+def view_petty_search(token: str, q: str = "", scope: str = "all", month: str = "", date_from: str = "", date_to: str = "",
+                      db: Session = Depends(get_db)):
+    user = auth.get_download_user_from_token(token, db)
+    s = search(db, user, q, scope, month, date_from, date_to)
+    t = auth.create_view_token(user.username)
+    base = "/export/store/petty-cash/search?" + urlencode({"q": s["q"], "scope": s["scope"], "month": "all" if s["all"] else "",
+                                                          "date_from": "" if s["all"] else s["from"], "date_to": "" if s["all"] else s["to"], "token": t})
+    return HTMLResponse(_s_html(s, base + "&format=pdf", base + "&format=excel"))

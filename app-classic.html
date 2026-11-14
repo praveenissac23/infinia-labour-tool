@@ -4216,6 +4216,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <label class="pc-f"><span>Show</span><select id="pc-range" onchange="pcRangeChanged()"><option value="dates">Between dates</option><option value="month">This month</option><option value="all">Full history</option></select></label>
                 <label class="pc-f" id="pc-from-f"><span>From</span><input type="date" id="pc-from" onchange="loadPettyCash()"></label>
                 <label class="pc-f" id="pc-to-f"><span>To</span><input type="date" id="pc-to" onchange="loadPettyCash()"></label>
+                <label class="pc-f pc-qf"><span>Search</span><input type="search" id="pc-q" placeholder="A name, supplier, site, amount…" autocomplete="off" data-spell="off" oninput="pcSearchTyped()"></label>
+                <label class="pc-f" id="pc-qscope-f" style="display:none"><span>In</span><select id="pc-qscope" onchange="loadPettyCash()"><option value="all">All petty cash</option><option value="book">This book</option></select></label>
               </div>
               <div class="pc-btns">
                 <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="pcExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="pcExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="pcExport('excel')">Export Excel</button></div>
@@ -22094,6 +22096,27 @@ function pcRangeChanged() {
   }
   loadPettyCash();
 }
+// Search: a word anywhere in the petty cash (every book this login opens, or the one open) for the dates shown
+let PC_SEARCH = null, PC_QT = null;
+function pcQ() { const e = document.getElementById("pc-q"); return e ? e.value.trim() : ""; }
+function pcSearchTyped() { clearTimeout(PC_QT); PC_QT = setTimeout(loadPettyCash, 350); }
+function pcSearchQuery() { const sc = document.getElementById("pc-qscope").value; return `q=${encodeURIComponent(pcQ())}&scope=${sc === "book" ? PC_BOOK : "all"}&${pcPeriodQuery()}`; }
+function pcDrawSearch(d) {
+  PC_SEARCH = d;
+  const many = d.scope === "all" || new Set(d.rows.map(r => r.book)).size > 1;
+  const row = document.getElementById("pc-head-row");
+  row.dataset.key = "search|" + many;
+  row.innerHTML = `<th style="width:92px;">Date</th>${many ? '<th class="l" style="width:150px;">Book</th>' : ""}<th class="l">Description</th><th class="l" style="width:200px;">Supplier / Contact</th><th style="width:70px;">Site</th><th class="n" style="width:120px;">Received (AED)</th><th class="n" style="width:120px;">Paid (AED)</th><th style="width:1px;"></th>`;
+  const cell = v => v ? pcMoney(v) : "", ntext = 4 + many;
+  const hi = t => { let h = escapeHtml(t); d.q.split(" ").filter(Boolean).forEach(w => { h = h.replace(new RegExp("(" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig"), "<mark>$1</mark>"); }); return h; };
+  document.getElementById("pc-body").innerHTML = d.rows.slice().reverse().map(r => `<tr><td>${pcDate(r.date)}</td>${many ? `<td class="l">${escapeHtml(r.book_label)}</td>` : ""}
+      <td class="l">${hi(r.description)}</td><td class="l">${hi(r.supplier)}</td><td>${hi(r.site)}</td><td class="n">${cell(r.received)}</td><td class="n">${cell(r.paid)}</td><td></td></tr>`).join("")
+    || `<tr><td colspan="${ntext + 3}" style="color:#999; padding:18px;">Nothing found for &ldquo;${escapeHtml(d.q)}&rdquo; in ${escapeHtml(d.label.toLowerCase())}${d.all ? "" : " - try Show: Full history"}.</td></tr>`;
+  document.getElementById("pc-foot").innerHTML = `<tr><td colspan="${ntext}" class="l">TOTAL · ${d.rows.length} line${d.rows.length === 1 ? "" : "s"}</td><td class="n">${pcMoney(d.received)}</td><td class="n">${pcMoney(d.paid)}</td><td></td></tr>`;
+  document.getElementById("pc-stats").innerHTML = `<div class="pc-stat"><span>Found &ldquo;${escapeHtml(d.q)}&rdquo;</span><b>${d.rows.length} line${d.rows.length === 1 ? "" : "s"}</b></div>
+    <div class="pc-stat"><span>Received</span><b>${pcMoney(d.received)}</b></div><div class="pc-stat"><span>Paid</span><b>${pcMoney(d.paid)}</b></div>
+    <div class="pc-stat"><span>In</span><b style="font-size:13px">${escapeHtml(d.books.join(", "))}</b></div>`;
+}
 async function loadPettyCash() {
   // Opened on a book's tab: that book from the first frame (not Site first).
   if (typeof PG_TAB !== "undefined" && PG_TAB && PG_TAB.screen === "pettycash" && PG_SUB && PC_BOOKS[PG_SUB.id] && pcMayBook(PG_SUB.id) && PC_BOOK !== PG_SUB.id) { PC_BOOK = PG_SUB.id; PC = null; }
@@ -22114,6 +22137,15 @@ async function loadPettyCash() {
   const all = document.getElementById("pc-range").value === "all";
   for (const id of ["pc-from-f", "pc-to-f"]) document.getElementById(id).style.visibility = all ? "hidden" : "";
   if (!all && f.value > t.value) { showStatus("pc-status", "warn", "The From date is after the To date - swapped them round."); [f.value, t.value] = [t.value, f.value]; }
+  document.getElementById("pc-qscope-f").style.display = pcQ() ? "" : "none";
+  document.getElementById("pc-form").style.display = pcQ() ? "none" : "";
+  if (pcQ()) {                        // searching: the lines found, not the register
+    const sq = pcSearchQuery();
+    let r; try { r = await apiCall(`/store/petty-cash/search?${sq}`); } catch (e) { showStatus("pc-status", "err", errText(e)); return; }
+    if (pcSearchQuery() !== sq) return;   // typed on while it loaded
+    pcDrawSearch(r); return;
+  }
+  PC_SEARCH = null;
   // The book and the site list asked for together, not one after the other.
   const want = pcPeriodQuery();
   const bookP = apiCall(`/store/petty-cash?${want}&book=${book}`);
@@ -22440,6 +22472,12 @@ async function pcExport(kind) {
   const q = pcPeriodQuery();
   if (!cachedDownloadToken) await refreshDownloadToken();
   const t = encodeURIComponent(cachedDownloadToken || "");
+  if (pcQ()) {                         // the search, as it is on screen, with its totals
+    const sq = pcSearchQuery();
+    const w = window.open(kind === "view" || kind === "print" ? `${API}/export/store/petty-cash/search/view?${sq}&token=${t}` : `${API}/export/store/petty-cash/search?${sq}&format=${kind}&token=${t}`, "_blank");
+    if (kind === "print" && w) w.addEventListener("load", () => w.print());
+    return;
+  }
   const u = kind === "view" || kind === "print" ? `${API}/export/store/petty-cash/view?${q}&book=${PC_BOOK}&token=${t}`
                                                 : `${API}/export/store/petty-cash?${q}&book=${PC_BOOK}&format=${kind}&token=${t}`;
   const w = window.open(u, "_blank");
