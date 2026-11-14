@@ -150,5 +150,27 @@ db.add(A.CashEntry(kind="received", on_date=t - timedelta(days=5), description="
 b1 = bill()
 ck("...cash received from the client: the bill is 40,000 less to come", b1 and abs(b0["in"] - 40000 - b1["in"]) < 0.01 and "cash received 40,000" in b1["note"], b1)
 ck("...a login without the cash register still sees the full bill", bill(H2) and abs(bill(H2)["in"] - b0["in"]) < 0.01, bill(H2))
+
+# review cases: cash for a bill already Paid is used up on it; a receipt naming another project; a bill with no sent date
+pa = ES.EstProject(code="941", name="Alpha villa", client="Alpha Homes LLC", status="Running", ret_pct=0, vat_pct=5)
+pb = ES.EstProject(code="942", name="Beta 1", client="Beta Design LLC", status="Running", ret_pct=0, vat_pct=5)
+pc_ = ES.EstProject(code="943", name="Beta 2", client="Beta Design LLC", status="Running", ret_pct=0, vat_pct=5)
+pg = ES.EstProject(code="944", name="Gamma", client="Gamma Homes LLC", status="Running", ret_pct=0, vat_pct=5)
+db.add_all([pa, pb, pc_, pg]); db.commit()
+db.add_all([ES.EstClientPC(project_id=pa.id, seq=1, claimed_cum=100000, certified_cum=100000, status="Paid", submitted=t - timedelta(days=60)),
+            ES.EstClientPC(project_id=pa.id, seq=2, claimed_cum=200000, certified_cum=200000, status="Submitted", submitted=t - timedelta(days=30)),
+            ES.EstClientPC(project_id=pc_.id, seq=1, claimed_cum=100000, certified_cum=100000, status="Submitted", submitted=t - timedelta(days=30)),
+            ES.EstClientPC(project_id=pg.id, seq=1, claimed_cum=100000, certified_cum=100000, status="Certified", certified_on=t - timedelta(days=3)),
+            ES.EstClientPC(project_id=pg.id, seq=2, claimed_cum=200000, certified_cum=200000, status="Submitted", submitted=t - timedelta(days=40))]); db.commit()
+bl = lambda code, seq: next((i for i in c.get("/store/cash/forecast", headers=H, params={"months": 3}).json()["items"] if i["what"].startswith(f"{code} - client certificate {seq} ")), None)
+a2, b1_, g1 = bl("941", 2), bl("943", 1), bl("944", 1)
+db.add_all([A.CashEntry(kind="received", on_date=t - timedelta(days=10), description="Alpha Homes - 941 IPA01", amount=105000),
+            A.CashEntry(kind="received", on_date=t - timedelta(days=10), description="Beta Design - 942 IPA05", amount=30000),
+            A.CashEntry(kind="received", on_date=t - timedelta(days=15), description="Gamma Homes 944 advance", amount=20000)]); db.commit()
+ck("cash for a bill already Paid does not take the next bill down", bl("941", 2) and abs(bl("941", 2)["in"] - a2["in"]) < 0.01, (a2, bl("941", 2)))
+ck("a receipt naming another project of the client is not set against this one", bl("943", 1) and abs(bl("943", 1)["in"] - b1_["in"]) < 0.01, (b1_, bl("943", 1)))
+ck("a bill certified after the cash came: not set against it", bl("944", 1) and abs(bl("944", 1)["in"] - g1["in"]) < 0.01, (g1, bl("944", 1)))
+g2 = bl("944", 2)
+ck("...the older bill takes it", g2 and "cash received 20,000" in g2["note"], g2)
 print("\nFAILED: " + ", ".join(fails) if fails else "\nall passed")
 sys.exit(1 if fails else 0)

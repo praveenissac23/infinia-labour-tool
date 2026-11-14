@@ -221,14 +221,20 @@ def _bank_now(db, today):
     return out
 
 
-def _client_cash(db, bills, cash_book):
+def _bill_day(c):
+    """The day a client bill went: sent, or certified for one with no sent date."""
+    return str(c.get("submitted") or c.get("certified_on") or "")[:10]
+
+
+def _client_cash(db, bills, cash_book, all_codes=()):
     """Cash from a client on the cash register while his bill is still open in Estimation: the bill is that much
     less to come. The receipt names the project (914, 915-919 ...) or the client (Emkaan Design ...); it is set
     against that project's open bills, oldest first, and only bills sent on or before the day the cash came."""
     if not cash_book or not bills:
         return
     import accounts as A
-    start = min((date.fromisoformat(str(x["c"].get("submitted"))[:10]) for x in bills if x["c"].get("submitted")), default=None)
+    bills = [x for x in bills if _bill_day(x["c"])]                 # a bill with no date: nothing set against it
+    start = min((date.fromisoformat(_bill_day(x["c"])) for x in bills), default=None)
     if not start:
         return
     codes = {}
@@ -241,13 +247,17 @@ def _client_cash(db, bills, cash_book):
             cl.setdefault(frozenset(w), []).append(x)
     for r in db.query(A.CashEntry).filter(A.CashEntry.kind == "received", A.CashEntry.on_date >= start).order_by(A.CashEntry.on_date, A.CashEntry.id).all():
         desc, left = r.description or "", round(float(r.amount or 0), 2)
-        named = [k for k in re.findall(r"(?<![\d/])(\d{3})(?!\d)", desc) if k in codes]
+        nums = re.findall(r"(?<![\d/])(\d{3})(?!\d)", desc)
+        named = [k for k in nums if k in codes]
         pool = [x for k in dict.fromkeys(named) for x in codes[k]]
-        if not pool:
+        if not pool and not any(k in all_codes for k in nums):          # names another project: not this client's others
             w = _words(desc)
             pool = [x for k, xs in cl.items() if _named_match(set(k), w) for x in xs]
-        pool = sorted([x for x in pool if x["left"] > 0.005 and str(x["c"].get("submitted") or "")[:10] <= r.on_date.isoformat()],
-                      key=lambda x: (str(x["c"].get("submitted") or ""), x["c"].get("seq") or 0))
+        ipa = {int(n) for n in re.findall(r"\bIPA\s*-?\s*0*(\d{1,3})\b", desc, re.I)}
+        if ipa and any((x["c"].get("seq") or 0) in ipa for x in pool):
+            pool = [x for x in pool if (x["c"].get("seq") or 0) in ipa]  # the bill it names
+        pool = sorted([x for x in pool if x["left"] > 0.005 and _bill_day(x["c"]) <= r.on_date.isoformat()],
+                      key=lambda x: (_bill_day(x["c"]), x["c"].get("seq") or 0))
         for x in pool:
             if left <= 0.005:
                 break
@@ -356,6 +366,9 @@ def collect(db, months=3, with_in=True, cash_book=True):
                         except ValueError:
                             d = t + timedelta(days=30)
                         bills.append({"p": p, "c": c, "d": d, "left": round(float(c["payable"]), 2), "got": []})
+                    elif c.get("status") == "Paid" and (c.get("payable") or 0) > 0:
+                        # paid already: its cash is used up on it first, not on the next bill
+                        bills.append({"p": p, "c": c, "d": None, "left": round(float(c["payable"]), 2), "got": [], "paid": True})
             for sb in b.get("subs") or []:
                 for pc in sb.get("pcs") or []:
                     if pc.get("status") not in ("Certified", "Prepared", "CM approved", "Verified", "MD approved") or not (pc.get("payable") or 0) > 0:
@@ -371,8 +384,10 @@ def collect(db, months=3, with_in=True, cash_book=True):
                     add(f"sub:{pc.get('id')}", d, f"{p.code} - {nm} certificate {pc.get('seq') or ''} ({pc['status']})".replace("  ", " "), "sub", "Estimation",
                         pc["payable"], "out", "sure" if pc["status"] in ("MD approved", "Verified") else "likely",
                         link={"est": {"pid": p.id, "group": "subs", "sec": "inv"}})
-        _client_cash(db, bills, cash_book)
+        _client_cash(db, bills, cash_book, {str(c or "").strip() for (c,) in db.query(ES.EstProject.code).all()})
         for x in bills:
+            if x.get("paid"):
+                continue
             p, c = x["p"], x["c"]
             note = "; ".join(f"cash received {g['amount']:,.0f} on {date.fromisoformat(g['date']):%d/%m/%Y}" for g in x["got"])
             add(f"client:{c.get('id')}", x["d"], f"{p.code} - client certificate {c.get('seq')} ({c['status'].lower()})", "client", "Estimation",
