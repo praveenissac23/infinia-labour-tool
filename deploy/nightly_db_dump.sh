@@ -40,7 +40,8 @@ case "$DB_URL" in postgresql+psycopg2://*) DB_URL="postgresql://${DB_URL#postgre
 
 # ---- dump, check it reads back, then swap in ------------------------------
 mkdir -p "$DEST" && chmod 700 "$DEST"
-pg_dump "$DB_URL" -Fc -f "$OUT.part" 2>/tmp/infinia-dbdump.err || fail "$(cat /tmp/infinia-dbdump.err)"
+# the in-app snapshots (table backups) are copies of the data itself - not needed again in the dump (14/11/2026)
+pg_dump "$DB_URL" -Fc --exclude-table-data=backups -f "$OUT.part" 2>/tmp/infinia-dbdump.err || fail "$(cat /tmp/infinia-dbdump.err)"
 N=$(pg_restore --list "$OUT.part" 2>/dev/null | grep -c "TABLE DATA")
 [ "$N" -gt 5 ] || fail "dump looks empty ($N tables)"
 mv -f "$OUT.part" "$OUT" && chmod 600 "$OUT"

@@ -19,7 +19,8 @@ LIVE_DB="${LIVE_URL##*/}"; LIVE_DB="${LIVE_DB%%\?*}"
 OWNER="$(echo "$LIVE_URL" | sed -E 's#^[a-z]+://([^:@/]+).*#\1#')"
 
 TMP=/tmp/infinia-staging.dump
-pg_dump "$LIVE_URL" -Fc -f "$TMP" 2>/tmp/infinia-staging.err || fail "pg_dump: $(cat /tmp/infinia-staging.err)"
+# no in-app snapshots (table backups) in the test copy - they are copies of the data itself (14/11/2026)
+pg_dump "$LIVE_URL" -Fc --exclude-table-data=backups -f "$TMP" 2>/tmp/infinia-staging.err || fail "pg_dump: $(cat /tmp/infinia-staging.err)"
 systemctl stop infinia-staging 2>/dev/null || true
 sudo -u postgres psql -q -c "DROP DATABASE IF EXISTS $STAGE_DB;" -c "CREATE DATABASE $STAGE_DB OWNER \"$OWNER\";" || fail "could not recreate $STAGE_DB"
 STAGE_URL="${LIVE_URL%/*}/$STAGE_DB"

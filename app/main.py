@@ -3939,8 +3939,10 @@ def _row_to_dict(obj):
     return d
 
 
-# Daily snapshots older than this are cleared as new ones are taken.
-BACKUP_KEEP_DAYS = 40
+# Daily snapshots older than this are cleared as new ones are taken. 7 (was 40, 14/11/2026): each snapshot is a full copy
+# of the data and 40 of them made the database, the staging copy, the nightly dumps and the Acronis backup ~3x bigger.
+# The server's nightly dump and Acronis keep the longer history.
+BACKUP_KEEP_DAYS = 7
 
 
 # The backup covers every table the application defines, found by
@@ -4324,7 +4326,7 @@ def _add_missing_columns():
                 print(f"Could not add index {ix.name}: {e}")
 
 
-AUTO_BACKUP_KEEP_DAYS = 40
+AUTO_BACKUP_KEEP_DAYS = 7
 
 # Taken by the system as a matter of course, rather than by someone who
 # meant to. Only one of these is kept per day, and they are the ones
@@ -4345,7 +4347,7 @@ def maybe_create_auto_backup(db: Session):
     """
     Creates one 'auto' backup per calendar DAY, then prunes automatic
     backups down to the most recent AUTO_BACKUP_KEEP_DAYS - a rolling
-    40-day window where day 41 replaces day 1.
+    7-day window where day 8 replaces day 1.
 
     Runs on login rather than a cron job: this app has no scheduler
     process of its own, and a backup is only useful if the data has
