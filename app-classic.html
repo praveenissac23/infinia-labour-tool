@@ -15750,7 +15750,7 @@ async function ownDash(role) {
     <div class="od-c od-hero go" data-go='{"pg":["accounts","bank"]}' title="The bank balance today: the last bank statement, plus what was paid and received on the Bank tab since"><div class="od-l" id="od-bank-l">In the bank today</div>
       <div class="od-v" id="od-bank-v">…</div>
       <div class="od-in" id="od-bank-s">&nbsp;</div>${spark}</div>
-    <div class="od-c od-cash go" data-go='{"pg":["accounts","cash"]}' title="The cash forecast - what is left in the bank at the end of each month"><div class="od-l">Cash forecast · 3 months</div><div class="od-tanks" id="od-tanks"><div class="od-s">Loading…</div></div><div class="od-s" id="od-cash-s"></div></div>
+    <div class="od-c od-cash go" data-go='{"pg":["accounts","cash"]}' title="The cash forecast - what is left at the end of each month, starting from the bank + cash in hand today"><div class="od-l">Cash forecast · left at month end</div><div class="od-tanks" id="od-tanks"><div class="od-s">Loading…</div></div><div class="od-s" id="od-cash-s"></div></div>
     <div class="od-c od-needs"><div class="od-l">Needs you${needs.length ? " · " + needs.length : ""}</div>${needsHtml}</div>
     <div class="od-c od-k go" data-go='${esc(JSON.stringify(m.coming_go || { pg: ["estimation", "estdash"] }))}' title="Certified by the consultants on the running projects, not yet paid by the clients"><div class="od-l">Coming in</div><div class="od-v grn">${odK(m.coming)}</div><div class="od-s">certified, not yet paid</div></div>
     <div class="od-c od-k go" data-go='{"dq":"pdc"}' title="Cheques dated in the next 30 days (or already past) + subcontractor money certified and not paid"><div class="od-l">Going out</div><div class="od-v">${odK(m.going)}</div><div class="od-s">${m.pdc30_n} cheques · subcontractors</div></div>
@@ -15804,9 +15804,11 @@ async function odCash() {
   let f; try { f = await apiCall("/store/cash/forecast?months=3&with_in=1"); } catch (e) { box.closest(".od-cash").style.display = "none"; const v = document.getElementById("od-bank-v"); if (v) v.textContent = "–"; return; }
   const keep = f.keep, mos = (f.months || []).slice(0, 3), full = Math.max(f.bank.now, keep * 2, ...mos.map(m => m.opening), ...mos.map(m => m.closing)) || 1, C = 2 * Math.PI * 100;
   box.innerHTML = mos.map(m => { const c = m.closing, fr = Math.max(0, Math.min(1, c / full)), col = c < keep ? "#ff6b6b" : c < keep * 2 ? "#ffc35c" : "#5ee0a0";
-    return `<div class="od-tank" title="${m.label}: +${odK(m.in)} in, -${odK(m.out)} out, ${odK(c)} left"><svg viewBox="0 0 240 240"><circle cx="120" cy="120" r="100" stroke="rgba(255,255,255,.12)" stroke-width="20" fill="none"/>${fr > 0 ? `<circle cx="120" cy="120" r="100" stroke="${col}" stroke-width="20" fill="none" stroke-dasharray="${(C * fr).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 120 120)" stroke-linecap="round"/>` : ""}<text x="120" y="134" text-anchor="middle" font-size="46" font-weight="700" fill="${c < keep ? "#ff9a9a" : "#fff"}">${c < 0 ? "−" : ""}${odK(Math.abs(c))}</text></svg>${m.label.slice(0, 3)}</div>`; }).join("");
+    return `<div class="od-tank" title="${m.label}: +${odK(m.in)} in, -${odK(m.out)} out, ${odK(c)} left"><svg viewBox="0 0 240 240"><circle cx="120" cy="120" r="100" stroke="rgba(255,255,255,.12)" stroke-width="20" fill="none"/>${fr > 0 ? `<circle cx="120" cy="120" r="100" stroke="${col}" stroke-width="20" fill="none" stroke-dasharray="${(C * fr).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 120 120)" stroke-linecap="round"/>` : ""}<text x="120" y="134" text-anchor="middle" font-size="46" font-weight="700" fill="${c < keep ? "#ff9a9a" : "#fff"}">${c < 0 ? "−" : ""}${odK(Math.abs(c))}</text></svg>end ${m.label.slice(0, 3)}</div>`; }).join("");
   odBank(f.bank);
-  sub.innerHTML = `Bank today <b>${odK(f.bank.now)}</b> · ${f.below ? `<span class="red">below ${odK(keep)} on ${cfD(f.below.date).slice(0, 5)}</span>` : `<span class="grn">stays above ${odK(keep)}</span>`}`;
+  // the same starting figure as the first card: bank (statement + Bank tab since) + cash in hand
+  const bk = f.bank.in_bank != null ? f.bank.in_bank : f.bank.now;
+  sub.innerHTML = `Starts from <b>${odK(f.bank.now)}</b>${f.bank.cash ? ` (bank ${odK(bk)} + cash ${odK(f.bank.cash)})` : ""} · ${f.below ? `<span class="red">below ${odK(keep)} on ${cfD(f.below.date).slice(0, 5)}</span>` : `<span class="grn">stays above ${odK(keep)}</span>`}`;
 }
 // the owner's dashboard, first card: what is in the bank account today (statement + Bank tab since), per bank
 function odBank(b) {

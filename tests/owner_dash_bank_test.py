@@ -16,6 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 html = open(os.path.join(ROOT, "app-classic.html"), encoding="utf-8").read()
 ck("the net position card is gone", "Net position · next 30 days" not in html)
 ck("the bank card is there, filled from the cash forecast", 'id="od-bank-v"' in html and "odBank(f.bank)" in html and "function odBank" in html)
+ck("the cash forecast card says what it starts from (bank + cash), and its rings are month-end", "Starts from <b>" in html and "end ${m.label.slice(0, 3)}" in html and "Bank today <b>" not in html)
 ck("app.html built from it", 'id="od-bank-v"' in open(os.path.join(ROOT, "app.html"), encoding="utf-8").read())
 H = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "admin", "password": "changeme123"}).json()["access_token"]}
 t = M._dubai_today()
