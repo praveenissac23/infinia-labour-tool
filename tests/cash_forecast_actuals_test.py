@@ -93,5 +93,47 @@ ck("not happening", P(gem, how="drop").status_code == 200 and not any(i["key"] =
 ck("paid", P(des, how="paid").status_code == 200)
 ck("...answered again: not found", P(des, how="paid").status_code == 404)
 ck("export still works", c.get("/export/accounts/cash", params={"token": c.post("/auth/download-token", headers=H).json().get("token", ""), "format": "excel"}).status_code in (200, 401, 403, 422))
+
+# ---- review cases (14 Nov 2026)
+import auth
+PD = lambda **k: models.Pdc(**k)
+F = lambda **k: c.get("/store/cash/forecast", headers=H, params=k).json()
+# a planned cheque found on a past line: "move the rest" must not count the cheque against the rest again
+q1 = X(what="Kaizen Formwork", kind="Supplier", amount=28080, on_date=pm.isoformat())
+db.query(models.CashExpected).get(q1).created_at = datetime(pm.year, pm.month, 1, tzinfo=timezone.utc)
+db.add(PD(payee="Kaizen Formwork LLC", cheque_date=t + timedelta(days=7), amount=10000, status="pending", cheque_no="881")); db.commit()
+a1 = {a["id"]: a for a in F()["ask"]}.get(q1)
+ck("past line + later cheque: part paid, 18,080 left", a1 and a1["ask"] == "part" and abs(a1["left"] - 18080) < 0.01, a1)
+ck("...the same answer in a 3-month and a 12-month view", {a["id"]: a for a in F(months=3)["ask"]}.get(q1, {}).get("left") == {a["id"]: a for a in F(months=12)["ask"]}.get(q1, {}).get("left"))
+P(q1, how="rest", on_date=(t + timedelta(days=10)).isoformat())
+d4 = F(); kz = sum(i["out"] for i in d4["items"] if "Kaizen" in i["what"])
+ck("...after moving the rest: cheque 10,000 + rest 18,080 = 28,080 going out", abs(kz - 28080) < 0.01, [(i["what"], i["out"]) for i in d4["items"] if "Kaizen" in i["what"]])
+# a cleared cheque still counts as paid
+sb2 = X(what="Subcontractor payments", kind="Subcontractor", amount=100000, on_date=(m1 + timedelta(days=40)).replace(day=1).isoformat(), repeat="month")
+nm = (m1 + timedelta(days=40)).replace(day=1)
+ch = PD(payee="Al Raida Electromechanical Services LLC", cheque_date=nm, amount=40000, status="pending", cheque_no="882"); db.add(ch); db.commit()
+g = lambda: sum(i["out"] for i in F()["items"] if i["key"] in (f"exp:{sb2}:0", f"exp:{sub}:1"))   # both budgets for subcontractors next month
+before = g(); ch.status = "cleared"; db.commit(); after = g()
+ck("a cheque to a subcontractor: taken off the budget, pending or cleared", abs(before - 380000) < 0.01 and abs(after - 380000) < 0.01, (before, after))
+# a cheque dated a few days after a once line's month
+eom = _me = (date(t.year, t.month, 1) + timedelta(days=40)).replace(day=1) - timedelta(days=1)
+q6 = X(what="Orbit Glass Works", kind="Supplier", amount=15000, on_date=(eom - timedelta(days=2)).isoformat())
+db.add(PD(payee="Orbit Glass Works", cheque_date=eom + timedelta(days=2), amount=15000, status="pending", cheque_no="883")); db.commit()
+o6 = sum(i["out"] for i in F()["items"] if "Orbit" in i["what"])
+ck("a cheque dated just after the month: counted once (15,000, not 30,000)", abs(o6 - 15000) < 0.01, o6)
+# settle is for once-only lines
+ck("a repeating line is not answered with the buttons", P(sub, how="drop").status_code == 400)
+# a transfer to cash after the statement: off the bank (the register has it)
+db.add(models.BankStmtLine(bank="ADCB", on_date=t - timedelta(days=5), description="x", balance=1000000, fp="cf-a-1")); db.commit()
+b0 = F()["bank"]
+db.add(B(kind="transfer", on_date=t - timedelta(days=1), party="", account="Cash", amount=20000)); db.commit()
+b1 = F()["bank"]
+ck("transfer to cash after the statement: off the bank", abs(b0["in_bank"] - 20000 - b1["in_bank"]) < 0.01, (b0["in_bank"], b1["in_bank"]))
+# a login with the Cash forecast but not the cash register: no cash book shown
+u = models.User(username="cfonly", full_name="cfonly", role="office", hashed_password=auth.hash_password("pw123456"), permissions="accounts_cash"); db.add(u); db.commit()
+H2 = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "cfonly", "password": "pw123456"}).json()["access_token"]}
+d5 = c.get("/store/cash/forecast", headers=H2).json()
+ck("no cash register right: cash in hand not shown, no cash lines", d5["bank"]["cash"] == 0 and d5["bank"]["cash_hidden"] and not any(i["key"].startswith("cash:") for i in d5["items"])
+   and not any(f["src"] == "Cash" for a in d5["ask"] for f in a.get("found") or []), d5["bank"])
 print("\nFAILED: " + ", ".join(fails) if fails else "\nall passed")
 sys.exit(1 if fails else 0)
