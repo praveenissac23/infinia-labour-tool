@@ -14106,7 +14106,7 @@ async function lpoFromTicked() {
   // The plot number and the man on site belong to the site, so they
   // come with it - nothing here should be typed twice.
   const first = picked.find(p => p.plot_no || p.incharge) || {};
-  document.getElementById("lpo-plot").value = first.plot_no || "";
+  document.getElementById("lpo-plot").value = lpoPlotFor(sites.join(",")) || first.plot_no || "";
   // The store places the order, so the store in-charge is the contact.
   // The site engineer is offered in the list beside him.
   // Whoever raised the request is the man who knows what was ordered
@@ -14119,7 +14119,7 @@ async function lpoFromTicked() {
   const site1 = lpoSite(sites.join(","));
   const who = asked.requested_by && (asked.requested_by_mobile || lpoKnown(asked.requested_by)) ? asked.requested_by
             : (first.incharge || (site1 && site1.incharge) || asked.requested_by || lpoDefaults.store_incharge || "");
-  if (!first.plot_no && site1 && site1.plot_no) document.getElementById("lpo-plot").value = site1.plot_no;
+  if (!document.getElementById("lpo-plot").value && site1 && site1.plot_no) document.getElementById("lpo-plot").value = site1.plot_no;
   buildContactList(who);
   if (who === asked.requested_by && asked.requested_by_mobile) document.getElementById("lpo-mobile").value = asked.requested_by_mobile;
   const needed = picked.map(p => p.needed_by).filter(Boolean).sort()[0];
@@ -14796,6 +14796,16 @@ function alertBox(msg) { showStatus("lpo-status", "err", msg); }
 // same details the queue would have brought with it.
 // The site record and a person's number, from what came with the form
 // (so it works for any login), else from the lists already loaded.
+// Every site an order's Project location names ("912,925"), each with its record. For two or more, the Plot no box
+// shows every site's plot with its site: "912: 3473253 / 925: 3471006" (16 Nov 2026).
+function lpoSitesOf(loc) {
+  return String(loc || "").split(/[,/&;]+/).map(x => x.trim()).filter(Boolean).map(c => lpoSite(c)).filter(Boolean);
+}
+function lpoPlotFor(loc) {
+  const ss = lpoSitesOf(loc), withPlot = ss.filter(x => x.plot_no);
+  if (withPlot.length >= 2) return withPlot.map(x => `${x.code}: ${x.plot_no}`).join(" / ");
+  return withPlot.length ? withPlot[0].plot_no : "";
+}
 function lpoSite(code) {
   code = (code || "").split(",")[0].trim().toLowerCase();
   if (!code) return null;
@@ -14820,7 +14830,8 @@ const lpoKnown = name => !!lpoPhone(name) || (lpoDefaults.contacts || []).some(c
 function onLpoSite() {
   const s = lpoSite(document.getElementById("lpo-location").value);
   if (!s) return;
-  if (s.plot_no) document.getElementById("lpo-plot").value = s.plot_no;
+  const pl = lpoPlotFor(document.getElementById("lpo-location").value);
+  if (pl) document.getElementById("lpo-plot").value = pl;
   // The site's engineer takes it, unless somebody other than the store
   // in-charge has already been chosen.
   // The contact follows the site's in-charge (the store: its keeper), with his own number - unless somebody

@@ -10462,12 +10462,13 @@ def _lpo_for_print(o):
     d["supplier_contact"] = (getattr(o, "supplier_contact", "")
                              or (sup.contact_person if sup else "") or "")
     d["supplier_mobile"] = (getattr(o, "supplier_phone", "") or (sup.phone if sup else "") or "")
-    # Where to deliver, from the site record.
+    # Where to deliver, from the site record (every site's, on an order for two or more).
     site = None
     if o.project_location:
         code = o.project_location.split(",")[0].strip()
         site = db_session_site(code)
-    d["site_address"] = (site.address if site else "") or ""
+    d["site_address"] = lpo_address_text(o)
+    d["plot_no"] = lpo_plot_text(o)
     d["site_map"] = (site.map_url if site else "") or ""
     d["date_text"] = o.order_date.strftime("%d/%m/%Y") if o.order_date else ""
     d["delivery_text"] = lpo_delivery_text(o)
@@ -10657,6 +10658,39 @@ def _site_field(o, field):
     return (getattr(s, field, "") if s else "") or ""
 
 
+def lpo_site_codes(location):
+    """The site codes an order's Project location names - '912,925', '912 / 925', '912 & 925'."""
+    import re as _re
+    return [c for c in (x.strip() for x in _re.split(r"[,/&;]+", location or "")) if c]
+
+
+def lpo_plot_text(o):
+    """Project & Plot No for the printed order (16 Nov 2026). An order for two or more sites shows every site's plot,
+    each with its site: '912: 3473253 / 925: 3471006'. What was typed in the box wins - unless it is only the first
+    site's own plot, which is what the form used to fill in by itself for a two-site order."""
+    typed = (o.plot_no or "").strip()
+    codes = lpo_site_codes(o.project_location)
+    if len(codes) < 2:
+        return typed
+    found = [(c, db_session_site(c)) for c in codes]
+    plots = [(c, (s.plot_no or "").strip()) for c, s in found if s and (s.plot_no or "").strip()]
+    if len(plots) < 2 or (typed and typed != plots[0][1]):
+        return typed
+    return " / ".join(f"{c}: {p}" for c, p in plots)
+
+
+def lpo_address_text(o):
+    """Delivery Address: every site's address on an order for two or more sites (each once, with its site)."""
+    codes = lpo_site_codes(o.project_location)
+    if not codes:
+        return ""
+    found = [(c, db_session_site(c)) for c in codes]
+    addr = [(c, (s.address or "").strip()) for c, s in found if s and (s.address or "").strip()]
+    if len({a.lower() for _, a in addr}) <= 1:
+        return addr[0][1] if addr else ""
+    return " / ".join(f"{c}: {a}" for c, a in addr)
+
+
 def _logo_img():
     """The company logo, inline, for the order shown on screen. The
     printed order has carried it all along; the preview had only the
@@ -10764,8 +10798,8 @@ def _lpo_html(o):
     left_rows = [("Purchase Order No", o.ref),
                  ("Delivery Date", esc(lpo_delivery_text(o))),
                  ("Project Location", o.project_location),
-                 ("Project &amp; Plot No", o.plot_no),
-                 ("Delivery Address", _site_field(o, "address")),
+                 ("Project &amp; Plot No", lpo_plot_text(o)),
+                 ("Delivery Address", lpo_address_text(o)),
                  ("Job Scope", o.job_scope),
                  ("Contact Person", o.contact_person),
                  ("Mobile", o.mobile)]
