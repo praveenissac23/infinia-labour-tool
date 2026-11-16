@@ -33,7 +33,7 @@ def run_one(name, data):
     db = os.path.join(tmp, "t.db")
     if data:
         shutil.copy(data, db)
-    env = dict(os.environ, DATABASE_URL=f"sqlite:///{db}", INFINIA_NO_SCHED="1", INFINIA_NO_PUSH="1", INFINIA_NO_MAIL="1",
+    env = dict(os.environ, DATABASE_URL=f"sqlite:///{db}", INFINIA_NO_SCHED="1", INFINIA_NO_PUSH="1", INFINIA_NO_MAIL="1", INFINIA_PUSH_ANYTIME="1",
                INFINIA_DATA_DIR=os.path.join(tmp, "data"), INFINIA_BOARDS_DIR=os.path.join(tmp, "boards"),
                INFINIA_CHAT_DIR=os.path.join(tmp, "chat"), PYTHONDONTWRITEBYTECODE="1")
     t0 = time.time()
