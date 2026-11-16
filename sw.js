@@ -52,7 +52,7 @@ let OFFLINE = false, SYNCING = false, LAST_UP = 0;
 async function state(extra = {}) {
   const items = await allItems().catch(() => []);
   const msg = Object.assign({ type: "offline-state", offline: OFFLINE, syncing: SYNCING, pending: items.filter(i => i.st !== "failed").length,
-    failed: items.filter(i => i.st === "failed").length, uploaded: LAST_UP,
+    failed: items.filter(i => i.st === "failed").length, uploaded: LAST_UP, why: WHY,
     items: items.map(i => ({ n: i.n, label: i.label, where: i.where, at: i.at, st: i.st, err: i.err || "" })) }, extra);
   for (const c of await self.clients.matchAll({ includeUncontrolled: true })) c.postMessage(msg);
 }
@@ -88,8 +88,8 @@ async function replay() {
       }
       let r;
       try { r = await fetch(url, { method: it.method, headers: it.headers, body: it.method === "GET" ? undefined : body }); }
-      catch (e) { setOffline(true); break; }
-      if (r.status === 502 || r.status === 503 || r.status === 504) { setOffline(true); break; }
+      catch (e) { await reallyDown("upload " + e.message); break; }
+      if (r.status === 502 || r.status === 503 || r.status === 504) { await reallyDown("upload " + r.status); break; }
       setOffline(false);
       if (r.ok) {
         try { const j = await r.clone().json(); if (it.temp && j && j.id) await tx("map", "readwrite", s => req2p(s.put(j.id, String(it.temp)))); if (it.temp && j && j.id) map[String(it.temp)] = j.id; } catch (e) {}
@@ -110,8 +110,10 @@ async function replay() {
 const isStatic = p => /^\/portal\//.test(p) || /\.(js|css|png|jpe?g|webp|svg|gif|ico|woff2?|ttf|json|html|mp3|wasm|traineddata)$/i.test(p) || p === "/sw.js";
 // Is the server really down? One slow page or list is not an outage (16 Nov 2026: a slow dashboard figure made the
 // whole app say "working offline"). Asked straight: /health, 6 seconds. Only when that fails is it offline.
-async function reallyDown() {
-  try { const r = await withTimeout(fetch("/health?sw=" + Date.now(), { cache: "no-store" }), 6000); if (r.ok) return false; } catch (e) {}
+let WHY = "";
+async function reallyDown(why) {
+  try { const r = await withTimeout(fetch("/health?sw=" + Date.now(), { cache: "no-store" }), 6000); if (r.ok) { setOffline(false); return false; } } catch (e) {}
+  WHY = (why || "") + " " + new Date().toTimeString().slice(0, 8);
   setOffline(true); return true;
 }
 function withTimeout(p, ms) { return new Promise((res, rej) => { const t = setTimeout(() => rej(new Error("timeout")), ms); p.then(v => { clearTimeout(t); res(v); }, e => { clearTimeout(t); rej(e); }); }); }
@@ -159,7 +161,7 @@ self.addEventListener("fetch", e => {
         if (r.ok) { const c = await caches.open(SHELL); c.put(path === "/" || path === "/app.html" ? "/" : path, r.clone()); }
         setOffline(false); return r;
       } catch (er) {
-        if (!(await reallyDown()) && er && er.message === "timeout") { try { return await going; } catch (e2) {} }
+        if (!(await reallyDown(path + " " + (er && er.message))) && er && er.message === "timeout") { try { return await going; } catch (e2) {} }
         const c = await caches.open(SHELL);
         return (await c.match(path === "/app.html" ? "/" : path, { ignoreSearch: true })) || (await c.match("/")) || new Response("<h2>The server can't be reached, and this page has not been opened on this computer before.</h2>", { status: 503, headers: { "Content-Type": "text/html" } });
       }
@@ -193,7 +195,7 @@ self.addEventListener("fetch", e => {
         if (r.ok && (r.headers.get("Content-Type") || "").includes("json")) { const c = await caches.open(DATA); c.put(req, r.clone()); }
         return r;
       } catch (er) {
-        if (!(await reallyDown()) && er && er.message === "timeout") {       // the server is up, this one is just slow: wait for it
+        if (!(await reallyDown(path + " " + (er && er.message))) && er && er.message === "timeout") {       // the server is up, this one is just slow: wait for it
           try { const r = await going; if (r.ok && (r.headers.get("Content-Type") || "").includes("json")) { const c = await caches.open(DATA); c.put(req, r.clone()); } return r; } catch (e2) {}
         }
         const hit = await (await caches.open(DATA)).match(req);
@@ -217,7 +219,8 @@ self.addEventListener("fetch", e => {
       if (r.status < 500) setOffline(false);
       return r;
     } catch (er) {
-      setOffline(true);
+      // the save did not go through. Really down -> offline; the server answers -> it is kept and sent again in a moment
+      if (!(await reallyDown(path + " save " + (er && er.message)))) setTimeout(() => replay(), 4000);
       if (needs) {
         const k = Object.keys(NEED_MSG).find(x => path.includes(x));
         return jsonResp({ detail: `${k ? NEED_MSG[k] : "This needs the server"} - it works again as soon as the server is back (usually a few minutes). Your other work is being kept on this computer.` }, 503);

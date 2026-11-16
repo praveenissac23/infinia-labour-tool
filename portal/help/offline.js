@@ -5,7 +5,8 @@
   if (!("serviceWorker" in navigator)) return;
   const TOP = window.parent === window;                    // pages in a frame (Estimation, Trello ...) leave the banner to the page around them
   let S = { offline: false, pending: 0, failed: 0, items: [] }, okTimer = 0, ping = 0, bar = null, list = null;
-  try { navigator.serviceWorker.register("/sw.js").catch(() => {}); } catch (e) {}
+  // the newest /sw.js is asked for now and every 10 minutes, so a page left open all day gets a fix without a reload
+  try { navigator.serviceWorker.register("/sw.js").then(r => { r.update().catch(() => {}); setInterval(() => r.update().catch(() => {}), 600000); }).catch(() => {}); } catch (e) {}
   const post = m => { const c = navigator.serviceWorker.controller; if (c) c.postMessage(m); };
   navigator.serviceWorker.addEventListener("message", e => { const d = e.data || {}; if (d.type === "offline-state") update(d); });
   navigator.serviceWorker.ready.then(() => { post({ type: "offline-hello" }); post({ type: "offline-replay" }); });
@@ -47,7 +48,7 @@
     let cls = "", html = "";
     if (S.offline) {
       cls = "off";
-      html = `<span class="dot"></span><span><b>Working offline</b> - the server can't be reached (update or outage). Keep working: your saves stay on this computer and upload by themselves.</span><span class="sp"></span>${n ? `<span class="off-pill">${n} saved on this computer</span><button data-off="list">See them</button>` : ""}`;
+      html = `<span class="dot"></span><span><b>Working offline</b> - the server can't be reached (update or outage). Keep working: your saves stay on this computer and upload by themselves.${S.why ? ` <small style="opacity:.6">[${String(S.why).replace(/[<>&]/g, "")}]</small>` : ""}</span><span class="sp"></span>${n ? `<span class="off-pill">${n} saved on this computer</span><button data-off="list">See them</button>` : ""}`;
     } else if (S.syncing && n) {
       cls = "syn"; html = `<span class="dot"></span><span><b>Back online</b> - uploading ${n} saved item${n === 1 ? "" : "s"}... keep this page open a moment.</span><span class="sp"></span>`;
     } else if (f) {

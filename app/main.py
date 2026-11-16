@@ -343,7 +343,32 @@ def seed_on_startup():
 from fastapi.middleware.gzip import GZipMiddleware
 # working offline: a save sent twice is done once (inside the compression, so it keeps the plain answer)
 app.middleware("http")(offline_once.once)
+class _SlowLog:
+    """Any request that takes over 4 seconds is written to the server log with its time (journalctl -u infinia | grep SLOW),
+    so a slow page is found by name instead of guessed (16 Nov 2026)."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        import time as _t
+        t0, st = _t.monotonic(), [0]
+
+        async def snd(m):
+            if m["type"] == "http.response.start":
+                st[0] = m["status"]
+            await send(m)
+        try:
+            await self.app(scope, receive, snd)
+        finally:
+            dt = _t.monotonic() - t0
+            if dt > 4 and not scope["path"].startswith(("/store/chat/stream", "/export/")):
+                print(f"SLOW {dt:.1f}s {scope['method']} {scope['path']} -> {st[0]}", flush=True)
+
+
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+app.add_middleware(_SlowLog)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
