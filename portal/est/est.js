@@ -6,6 +6,7 @@
 try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infinia_keep")) sessionStorage.setItem("infinia_token", localStorage.getItem("infinia_keep")); } catch (e) {}
 let TOKEN = sessionStorage.getItem("infinia_token") || null;
 const VIEW = (location.search.match(/[?&]view=(\w+)/) || [])[1] || "dash";
+document.documentElement.classList.add("crystal");   // "Crystal Light" look of the dashboards (16 Nov 2026) - remove this line for the dark glass
 try { if (document.documentElement.classList.contains("glass-pre") && document.body) document.body.classList.add("glass"); } catch (e) {}   // a dashboard is coming: dark from the first paint
 const ST = { meta: null, pid: null, b: null, group: "home", sec: "dash", q: {}, filt: {}, dash: null, tenders: null };
 if (window.PG_EMBED) document.body.classList.add("embed");

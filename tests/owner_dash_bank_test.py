@@ -21,6 +21,11 @@ ck("the total today = bank + cash in hand, on the dashboard and the cash forecas
    and "+ cash in hand ${cfM(b.cash)} = ${cfM(b.now)}" in html)
 r = c.get("/export/accounts/cash", params={"token": c.post("/auth/download-token", headers={"Authorization": "Bearer " + c.post("/auth/login", data={"username": "admin", "password": "changeme123"}).json()["access_token"]}).json()["token"], "format": "excel"})
 ck("each month-end ring shows how much it went up or down in that month", "od-tdiff" in html and "const dv = c - m.opening" in html)
+app_html = open(os.path.join(ROOT, "app.html"), encoding="utf-8").read()
+ck("Crystal Light look: one switch (class crystal on <html>), admin dashboard only (own-mode) + the Estimation dashboards",
+   'classList.add("crystal")' in app_html and "html.crystal #own-dash" in app_html and "html.crystal body:has(#screen-dashboard.own-mode.active)" in app_html
+   and 'classList.add("crystal")' in open(os.path.join(ROOT, "portal/est/est.js"), encoding="utf-8").read()
+   and "html.crystal body.glass .wrap" in open(os.path.join(ROOT, "portal/est/est.css"), encoding="utf-8").read())
 ck("the export opens", r.status_code == 200, r.status_code)
 ck("app.html built from it", 'id="od-bank-v"' in open(os.path.join(ROOT, "app.html"), encoding="utf-8").read())
 H = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "admin", "password": "changeme123"}).json()["access_token"]}

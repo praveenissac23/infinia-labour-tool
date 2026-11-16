@@ -1687,6 +1687,28 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
     #own-dash .od-needs, #own-dash .od-proj, #own-dash .od-dep, #own-dash .od-w2 { grid-column: 1 / -1; grid-row: auto; }
     #own-dash .od-hero .od-v { font-size: 38px; } }
   @media (max-width: 640px) { #own-dash .od-hero, #own-dash .od-cash { grid-column: 1 / -1; } }
+  /* ---- "Crystal Light" (16 Nov 2026, option 5): white frosted glass on rose and cream. One switch: the class
+     "crystal" on <html> (set in deploy/build_temporary_pages.py and portal/est/est.js) - take it off and the dark look is back. ---- */
+  html.crystal #own-dash { color: #2A1418; }
+  html.crystal #own-dash .od-hd h1 { color: #2A1418; } html.crystal #own-dash .od-hd span { color: rgba(42,20,24,.62); }
+  html.crystal #own-dash .od-c { background: rgba(255,255,255,.55) !important; backdrop-filter: blur(26px) saturate(160%); -webkit-backdrop-filter: blur(26px) saturate(160%); border: 1px solid rgba(255,255,255,.95) !important; box-shadow: 0 20px 44px rgba(150,40,60,.15), inset 0 1px 0 #fff !important; }
+  html.crystal #own-dash .od-c::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 46%; background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,0)); pointer-events: none; border-radius: 24px 24px 0 0; }
+  html.crystal #own-dash .od-c > * { position: relative; }
+  html.crystal #own-dash .od-c.go:hover { transform: translateY(-4px); background: rgba(255,255,255,.78) !important; border-color: rgba(214,48,72,.45) !important; box-shadow: 0 28px 54px rgba(150,40,60,.22), inset 0 1px 0 #fff !important; }
+  html.crystal #own-dash .od-l, html.crystal #own-dash .od-s, html.crystal #own-dash .od-tank, html.crystal #own-dash .od-ring, html.crystal #own-dash .od-more, html.crystal #own-dash .od-dl small { color: rgba(42,20,24,.62); }
+  html.crystal #own-dash .od-cash .od-s b, html.crystal #own-dash .od-ring:hover { color: #2A1418; }
+  html.crystal #own-dash .od-n, html.crystal #own-dash .od-dl { border-bottom-color: rgba(42,20,24,.08); }
+  html.crystal #own-dash .od-n:hover, html.crystal #own-dash .od-dl:hover { color: #B01E34; }
+  html.crystal #own-dash .od-pill.red { background: rgba(201,36,63,.12); color: #B01E34; } html.crystal #own-dash .od-pill.amber { background: rgba(178,106,0,.14); color: #8A5200; } html.crystal #own-dash .od-pill.grnp { background: rgba(18,146,90,.14); color: #0E7A4B; }
+  html.crystal #own-dash .od-ok, html.crystal #own-dash .grn { color: #12925A; } html.crystal #own-dash .red { color: #C9243F; } html.crystal #own-dash .amb { color: #B26A00; }
+  html.crystal #own-dash svg text[fill="#fff"] { fill: #2A1418; } html.crystal #own-dash svg text[fill="#ff9a9a"] { fill: #C9243F; }
+  html.crystal #own-dash svg circle[stroke^="rgba(255,255,255"] { stroke: rgba(42,20,24,.09); }
+  /* the first card stays crimson glass, white on it */
+  html.crystal #own-dash .od-hero { background: linear-gradient(145deg, rgba(190,34,58,.94), rgba(120,18,36,.86)) !important; border-color: rgba(255,255,255,.45) !important; color: #fff; box-shadow: 0 26px 54px rgba(150,20,45,.38), inset 0 1px 0 rgba(255,255,255,.55) !important; }
+  html.crystal #own-dash .od-hero::before { background: linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0)); }
+  html.crystal #own-dash .od-hero.go:hover { background: linear-gradient(145deg, rgba(204,40,66,.96), rgba(132,20,40,.9)) !important; }
+  html.crystal #own-dash .od-hero .od-l, html.crystal #own-dash .od-hero .od-s, html.crystal #own-dash .od-hero .od-in, html.crystal #own-dash .od-hero .od-spark-l { color: rgba(255,255,255,.78); }
+  html.crystal #own-dash .od-hero .grn { color: #8FF0BD; } html.crystal #own-dash .od-hero .red { color: #FFB3B3; }
   .dash-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 12px; margin-bottom: 16px; }
   @media (max-width: 760px) { .dash-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 520px) { .dash-tiles { grid-template-columns: 1fr; } }

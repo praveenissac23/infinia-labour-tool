@@ -1039,6 +1039,34 @@ body.glass .wrap .btn:hover { background-color: rgba(255,80,95,.14) !important; 
 /* the heading row that stays at the top while a table scrolls (help/freeze.js): dark on the dashboards */
 body.glass .freeze-head { background: #1B0D11 !important; box-shadow: 0 6px 16px rgba(0,0,0,.45) !important; border-bottom: 1px solid rgba(255,255,255,.12); }
 body.glass .freeze-head th, body.glass .freeze-head td { background: transparent !important; color: rgba(255,255,255,.72) !important; border-color: rgba(255,255,255,.12) !important; }
+/* ===== "Crystal Light" (16 Nov 2026): the dashboards on rose and cream, white frosted glass - only with class "crystal" on <html> ===== */
+html.crystal body.glass:not(.embed) { background: radial-gradient(560px 560px at 10% 28%, rgba(255,154,168,.70), transparent 70%), radial-gradient(520px 520px at 94% 90%, rgba(255,211,161,.80), transparent 70%), radial-gradient(420px 420px at 72% 8%, rgba(215,182,255,.50), transparent 70%), linear-gradient(135deg, #FBEEEE 0%, #F6EFE6 60%, #EFE6F3 100%) fixed !important; }
+html.crystal body.glass .wrap { color: #2A1418; }
+html.crystal body.glass .wrap .pick { background: rgba(255,255,255,.65) !important; color: #2A1418 !important; border: 1px solid rgba(255,255,255,.95) !important; box-shadow: 0 6px 18px rgba(150,40,60,.10); }
+html.crystal body.glass .wrap #pnav { border-bottom: 1px solid rgba(42,20,24,.12) !important; }
+html.crystal body.glass .wrap #pnav button { color: rgba(42,20,24,.6) !important; } html.crystal body.glass .wrap #pnav button.on { color: #9B1B2E !important; box-shadow: inset 0 -2px 0 #C9243F !important; }
+html.crystal body.glass .wrap #pnav button:not(.on):hover { background-color: rgba(201,36,63,.08) !important; color: #7A1626 !important; }
+html.crystal body.glass .wrap .ptop .btn, html.crystal body.glass .wrap .btn { background: rgba(255,255,255,.5) !important; color: #7A1626 !important; border: 1px solid rgba(155,27,46,.40) !important; }
+html.crystal body.glass .wrap .btn:hover { background-color: rgba(255,255,255,.85) !important; }
+html.crystal body.glass .wrap .panel:not(.bare), html.crystal body.glass .wrap .card { background: rgba(255,255,255,.55) !important; backdrop-filter: blur(26px) saturate(160%); -webkit-backdrop-filter: blur(26px) saturate(160%); border: 1px solid rgba(255,255,255,.95) !important; box-shadow: 0 20px 44px rgba(150,40,60,.15), inset 0 1px 0 #fff !important; border-radius: 18px !important; color: #2A1418; }
+html.crystal body.glass .wrap .card:has(> .kpis) { background: transparent !important; border: 0 !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html.crystal body.glass .wrap h3, html.crystal body.glass .wrap h4, html.crystal body.glass .wrap td, html.crystal body.glass .wrap label, html.crystal body.glass .wrap .v, html.crystal body.glass .wrap b { color: #2A1418 !important; }
+html.crystal body.glass .wrap .muted, html.crystal body.glass .wrap .small, html.crystal body.glass .wrap .kpi .l, html.crystal body.glass .wrap .kpi .s, html.crystal body.glass .wrap .empty, html.crystal body.glass .wrap dt, html.crystal body.glass .wrap th, html.crystal body.glass .wrap .k, html.crystal body.glass .wrap .ii, html.crystal body.glass .wrap .info, html.crystal body.glass .wrap [class*="tip"] { color: rgba(42,20,24,.62) !important; }
+html.crystal body.glass .wrap a, html.crystal body.glass .wrap .lnk, html.crystal body.glass .wrap button.link, html.crystal body.glass .wrap [class*="open"], html.crystal body.glass .wrap .hd a, html.crystal body.glass .wrap h3 .go, html.crystal body.glass .wrap .go { color: #B01E34 !important; }
+html.crystal body.glass .wrap .kpi { background: rgba(255,255,255,.62) !important; border: 1px solid rgba(255,255,255,.95) !important; border-radius: 16px !important; box-shadow: 0 12px 28px rgba(150,40,60,.13), inset 0 1px 0 #fff !important; }
+html.crystal body.glass .wrap .kpi:hover { border-color: rgba(214,48,72,.45) !important; background-color: rgba(255,255,255,.85) !important; }
+html.crystal body.glass .wrap .kpi .v { color: #2A1418 !important; }
+html.crystal body.glass .wrap .kpi .bar, html.crystal body.glass .wrap .bar { background: rgba(42,20,24,.10) !important; } html.crystal body.glass .wrap .bar > * { background: #C9243F !important; }
+html.crystal body.glass .wrap .tw { background: rgba(255,255,255,.40) !important; border: 1px solid rgba(255,255,255,.9) !important; }
+html.crystal body.glass .wrap table.t th { color: rgba(42,20,24,.62) !important; border-bottom: 1px solid rgba(42,20,24,.12) !important; }
+html.crystal body.glass .wrap table.t td { border-color: rgba(42,20,24,.07) !important; }
+html.crystal body.glass .wrap table.t tr:hover td, html.crystal body.glass .wrap table.t tbody tr:hover td { background-color: rgba(201,36,63,.06) !important; }
+html.crystal body.glass .wrap .st { background: rgba(42,20,24,.07) !important; color: #2A1418 !important; border: 1px solid rgba(42,20,24,.14) !important; }
+html.crystal body.glass .wrap .st.a { background: transparent !important; border: 0 !important; }
+html.crystal body.glass .wrap input, html.crystal body.glass .wrap select { background: rgba(255,255,255,.75) !important; color: #2A1418 !important; border-color: rgba(42,20,24,.2) !important; }
+html.crystal body.glass .wrap div > span:not(.st):not(.go):not(.v) { color: rgba(42,20,24,.62); }
+html.crystal body.glass .freeze-head { background: #FFF7F6 !important; box-shadow: 0 6px 16px rgba(150,40,60,.14) !important; border-bottom: 1px solid rgba(42,20,24,.10); }
+html.crystal body.glass .freeze-head th, html.crystal body.glass .freeze-head td { color: rgba(42,20,24,.62) !important; border-color: rgba(42,20,24,.10) !important; }
 /* Payments received: Pending (10 Nov 2026) */
 .ipa-rcv { display: inline-flex; gap: 6px; align-items: center; }
 .ipa-rcv select.ipa-pin { width: auto; min-width: 96px; }
