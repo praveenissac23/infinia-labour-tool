@@ -180,8 +180,11 @@ ck("labour: wages = his card 1,234.00", any("labour card" in x["label"] and x["a
 ck(f"labour: Less line for the 800.00 paid on {cs:%d/%m/%Y} (period {cs:%d/%m/%Y} - ...)",
    len(L) == 1 and L[0]["amount"] == 800.0 and L[0]["label"].startswith(f"Less: salary already paid on {cs:%d/%m/%Y} (period {cs:%d/%m/%Y} –"), d["deductions"])
 gross = sum(Fraction(str(x["amount"])) for x in d["payables"])
-ck("labour: net = payables - deductions, cut down to the fils",
-   d["net"] <= float(gross - sum(Fraction(str(x["amount"])) for x in d["deductions"])) + 0.0001, d)
+# the net is the EXACT sum cut down once at the end (payroll_cycle.fils_down), while each line on the paper is cut
+# down on its own - so the net may be up to 1 fil per line above the lines as shown, never more, never below
+shown = float(gross - sum(Fraction(str(x["amount"])) for x in d["deductions"]))
+ck("labour: net = payables - deductions, cut down to the fils (the exact sum, never more than 1 fil a line above the lines shown)",
+   shown - 0.0001 <= d["net"] <= shown + 0.01 * len(d["payables"]) + 0.0001, (d["net"], shown, d["payables"], d["deductions"]))
 pv = c.post("/employees/pay/preview", headers=A, json={"kind": "labour", "source_id": IDS["card"], "type": "final",
                                                         "last_day": last.isoformat()}).json()
 ck("labour: the payment is the net (800 not taken off again)", pv["amount"] == round(max(d["net"], 0), 2) and pv["due"] == round(d["net"] + 800, 2),
