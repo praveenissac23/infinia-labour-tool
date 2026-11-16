@@ -28,7 +28,7 @@ ck("delivery address: none", M.lpo_address_text(O("")) == "" and M.lpo_address_t
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 html = open(os.path.join(ROOT, "app-classic.html"), encoding="utf-8").read()
 ck("the form fills every site's plot", "function lpoPlotFor" in html and "lpoPlotFor(sites.join" in html)
-ck("bell: a chime for new pop-ups, louder for a new material request, can be switched off", "function bellChime" in html and 'bellChime(fresh.some(n => n.kind === "request"))' in html
+ck("bell: the same ding-dong for every new pop-up, can be switched off", "function bellChime" in html and "if (fresh.length) bellChime();" in html and "[[1047, 0, 1.2], [784, 0.32, 1.4]]" in html
    and 'id="notif-sound"' in html and "input:checked:not([data-local])" in html)
 print("\nFAILED: " + ", ".join(fails) if fails else "\nall passed")
 sys.exit(1 if fails else 0)
