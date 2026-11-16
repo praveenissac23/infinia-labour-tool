@@ -20,6 +20,7 @@ ck("the cash forecast card says what it starts from (bank + cash), and its rings
 ck("the total today = bank + cash in hand, on the dashboard and the cash forecast", "const amt = b.now" in html and "Bank + cash in hand today" in html
    and "+ cash in hand ${cfM(b.cash)} = ${cfM(b.now)}" in html)
 r = c.get("/export/accounts/cash", params={"token": c.post("/auth/download-token", headers={"Authorization": "Bearer " + c.post("/auth/login", data={"username": "admin", "password": "changeme123"}).json()["access_token"]}).json()["token"], "format": "excel"})
+ck("each month-end ring shows how much it went up or down in that month", "od-tdiff" in html and "const dv = c - m.opening" in html)
 ck("the export opens", r.status_code == 200, r.status_code)
 ck("app.html built from it", 'id="od-bank-v"' in open(os.path.join(ROOT, "app.html"), encoding="utf-8").read())
 H = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "admin", "password": "changeme123"}).json()["access_token"]}
