@@ -108,6 +108,12 @@ async function replay() {
 
 // ------------------------------------------------------------------ fetch
 const isStatic = p => /^\/portal\//.test(p) || /\.(js|css|png|jpe?g|webp|svg|gif|ico|woff2?|ttf|json|html|mp3|wasm|traineddata)$/i.test(p) || p === "/sw.js";
+// Is the server really down? One slow page or list is not an outage (16 Nov 2026: a slow dashboard figure made the
+// whole app say "working offline"). Asked straight: /health, 6 seconds. Only when that fails is it offline.
+async function reallyDown() {
+  try { const r = await withTimeout(fetch("/health?sw=" + Date.now(), { cache: "no-store" }), 6000); if (r.ok) return false; } catch (e) {}
+  setOffline(true); return true;
+}
 function withTimeout(p, ms) { return new Promise((res, rej) => { const t = setTimeout(() => rej(new Error("timeout")), ms); p.then(v => { clearTimeout(t); res(v); }, e => { clearTimeout(t); rej(e); }); }); }
 const jsonResp = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json", "X-Offline": "1" } });
 
@@ -146,13 +152,14 @@ self.addEventListener("fetch", e => {
   if (req.mode === "navigate" || dest === "document" || dest === "iframe") {
     if (path.startsWith("/export/") || path.startsWith("/api/")) return;
     e.respondWith((async () => {
+      const going = fetch(req);
       try {
-        const r = await withTimeout(fetch(req), 9000);
+        const r = await withTimeout(going, 9000);
         if (r.status >= 502 && r.status <= 504) throw new Error("down");
         if (r.ok) { const c = await caches.open(SHELL); c.put(path === "/" || path === "/app.html" ? "/" : path, r.clone()); }
         setOffline(false); return r;
       } catch (er) {
-        setOffline(true);
+        if (!(await reallyDown()) && er && er.message === "timeout") { try { return await going; } catch (e2) {} }
         const c = await caches.open(SHELL);
         return (await c.match(path === "/app.html" ? "/" : path, { ignoreSearch: true })) || (await c.match("/")) || new Response("<h2>The server can't be reached, and this page has not been opened on this computer before.</h2>", { status: 503, headers: { "Content-Type": "text/html" } });
       }
@@ -178,14 +185,17 @@ self.addEventListener("fetch", e => {
   // ---- the app's data
   if (req.method === "GET") {
     e.respondWith((async () => {
+      const going = fetch(req);
       try {
-        const r = await withTimeout(fetch(req), 15000);
+        const r = await withTimeout(going, 15000);
         if (r.status >= 502 && r.status <= 504) throw new Error("down");
         setOffline(false);
         if (r.ok && (r.headers.get("Content-Type") || "").includes("json")) { const c = await caches.open(DATA); c.put(req, r.clone()); }
         return r;
       } catch (er) {
-        setOffline(true);
+        if (!(await reallyDown()) && er && er.message === "timeout") {       // the server is up, this one is just slow: wait for it
+          try { const r = await going; if (r.ok && (r.headers.get("Content-Type") || "").includes("json")) { const c = await caches.open(DATA); c.put(req, r.clone()); } return r; } catch (e2) {}
+        }
         const hit = await (await caches.open(DATA)).match(req);
         if (hit) { const h = new Headers(hit.headers); h.set("X-Offline", "1"); return new Response(await hit.blob(), { status: 200, headers: h }); }
         return jsonResp({ detail: "Working offline - this list has not been opened on this computer before. It shows again when the server is back." }, 503);

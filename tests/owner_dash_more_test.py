@@ -25,8 +25,14 @@ db.add(ES.EstSubPC(sub_id=sb.id, seq=1, work_cum=1100000, status="Certified", ce
 db.add(models.CompanyExpiry(category="Trade licence", item="Trade licence", kind="Renewal", expires_on=t + timedelta(days=9)))
 db.add(models.CompanyExpiry(category="Vehicle", item="Toyota Hilux - Dubai P 12345", kind="Insurance", expires_on=t + timedelta(days=90)))
 db.commit()
-r = c.get("/permissions/owner/more", headers=H)
-ck("loads", r.status_code == 200, r.text)
+import time
+r = c.get("/permissions/owner/more", headers=H); t0 = time.time()
+ck("answers at once - the figures are worked out in the background", r.status_code == 200 and r.json().get("pending") is True and time.time() - t0 < 2, r.text[:200])
+for _ in range(120):
+    r = c.get("/permissions/owner/more", headers=H)
+    if not r.json().get("pending"): break
+    time.sleep(0.5)
+ck("loads", r.status_code == 200 and not r.json().get("pending"), r.text[:300])
 d = r.json()
 pr = {x["code"]: x for x in d.get("profit") or []}
 ck("project with a certificate and a subcontract: certified vs cost", "981" in pr and pr["981"]["certified"] > 0 and pr["981"]["subs"] >= 1000000, pr.get("981"))

@@ -15776,7 +15776,14 @@ async function ownDash(role) {
 // project profit, spend this month, documents expiring
 async function odMore() {
   const P = document.getElementById("od-profit"), S = document.getElementById("od-spend"), E = document.getElementById("od-exp"); if (!P) return;
-  let d; try { d = await apiCall("/permissions/owner/more"); } catch (e) { [P, S, E].forEach(x => x && (x.style.display = "none")); return; }
+  let d;
+  for (let n = 0; n < 60; n++) {            // worked out in the background on the server: asked again every 5 seconds until ready
+    try { d = await apiCall("/permissions/owner/more"); } catch (e) { [P, S, E].forEach(x => x && (x.style.display = "none")); return; }
+    if (!d || !d.pending) break;
+    await new Promise(r => setTimeout(r, 5000));
+    if (!document.getElementById("od-profit")) return;      // left the dashboard
+  }
+  if (!d || d.pending) { [P, S, E].forEach(x => x && (x.style.display = "none")); return; }
   const esc = escapeHtml, row = (a, b, sm, cls) => `<div class="od-dl"><span>${a}${sm ? `<small>${sm}</small>` : ""}</span><span class="${cls || ""}" style="white-space:nowrap">${b}</span></div>`;
   const pr = d.profit || [];
   P.innerHTML = `<div class="od-l">Project profit · certified vs cost so far</div>` + (pr.length ? pr.slice(0, 5).map(r => {

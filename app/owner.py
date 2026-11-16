@@ -199,7 +199,10 @@ def overview(db: Session = Depends(get_db), user: models.User = Depends(_owner))
 
 # ---- the slower cards, loaded after the page shows (14 Nov 2026): project profit, spend this month, expiring ----
 _EXTRA = {}                      # one copy for a few minutes - the figures come from all the payroll cycles and LPOs
-_EXTRA_SECONDS = 300
+_EXTRA_SECONDS = 1800           # half an hour: these are slow to work out on the live data
+_EXTRA_BUSY = {"on": False}
+import threading
+_EXTRA_LOCK = threading.Lock()
 
 
 def _prev_month_same_day(t):
@@ -209,12 +212,37 @@ def _prev_month_same_day(t):
 
 
 @router.get("/permissions/owner/more")
-def overview_more(db: Session = Depends(get_db), user: models.User = Depends(_owner)):
+def overview_more(user: models.User = Depends(_owner)):
+    """Answers at once, always (16 Nov 2026: working these out inside the request took longer than the page waits
+    and the page said 'working offline'). The figures are worked out once, in the background, one run at a time;
+    until they are ready the answer is {"pending": true} and the page asks again."""
     import time
     t = M._dubai_today()
     hit = _EXTRA.get(t)
     if hit and time.monotonic() - hit[0] < _EXTRA_SECONDS:
         return hit[1]
+    with _EXTRA_LOCK:
+        start = not _EXTRA_BUSY["on"]
+        if start:
+            _EXTRA_BUSY["on"] = True
+    if start:
+        def run():
+            from database import SessionLocal
+            db = SessionLocal()
+            try:
+                out = _more(db, t)
+                _EXTRA.clear()
+                _EXTRA[t] = (time.monotonic(), out)
+            except Exception as e:
+                print("owner dashboard - more:", e)
+            finally:
+                db.close()
+                _EXTRA_BUSY["on"] = False
+        threading.Thread(target=run, daemon=True, name="owner-more").start()
+    return hit[1] if hit else {"pending": True}       # an older copy is shown meanwhile
+
+
+def _more(db, t):
     out = {"today": t.isoformat()}
     import estimation as ES
     import projexpense as PX
@@ -289,8 +317,6 @@ def overview_more(db: Session = Depends(get_db), user: models.User = Depends(_ow
                              "days": i["days_left"]} for i in comp[:4]],
                 "people": len({i["who"] for i in ppl}), "people_first": min((i["days_left"] for i in ppl), default=None)}
     out["expiring"] = _safe(expiring, None)
-    _EXTRA.clear()
-    _EXTRA[t] = (time.monotonic(), out)
     return out
 
 
