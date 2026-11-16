@@ -1333,6 +1333,8 @@ window.HELP_TIPS = {
   "#inv-search": "Type an invoice number, client or project.",
   "#pc-range": "One month, or every entry from the start.",
   "#pc-range": "Between dates (any two days), This month, or the Full history from the first entry.",
+  "#pc-q": "A word anywhere in the petty cash: a worker's name, a supplier, a site, a receipt no. or an amount. Two words: both must be on the line. Searches the dates shown - pick Full history for everything.",
+  "#pc-qscope": "All petty cash: every book you can open, with the book on each line. This book: only the one open.",
   "#pc-from": "First day of the register - the balance brought forward is everything before it.",
   "#pc-to": "Last day of the register. Preview, PDF and Excel follow these dates.",
   "#pc-sup": "Who was paid - pick from the list or type a new name.",

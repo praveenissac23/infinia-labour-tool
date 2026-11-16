@@ -15749,7 +15749,7 @@ async function ownDash(role) {
   const nm = /^(admin|administrator)$/i.test(d.name || "") ? "" : d.name;
   box.innerHTML = `<div class="od-hd"><h1>${greet}${nm ? `, <b>${esc(nm)}</b>` : ""}</h1><span>${esc(day)} · ${d.contracts.count} live projects · AED ${odK(d.contracts.value)} under contract</span></div>
   <div class="od-g">
-    <div class="od-c od-hero go" data-go='{"pg":["accounts","bank"]}' title="The bank balance today: the last bank statement, plus what was paid and received on the Bank tab since"><div class="od-l" id="od-bank-l">In the bank today</div>
+    <div class="od-c od-hero go" data-go='{"pg":["accounts","bank"]}' title="Money today: the bank (last statement, plus what was paid and received on the Bank tab since) and the cash in hand (cash register)"><div class="od-l" id="od-bank-l">In the bank today</div>
       <div class="od-v" id="od-bank-v">…</div>
       <div class="od-in" id="od-bank-s">&nbsp;</div>${spark}</div>
     <div class="od-c od-cash go" data-go='{"pg":["accounts","cash"]}' title="The cash forecast - what is left at the end of each month, starting from the bank + cash in hand today"><div class="od-l">Cash forecast · left at month end</div><div class="od-tanks" id="od-tanks"><div class="od-s">Loading…</div></div><div class="od-s" id="od-cash-s"></div></div>
@@ -15815,11 +15815,14 @@ async function odCash() {
 // the owner's dashboard, first card: what is in the bank account today (statement + Bank tab since), per bank
 function odBank(b) {
   const v = document.getElementById("od-bank-v"), s = document.getElementById("od-bank-s"); if (!v || !b) return;
-  const amt = b.in_bank != null ? b.in_bank : b.now, k = odK(Math.abs(amt));
+  const amt = b.now, k = odK(Math.abs(amt));            // the total: bank + cash in hand
+  const l = document.getElementById("od-bank-l"); if (l) l.textContent = b.cash ? "Bank + cash in hand today" : "In the bank today";
   v.innerHTML = `${amt < 0 ? "−" : ""}${k.replace(/[A-Z]/g, "")}<small>${k.replace(/[\d.,]/g, "")}</small>`;
   const banks = (b.banks || []).map(x => `${escapeHtml(x.bank)} statement ${cfD(x.as_of)}`).join(" · ");
   const since = b.paid_since ? ` · ${b.paid_since > 0 ? "+" : "−"}${odK(Math.abs(b.paid_since))} since` : "";
-  s.innerHTML = `AED · ${banks || "no bank statement yet"}${since}${b.cash ? ` · <span class="grn">cash in hand ${odK(b.cash)}</span>` : ""}`;
+  const bk = b.in_bank != null ? b.in_bank : b.now;
+  s.innerHTML = b.cash ? `AED · bank ${odK(bk)} + <span class="grn">cash in hand ${odK(b.cash)}</span> · ${banks || "no bank statement yet"}${since}`
+                       : `AED · ${banks || "no bank statement yet"}${since}`;
 }
 // ---- Dashboard skyline: the greeting and today's figures ----------------
 async function dashSky() {
@@ -21106,8 +21109,8 @@ function cfDraw() {
   document.getElementById("cf-mo").innerHTML = [[3, "3 months"], [6, "6 months"], [12, "12 months"]].map(([v, l]) => `<button type="button" class="seg-chip${CF_MO === v ? " on" : ""}" onclick="CF_MO=${v};CF_MON='';cfLoad()">${l}</button>`).join("");
   document.getElementById("cf-in").innerHTML = [[1, "In &amp; out"], [0, "Out only"]].map(([v, l]) => `<button type="button" class="seg-chip${CF_IN === v ? " on" : ""}" onclick="CF_IN=${v};cfLoad()">${l}</button>`).join("");
   const days = b.as_of ? Math.round((new Date(d.today) - new Date(b.as_of)) / 864e5) : null;
-  document.getElementById("cf-now").innerHTML = `AED ${cfM(b.now)} <small>${b.cash ? "in the bank and cash in hand today" : "in the bank today"}</small>`;
-  document.getElementById("cf-bsrc").innerHTML = `${b.cash ? `Bank ${cfM(b.in_bank)} · cash in hand ${cfM(b.cash)} (cash register) · ` : b.cash_hidden ? "Cash in hand not counted (cash register is not on your login) · " : ""}${b.banks.map(x => `${escapeHtml(x.bank)} statement of ${cfD(x.as_of)}`).join(" · ") || "No bank statement uploaded yet - Accounts &gt; Bank"}${b.since.length ? ` · ${b.paid_since < 0 ? "&minus;" : "+"}${cfM(Math.abs(b.paid_since))} entered on the Bank tab since` : ""}
+  document.getElementById("cf-now").innerHTML = `AED ${cfM(b.now)} <small>${b.cash ? "total today - bank + cash in hand" : "in the bank today"}</small>`;
+  document.getElementById("cf-bsrc").innerHTML = `${b.cash ? `<b>Bank ${cfM(b.in_bank)} + cash in hand ${cfM(b.cash)} = ${cfM(b.now)}</b> · ` : b.cash_hidden ? "Cash in hand not counted (cash register is not on your login) · " : ""}${b.banks.map(x => `${escapeHtml(x.bank)} statement of ${cfD(x.as_of)}`).join(" · ") || "No bank statement uploaded yet - Accounts &gt; Bank"}${b.since.length ? ` · ${b.paid_since < 0 ? "&minus;" : "+"}${cfM(Math.abs(b.paid_since))} entered on the Bank tab since` : ""}
     ${days === null ? "" : days <= 3 ? ` &nbsp;<span class="cf-pill">&#9679; up to date</span>` : ` &nbsp;<span class="cf-pill old">&#9679; statement is ${days} days old - upload the latest on Accounts &gt; Bank</span>`}`;
   // the tanks - one ring per month, filled by what is left at the end of it
   const mos = d.months, full = Math.max(b.now, ...mos.map(m => m.opening), ...mos.map(m => m.closing), keep * 2) || 1, C = 2 * Math.PI * 108;

@@ -681,7 +681,10 @@ def export(token: str, format: str = "pdf", months: int = 3, with_in: int = 1, d
     TY = {"cheque": "Cheque", "salary": "Salaries", "sub": "Subcontractor", "client": "Client bill", "expected": "Expected"}
     rows = [{"Date": "/".join(reversed(i["date"].split("-"))), "What": i["what"] + (" (past date)" if i["late"] else ""), "Type": TY.get(i["type"], i["type"]),
              "From": i["src"], "In (AED)": i["in"] or "", "Out (AED)": i["out"] or "", "Balance after (AED)": i["after"]} for i in f["items"]]
-    sub = (f"In the bank now AED {f['bank']['now']:,.2f} (statement of {'/'.join(reversed((f['bank']['as_of'] or '').split('-')))}) | "
+    bk = f["bank"]
+    st_ = '/'.join(reversed((bk['as_of'] or '').split('-')))
+    sub = ((f"Total today AED {bk['now']:,.2f} = bank AED {bk.get('in_bank', bk['now']):,.2f} (statement of {st_}) + cash in hand AED {bk['cash']:,.2f} | "
+            if bk.get("cash") else f"In the bank now AED {bk['now']:,.2f} (statement of {st_}) | ")
            + " | ".join(f"{m['label']}: in {m['in']:,.0f}, out {m['out']:,.0f}, closing {m['closing']:,.0f}" for m in f["months"]))
     import cash_report as CR
     from datetime import datetime as _dt
