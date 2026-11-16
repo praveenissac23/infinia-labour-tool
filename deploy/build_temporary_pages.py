@@ -437,6 +437,8 @@ CSS = """
   html.crystal body:has(#screen-dashboard.own-mode.active) #pg-tabs, html.crystal.est-glass body:has(#screen-pgestproj.active) #pg-tabs, html.crystal body:has(#screen-pgestdash.active) #pg-tabs { background: rgba(255,255,255,.5) !important; border: 1px solid rgba(255,255,255,.95) !important; box-shadow: 0 8px 22px rgba(150,40,60,.10); }
   html.crystal body:has(#screen-dashboard.own-mode.active) #pg-tabs .pg-tab:not(.on):not(.active), html.crystal.est-glass body:has(#screen-pgestproj.active) #pg-tabs .pg-tab:not(.on):not(.active), html.crystal body:has(#screen-pgestdash.active) #pg-tabs .pg-tab:not(.on):not(.active) { color: rgba(42,20,24,.68) !important; }
   html.crystal body:has(#screen-dashboard.own-mode.active) #pg-tabs .pg-tab:not(.on):not(.active):hover, html.crystal.est-glass body:has(#screen-pgestproj.active) #pg-tabs .pg-tab:not(.on):not(.active):hover, html.crystal body:has(#screen-pgestdash.active) #pg-tabs .pg-tab:not(.on):not(.active):hover { background: rgba(201,36,63,.09) !important; color: #7A1626 !important; }
+  /* "Floating 3D" (16 Nov 2026): the admin's Dashboard and the Estimation dashboards - deeper black, a red glow rising from the foot */
+  html.float3d body:has(#screen-dashboard.own-mode.active)::before, html.float3d.est-glass body:has(#screen-pgestproj.active)::before, html.float3d body:has(#screen-pgestdash.active)::before { background: radial-gradient(900px 420px at 50% 108%, rgba(255,47,79,.55), transparent 70%), radial-gradient(700px 500px at 12% 0%, rgba(120,20,40,.55), transparent 70%), linear-gradient(170deg, #070508 0%, #100A0D 35%, #240911 70%, #4A0D1A 100%); }
   /* the Dubai skyline on the dark Dashboard: a solid black silhouette against the red, the Infinia tower and truck in red */
   body:has(#screen-dashboard.active) #dash-sky .dsk-L { fill: #120609 !important; stroke: #120609 !important; }
   body:has(#screen-dashboard.active) #dash-sky .dsk-far { fill: #2A0A11 !important; }
@@ -881,7 +883,7 @@ window.addEventListener("message", e => {
     was = now; wasScr = scr;
   };
   // before the project frame has said which page it shows, go by the page it last showed (no light flash first)
-  document.documentElement.classList.add("crystal");   // "Crystal Light" look of the dashboards (16 Nov 2026) - remove this line for the dark glass
+  document.documentElement.classList.add("float3d");   // the dashboards' look (16 Nov 2026): "float3d" = Floating 3D; "crystal" = Crystal Light; neither = the plain dark glass
   try { document.documentElement.classList.toggle("est-glass", /^home\./.test(localStorage.getItem("est_sec") || "home.dash")); } catch (e) {}
   // watched lightly: only the screens being switched and the page's own class, once per frame at most
   // (watching every element made the app slow while it filled its tables after signing in)

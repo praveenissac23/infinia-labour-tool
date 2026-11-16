@@ -1687,6 +1687,18 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
     #own-dash .od-needs, #own-dash .od-proj, #own-dash .od-dep, #own-dash .od-w2 { grid-column: 1 / -1; grid-row: auto; }
     #own-dash .od-hero .od-v { font-size: 38px; } }
   @media (max-width: 640px) { #own-dash .od-hero, #own-dash .od-cash { grid-column: 1 / -1; } }
+  /* ---- "Floating 3D" (16 Nov 2026, option 6): glass slabs tilted in space, a red glow under each; the card under the pointer
+     turns to face it and lifts (od3d()). Switch: class "float3d" on <html>. ---- */
+  html.float3d #own-dash .od-g { perspective: 1700px; perspective-origin: 50% 30%; }
+  html.float3d #own-dash .od-c { background: linear-gradient(150deg, rgba(255,255,255,.15), rgba(255,255,255,.03) 60%) !important; backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%); border: 1px solid rgba(255,255,255,.22) !important; border-bottom-color: rgba(255,255,255,.06) !important; box-shadow: 0 40px 60px rgba(0,0,0,.6), 0 26px 60px -14px rgba(255,47,79,.55), inset 0 1px 0 rgba(255,255,255,.4) !important; transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(var(--tz, 0px)); transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s ease, border-color .25s ease; will-change: transform; }
+  html.float3d #own-dash .od-c::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; opacity: 0; transition: opacity .3s ease;
+    background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(255,255,255,.22), transparent 60%); }
+  html.float3d #own-dash .od-c.tilt::after { opacity: 1; }
+  html.float3d #own-dash .od-c.tilt { transition: transform .08s linear, box-shadow .3s ease; border-color: rgba(255,150,165,.55) !important;
+    box-shadow: 0 60px 80px rgba(0,0,0,.65), 0 34px 80px -12px rgba(255,47,79,.8), inset 0 1px 0 rgba(255,255,255,.55) !important; }
+  html.float3d #own-dash .od-c.go:hover { transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(var(--tz, 0px)); }
+  html.float3d #own-dash .od-hero { background: linear-gradient(145deg, rgba(214,48,72,.62), rgba(60,10,20,.32)) !important; }
+  @media (max-width: 1100px), (prefers-reduced-motion: reduce) { html.float3d #own-dash .od-c { transform: none !important; } }
   /* ---- "Crystal Light" (16 Nov 2026, option 5): white frosted glass on rose and cream. One switch: the class
      "crystal" on <html> (set in deploy/build_temporary_pages.py and portal/est/est.js) - take it off and the dark look is back. ---- */
   html.crystal #own-dash { color: #2A1418; }
@@ -15792,8 +15804,32 @@ async function ownDash(role) {
   box.querySelectorAll(".od-n").forEach(el => el.onclick = () => odGo(needs[+el.dataset.i].go));
   box.querySelectorAll(".od-dl").forEach(el => el.onclick = () => odGo(dep[+el.dataset.d].go));
   box.querySelectorAll(".od-ring").forEach(el => el.onclick = () => odGo({ est: { pid: +el.dataset.p, group: "home", sec: "dash" } }));
-  odCash(); odMore();
+  odCash(); odMore(); od3d();
 }
+// "Floating 3D" look: every card rests turned a little towards the middle of the page; the one under the pointer
+// turns to face the pointer and lifts. Only with class "float3d" on <html>, on a wide screen, with a mouse.
+function od3d() {
+  const g = document.querySelector("#own-dash .od-g");
+  if (!g || !document.documentElement.classList.contains("float3d")) return;
+  const still = matchMedia("(max-width: 1100px), (prefers-reduced-motion: reduce)").matches;
+  const rest = () => { const G = g.getBoundingClientRect(); if (!G.width) return;
+    g.querySelectorAll(".od-c").forEach(c => { const r = c.getBoundingClientRect();
+      const dx = ((r.left + r.width / 2) - (G.left + G.width / 2)) / (G.width / 2), dy = ((r.top + r.height / 2) - (G.top + Math.min(G.height, innerHeight) / 2)) / (innerHeight / 2);
+      c.dataset.ry = (-dx * 7).toFixed(2); c.dataset.rx = (Math.max(-1, Math.min(1, dy)) * 3).toFixed(2);
+      if (!c.classList.contains("tilt")) { c.style.setProperty("--ry", c.dataset.ry + "deg"); c.style.setProperty("--rx", c.dataset.rx + "deg"); c.style.setProperty("--tz", "0px"); } }); };
+  if (still) return;
+  rest();
+  if (g.dataset.d3) return; g.dataset.d3 = "1";
+  addEventListener("resize", () => { if (document.body.contains(g)) rest(); });
+  g.addEventListener("pointermove", e => { const c = e.target.closest(".od-c"); if (!c || e.pointerType === "touch") return;
+    const r = c.getBoundingClientRect(), px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+    g.querySelectorAll(".od-c.tilt").forEach(o => { if (o !== c) od3dOff(o); });
+    c.classList.add("tilt");
+    c.style.setProperty("--ry", ((px - .5) * 14).toFixed(2) + "deg"); c.style.setProperty("--rx", ((.5 - py) * 10).toFixed(2) + "deg"); c.style.setProperty("--tz", "46px");
+    c.style.setProperty("--mx", (px * 100).toFixed(1) + "%"); c.style.setProperty("--my", (py * 100).toFixed(1) + "%"); });
+  g.addEventListener("pointerleave", () => g.querySelectorAll(".od-c.tilt").forEach(od3dOff));
+}
+function od3dOff(c) { c.classList.remove("tilt"); c.style.setProperty("--ry", (c.dataset.ry || 0) + "deg"); c.style.setProperty("--rx", (c.dataset.rx || 0) + "deg"); c.style.setProperty("--tz", "0px"); }
 // the owner's dashboard, last row (loaded after the page shows - they read every payroll cycle and LPO):
 // project profit, spend this month, documents expiring
 async function odMore() {
