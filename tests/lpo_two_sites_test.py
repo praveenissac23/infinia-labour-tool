@@ -30,5 +30,6 @@ html = open(os.path.join(ROOT, "app-classic.html"), encoding="utf-8").read()
 ck("the form fills every site's plot", "function lpoPlotFor" in html and "lpoPlotFor(sites.join" in html)
 ck("bell: the same ding-dong for every new pop-up, can be switched off", "function bellChime" in html and "if (fresh.length) bellChime();" in html and "[[1047, 0, 1.2], [784, 0.32, 1.4]]" in html
    and 'id="notif-sound"' in html and "input:checked:not([data-local])" in html)
+ck("desktop notifications offered on computers too, not only phones", "if (!phone || navigator.webdriver) return;" not in html and "Get notifications on this computer" in html)
 print("\nFAILED: " + ", ".join(fails) if fails else "\nall passed")
 sys.exit(1 if fails else 0)

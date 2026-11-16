@@ -25245,8 +25245,10 @@ async function pushAfterLogin() {
   infiInit();
   pushArrival();
   pushPaint();
+  // phones AND computers (16 Nov 2026): on a computer the notifications pop up in the corner of the screen, like
+  // Outlook or WhatsApp, also with the app in another tab or minimised - as long as the browser is open
   const phone = /Android|iPhone|iPad|iPod/.test(navigator.userAgent) || IS_IOS;
-  if (!phone || navigator.webdriver) return;
+  if (navigator.webdriver) return;
   let later = 0; try { later = +localStorage.getItem("push_banner_later") || 0; } catch (e) {}
   if (Date.now() - later < 3 * 24 * 3600 * 1000) return;
   if (PUSH_OK && Notification.permission !== "default" && !(IS_IOS && !IS_STANDALONE)) {
@@ -25256,7 +25258,8 @@ async function pushAfterLogin() {
   }
   const t = document.getElementById("push-banner-text");
   if (IS_IOS && !IS_STANDALONE) { t.innerHTML = "<b>Get Infinia on your home screen</b> with notifications: tap Share, then <b>Add to Home Screen</b>."; document.getElementById("push-banner-go").style.display = "none"; }
-  else if (PUSH_OK) t.innerHTML = "<b>Get notifications on this device</b> - new requests, approvals, late orders and expiries.";
+  else if (PUSH_OK) t.innerHTML = phone ? "<b>Get notifications on this device</b> - new requests, approvals, late orders and expiries."
+    : "<b>Get notifications on this computer</b> - they pop up in the corner of the screen like Outlook or WhatsApp, even with the app minimised. Press Turn on, then <b>Allow</b>.";
   else return;
   document.getElementById("push-banner").style.display = "block";
 }
