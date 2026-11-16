@@ -723,6 +723,24 @@ function renderProject() {
   glassTheme(ST.group === "home");                  // the project dashboard: dark glass; every other page stays as it is
   try { fn($("#sec")); } catch (e) { console.error(e); $("#sec").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
+// The wave on the dashboards ("float3d" look): the tiles near the pointer rise (--k) and the table lines near it swell
+// one by one (--lk). Only while a dashboard (body.glass) is shown, with a mouse, on a wide screen.
+(function () {
+  if (matchMedia("(max-width: 900px), (prefers-reduced-motion: reduce)").matches) return;
+  let raf = 0, X = 0, Y = 0, on = false, T = null;
+  const live = () => document.body.classList.contains("glass") && document.documentElement.classList.contains("float3d");
+  const draw = () => { raf = 0; if (!live()) return;
+    document.querySelectorAll(".wrap .kpi").forEach(c => { const r = c.getBoundingClientRect(); if (!r.width) return;
+      const cx = Math.max(r.left, Math.min(X, r.right)), cy = Math.max(r.top, Math.min(Y, r.bottom));
+      c.style.setProperty("--k", on ? Math.exp(-Math.pow(Math.hypot(X - cx, Y - cy) / 150, 2)).toFixed(3) : 0); });
+    document.querySelectorAll(".wrap table.t tbody tr").forEach(tr => { const inT = on && T && T.contains(tr);
+      if (!inT) { if (tr.style.getPropertyValue("--lk")) tr.style.removeProperty("--lk"); return; }
+      const q = tr.getBoundingClientRect(), k = Math.exp(-Math.pow((Y - (q.top + q.height / 2)) / 52, 2));
+      tr.style.setProperty("--lk", k < .01 ? 0 : k.toFixed(3)); tr.style.setProperty("--lx", Math.max(0, Math.min(100, (X - q.left) / q.width * 100)).toFixed(0) + "%"); }); };
+  document.addEventListener("pointermove", e => { if (e.pointerType === "touch" || !live()) return;
+    X = e.clientX; Y = e.clientY; on = true; T = e.target.closest ? e.target.closest("table.t") : null; if (!raf) raf = requestAnimationFrame(draw); });
+  document.documentElement.addEventListener("pointerleave", () => { on = false; if (!raf) raf = requestAnimationFrame(draw); });
+})();
 // The project dashboard's look: black to red, dark glass panels. This frame and the app around it
 // (menu, top bar) both take it, only while the dashboard is the page shown.
 function glassTheme(on) {

@@ -1687,18 +1687,21 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
     #own-dash .od-needs, #own-dash .od-proj, #own-dash .od-dep, #own-dash .od-w2 { grid-column: 1 / -1; grid-row: auto; }
     #own-dash .od-hero .od-v { font-size: 38px; } }
   @media (max-width: 640px) { #own-dash .od-hero, #own-dash .od-cash { grid-column: 1 / -1; } }
-  /* ---- "Floating 3D" (16 Nov 2026, option 6): glass slabs tilted in space, a red glow under each; the card under the pointer
-     turns to face it and lifts (od3d()). Switch: class "float3d" on <html>. ---- */
+  /* ---- "Floating 3D" with the wave (16 Nov 2026): glass slabs in space, a red glow under each. Where the pointer is the
+     dashboard swells like a wave: every card rises by how near it is (--k, 0 to 1, set by od3d()), and inside a card the
+     lines swell one by one. Switch: class "float3d" on <html>. ---- */
   html.float3d #own-dash .od-g { perspective: 1700px; perspective-origin: 50% 30%; }
-  html.float3d #own-dash .od-c { background: linear-gradient(150deg, rgba(255,255,255,.15), rgba(255,255,255,.03) 60%) !important; backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%); border: 1px solid rgba(255,255,255,.22) !important; border-bottom-color: rgba(255,255,255,.06) !important; box-shadow: 0 40px 60px rgba(0,0,0,.6), 0 26px 60px -14px rgba(255,47,79,.55), inset 0 1px 0 rgba(255,255,255,.4) !important; transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(var(--tz, 0px)); transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s ease, border-color .25s ease; will-change: transform; }
-  html.float3d #own-dash .od-c::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; opacity: 0; transition: opacity .3s ease;
-    background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(255,255,255,.22), transparent 60%); }
-  html.float3d #own-dash .od-c.tilt::after { opacity: 1; }
-  html.float3d #own-dash .od-c.tilt { transition: transform .08s linear, box-shadow .3s ease; border-color: rgba(255,150,165,.55) !important;
-    box-shadow: 0 60px 80px rgba(0,0,0,.65), 0 34px 80px -12px rgba(255,47,79,.8), inset 0 1px 0 rgba(255,255,255,.55) !important; }
-  html.float3d #own-dash .od-c.go:hover { transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(var(--tz, 0px)); }
+  html.float3d #own-dash .od-c { background: linear-gradient(150deg, rgba(255,255,255,.15), rgba(255,255,255,.03) 60%) !important; backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%); border: 1px solid rgba(255,255,255,.22) !important; border-bottom-color: rgba(255,255,255,.06) !important;
+    box-shadow: 0 calc(30px + 40px * var(--k, 0)) calc(50px + 40px * var(--k, 0)) rgba(0,0,0,.6), 0 26px 60px -14px rgba(255,47,79, calc(.35 + .55 * var(--k, 0))), inset 0 1px 0 rgba(255,255,255,.4) !important;
+    transform: translateZ(calc(var(--lz, 60px) * var(--k, 0))) scale(calc(1 + var(--sc, .05) * var(--k, 0))) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+    transition: transform .18s ease-out, box-shadow .18s ease-out, border-color .25s ease; will-change: transform; z-index: calc(var(--k, 0) * 100); }
+  html.float3d #own-dash .od-c::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+    background: radial-gradient(380px circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255, calc(.25 * var(--k, 0))), transparent 60%); }
+  html.float3d #own-dash .od-c.go:hover { transform: translateZ(calc(var(--lz, 60px) * var(--k, 0))) scale(calc(1 + var(--sc, .05) * var(--k, 0))) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); }
   html.float3d #own-dash .od-hero { background: linear-gradient(145deg, rgba(214,48,72,.62), rgba(60,10,20,.32)) !important; }
-  @media (max-width: 1100px), (prefers-reduced-motion: reduce) { html.float3d #own-dash .od-c { transform: none !important; } }
+  html.float3d #own-dash .od-n, html.float3d #own-dash .od-dl { transform: scale(calc(1 + .05 * var(--lk, 0))); transform-origin: var(--lx, 0%) 50%; transition: transform .14s ease-out, background-color .14s ease-out;
+    background-color: rgba(255,80,95, calc(.16 * var(--lk, 0))); border-radius: 10px; }
+  @media (max-width: 1100px), (prefers-reduced-motion: reduce) { html.float3d #own-dash .od-c, html.float3d #own-dash .od-n, html.float3d #own-dash .od-dl { transform: none !important; } }
   /* ---- "Crystal Light" (16 Nov 2026, option 5): white frosted glass on rose and cream. One switch: the class
      "crystal" on <html> (set in deploy/build_temporary_pages.py and portal/est/est.js) - take it off and the dark look is back. ---- */
   html.crystal #own-dash { color: #2A1418; }
@@ -15806,30 +15809,33 @@ async function ownDash(role) {
   box.querySelectorAll(".od-ring").forEach(el => el.onclick = () => odGo({ est: { pid: +el.dataset.p, group: "home", sec: "dash" } }));
   odCash(); odMore(); od3d();
 }
-// "Floating 3D" look: every card rests turned a little towards the middle of the page; the one under the pointer
-// turns to face the pointer and lifts. Only with class "float3d" on <html>, on a wide screen, with a mouse.
+// "Floating 3D" with the wave: where the pointer is, the dashboard swells - every card rises by how near the pointer is
+// (--k), turns a little to face it, and the lines inside the card under it swell one by one (--lk).
+// Only with class "float3d" on <html>, on a wide screen, with a mouse.
 function od3d() {
   const g = document.querySelector("#own-dash .od-g");
-  if (!g || !document.documentElement.classList.contains("float3d")) return;
-  const still = matchMedia("(max-width: 1100px), (prefers-reduced-motion: reduce)").matches;
-  const rest = () => { const G = g.getBoundingClientRect(); if (!G.width) return;
+  if (!g || g.dataset.d3 || !document.documentElement.classList.contains("float3d")) return;
+  if (matchMedia("(max-width: 1100px), (prefers-reduced-motion: reduce)").matches) return;
+  g.dataset.d3 = "1";
+  let raf = 0, X = 0, Y = 0, on = false;
+  const calm = () => { g.querySelectorAll(".od-c").forEach(c => { c.style.setProperty("--k", 0); c.style.setProperty("--rx", "0deg"); c.style.setProperty("--ry", "0deg"); });
+    g.querySelectorAll(".od-n, .od-dl").forEach(l => l.style.setProperty("--lk", 0)); };
+  const draw = () => { raf = 0; if (!on) return calm();
     g.querySelectorAll(".od-c").forEach(c => { const r = c.getBoundingClientRect();
-      const dx = ((r.left + r.width / 2) - (G.left + G.width / 2)) / (G.width / 2), dy = ((r.top + r.height / 2) - (G.top + Math.min(G.height, innerHeight) / 2)) / (innerHeight / 2);
-      c.dataset.ry = (-dx * 7).toFixed(2); c.dataset.rx = (Math.max(-1, Math.min(1, dy)) * 3).toFixed(2);
-      if (!c.classList.contains("tilt")) { c.style.setProperty("--ry", c.dataset.ry + "deg"); c.style.setProperty("--rx", c.dataset.rx + "deg"); c.style.setProperty("--tz", "0px"); } }); };
-  if (still) return;
-  rest();
-  if (g.dataset.d3) return; g.dataset.d3 = "1";
-  addEventListener("resize", () => { if (document.body.contains(g)) rest(); });
-  g.addEventListener("pointermove", e => { const c = e.target.closest(".od-c"); if (!c || e.pointerType === "touch") return;
-    const r = c.getBoundingClientRect(), px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
-    g.querySelectorAll(".od-c.tilt").forEach(o => { if (o !== c) od3dOff(o); });
-    c.classList.add("tilt");
-    c.style.setProperty("--ry", ((px - .5) * 14).toFixed(2) + "deg"); c.style.setProperty("--rx", ((.5 - py) * 10).toFixed(2) + "deg"); c.style.setProperty("--tz", "46px");
-    c.style.setProperty("--mx", (px * 100).toFixed(1) + "%"); c.style.setProperty("--my", (py * 100).toFixed(1) + "%"); });
-  g.addEventListener("pointerleave", () => g.querySelectorAll(".od-c.tilt").forEach(od3dOff));
+      const cx = Math.max(r.left, Math.min(X, r.right)), cy = Math.max(r.top, Math.min(Y, r.bottom)), k = Math.exp(-Math.pow(Math.hypot(X - cx, Y - cy) / 170, 2));
+      const px = (X - r.left) / r.width, py = (Y - r.top) / r.height, cl = v => Math.max(-1, Math.min(1, v));
+      const big = Math.min(1, 300 / r.width);          // a wide card rises less, so it never spills over its neighbours or the menu
+      c.style.setProperty("--sc", (.07 * big).toFixed(4)); c.style.setProperty("--lz", (90 * big).toFixed(0) + "px");
+      c.style.setProperty("--k", k.toFixed(3)); c.style.setProperty("--mx", (px * 100).toFixed(1) + "%"); c.style.setProperty("--my", (py * 100).toFixed(1) + "%");
+      c.style.setProperty("--ry", (cl((px - .5) * 2) * 6 * k).toFixed(2) + "deg"); c.style.setProperty("--rx", (cl((.5 - py) * 2) * 5 * k).toFixed(2) + "deg");
+      c.querySelectorAll(".od-n, .od-dl").forEach(l => { const q = l.getBoundingClientRect(), inside = X >= r.left && X <= r.right && Y >= r.top && Y <= r.bottom;
+        l.style.setProperty("--lk", inside ? Math.exp(-Math.pow((Y - (q.top + q.height / 2)) / 46, 2)).toFixed(3) : 0);
+        l.style.setProperty("--lx", Math.max(0, Math.min(100, (X - q.left) / q.width * 100)).toFixed(0) + "%"); }); }); };
+  document.addEventListener("pointermove", e => { if (!document.body.contains(g)) return; if (e.pointerType === "touch") return;
+    const G = g.getBoundingClientRect(); on = e.clientX > G.left - 120 && e.clientX < G.right + 120 && e.clientY > G.top - 120 && e.clientY < G.bottom + 120 && G.width > 0;
+    X = e.clientX; Y = e.clientY; if (!raf) raf = requestAnimationFrame(draw); });
+  document.addEventListener("pointerleave", () => { on = false; if (!raf) raf = requestAnimationFrame(draw); });
 }
-function od3dOff(c) { c.classList.remove("tilt"); c.style.setProperty("--ry", (c.dataset.ry || 0) + "deg"); c.style.setProperty("--rx", (c.dataset.rx || 0) + "deg"); c.style.setProperty("--tz", "0px"); }
 // the owner's dashboard, last row (loaded after the page shows - they read every payroll cycle and LPO):
 // project profit, spend this month, documents expiring
 async function odMore() {
