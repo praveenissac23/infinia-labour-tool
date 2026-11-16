@@ -730,15 +730,19 @@ function renderProject() {
   let raf = 0, X = 0, Y = 0, on = false, T = null;
   const live = () => document.body.classList.contains("glass") && document.documentElement.classList.contains("float3d");
   const draw = () => { raf = 0; if (!live()) return;
-    document.querySelectorAll(".wrap .kpi").forEach(c => { const r = c.getBoundingClientRect(); if (!r.width) return;
+    document.querySelectorAll(".wrap .kpi, .wrap .vs > div").forEach(c => { const P = c.parentNode.getBoundingClientRect(), w = c.offsetWidth, h = c.offsetHeight; if (!w) return;
+      // its place measured without the swell (offset sizes), so the swell never feeds back; it grows away from its row's edges
+      const r0 = c.getBoundingClientRect(), mx = r0.left + r0.width / 2, my = r0.top + r0.height / 2, r = { left: mx - w / 2, right: mx + w / 2, top: my - h / 2, bottom: my + h / 2 };
       const cx = Math.max(r.left, Math.min(X, r.right)), cy = Math.max(r.top, Math.min(Y, r.bottom));
-      c.style.setProperty("--k", on ? Math.exp(-Math.pow(Math.hypot(X - cx, Y - cy) / 150, 2)).toFixed(3) : 0); });
-    document.querySelectorAll(".wrap table.t tbody tr").forEach(tr => { const inT = on && T && T.contains(tr);
+      c.style.setProperty("--k", on ? Math.exp(-Math.pow(Math.hypot(X - cx, Y - cy) / 150, 2)).toFixed(3) : 0);
+      if (!c.style.getPropertyValue("--ox")) { c.style.setProperty("--ox", (P.width > w + 4 ? Math.max(0, Math.min(100, (r.left - P.left) / Math.max(1, P.width - w) * 100)) : 50).toFixed(0) + "%");
+        c.style.setProperty("--oy", (r.top - P.top < 4 ? 0 : 100) + "%"); } });
+    document.querySelectorAll(".wrap table.t tbody tr, .wrap table.kv tr").forEach(tr => { const inT = on && T && T.contains(tr);
       if (!inT) { if (tr.style.getPropertyValue("--lk")) tr.style.removeProperty("--lk"); return; }
       const q = tr.getBoundingClientRect(), k = Math.exp(-Math.pow((Y - (q.top + q.height / 2)) / 52, 2));
       tr.style.setProperty("--lk", k < .01 ? 0 : k.toFixed(3)); tr.style.setProperty("--lx", Math.max(0, Math.min(100, (X - q.left) / q.width * 100)).toFixed(0) + "%"); }); };
   document.addEventListener("pointermove", e => { if (e.pointerType === "touch" || !live()) return;
-    X = e.clientX; Y = e.clientY; on = true; T = e.target.closest ? e.target.closest("table.t") : null; if (!raf) raf = requestAnimationFrame(draw); });
+    X = e.clientX; Y = e.clientY; on = true; T = e.target.closest ? e.target.closest("table.t, table.kv") : null; if (!raf) raf = requestAnimationFrame(draw); });
   document.documentElement.addEventListener("pointerleave", () => { on = false; if (!raf) raf = requestAnimationFrame(draw); });
 })();
 // The project dashboard's look: black to red, dark glass panels. This frame and the app around it

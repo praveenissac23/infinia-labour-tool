@@ -1041,17 +1041,22 @@ body.glass .freeze-head { background: #1B0D11 !important; box-shadow: 0 6px 16px
 body.glass .freeze-head th, body.glass .freeze-head td { background: transparent !important; color: rgba(255,255,255,.72) !important; border-color: rgba(255,255,255,.12) !important; }
 /* ===== "Floating 3D" (16 Nov 2026): the dashboards' tiles lean back in space with a red glow under them and stand up under the pointer - class "float3d" on <html> ===== */
 html.float3d body.glass:not(.embed) { background: radial-gradient(900px 420px at 50% 108%, rgba(255,47,79,.55), transparent 70%), radial-gradient(700px 500px at 12% 0%, rgba(120,20,40,.55), transparent 70%), linear-gradient(170deg, #070508 0%, #100A0D 35%, #240911 70%, #4A0D1A 100%) fixed !important; }
-html.float3d body.glass .wrap .kpis { perspective: 1300px; perspective-origin: 50% 0%; }
 html.float3d body.glass .wrap .kpi { background: linear-gradient(150deg, rgba(255,255,255,.15), rgba(255,255,255,.03) 60%) !important; backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%);
   border: 1px solid rgba(255,255,255,.22) !important; border-bottom-color: rgba(255,255,255,.06) !important; border-radius: 18px !important; position: relative; z-index: calc(var(--k, 0) * 100);
   box-shadow: 0 calc(30px + 40px * var(--k, 0)) calc(50px + 40px * var(--k, 0)) rgba(0,0,0,.6), 0 26px 60px -14px rgba(255,47,79, calc(.35 + .55 * var(--k, 0))), inset 0 1px 0 rgba(255,255,255,.4) !important;
-  transform: translateZ(calc(70px * var(--k, 0))) scale(calc(1 + .08 * var(--k, 0))) rotateX(calc(9deg * (1 - var(--k, 0)))); transform-origin: 50% 100%;
+  transform: scale(calc(1 + .09 * var(--k, 0))); transform-origin: var(--ox, 50%) var(--oy, 50%);   /* grows away from the page's edges (--ox / --oy from est.js): never cut off */
   transition: transform .18s ease-out, box-shadow .18s ease-out, border-color .25s ease !important; }
 html.float3d body.glass .wrap .kpi:hover { border-color: rgba(255,150,165,.55) !important; background-color: transparent !important; }
+/* the small figure tiles inside a card (Variations: approved / waiting / absorbed / to price) rise the same way */
+html.float3d body.glass .wrap .vs > div { position: relative; z-index: calc(var(--k, 0) * 100); transform: scale(calc(1 + .10 * var(--k, 0))); transform-origin: var(--ox, 50%) var(--oy, 50%);
+  transition: transform .18s ease-out, box-shadow .18s ease-out, background-color .18s ease-out; background-color: rgba(255,80,95, calc(.22 * var(--k, 0)));
+  box-shadow: 0 calc(26px * var(--k, 0)) calc(40px * var(--k, 0)) rgba(0,0,0,.5), 0 18px 44px -12px rgba(255,47,79, calc(.75 * var(--k, 0))); }
+html.float3d body.glass .wrap table.kv tr { transform: scale(calc(1 + .03 * var(--lk, 0))); transform-origin: 0% 50%; transition: transform .14s ease-out; }
+html.float3d body.glass .wrap table.kv tr td, html.float3d body.glass .wrap table.kv tr th { background-color: rgba(255,80,95, calc(.18 * var(--lk, 0))); transition: background-color .14s ease-out; }
 /* the wave, line by line: the table lines near the pointer swell and glow, the one under it most (--lk, set in est.js) */
 html.float3d body.glass .wrap table.t tbody tr { transform: scale(calc(1 + .03 * var(--lk, 0))); transform-origin: 0% 50%; transition: transform .14s ease-out; position: relative; z-index: calc(var(--lk, 0) * 50); }
 html.float3d body.glass .wrap table.t tbody tr td { background-color: rgba(255,80,95, calc(.20 * var(--lk, 0))) !important; transition: background-color .14s ease-out; }
-@media (max-width: 900px), (prefers-reduced-motion: reduce) { html.float3d body.glass .wrap table.t tbody tr { transform: none; } }
+@media (max-width: 900px), (prefers-reduced-motion: reduce) { html.float3d body.glass .wrap table.t tbody tr, html.float3d body.glass .wrap table.kv tr, html.float3d body.glass .wrap .vs > div, html.float3d body.glass .wrap .kpi { transform: none; } }
 html.float3d body.glass .wrap .panel:not(.bare), html.float3d body.glass .wrap .card { background: linear-gradient(150deg, rgba(255,255,255,.15), rgba(255,255,255,.03) 60%) !important; backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%); border: 1px solid rgba(255,255,255,.22) !important; border-bottom-color: rgba(255,255,255,.06) !important; box-shadow: 0 40px 60px rgba(0,0,0,.6), 0 26px 60px -14px rgba(255,47,79,.55), inset 0 1px 0 rgba(255,255,255,.4) !important; border-radius: 20px !important; }
 html.float3d body.glass .wrap .card:has(> .kpis) { background: transparent !important; border: 0 !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; overflow: visible !important; }
 @media (max-width: 900px), (prefers-reduced-motion: reduce) { html.float3d body.glass .wrap .kpi, html.float3d body.glass .wrap .kpi:hover { transform: none; } }
