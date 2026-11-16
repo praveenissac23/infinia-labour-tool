@@ -8768,9 +8768,28 @@ const NOTIF_ACTION = {
 let notifQueue = [];
 let notifShowing = null;
 
+// A chime when something new pops up (16 Nov 2026): three bright notes for a new material request, two soft ones for
+// anything else. Browsers only allow sound after the person has clicked or typed on the page once - a page left open
+// and used plays it. Off for a login: Settings > Notifications > "Sound for new notifications" (kept in the browser).
+let BELL_AC = null;
+function bellSoundOn() { try { return localStorage.getItem("infinia_bell_sound") !== "off"; } catch (e) { return true; } }
+function bellChime(big) {
+  if (!bellSoundOn()) return;
+  try {
+    BELL_AC = BELL_AC || new (window.AudioContext || window.webkitAudioContext)();
+    if (BELL_AC.state === "suspended") BELL_AC.resume().catch(() => {});
+    const t = BELL_AC.currentTime, notes = big ? [[784, 0], [988, .14], [1319, .28]] : [[880, 0], [1320, .12]];
+    notes.forEach(([f, d]) => { const o = BELL_AC.createOscillator(), g = BELL_AC.createGain(); o.type = "sine"; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(big ? 0.22 : 0.13, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.45);
+      o.connect(g).connect(BELL_AC.destination); o.start(t + d); o.stop(t + d + 0.5); });
+  } catch (e) {}
+}
+// the page is woken for sound by the first click / key, so a later chime can play
+["pointerdown", "keydown"].forEach(ev => addEventListener(ev, () => { try { BELL_AC = BELL_AC || new (window.AudioContext || window.webkitAudioContext)(); if (BELL_AC.state === "suspended") BELL_AC.resume(); } catch (e) {} }, { once: true, capture: true }));
 function showToasts(fresh) {
   // Automated test browsers get no pop-ups unless a test asks for them.
   if (navigator.webdriver && !window.__popups) { markSeen(fresh.map(n => n.id)); return; }
+  if (fresh.length) bellChime(fresh.some(n => n.kind === "request"));
   notifQueue = notifQueue.concat(fresh.filter(
     n => !notifQueue.some(q => q.id === n.id) && (!notifShowing || notifShowing.id !== n.id)));
   markSeen(fresh.map(n => n.id));
@@ -25058,6 +25077,11 @@ async function notifPaint() {
   box.innerHTML = d.groups.length ? d.groups.map(g => `<label style="display:flex; gap:8px; align-items:center; font-size:13px; padding:4px 0;">
     <input type="checkbox" value="${g.id}" ${g.on ? "checked" : ""} style="width:auto;"> ${escapeHtml(g.label)}</label>`).join("")
     : '<div class="empty-note">Nothing to be notified about with this login\'s access.</div>';
+  // the sound: this browser only, on unless switched off
+  box.insertAdjacentHTML("beforeend", `<label style="display:flex; gap:8px; align-items:center; font-size:13px; padding:8px 0 4px; border-top:1px solid #eee; margin-top:6px;">
+    <input type="checkbox" id="notif-sound" ${bellSoundOn() ? "checked" : ""} style="width:auto;" data-local="1"
+      onchange="try { localStorage.setItem('infinia_bell_sound', this.checked ? 'on' : 'off'); } catch (e) {} if (this.checked) bellChime(true);">
+    Sound for new notifications <span class="sub" style="font-size:11.5px;">(on this computer / phone - a new material request rings louder)</span></label>`);
 }
 // Every login chooses its own notifications - also a login that cannot open the Settings page: the same
 // "My notifications" card opens over whatever page it is on, from the bell.
@@ -25086,7 +25110,7 @@ function closeNotifPrefs() {
   if (ov) ov.style.display = "none";
 }
 async function notifSave() {
-  const on = [...document.querySelectorAll("#notif-groups input:checked")].map(i => i.value);
+  const on = [...document.querySelectorAll("#notif-groups input:checked:not([data-local])")].map(i => i.value);
   try { await apiCall("/notifications/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on }) });
     document.getElementById("notif-msg").textContent = "Saved."; setTimeout(() => document.getElementById("notif-msg").textContent = "", 2500);
     if (typeof loadNotifications === "function") loadNotifications();
