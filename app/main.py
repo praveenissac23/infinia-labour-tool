@@ -10469,6 +10469,7 @@ def _lpo_for_print(o):
         site = db_session_site(code)
     d["site_address"] = lpo_address_text(o)
     d["plot_no"] = lpo_plot_text(o)
+    d["project_location"] = lpo_location_text(o)
     d["site_map"] = (site.map_url if site else "") or ""
     d["date_text"] = o.order_date.strftime("%d/%m/%Y") if o.order_date else ""
     d["delivery_text"] = lpo_delivery_text(o)
@@ -10674,9 +10675,24 @@ def lpo_plot_text(o):
         return typed
     found = [(c, db_session_site(c)) for c in codes]
     plots = [(c, (s.plot_no or "").strip()) for c, s in found if s and (s.plot_no or "").strip()]
-    if len(plots) < 2 or (typed and typed != plots[0][1]):
+    # what the form fills in by itself ("912: 3473253 / 925: 3471006", or the first plot alone) prints site by site;
+    # anything else typed by hand prints as typed
+    auto = not typed or typed == plots[0][1] if len(plots) >= 2 else False
+    if len(plots) >= 2 and typed and not auto:
+        import re as _re
+        rest = typed
+        for c, pl in plots:
+            rest = rest.replace(pl, "").replace(c, "")
+        auto = all(pl in typed for _, pl in plots) and not _re.search(r"[A-Za-z0-9]", _re.sub(r"(?i)plot|no\.?|nos", "", rest))
+    if len(plots) < 2 or not auto:
         return typed
-    return " / ".join(f"{c}: {p}" for c, p in plots)
+    return "\n".join(f"{c} \u2013 {p}" for c, p in plots)      # each site on its own line (Arun, 17/11/2026)
+
+
+def lpo_location_text(o):
+    """Project location as printed: '912 & 925' for an order for two or more sites, as typed for one."""
+    codes = lpo_site_codes(o.project_location)
+    return " & ".join(codes) if len(codes) >= 2 else (o.project_location or "")
 
 
 def lpo_address_text(o):
@@ -10688,7 +10704,7 @@ def lpo_address_text(o):
     addr = [(c, (s.address or "").strip()) for c, s in found if s and (s.address or "").strip()]
     if len({a.lower() for _, a in addr}) <= 1:
         return addr[0][1] if addr else ""
-    return " / ".join(f"{c}: {a}" for c, a in addr)
+    return "\n".join(f"{c} \u2013 {a}" for c, a in addr)
 
 
 def _logo_img():
@@ -10785,7 +10801,7 @@ def _lpo_html(o):
         # A padding row keeps the height without printing a stray colon.
         if not k:
             return '<tr><td class="k">&nbsp;</td><td class="v"></td></tr>'
-        return f'<tr><td class="k">{k}</td><td class="v">: {esc(v)}</td></tr>'
+        return f'<tr><td class="k">{k}</td><td class="v">: {esc(v).replace(chr(10), "<br>&nbsp;&nbsp;")}</td></tr>'
 
     # The same two boxes the printed order has: ours on the left, the
     # vendor's on the right. The preview used to carry the older layout,
@@ -10797,7 +10813,7 @@ def _lpo_html(o):
 
     left_rows = [("Purchase Order No", o.ref),
                  ("Delivery Date", esc(lpo_delivery_text(o))),
-                 ("Project Location", o.project_location),
+                 ("Project Location", lpo_location_text(o)),
                  ("Project &amp; Plot No", lpo_plot_text(o)),
                  ("Delivery Address", lpo_address_text(o)),
                  ("Job Scope", o.job_scope),

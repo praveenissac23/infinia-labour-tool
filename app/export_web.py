@@ -2279,8 +2279,12 @@ def build_lpo_pdf(po: dict):
                                   ("LEFTPADDING", (0, 0), (-1, -1), 6),
                                   ("TOPPADDING", (0, 0), (-1, -1), 3),
                                   ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+        def val(v):     # a value on several lines (each site of a two-site order) keeps its lines
+            v = "" if v in ("", None) else str(v)
+            from html import escape as _e
+            return _e(v).replace("\n", "<br/>&nbsp;&nbsp;") if "\n" in v or " & " in v else v
         body = [[P(k, 8, colour="#3B3F44"),
-                 P("" if not k else f": {v if v not in ('', None) else ''}", 8, bold=True)]
+                 P("" if not k else f": {val(v)}", 8, bold=True)]
                 for k, v in rows]
         t = Table(body, colWidths=[W * 0.495 * wide_label, W * 0.495 * (1 - wide_label)])
         t.setStyle(TableStyle([
