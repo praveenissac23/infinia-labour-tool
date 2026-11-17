@@ -10801,7 +10801,10 @@ def _lpo_html(o):
         # A padding row keeps the height without printing a stray colon.
         if not k:
             return '<tr><td class="k">&nbsp;</td><td class="v"></td></tr>'
-        return f'<tr><td class="k">{k}</td><td class="v">: {esc(v).replace(chr(10), "<br>&nbsp;&nbsp;")}</td></tr>'
+        if "\n" in str(v or ""):      # several lines: each starts right under the first (912 above 925)
+            return (f'<tr><td class="k">{k}</td><td class="v">: <span style="display:inline-block;vertical-align:top;max-width:calc(100% - 1em)">'
+                    f'{esc(v).replace(chr(10), "<br>")}</span></td></tr>')
+        return f'<tr><td class="k">{k}</td><td class="v">: {esc(v)}</td></tr>'
 
     # The same two boxes the printed order has: ours on the left, the
     # vendor's on the right. The preview used to carry the older layout,

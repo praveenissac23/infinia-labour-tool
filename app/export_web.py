@@ -2283,9 +2283,19 @@ def build_lpo_pdf(po: dict):
             v = "" if v in ("", None) else str(v)
             from html import escape as _e
             return _e(v).replace("\n", "<br/>&nbsp;&nbsp;") if "\n" in v or " & " in v else v
-        body = [[P(k, 8, colour="#3B3F44"),
-                 P("" if not k else f": {val(v)}", 8, bold=True)]
-                for k, v in rows]
+        def vcell(k, v):
+            if not k:
+                return P("", 8, bold=True)
+            t = val(v)
+            if "<br/>" not in t:
+                return P(f": {t}", 8, bold=True)
+            # several lines: a hanging indent, so every line starts right under the first (912 above 925)
+            from reportlab.pdfbase.pdfmetrics import stringWidth
+            ind = stringWidth(": ", "Helvetica-Bold", 8)
+            return Paragraph(": " + t.replace("<br/>&nbsp;&nbsp;", "<br/>"), ParagraphStyle(
+                "lpo-multi", parent=styles["Normal"], fontSize=8, leading=10.6, fontName="Helvetica-Bold",
+                textColor=colors.HexColor("#1F2429"), leftIndent=ind, firstLineIndent=-ind))
+        body = [[P(k, 8, colour="#3B3F44"), vcell(k, v)] for k, v in rows]
         t = Table(body, colWidths=[W * 0.495 * wide_label, W * 0.495 * (1 - wide_label)])
         t.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),

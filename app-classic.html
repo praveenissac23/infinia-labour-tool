@@ -15841,6 +15841,40 @@ async function ownDash(role) {
   box.querySelectorAll(".od-ring").forEach(el => el.onclick = () => odGo({ est: { pid: +el.dataset.p, group: "home", sec: "dash" } }));
   odCash(); odMore(); od3d();
 }
+// "Constellation" behind the dashboards (17 Nov 2026): faint points drifting slowly, joined by fine lines when two
+// pass close. One canvas behind the whole page, above the background and under everything else - it shows through the
+// glass cards and through the Estimation dashboards (their frame is see-through). Only on the admin's Dashboard and the
+// Estimation / project dashboards, in the "float3d" look; it stops itself on every other page, in a hidden tab, and
+// for anyone whose computer asks for less motion.
+(function constellation() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  let cv = null, cx = null, pts = [], W = 0, H = 0, run = false;
+  const want = () => document.documentElement.classList.contains("float3d") && !!(document.querySelector("#screen-dashboard.own-mode.active")
+      || document.querySelector("#screen-pgestdash.active") || (document.documentElement.classList.contains("est-glass") && document.querySelector("#screen-pgestproj.active")));
+  const size = () => { const d = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W * d; cv.height = H * d; cx.setTransform(d, 0, 0, d, 0, 0);
+    const n = Math.round(Math.min(70, Math.max(30, W * H / 26000)));          // about 40-60 on a laptop / desktop screen
+    while (pts.length < n) pts.push({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .22, vy: (Math.random() - .5) * .22 });
+    pts.length = n; };
+  const draw = () => {
+    if (!want() || document.hidden) { run = false; cv.style.opacity = 0; return; }
+    cv.style.opacity = 1;
+    cx.clearRect(0, 0, W, H);
+    for (const p of pts) { p.x += p.vx; p.y += p.vy; if (p.x < 0 || p.x > W) p.vx *= -1; if (p.y < 0 || p.y > H) p.vy *= -1; }
+    cx.lineWidth = .6;
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+      const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y, d = dx * dx + dy * dy;
+      if (d < 120 * 120) { cx.strokeStyle = `rgba(255,170,180,${((1 - Math.sqrt(d) / 120) * .22).toFixed(3)})`; cx.beginPath(); cx.moveTo(pts[i].x, pts[i].y); cx.lineTo(pts[j].x, pts[j].y); cx.stroke(); } }
+    cx.fillStyle = "rgba(255,220,225,.6)";
+    for (const p of pts) { cx.beginPath(); cx.arc(p.x, p.y, 1.2, 0, 7); cx.fill(); }
+    requestAnimationFrame(draw);
+  };
+  const wake = () => { if (run || !want() || document.hidden) return;
+    if (!cv) { cv = document.createElement("canvas"); cv.id = "od-stars"; cv.setAttribute("aria-hidden", "true");
+      cv.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;z-index:-1;pointer-events:none;opacity:0;transition:opacity .8s ease;";
+      document.body.appendChild(cv); cx = cv.getContext("2d"); size(); addEventListener("resize", size); }
+    run = true; requestAnimationFrame(draw); };
+  setInterval(wake, 1000); document.addEventListener("visibilitychange", wake);
+})();
 // "Floating 3D" with the wave: where the pointer is, the dashboard swells - every card rises by how near the pointer is
 // (--k), turns a little to face it, and the lines inside the card under it swell one by one (--lk).
 // Only with class "float3d" on <html>, on a wide screen, with a mouse.

@@ -27,6 +27,9 @@ ck("the dashboards' look is one switch on <html> (float3d now; crystal kept) - a
    and "html.float3d body:has(#screen-dashboard.own-mode.active)" in app_html and "html.crystal #own-dash" in app_html
    and 'classList.add("float3d")' in open(os.path.join(ROOT, "portal/est/est.js"), encoding="utf-8").read()
    and "html.float3d body.glass .wrap" in open(os.path.join(ROOT, "portal/est/est.css"), encoding="utf-8").read())
+src = open(os.path.join(ROOT, "app-classic.html"), encoding="utf-8").read()
+ck("constellation behind the float3d dashboards only, stops itself elsewhere", "(function constellation()" in src and 'cv.id = "od-stars"' in src
+   and "prefers-reduced-motion: reduce" in src and "if (!want() || document.hidden) { run = false;" in src)
 ck("the export opens", r.status_code == 200, r.status_code)
 ck("app.html built from it", 'id="od-bank-v"' in open(os.path.join(ROOT, "app.html"), encoding="utf-8").read())
 H = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "admin", "password": "changeme123"}).json()["access_token"]}
