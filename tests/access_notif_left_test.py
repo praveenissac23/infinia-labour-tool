@@ -4,7 +4,10 @@ switching roles shows that role's own notifications, and on a phone they come af
 import os, sys, socket, subprocess, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + "/../app")
 import database, models, auth, main  # noqa: F401  (main makes the tables)
-from playwright.sync_api import sync_playwright
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:          # GitHub's runner has no browser: this one runs on the machines that have one
+    print("SKIP - no browser here (playwright not installed)"); sys.exit(0)
 
 FAIL = []
 def ck(l, ok, x=''):

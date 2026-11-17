@@ -1691,14 +1691,15 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
      dashboard swells like a wave: every card rises by how near it is (--k, 0 to 1, set by od3d()), and inside a card the
      lines swell one by one. Switch: class "float3d" on <html>. ---- */
   html.float3d #own-dash .od-g { perspective: 1700px; perspective-origin: 50% 30%; }
-  html.float3d #own-dash .od-c { background: linear-gradient(150deg, rgba(255,255,255,.15), rgba(255,255,255,.03) 60%) !important; backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%); border: 1px solid rgba(255,255,255,.22) !important; border-bottom-color: rgba(255,255,255,.06) !important;
+  html.float3d #own-dash .od-c { background: linear-gradient(150deg, rgba(255,255,255,.15), rgba(255,255,255,.03) 60%) !important; backdrop-filter: blur(1.5px) saturate(120%); -webkit-backdrop-filter: blur(1.5px) saturate(120%); border: 1px solid rgba(255,255,255,.22) !important; border-bottom-color: rgba(255,255,255,.06) !important;
     box-shadow: 0 calc(30px + 40px * var(--k, 0)) calc(50px + 40px * var(--k, 0)) rgba(0,0,0,.6), 0 26px 60px -14px rgba(255,47,79, calc(.35 + .55 * var(--k, 0))), inset 0 1px 0 rgba(255,255,255,.4) !important;
     transform: translateZ(calc(var(--lz, 60px) * var(--k, 0))) scale(calc(1 + var(--sc, .05) * var(--k, 0))) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
     transition: transform .18s ease-out, box-shadow .18s ease-out, border-color .25s ease; will-change: transform; z-index: calc(var(--k, 0) * 100); }
   html.float3d #own-dash .od-c::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
     background: radial-gradient(380px circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255, calc(.25 * var(--k, 0))), transparent 60%); }
   html.float3d #own-dash .od-c.go:hover { transform: translateZ(calc(var(--lz, 60px) * var(--k, 0))) scale(calc(1 + var(--sc, .05) * var(--k, 0))) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); }
-  html.float3d #own-dash .od-hero { background: linear-gradient(145deg, rgba(214,48,72,.62), rgba(60,10,20,.32)) !important; }
+  html.float3d #own-dash .od-hero { background: linear-gradient(145deg, rgba(214,48,72,.5), rgba(60,10,20,.22)) !important; }
+  /* Slightly see-through (17/11/2026): a light 1.5px blur instead of 24px, so the moving constellation behind shows faintly through every card. */
   html.float3d #own-dash .od-n, html.float3d #own-dash .od-dl { transform: scale(calc(1 + .05 * var(--lk, 0))); transform-origin: var(--lx, 0%) 50%; transition: transform .14s ease-out, background-color .14s ease-out;
     background-color: rgba(255,80,95, calc(.16 * var(--lk, 0))); border-radius: 10px; }
   @media (max-width: 1100px), (prefers-reduced-motion: reduce) { html.float3d #own-dash .od-c, html.float3d #own-dash .od-n, html.float3d #own-dash .od-dl { transform: none !important; } }

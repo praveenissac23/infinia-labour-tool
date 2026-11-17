@@ -30,6 +30,10 @@ ck("the dashboards' look is one switch on <html> (float3d now; crystal kept) - a
 src = open(os.path.join(ROOT, "app-classic.html"), encoding="utf-8").read()
 ck("constellation behind the float3d dashboards only, stops itself elsewhere", "(function constellation()" in src and 'cv.id = "od-stars"' in src
    and "prefers-reduced-motion: reduce" in src and "if (!want() || document.hidden) { run = false;" in src)
+est_css = open(os.path.join(ROOT, "portal/est/est.css"), encoding="utf-8").read()
+glass = [l for l in (src + "\n" + est_css).splitlines() if "html.float3d" in l and "backdrop-filter: blur(" in l]
+ck("cards slightly see-through: a light blur so the constellation shows faintly through (17/11/2026)",
+   len(glass) == 3 and all("blur(1.5px)" in l for l in glass), [l[:90] for l in glass])
 ck("the export opens", r.status_code == 200, r.status_code)
 ck("app.html built from it", 'id="od-bank-v"' in open(os.path.join(ROOT, "app.html"), encoding="utf-8").read())
 H = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "admin", "password": "changeme123"}).json()["access_token"]}
