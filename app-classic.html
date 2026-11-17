@@ -15853,7 +15853,7 @@ async function ownDash(role) {
       || document.querySelector("#screen-pgestdash.active") || (document.documentElement.classList.contains("est-glass") && document.querySelector("#screen-pgestproj.active")));
   const size = () => { const d = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W * d; cv.height = H * d; cx.setTransform(d, 0, 0, d, 0, 0);
     const n = Math.round(Math.min(70, Math.max(30, W * H / 26000)));          // about 40-60 on a laptop / desktop screen
-    while (pts.length < n) pts.push({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .22, vy: (Math.random() - .5) * .22 });
+    while (pts.length < n) pts.push({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .55, vy: (Math.random() - .5) * .55 });   // speed: 0.22 at first, faster on request 17/11/2026
     pts.length = n; };
   const draw = () => {
     if (!want() || document.hidden) { run = false; cv.style.opacity = 0; return; }
