@@ -4545,17 +4545,19 @@ def create_backup(db: Session = Depends(get_db), user: models.User = Depends(aut
 
 @app.get("/backup/list")
 def list_backups(db: Session = Depends(get_db), user: models.User = Depends(auth.get_current_user)):
+    # The columns the list shows, never the copies themselves (17 Nov 2026: loading whole rows here read every
+    # snapshot - over a GB - into memory, the app was stopped at its 2.5 GB cap and the pages said "offline").
     rows = (
-        db.query(models.Backup, models.User.username)
+        db.query(models.Backup.id, models.Backup.created_at, models.Backup.trigger, models.User.username)
         .outerjoin(models.User, models.Backup.created_by == models.User.id)
         .order_by(models.Backup.created_at.desc())
         .limit(120)
         .all()
     )
     return [
-        {"id": b.id, "created_at": b.created_at.isoformat(), "trigger": b.trigger,
-         "created_by": username or ("automatic" if b.trigger == "auto" else "unknown")}
-        for b, username in rows
+        {"id": bid, "created_at": at.isoformat(), "trigger": trig,
+         "created_by": username or ("automatic" if trig == "auto" else "unknown")}
+        for bid, at, trig, username in rows
     ]
 
 
@@ -4686,11 +4688,11 @@ def delete_backup(backup_id: int, db: Session = Depends(get_db),
     a real risk, since a backup's date alone doesn't say whether the
     data inside it was correct.
     """
-    b = db.query(models.Backup).filter(models.Backup.id == backup_id).first()
-    if not b:
+    at = db.query(models.Backup.created_at).filter(models.Backup.id == backup_id).scalar()   # not the copy itself
+    if not db.query(models.Backup.id).filter(models.Backup.id == backup_id).first():
         raise HTTPException(status_code=404, detail="Backup not found")
-    when = b.created_at.isoformat() if b.created_at else str(backup_id)
-    db.delete(b)
+    when = at.isoformat() if at else str(backup_id)
+    db.query(models.Backup).filter(models.Backup.id == backup_id).delete(synchronize_session=False)
     db.commit()
     log_action(db, user.id, "delete_backup", f"#{backup_id} ({when})")
     return {"ok": True, "deleted": backup_id}

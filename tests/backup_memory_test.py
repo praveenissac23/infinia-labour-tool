@@ -54,5 +54,25 @@ ck('the daily check and the pruning never read the snapshots', seen and not any(
 ck('pruning kept the newest 2 routine backups and the manual one', db.query(models.Backup).filter(models.Backup.trigger.in_(main.ROUTINE_TRIGGERS)).count() == 2
    and db.query(models.Backup).filter(models.Backup.trigger == 'manual').count() == 1)
 db.close()
+# Settings > Backups: the list and a delete read only the small columns (17/11/2026: the list read every copy and
+# the app was stopped at its memory cap)
+db = database.SessionLocal()
+u = db.query(models.User).first()
+if u is None:
+    u = models.User(username='admin1', full_name='Admin', role='admin', hashed_password='x'); db.add(u); db.commit()
+seen.clear()
+lst = main.list_backups(db=db, user=u)
+ck('backup list never reads the snapshots', seen and not any('backups.data' in q for q in seen), [q[:160] for q in seen])
+ck('backup list still shows id, date, kind, by', lst and all(set(r) == {'id', 'created_at', 'trigger', 'created_by'} for r in lst), lst[:2])
+gone = lst[-1]['id']
+seen.clear()
+r = main.delete_backup(gone, db=db, user=u)
+ck('deleting a backup never reads the snapshot', not any('backups.data' in q for q in seen), [q[:160] for q in seen])
+ck('the backup is gone', r.get('deleted') == gone and db.query(models.Backup.id).filter(models.Backup.id == gone).first() is None)
+try:
+    main.delete_backup(999999, db=db, user=u); ck('missing backup -> 404', False)
+except main.HTTPException as e:
+    ck('missing backup -> 404', e.status_code == 404)
+db.close()
 print('\n' + ('ALL PASS' if not FAIL else f'{len(FAIL)} FAILED'))
 sys.exit(1 if FAIL else 0)
