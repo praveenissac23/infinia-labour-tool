@@ -111,8 +111,13 @@ const isStatic = p => /^\/portal\//.test(p) || /\.(js|css|png|jpe?g|webp|svg|gif
 // Is the server really down? One slow page or list is not an outage (16 Nov 2026: a slow dashboard figure made the
 // whole app say "working offline"). Asked straight: /health, 6 seconds. Only when that fails is it offline.
 let WHY = "";
+// Asked three times over about 10 seconds (17 Nov 2026): a deploy restarts the app for 2-4 seconds, which is not an
+// outage and must not flash "working offline". Only when /health fails every time is the server really down.
 async function reallyDown(why) {
-  try { const r = await withTimeout(fetch("/health?sw=" + Date.now(), { cache: "no-store" }), 6000); if (r.ok) { setOffline(false); return false; } } catch (e) {}
+  for (let i = 0; i < 3; i++) {
+    if (i) await new Promise(r => setTimeout(r, 3500));
+    try { const r = await withTimeout(fetch("/health?sw=" + Date.now(), { cache: "no-store" }), 6000); if (r.ok) { setOffline(false); return false; } } catch (e) {}
+  }
   WHY = (why || "") + " " + new Date().toTimeString().slice(0, 8);
   setOffline(true); return true;
 }
@@ -195,7 +200,11 @@ self.addEventListener("fetch", e => {
         if (r.ok && (r.headers.get("Content-Type") || "").includes("json")) { const c = await caches.open(DATA); c.put(req, r.clone()); }
         return r;
       } catch (er) {
-        if (!(await reallyDown(path + " " + (er && er.message))) && er && er.message === "timeout") {       // the server is up, this one is just slow: wait for it
+        const up = !(await reallyDown(path + " " + (er && er.message)));
+        if (up && er && er.message !== "timeout") {         // it was a restart (502 / dropped): the server is back - ask again
+          try { const r = await withTimeout(fetch(req), 15000); if (r.status < 502 || r.status > 504) { if (r.ok && (r.headers.get("Content-Type") || "").includes("json")) { const c = await caches.open(DATA); c.put(req, r.clone()); } return r; } } catch (e3) {}
+        }
+        if (up && er && er.message === "timeout") {       // the server is up, this one is just slow: wait for it
           try { const r = await going; if (r.ok && (r.headers.get("Content-Type") || "").includes("json")) { const c = await caches.open(DATA); c.put(req, r.clone()); } return r; } catch (e2) {}
         }
         const hit = await (await caches.open(DATA)).match(req);
