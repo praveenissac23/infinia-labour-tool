@@ -82,6 +82,13 @@
   #pane-roles { padding: 14px; }
   .acc { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 14px; align-items: start; }
   .acc-roles { border-right: 1px solid #EEE9E3; padding-right: 12px; }
+  .nf { margin-top: 16px; padding-top: 12px; border-top: 1px solid #EEE9E3; }
+  .nf-h { font-weight: 700; font-size: 12.5px; padding: 0 4px 6px; display: flex; justify-content: space-between; gap: 6px; }
+  .nf-h .cnt { color: #888; font-weight: 400; white-space: nowrap; }
+  .nf-r { display: flex; gap: 7px; align-items: flex-start; padding: 4px; font-size: 12.5px; cursor: pointer; border-radius: 6px; }
+  .nf-r:hover { background: #F7F4F0; }
+  .nf-r input { margin-top: 2px; }
+  .nf-k { color: #888; font-size: 11.5px; margin: 6px 4px 0; }
   .acc-h { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px 8px; font-size: 13.5px; }
   .acc-h a { color: var(--red); font-weight: 700; font-size: 12.5px; text-decoration: none; }
   .rl { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 7px; font-weight: 600; font-size: 13px; cursor: pointer; border: 1px solid transparent; }
@@ -112,7 +119,7 @@
   .tree input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--red); margin: 0; flex: none; cursor: pointer; }
   .tree input[type=checkbox]:disabled { cursor: not-allowed; }
   @media (max-width: 1100px) { .tree { column-count: 1; } }
-  @media (max-width: 760px) { .acc { grid-template-columns: 1fr; } .acc-roles { border-right: 0; padding-right: 0; } }
+  @media (max-width: 760px) { .acc { display: flex; flex-direction: column; } .acc-roles { display: contents; } .acc-edit { order: 2; } #role-notif { order: 3; } }
   .matrix thead th { position: sticky; top: 0; z-index: 2; }
   .lbl { width: 70px; }
   .matrix { width: auto; min-width: 0; }
@@ -205,6 +212,7 @@ function signInBox() { if (window.PG_EMBED) { try { parent.postMessage("pg-signi
             <div class="acc-h"><b>Roles</b><a href="#" onclick="newRole(); return false;">+ New role</a></div>
             <div id="role-list"></div>
             <p class="muted" style="margin:12px 4px 0;">Admin logins always have everything.</p>
+            <div id="role-notif"></div>
           </div>
           <div class="acc-edit" id="role-edit"></div>
         </div>
@@ -362,6 +370,11 @@ function renderRoles() {
       <span>${esc(r.name)}</span><small>${r.members.length ? r.members.length + (r.members.length === 1 ? " login" : " logins") : "no logins"}</small></div>`).join("")
     + (DRAFT && !DRAFT.id ? `<div class="rl on"><span>${esc(DRAFT.name || "New role")}</span><small>not saved</small></div>` : "")
     || `<p class="muted" style="margin:4px;">No roles yet.</p>`;
+  const nf = document.getElementById("role-notif");
+  // Notifications sit under the role list, in the space left free there, so the page ticks get the full width
+  nf.innerHTML = DRAFT ? `<div class="nf"><div class="nf-h">&#128276; Notifications this role gets<span class="cnt">${DRAFT.notif.size} of ${NOTIF.length}</span></div>
+      ${NOTIF.map(g => `<label class="nf-r"><input type="checkbox" ${DRAFT.notif.has(g.id) ? "checked" : ""} onchange="DRAFT.notif[this.checked ? 'add' : 'delete']('${g.id}'); dirty(); renderRoles()"> ${esc(g.label)}</label>`).join("")}
+      <p class="nf-k">Each person can switch any of these off for themselves under Settings. A group only shows when the role also has the matching tab.</p></div>` : "";
   const ed = document.getElementById("role-edit");
   if (!DRAFT) { ed.innerHTML = `<p class="muted" style="margin:6px 0;">${ROLES.length ? "Pick a role on the left to see and change what it may open." : "Make a role - Store keeper, say - and tick what it may open."}</p>`; return; }
   const others = ROLES.filter(r => r.id !== DRAFT.id);
@@ -376,9 +389,6 @@ function renderRoles() {
         <button class="btn btn-primary" onclick="saveRole()">Save</button>
       </div></div>
     <p class="ed-hint" id="ed-hint"></p>
-    <div class="pgb open" style="margin-bottom:12px;"><div class="pgh" style="cursor:default;"><span class="car"></span>&#128276; Notifications this role may receive<span class="cnt">${DRAFT.notif.size} of ${NOTIF.length}</span></div>
-      ${NOTIF.map(g => `<div class="tr l1"><label><input type="checkbox" ${DRAFT.notif.has(g.id) ? "checked" : ""} onchange="DRAFT.notif[this.checked ? 'add' : 'delete']('${g.id}'); dirty(); renderRoles()"> ${esc(g.label)}</label></div>`).join("")}
-      <div class="tr" style="color:#888; font-size:12px;">Each person can switch any of these off for themselves under Settings. A group only shows when the role also has the matching tab.</div></div>
     <p class="paykey"><span class="paytag" style="margin-left:0;">Salaries</span> marks the tabs where salary figures can be seen, with what is shown. A tab without it shows no pay.</p>
     <div class="tree" id="tree"></div>`;
   drawTree();
