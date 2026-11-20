@@ -737,6 +737,102 @@ def _pc_ref(p, s, pc):
     return f"IC/{p.code}-PC{(pc.seq or 0):02d}-{tag.title() if tag.islower() else tag}/{yy}"
 
 
+def _pc(v):
+    return f"{round(v, 2):g}%"
+
+
+def terms_with_values(text, adv_pct, adv_amt, ret_pct, ret_amt):
+    """The payment terms as written in the agreement, with the money beside the advance and retention percentages:
+    "10% Advance" -> "10% (AED 56,000.00) Advance" (20 Nov 2026, Praveen). Other percentages stay as written."""
+    out = []
+    for ln in (text or "").splitlines():
+        def put(m):
+            v = float(m.group(1))
+            near = ln[max(0, m.start() - 45): m.end() + 45].lower()
+            if adv_pct and abs(v - adv_pct) < 1e-6 and adv_amt and "advance" in near and "recover" not in near[:45]:
+                return f"{m.group(0)} (AED {_m(adv_amt, False)})"
+            if ret_pct and abs(v - ret_pct) < 1e-6 and ret_amt and "retention" in near:
+                return f"{m.group(0)} (AED {_m(ret_amt, False)} held to date)"
+            return m.group(0)
+        ln = re.sub(r"(\d+(?:\.\d+)?)\s?%(?!\s*\(AED)", put, ln, count=0)
+        if ln.strip():
+            out.append(ln.strip())
+    return out
+
+
+def cover_page(s, pc, p, pm, sh, work, var, total_exec, adv_paid, adv_prev, rest, prev_net, cats, deds, typed_other, mos, c, n_adv_prev):
+    """The certificate page as Praveen set it out (20 Nov 2026): the details in ruled tables, then one payment
+    summary - numbered lines, the basis of each, the amount - additions shaded green, deductions red. A line that is
+    nothing (deductions, variations, material on site, an advance on this certificate) is left off; the numbers
+    and the "1 - 2 - 3" references follow what is shown. Works to the same total as the A-E figures."""
+    rows = []                       # (kind add/less/sub/plain/total, label, basis, amount)
+    cv = r2(s.value or 0)
+    basis1 = (f"{_pc(100 * work / cv)} of contract value" if cv else "Measured to date") + (f" · as on {_dt(pc.measured_on)}" if pc.measured_on else "")
+    rows.append(("add", "Value of work executed to date", basis1, work))
+    if var:
+        rows.append(("add", "Add: Approved variations executed to date", "Appendix A", var))
+    if mos:
+        rows.append(("add", "Add: Material on site", "", mos))
+    adv_now = r2(adv_paid - adv_prev)              # an advance certified on this certificate
+    if adv_now:
+        rows.append(("add", "Add: Advance payment", f"{_pc(s.adv_pct)} of contract value" if s.adv_pct else "", adv_now))
+    rec = r2(pc.adv_rec_cum or 0)
+    if rec:
+        lab = _rec_label(s, pc)
+        rows.append(("less", "Less: Advance payment recovery", (f"{lab} of work executed" if lab not in ("%", "0%") else "") or "Recovered to date", -rec))
+    ret, rel = r2(pc.ret_cum or 0), r2(pc.ret_rel_cum or 0)
+    if ret or rel:
+        rp = _pc(s.ret_pct or 0)
+        if rel:
+            relp = f"{_pc(100 * rel / total_exec)} " if total_exec else ""
+            basis = f"{rp} held ({_m(ret, False)}) - {relp}released ({_m(rel, False)})"
+        else:
+            basis = f"{rp} of work executed"
+        rows.append(("less", "Less: Retention, net" if rel else "Less: Retention", basis, -r2(ret - rel)))
+    dsum = r2(sum(cats.values()) if deds else typed_other)
+    if dsum:
+        used = [k for k in DED_CATS if cats.get(k)] if deds else []
+        rows.append(("less", "Less: Deductions", "Appendix C" + (f" · {', '.join(used)}" if used else (f" · {pc.other_note}" if pc.other_note else "")), -dsum))
+    n_add = len(rows)
+    netc = r2(sum(r[3] for r in rows))
+    parts = ["1"] + [("+ " if rows[i - 1][0] == "add" else "- ") + str(i) for i in range(2, n_add + 1)]      # 1 + 2 - 3 - 4
+    rows.append(("sub", "Net value certified to date", " ".join(parts), netc))
+    nv = len(rows)
+    prev_paid = r2(prev_net - adv_prev)
+    if rest:
+        lo, hi = rest[0].seq or 0, rest[-1].seq or 0
+        pb = (f"IPC-{lo:02d}" if lo == hi else f"IPC-{lo:02d} to IPC-{hi:02d}") + " (Appendix B)"
+    else:
+        pb = "None before this one"
+    rows.append(("less", "Less: Previously paid", pb, -prev_paid))
+    npp = len(rows)
+    rows.append(("sub", "Net amount due for this IPC", f"{nv} - {npp}", r2(netc - prev_paid)))
+    nd = len(rows)
+    rows.append(("plain", "VAT", f"{_pc(s.vat_pct or 0)} of line {nd}", r2(c["vat"])))
+    nva = len(rows)
+    rows.append(("total", "TOTAL AMOUNT DUE FOR PAYMENT", f"{nd} + {nva}", r2(c["payable"])))
+    # details - pairs side by side, empty pairs left off
+    agr = (s.agreement or s.lpo or "")
+    pairs = [(("Client", pm[0]), ("Plot No.", pm[1])), (("Scope of Work", s.scope or ""), ("Project Code", p.code or "")),
+             (("Agreement Ref.", agr), ("Agreement Date", _dt(s.agreement_date))),
+             (("Commencement Date", _dt(s.start_date)), ("Measurement Date", _dt(pc.measured_on))),
+             (("Invoice Ref.", pc.inv_ref or ""), ("Invoice Date", _dt(pc.inv_date))),
+             (("Invoice Received", _dt(pc.received)), ("IPC Issued Date", _dt(pc.issued or E.today())))]
+    grid = [x for x in pairs if x[0][1] or x[1][1]]
+    vo = r2(sh["sub"]["vo_total"])
+    ctype = s.contract_type or ("Re-measurable" if not cv else "")
+    contract = [(("Contract Value", f"AED {_m(cv, False)}" if cv else "Re-measurable"), ("Contract Type", ctype))]
+    if vo:
+        contract.append((("Approved Variations", f"AED {_m(vo, False)}"), ("Revised Contract Value", f"AED {_m(sh['sub']['revised'], False)}" if cv else "")))
+        contract.append((("Certified Amount", f"AED {_m(total_exec, False)}"), ("", "")))
+    else:
+        contract.append((("Approved Variations", "N/A"), ("Certified Amount", f"AED {_m(total_exec, False)}")))
+    adv_amt = r2((s.adv_pct or 0) * cv / 100) if cv else adv_paid
+    terms = terms_with_values(s.pay_terms or "", s.adv_pct or 0, adv_amt or adv_paid, s.ret_pct or 0, ret)
+    return {"project": p.name or "", "grid": grid, "contract": contract, "terms": terms, "remarks": pc.remarks or "Nil",
+            "rows": rows, "check": r2(rows[-1][3])}
+
+
 def build_doc(db, pc):
     """Everything the certificate prints, worked out once for both the preview and the PDF."""
     sh = sheet(db, pc)
@@ -799,7 +895,10 @@ def build_doc(db, pc):
         inv_lines = json.loads(pc.inv_lines or "[]") or []
     except ValueError:
         inv_lines = []
+    cover = cover_page(s, pc, p, _pm, sh, work, var, total_exec, adv_paid, adv_prev, rest, r2(c["prev_net"]), cats, deds, typed_other,
+                       r2(pc.mos_cum), c, sum(1 for x in prev if x.pc_type == "Advance"))
     return {
+        "cover": cover,
         "ref": _pc_ref(p, s, pc), "title": "PAYMENT CERTIFICATE", "kind": pc.pc_type or "Interim",
         "head_l": [("Project Name", p.name or ""), ("Client", _pm[0]), ("Plot No.", _pm[1]), ("Scope of work", s.scope or ""),
                    ("Agreement Ref.", (s.agreement or s.lpo or "") + (f"   Date: {_dt(s.agreement_date)}" if s.agreement_date else "")),
@@ -1077,71 +1176,66 @@ def _render_pdf(doc, fit=1.0):
     tw = (W - 2 * M) / F
     el = []
     title = doc["title"] + ("" if doc["kind"] == "Interim" else f" ({doc['kind'].upper()})")
-    el.append(Paragraph(f"<b>{X(title)}</b>", ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=13, alignment=1, spaceAfter=5)))
-    # head
-    hl, hr = doc["head_l"], doc["head_r"]
-    rows = []
-    for i in range(max(len(hl), len(hr))):
-        a = hl[i] if i < len(hl) else ("", "")
-        b = hr[i] if i < len(hr) else ("", "")
-        rows.append([P(a[0], stb), P(": " + a[1] if a[0] else ""), P(b[0], stb), P(": " + b[1] if b[0] else "")])
-    t = Table(rows, colWidths=[34 * mm, tw - 34 * mm - 32 * mm - 36 * mm, 32 * mm, 36 * mm])
-    t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5), ("TOPPADDING", (0, 0), (-1, -1), 1.5),
-                           ("BOX", (0, 0), (-1, -1), .5, LINE)]))
-    el += [t, Spacer(1, 2 * mm)]
-    t = Table([[P("Main Contractor Details", stb), P("Subcontractor Details", stb)],
+    el.append(Paragraph(f"<b>{X(title)}</b>", ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=13, alignment=1, spaceAfter=6)))
+    # the certificate page (20 Nov 2026): details in ruled tables, one payment summary - additions green, deductions red
+    cv_ = doc["cover"]
+    DARK = colors.HexColor("#2B2F33")
+    LAB = colors.HexColor("#F4F1EC")
+    GRID_C = colors.HexColor("#CFC8BF")
+    GREEN_BG, GREEN = colors.HexColor("#EAF5EC"), colors.HexColor("#1E7B34")
+    RED_BG, REDT = colors.HexColor("#FBEDEC"), colors.HexColor("#B03A2E")
+    lab = ParagraphStyle("lab", parent=stb, textColor=colors.HexColor("#3B3F44"))
+    hw = ParagraphStyle("hw", parent=stb, textColor=colors.white)
+    base_ts = [("GRID", (0, 0), (-1, -1), .5, GRID_C), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+               ("TOPPADDING", (0, 0), (-1, -1), 2.6), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.6), ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4)]
+    w4 = [tw * .19, tw * .39, tw * .19, tw * .23]
+    data = [[P("Project Name", lab), P(cv_["project"], stb), "", ""]]
+    ts = base_ts + [("SPAN", (1, 0), (-1, 0)), ("BACKGROUND", (0, 0), (0, -1), LAB)]
+    for a, b in cv_["grid"]:
+        data.append([P(a[0], lab), P(a[1]), P(b[0], lab), P(b[1])])
+    ts.append(("BACKGROUND", (2, 1), (2, -1), LAB))
+    t = Table(data, colWidths=w4)
+    t.setStyle(TableStyle(ts))
+    el += [t, Spacer(1, 2.4 * mm)]
+    t = Table([[P("Main Contractor", hw), P("Subcontractor", hw)],
                [P("\n".join(doc["main"])), P("\n".join(doc["subc"]))]], colWidths=[tw / 2, tw / 2])
-    t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), TINT), ("BOX", (0, 0), (-1, -1), .5, LINE), ("LINEBEFORE", (1, 0), (1, -1), .5, LINE),
-                           ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    el += [t, Spacer(1, 2 * mm)]
-    terms = ("Contract: " + doc["contract_type"] + "\n" if doc["contract_type"] else "") + (doc["pay_terms"] or "")
-    crow = [[P(k, stb), P(v)] for k, v in doc["contract"] if k and v]
-    ct = Table(crow, colWidths=[30 * mm, 52 * mm])
-    ct.setStyle(TableStyle([("BOTTOMPADDING", (0, 0), (-1, -1), 1.5), ("TOPPADDING", (0, 0), (-1, -1), 1.5)]))
-    t = Table([[ct, P("Payment Terms", stb), P(terms, sts)]], colWidths=[84 * mm, 22 * mm, tw - 106 * mm])
-    t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("BOX", (0, 0), (-1, -1), .5, LINE), ("LINEBEFORE", (1, 0), (1, -1), .5, LINE)]))
-    el += [t, Spacer(1, 2 * mm)]
-    # A - E
-    body, styles = [], [("FONTSIZE", (0, 0), (-1, -1), 7.6), ("BOX", (0, 0), (-1, -1), .5, LINE), ("ALIGN", (3, 0), (3, -1), "RIGHT"),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.6), ("TOPPADDING", (0, 0), (-1, -1), 1.6)]
-
-    def head(letter, txt):
-        styles.append(("BACKGROUND", (0, len(body)), (-1, len(body)), TINT))
-        styles.append(("FONTNAME", (0, len(body)), (-1, len(body)), "Helvetica-Bold"))
-        body.append([letter, txt, "", ""])
-
-    def line(txt, mid, amt, bold=False):
-        if bold:
-            styles.append(("FONTNAME", (0, len(body)), (-1, len(body)), "Helvetica-Bold"))
-        body.append(["", P(txt, stb if bold else st), mid, _m(amt)])
-    head("A", "ADD: VALUE OF WORK EXECUTED")
-    for a, b, v in doc["A"]:
-        line(a, b, v)
-    if doc["mos"]:
-        line("Material on Site", "", doc["mos"])
-    line("Total Value of Work Executed", "", doc["A_total"] + doc["mos"], True)
-    head("B", "ADD: ADVANCE PAYMENT")
-    for a, b, v in doc["B"]:
-        line(a, b, v)
-    head("C", "LESS: DEDUCTIONS")
-    for a, b, v in doc["C"]:
-        line(a, b, v)
-    line("Total Deductions", "", doc["C_total"], True)
-    head("D", "ADD: ADDITIONS")
-    for a, b, v in doc["D"]:
-        line(a, b, v)
-    head("E", "LESS: PREVIOUSLY CERTIFIED AMOUNT")
-    for a, v in doc["E"] or [("Previously certified", 0)]:
-        line(a, "", v)
-    line("Total Previously Certified Amounts", "", doc["E_total"], True)
-    n0 = len(body)
-    body.append(["", P("Net Amount Due for Payment (A + B - C + D - E)", stb), "", _m(doc["net"], False)])
-    body.append(["", P(f"VAT ({doc['vat_pct']:g}%)", stb), "", _m(doc["vat"], False)])
-    body.append(["", P("Total Amount Due for Payment", stb), "", "AED " + _m(doc["payable"], False)])
-    styles += [("FONTNAME", (0, n0), (-1, -1), "Helvetica-Bold"), ("LINEABOVE", (0, n0), (-1, n0), .8, colors.black),
-               ("BACKGROUND", (0, len(body) - 1), (-1, len(body) - 1), colors.HexColor("#FDF0EE"))]
-    t = Table(body, colWidths=[7 * mm, tw - 7 * mm - 30 * mm - 34 * mm, 30 * mm, 34 * mm])
-    t.setStyle(TableStyle(styles))
+    t.setStyle(TableStyle(base_ts + [("BACKGROUND", (0, 0), (-1, 0), DARK)]))
+    el += [t, Spacer(1, 2.4 * mm)]
+    w4c = [tw * .19, tw * .31, tw * .19, tw * .31]
+    data, ts = [], base_ts + [("BACKGROUND", (0, 0), (0, -1), LAB)]
+    for a, b in cv_["contract"]:
+        y = len(data)
+        data.append([P(a[0], lab), P(a[1], stb if a[0] in ("Contract Value", "Certified Amount") else st), P(b[0], lab), P(b[1], stb if b[0] in ("Certified Amount", "Revised Contract Value") else st)])
+        if b[0]:
+            ts.append(("BACKGROUND", (2, y), (2, y), LAB))
+    if cv_["terms"]:
+        tt = "<br/>".join(re.sub(r"\(AED ([^)]*)\)", r'<font color="#B03A2E"><b>(AED \1)</b></font>', X(x)) for x in cv_["terms"])
+        ts.append(("SPAN", (1, len(data)), (-1, len(data))))
+        data.append([P("Payment Terms", lab), Paragraph(tt, sts), "", ""])
+    ts.append(("SPAN", (1, len(data)), (-1, len(data))))
+    data.append([P("Remarks", lab), P(cv_["remarks"]), "", ""])
+    t = Table(data, colWidths=w4c)
+    t.setStyle(TableStyle(ts))
+    el += [t, Spacer(1, 3 * mm)]
+    el.append(Paragraph("PAYMENT SUMMARY", ParagraphStyle("ps", fontName="Helvetica-Bold", fontSize=8.6, leading=11, textColor=DARK, spaceAfter=2)))
+    srow = [[P("No.", ParagraphStyle("hc", parent=hw, alignment=1)), P("Description", hw), P("Basis", hw), P("Amount (AED)", ParagraphStyle("hr", parent=hw, alignment=TA_RIGHT))]]
+    ts = [("GRID", (0, 0), (-1, -1), .5, GRID_C), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("BACKGROUND", (0, 0), (-1, 0), DARK),
+          ("TOPPADDING", (0, 0), (-1, -1), 3.4), ("BOTTOMPADDING", (0, 0), (-1, -1), 3.4), ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5)]
+    bs = ParagraphStyle("bs", parent=sts, textColor=colors.HexColor("#5B5F64"))
+    for i, (kind, label, basis, amt) in enumerate(cv_["rows"], 1):
+        y = len(srow)
+        bold = kind in ("sub", "total")
+        col = {"add": GREEN, "less": REDT}.get(kind, colors.white if kind == "total" else colors.black)
+        lst = ParagraphStyle(f"l{i}", parent=stb if bold else st, fontSize=8.6 if kind == "total" else 7.8, textColor=colors.white if kind == "total" else colors.black)
+        ast = ParagraphStyle(f"a{i}", parent=lst, alignment=TA_RIGHT, textColor=col, fontName="Helvetica-Bold" if kind in ("add", "sub", "total") else "Helvetica")
+        srow.append([P(str(i), ParagraphStyle(f"n{i}", parent=lst, alignment=1)), P(label, lst),
+                     P(basis, ParagraphStyle(f"b{i}", parent=bs, textColor=colors.HexColor("#C9C2B8") if kind == "total" else bs.textColor)),
+                     P(f"({_m(-amt, False)})" if amt < 0 else _m(amt, False), ast)])
+        bg = {"add": GREEN_BG, "less": RED_BG, "sub": LAB, "total": DARK}.get(kind)
+        if bg:
+            ts.append(("BACKGROUND", (0, y), (-1, y), bg))
+    t = Table(srow, colWidths=[tw * .07, tw * .45, tw * .30, tw * .18])
+    t.setStyle(TableStyle(ts))
     el += [t, Spacer(1, 3 * mm)]
     stamp_st = ParagraphStyle("stp", fontName="Helvetica", fontSize=7, leading=8.6, textColor=colors.black)      # ink-saving: black
     stamp_md = stamp_st
@@ -1154,9 +1248,10 @@ def _render_pdf(doc, fit=1.0):
     n = len(doc["sign"])
     sig = [[P(a, stb) for a, *_ in doc["sign"]],
            [stamp(w, nm, r, wh, i == 4) for i, (_, w, nm, r, wh) in enumerate(doc["sign"])]]
-    t = Table(sig, colWidths=[tw / n] * n)
-    t.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), .5, LINE), ("INNERGRID", (0, 0), (-1, -1), .3, LINE), ("BACKGROUND", (0, 0), (-1, 0), TINT),
-                           ("BOTTOMPADDING", (0, 0), (-1, -1), 2), ("VALIGN", (0, 1), (-1, 1), "TOP")]))
+    sig[0] = [P(a, ParagraphStyle("sgh", parent=stb, textColor=colors.white, alignment=1)) for a, *_ in doc["sign"]]
+    t = Table(sig, colWidths=[tw / n] * n, rowHeights=[None, 17 * mm])
+    t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), .5, GRID_C), ("BACKGROUND", (0, 0), (-1, 0), DARK),
+                           ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("TOPPADDING", (0, 0), (-1, -1), 3), ("VALIGN", (0, 1), (-1, 1), "TOP")]))
     parts = [t]
     if doc.get("paid_line"):
         parts.append(Paragraph(X(doc["paid_line"]), ParagraphStyle("pl", fontName="Helvetica-Bold", fontSize=7.5, textColor=colors.black, spaceBefore=3)))
@@ -1315,26 +1410,22 @@ def render_html(doc, pdf_url, toggle_url=""):
               f'{"Hide columns" + (f" ({nh} hidden)" if nh else "")}</button>') if toggle_url else ""
     import export_web
     e = lambda v: X(str(v or ""))
-    rows = lambda pairs: "".join(f"<tr><th>{e(a)}</th><td>: {e(b)}</td></tr>" for a, b in pairs)
     ae = ""
 
-    def sec(letter, title, lines, total=None, total_label=""):
-        h = f"<tr class='sh'><td>{letter}</td><td colspan=3>{e(title)}</td></tr>"
-        for x in lines:
-            a, b, v = (x if len(x) == 3 else (x[0], "", x[1]))
-            h += f"<tr><td></td><td>{e(a)}</td><td class=c>{e(b)}</td><td class=r>{_m(v)}</td></tr>"
-        if total is not None:
-            h += f"<tr class=b><td></td><td>{e(total_label)}</td><td></td><td class=r>{_m(total)}</td></tr>"
-        return h
-    a_lines = list(doc["A"]) + ([("Material on Site", "", doc["mos"])] if doc["mos"] else [])
-    cert = (sec("A", "ADD: VALUE OF WORK EXECUTED", a_lines, doc["A_total"] + doc["mos"], "Total Value of Work Executed") +
-            sec("B", "ADD: ADVANCE PAYMENT", doc["B"]) + sec("C", "LESS: DEDUCTIONS", doc["C"], doc["C_total"], "Total Deductions") +
-            sec("D", "ADD: ADDITIONS", doc["D"]) + sec("E", "LESS: PREVIOUSLY CERTIFIED AMOUNT", doc["E"] or [("Previously certified", 0)], doc["E_total"], "Total Previously Certified Amounts") +
-            f"<tr class='b netrow'><td></td><td colspan=2>Net Amount Due for Payment (A + B - C + D - E)</td><td class=r>{_m(doc['net'], False)}</td></tr>"
-            f"<tr class=b><td></td><td colspan=2>VAT ({doc['vat_pct']:g}%)</td><td class=r>{_m(doc['vat'], False)}</td></tr>"
-            f"<tr class='b pay'><td></td><td colspan=2>Total Amount Due for Payment</td><td class=r>AED {_m(doc['payable'], False)}</td></tr>")
-    sig = "".join(f"<div><b>{e(a)}</b>" + (f"<span class='stp{' md' if i == 4 else ''}'>{('<b>&#10003; ' + e(w) + '</b><br>') if w else ''}<b>{e(nm.upper())}</b><br>{e(r)}{('<br>' + e(wh)) if wh else ''}</span>" if nm else
-                  ("<br><span class=m>Sign:</span>" if not w else "<br><span class=m>-</span>")) + "</div>" for i, (a, w, nm, r, wh) in enumerate(doc["sign"]))
+    cv_ = doc["cover"]
+    cg = "".join(f"<tr><th>{e(a[0])}</th><td>{e(a[1])}</td><th>{e(b[0])}</th><td>{e(b[1])}</td></tr>" for a, b in cv_["grid"])
+    cc = "".join(f"<tr><th>{e(a[0])}</th><td{' class=bv' if a[0] in ('Contract Value', 'Certified Amount') else ''}>{e(a[1])}</td>"
+                 f"<th>{e(b[0])}</th><td{' class=bv' if b[0] in ('Certified Amount', 'Revised Contract Value') else ''}>{e(b[1])}</td></tr>" for a, b in cv_["contract"])
+    tt = "<br>".join(re.sub(r"\(AED ([^)]*)\)", r"<b class=val>(AED \1)</b>", e(x)) for x in cv_["terms"])
+    if tt:
+        cc += f"<tr><th>Payment Terms</th><td colspan=3 class=terms>{tt}</td></tr>"
+    cc += f"<tr><th>Remarks</th><td colspan=3>{e(cv_['remarks'])}</td></tr>"
+    am = lambda v: f"({_m(-v, False)})" if v < 0 else _m(v, False)
+    cert = "".join(f"<tr class={k}><td class=c>{i}</td><td>{e(lb)}</td><td class=bs>{e(bs_)}</td><td class=r>{am(v)}</td></tr>"
+                   for i, (k, lb, bs_, v) in enumerate(cv_["rows"], 1))
+    sig = ("<tr>" + "".join(f"<th>{e(a)}</th>" for a, *_ in doc["sign"]) + "</tr><tr>" +
+           "".join("<td>" + (f"<span class='stp{' md' if i == 4 else ''}'>{('<b>&#10003; ' + e(w) + '</b><br>') if w else ''}<b>{e(nm.upper())}</b><br>{e(r)}{('<br>' + e(wh)) if wh else ''}</span>" if nm else
+                   ("<span class=m>Sign:</span>" if not w else "<span class=m>-</span>")) + "</td>" for i, (a, w, nm, r, wh) in enumerate(doc["sign"])) + "</tr>")
     if doc.get("paid_line"):
         sig_after = f"<p class=paidl>{e(doc['paid_line'])}</p>"
     else:
@@ -1399,7 +1490,6 @@ def render_html(doc, pdf_url, toggle_url=""):
         appd = (f"<h2 style='display:flex;justify-content:space-between;align-items:baseline;gap:12px'>Subcontractor's Invoice<span style='font-size:11px;font-weight:400'>Verified at site: {('<b>' + e(vb) + '</b> on ' + _dt(vo)) if vb else 'not yet'}</span></h2><table class=kvt><tr><th>Invoice no.</th><td>{e(inv['ref'])}</td><th>Invoice date</th><td>{e(inv['date'])}</td><th>Received</th><td>{e(inv['received'])}</td><th>Amount</th><td class=r>{_m(inv['amount'])}</td></tr>{il}</table>"
                 "")
     logo = export_web.logo_data_uri()
-    terms = (("Contract: " + doc["contract_type"] + "<br>") if doc["contract_type"] else "") + e(doc["pay_terms"]).replace("\n", "<br>")
     title = doc["title"] + ("" if doc["kind"] == "Interim" else f" ({doc['kind'].upper()})")
     fname = re.sub(r"[^A-Za-z0-9]+", "_", doc["ref"])
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1418,10 +1508,18 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
 .two{{display:grid;grid-template-columns:1fr 1fr;border:1px solid #C9CDD2;margin-bottom:8px}} .two>div{{padding:6px 8px}} .two>div+div{{border-left:1px solid #C9CDD2}} .two b{{display:block;background:#F7F2F1;margin:-6px -8px 4px;padding:4px 8px}}
 .ctr{{display:grid;grid-template-columns:300px 1fr;border:1px solid #C9CDD2;margin-bottom:8px}} .ctr>div{{padding:6px 8px}} .ctr>div+div{{border-left:1px solid #C9CDD2;font-size:11px}}
 .ctr th{{text-align:left;padding:2px 8px 2px 0;white-space:nowrap}} .ctr td{{padding:2px 0}}
-.ce{{border:1px solid #C9CDD2}} .ce td{{padding:3px 6px}} .ce .sh td{{background:#F7F2F1;font-weight:700}} .ce .b td{{font-weight:700}} .ce .netrow td{{border-top:1.5px solid #222}} .ce{{table-layout:fixed}} .ce .pay td{{background:#FDF0EE;font-size:13px}}
+.cg,.cp,.ce,.sig{{border-collapse:collapse;width:100%;table-layout:fixed;margin-bottom:8px}} .cg th,.cg td,.cp th,.cp td,.ce td,.sig th,.sig td{{border:1px solid #CFC8BF;padding:5px 7px;vertical-align:top;text-align:left;line-height:1.4}}
+.cg th{{background:#F4F1EC;color:#3B3F44;font-weight:700}} .cg td.bv{{font-weight:700}} .cg td.terms{{font-size:11px}} .val{{color:#B03A2E}}
+.cp th,.sig th,.ce tr.th td{{background:#2B2F33;color:#fff;font-weight:700;font-size:11px}} .sig th{{text-align:center}} .sig td{{height:58px;font-size:10.5px}}
+.cap{{font-weight:700;font-size:12px;letter-spacing:1.5px;margin:10px 0 4px;color:#2B2F33}}
+.ce td{{vertical-align:middle;padding:6px 8px}} .ce td.r{{text-align:right}} .ce td.c{{text-align:center}} .ce td.bs{{color:#5B5F64;font-size:11px}}
+.ce tr.add td{{background:#EAF5EC}} .ce tr.add td.r{{color:#1E7B34;font-weight:700}} .ce tr.less td{{background:#FBEDEC}} .ce tr.less td.r{{color:#B03A2E}}
+.ce tr.sub td{{background:#F4F1EC;font-weight:700}} .ce tr.sub td.bs{{font-weight:400}} .ce tr.total td{{background:#2B2F33;color:#fff;font-weight:700;font-size:13px}} .ce tr.total td.bs{{color:#C9C2B8;font-weight:400}}
+.leg{{font-size:10px;color:#777;text-align:right}} .leg i{{display:inline-block;width:10px;height:10px;border:1px solid #ccc;vertical-align:-1px;margin:0 3px 0 10px}} .leg .g{{background:#EAF5EC}} .leg .rd{{background:#FBEDEC}}
+@media print{{.ce tr td,.cp th,.sig th,.cg th{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
 .r{{text-align:right;white-space:nowrap}} .c{{text-align:center;white-space:nowrap}}
 .stp{{display:block;margin-top:4px;color:#22262A;font-size:10.5px;line-height:1.4}} .stp b{{font-weight:700}} .paidl{{font-weight:700;margin:6px 0 0}}
-.sig{{display:grid;grid-template-columns:repeat(6,1fr);border:1px solid #C9CDD2;margin-top:10px}} .sig div{{padding:6px;border-left:1px solid #C9CDD2;line-height:1.5}} .sig div:first-child{{border-left:0}}
+
 .m{{color:#6B7178;font-size:10.5px}} .tw{{overflow-x:auto}}
 .t tr.mv td{{background:#FFFBEB}} .t tr.mv td.chg{{background:#FDF1C7}} .t tr.mv td:first-child{{box-shadow:inset 3px 0 0 #E0B84C}} .mvkey{{font-size:10.5px;color:#6B5A1E;margin:-2px 0 6px}} .mvkey i{{display:inline-block;width:11px;height:11px;background:#FDF1C7;border:1px solid #E0B84C;vertical-align:-1px;margin-right:4px}}
 @media print{{.t tr.mv td{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
@@ -1429,10 +1527,11 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
 .t .sh td{{background:#F7F2F1;font-weight:700}} .t .b td,p.b{{font-weight:700}} .t td.d{{min-width:220px}} .t td.s{{font-size:10px;color:#555;min-width:90px}}
 @media print{{.bar{{display:none}} body{{background:#fff}} .pg{{box-shadow:none;margin:0;max-width:none;break-after:page}}}}
 @page{{size:A4 portrait;margin:10mm}} @page wide{{size:A4 landscape;margin:10mm}} @media print{{.pg.wide{{page:wide}}}}
-@media (max-width:700px){{.pg{{padding:12px;margin:8px}} .two,.ctr{{grid-template-columns:1fr}} .two>div+div,.ctr>div+div{{border-left:0;border-top:1px solid #C9CDD2}} .sig{{grid-template-columns:1fr 1fr}} .sig div:nth-child(odd){{border-left:0}} .sig div:nth-child(n+3){{border-top:1px solid #C9CDD2}}
+@media (max-width:700px){{.pg{{padding:12px;margin:8px}} .two,.ctr{{grid-template-columns:1fr}} .two>div+div,.ctr>div+div{{border-left:0;border-top:1px solid #C9CDD2}} .cg th,.cg td{{display:block;width:auto!important;border-top:0}} .cg colgroup{{display:none}} .cg tr{{display:block;border-top:1px solid #CFC8BF}} .cg td{{overflow-wrap:anywhere}}
+  .ce{{table-layout:auto}} .ce col{{width:auto!important}} .ce td.bs{{font-size:10px}} .sig th,.sig td{{font-size:9px;padding:4px 3px;overflow-wrap:anywhere}}
   .top img{{height:34px}} .ref{{font-size:11px;max-width:48%;overflow-wrap:anywhere}} h1{{font-size:15px}} .bar b{{font-size:14px;flex:1 1 100%;overflow-wrap:anywhere}}
   .hd>tbody>tr>td,.hd>tr>td{{display:block;width:auto!important}} .hd>tbody>tr>td+td,.hd>tr>td+td{{border-top:1px solid #E3E5E8}} .hd th{{width:40%;white-space:normal}} .hd td{{overflow-wrap:anywhere}}
-  .ctr th{{white-space:normal}} .kvt{{display:block;overflow-x:auto}} .ce{{table-layout:auto}} .ce col{{width:auto!important}}}}
+  .kvt{{display:block;overflow-x:auto}}}}
 body{{overflow-x:hidden}} .pg{{overflow-x:auto}}
 @media (min-width:701px){{.t th{{white-space:normal;vertical-align:bottom;line-height:1.25}} .t td.d{{min-width:160px}} .t td.s{{min-width:70px}} .pg.wide .tw{{overflow-x:visible}}}}
 .t .gone{{display:none}} body.cedit .t .gone{{display:table-cell;background:repeating-linear-gradient(135deg,#F7F7F7 0 6px,#F0F0F0 6px 12px)!important;color:#B0B4B8!important}}
@@ -1446,10 +1545,12 @@ body.cedit .t th.gone .tk{{background:#fff;border-color:#B0B4B8;color:transparen
 <script>async function shr(){{try{{const r=await fetch("{pdf_url}");const b=await r.blob();const f=new File([b],"{fname}.pdf",{{type:"application/pdf"}});if(navigator.canShare&&navigator.canShare({{files:[f]}}))await navigator.share({{files:[f],title:"{e(doc['ref'])}"}});else{{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=f.name;a.click();}}}}catch(e){{}}}}</script>
 <section class="pg"><div class="top"><img src="{logo}"><div class="ref">{e(doc['ref'])}<span>Payment Certificate No.: {doc['pc_seq']:02d}</span></div></div>
 <h1>{e(title)}</h1>
-<table class="hd"><tr><td style="width:62%;vertical-align:top;padding:0"><table>{rows(doc['head_l'])}</table></td><td style="vertical-align:top;padding:0"><table>{rows(doc['head_r'])}</table></td></tr></table>
-<div class="two"><div><b>Main Contractor Details</b>{'<br>'.join(e(x) for x in doc['main'])}</div><div><b>Subcontractor Details</b>{'<br>'.join(e(x) for x in doc['subc'])}</div></div>
-<div class="ctr"><div><table>{''.join(f'<tr><th>{e(k)}</th><td>{e(v)}</td></tr>' for k, v in doc['contract'] if k and v)}</table></div><div><b>Payment Terms</b><br>{terms}</div></div>
-<table class="ce"><colgroup><col style="width:30px"><col><col style="width:110px"><col style="width:140px"></colgroup>{cert}</table><div class="sig">{sig}</div>{sig_after}</section>
+<table class="cg"><colgroup><col style="width:19%"><col style="width:39%"><col style="width:19%"><col style="width:23%"></colgroup><tr><th>Project Name</th><td colspan=3><b>{e(cv_['project'])}</b></td></tr>{cg}</table>
+<table class="cp"><tr><th>Main Contractor</th><th>Subcontractor</th></tr><tr><td>{'<br>'.join(e(x) for x in doc['main'])}</td><td>{'<br>'.join(e(x) for x in doc['subc'])}</td></tr></table>
+<table class="cg"><colgroup><col style="width:19%"><col style="width:31%"><col style="width:19%"><col style="width:31%"></colgroup>{cc}</table>
+<div class="cap">PAYMENT SUMMARY</div>
+<table class="ce"><colgroup><col style="width:7%"><col style="width:45%"><col style="width:30%"><col style="width:18%"></colgroup><tr class=th><td class=c>No.</td><td>Description</td><td>Basis</td><td class=r>Amount (AED)</td></tr>{cert}</table>
+<table class="sig">{sig}</table>{sig_after}<div class=leg><i class=g></i>Addition <i class=rd></i>Deduction</div></section>
 {(ae + '<div style="height:14px"></div>' + appb + appc + appd + '</section>') if ae else ('<section class="pg">' + appb + appc + appd + '</section>')}</body></html>"""
 
 

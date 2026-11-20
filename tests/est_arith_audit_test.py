@@ -217,6 +217,13 @@ for p in db.query(E.EstProject).order_by(E.EstProject.code).all():
                 same(f"{nm} printed: A + B - C + D + MOS - E = net",
                      m2(D(str(d["A_total"])) + sum(D(str(x[2])) for x in d["B"]) - D(str(d["C_total"])) + sum(D(str(x[2])) for x in d["D"]) + D(str(d["mos"])) - D(str(d["E_total"]))), w["this"])
                 same(f"{nm} printed: C lines add up to C", sum((D(str(x[2])) for x in d["C"]), D(0)), d["C_total"])
+                # the certificate page (20/11/2026): its numbered lines come to the same net, VAT and total
+                cr = d["cover"]["rows"]
+                nd = next(i for i, r_ in enumerate(cr) if r_[1] == "Net amount due for this IPC")
+                nv = next(i for i, r_ in enumerate(cr) if r_[1] == "Net value certified to date")
+                same(f"{nm} certificate page: lines above 'net value' add up to it", sum((D(str(r_[3])) for r_ in cr[:nv]), D(0)), D(str(cr[nv][3])))
+                same(f"{nm} certificate page: net due", cr[nd][3], w["this"])
+                same(f"{nm} certificate page: total", cr[-1][3], w["payable"])
                 if lines:
                     same(f"{nm} printed: Appendix A = A", sum((D(str(bl["cum"])) for bl in d["bills"]), D(0)), d["A_total"])
                 same(f"{nm} printed: history = earlier certificates", d["hist_total"]["amount"], w["prev"])

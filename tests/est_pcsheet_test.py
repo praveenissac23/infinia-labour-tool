@@ -215,13 +215,14 @@ ck("someone else can't take off the QS's signature", r.status_code in (400, 403)
 # ============ print: certificate + appendices, preview and PDF ============
 tok = c.post("/auth/download-token", headers=QS).json()
 tok = tok.get("token") or tok.get("download_token")
-for name, pid, want in [("910", None, ["33,053.90", "34,706.60", "159,906.76", "28,742.73", "18,864.95", "IPC - 01 to IPC - 04"]),
+for name, pid, want in [("910", None, ["33,053.90", "34,706.60", "159,906.76", "28,742.73", "18,864.95", "IPC-01 to IPC-04"]),
                         ("913", None, ["34,202.00", "35,912.10", "6,623.00", "5,944.00", "1,584.00", "Not deducted"]),
                         ("915", pc12, ["9,738.75", "10,225.69", "10,588.75", "ARATHI.S", "SHAFEEQ", "PRAVEEN", "MANAGING", "Verified at site"])]:
     if pid is None:
         sid = {"910": s910, "913": s913}[name]
         pid = max(x.id for x in db.query(E.EstSubPC).filter_by(sub_id=sid).all())
     h = c.get(f"/export/est/pc/{pid}?token={tok}&format=preview")
+    open(f"/tmp/pc_{name}.html", "w").write(h.text)
     ck(f"{name}: preview opens with every figure", h.status_code == 200 and all(w in h.text for w in want), [w for w in want if w not in h.text])
     p_ = c.get(f"/export/est/pc/{pid}?token={tok}&format=pdf")
     ok = p_.status_code == 200 and p_.content[:4] == b"%PDF"
