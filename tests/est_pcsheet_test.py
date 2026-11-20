@@ -222,7 +222,6 @@ for name, pid, want in [("910", None, ["33,053.90", "34,706.60", "159,906.76", "
         sid = {"910": s910, "913": s913}[name]
         pid = max(x.id for x in db.query(E.EstSubPC).filter_by(sub_id=sid).all())
     h = c.get(f"/export/est/pc/{pid}?token={tok}&format=preview")
-    open(f"/tmp/pc_{name}.html", "w").write(h.text)
     ck(f"{name}: preview opens with every figure", h.status_code == 200 and all(w in h.text for w in want), [w for w in want if w not in h.text])
     p_ = c.get(f"/export/est/pc/{pid}?token={tok}&format=pdf")
     ok = p_.status_code == 200 and p_.content[:4] == b"%PDF"

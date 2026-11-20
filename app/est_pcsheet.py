@@ -743,24 +743,39 @@ def _pc(v):
 
 def terms_with_values(text, adv_pct, adv_amt, ret_pct, ret_amt):
     """The payment terms as written in the agreement, with the money beside the advance and retention percentages:
-    "10% Advance" -> "10% (AED 56,000.00) Advance" (20 Nov 2026, Praveen). Other percentages stay as written."""
+    "10% Advance" -> "10% (AED 56,000.00) Advance" (20 Nov 2026, Praveen). Only the clause the % sits in counts
+    (between , ; and full stops), and the nearer of "advance" / "retention" in it decides; "advance recovery 10%" and
+    any other % (VAT, progress) stay as written."""
     out = []
     for ln in (text or "").splitlines():
+        cuts = [0] + [m.end() for m in re.finditer(r"[,;]|\.(?=\s|$)", ln)] + [len(ln) + 1]
+
         def put(m):
+            a = max(c_ for c_ in cuts if c_ <= m.start())
+            b = min(c_ for c_ in cuts if c_ >= m.end())
+            cl = ln[a:b].lower()
+            at = m.start() - a
             v = float(m.group(1))
-            near = ln[max(0, m.start() - 45): m.end() + 45].lower()
-            if adv_pct and abs(v - adv_pct) < 1e-6 and adv_amt and "advance" in near and "recover" not in near[:45]:
+            best = None
+            for word in ("advance", "retention"):
+                for w in re.finditer(word, cl):
+                    d = abs(w.start() - at)
+                    if best is None or d < best[0]:
+                        best = (d, word)
+            if not best:
+                return m.group(0)
+            if best[1] == "advance" and adv_pct and abs(v - adv_pct) < 1e-6 and adv_amt and "recover" not in cl:
                 return f"{m.group(0)} (AED {_m(adv_amt, False)})"
-            if ret_pct and abs(v - ret_pct) < 1e-6 and ret_amt and "retention" in near:
+            if best[1] == "retention" and ret_pct and abs(v - ret_pct) < 1e-6 and ret_amt and "release" not in cl:
                 return f"{m.group(0)} (AED {_m(ret_amt, False)} held to date)"
             return m.group(0)
-        ln = re.sub(r"(\d+(?:\.\d+)?)\s?%(?!\s*\(AED)", put, ln, count=0)
+        ln = re.sub(r"(\d+(?:\.\d+)?)\s?%(?!\s*\(AED)", put, ln)
         if ln.strip():
             out.append(ln.strip())
     return out
 
 
-def cover_page(s, pc, p, pm, sh, work, var, total_exec, adv_paid, adv_prev, rest, prev_net, cats, deds, typed_other, mos, c, n_adv_prev):
+def cover_page(s, pc, p, pm, sh, work, var, total_exec, adv_paid, adv_before, rest, prev_net, cats, deds, typed_other, mos, c, n_adv_prev):
     """The certificate page as Praveen set it out (20 Nov 2026): the details in ruled tables, then one payment
     summary - numbered lines, the basis of each, the amount - additions shaded green, deductions red. A line that is
     nothing (deductions, variations, material on site, an advance on this certificate) is left off; the numbers
@@ -773,7 +788,7 @@ def cover_page(s, pc, p, pm, sh, work, var, total_exec, adv_paid, adv_prev, rest
         rows.append(("add", "Add: Approved variations executed to date", "Appendix A", var))
     if mos:
         rows.append(("add", "Add: Material on site", "", mos))
-    adv_now = r2(adv_paid - adv_prev)              # an advance certified on this certificate
+    adv_now = r2(adv_paid - adv_before)            # the advance certified on this certificate (its own advance amount)
     if adv_now:
         rows.append(("add", "Add: Advance payment", f"{_pc(s.adv_pct)} of contract value" if s.adv_pct else "", adv_now))
     rec = r2(pc.adv_rec_cum or 0)
@@ -789,7 +804,7 @@ def cover_page(s, pc, p, pm, sh, work, var, total_exec, adv_paid, adv_prev, rest
         else:
             basis = f"{rp} of work executed"
         rows.append(("less", "Less: Retention, net" if rel else "Less: Retention", basis, -r2(ret - rel)))
-    dsum = r2(sum(cats.values()) if deds else typed_other)
+    dsum = r2(pc.other_cum or 0)       # what the calculation itself takes off (not re-added from the lines: a paid PC keeps its own figure)
     if dsum:
         used = [k for k in DED_CATS if cats.get(k)] if deds else []
         rows.append(("less", "Less: Deductions", "Appendix C" + (f" · {', '.join(used)}" if used else (f" · {pc.other_note}" if pc.other_note else "")), -dsum))
@@ -798,13 +813,13 @@ def cover_page(s, pc, p, pm, sh, work, var, total_exec, adv_paid, adv_prev, rest
     parts = ["1"] + [("+ " if rows[i - 1][0] == "add" else "- ") + str(i) for i in range(2, n_add + 1)]      # 1 + 2 - 3 - 4
     rows.append(("sub", "Net value certified to date", " ".join(parts), netc))
     nv = len(rows)
-    prev_paid = r2(prev_net - adv_prev)
+    prev_paid = r2(prev_net - adv_before)          # the earlier certificates without the advance (the advance is in line 1's group above)
     if rest:
         lo, hi = rest[0].seq or 0, rest[-1].seq or 0
-        pb = (f"IPC-{lo:02d}" if lo == hi else f"IPC-{lo:02d} to IPC-{hi:02d}") + " (Appendix B)"
+        pb = (f"IPC-{lo:02d}" if lo == hi else f"IPC-{lo:02d} to IPC-{hi:02d}") + (" excl. advance" if adv_before else "") + " (Appendix B)"
     else:
-        pb = "None before this one"
-    rows.append(("less", "Less: Previously paid", pb, -prev_paid))
+        pb = "None before this one" if not prev_net else "Appendix B"
+    rows.append(("less", "Less: Previously certified", pb, -prev_paid))
     npp = len(rows)
     rows.append(("sub", "Net amount due for this IPC", f"{nv} - {npp}", r2(netc - prev_paid)))
     nd = len(rows)
@@ -830,7 +845,7 @@ def cover_page(s, pc, p, pm, sh, work, var, total_exec, adv_paid, adv_prev, rest
     adv_amt = r2((s.adv_pct or 0) * cv / 100) if cv else adv_paid
     terms = terms_with_values(s.pay_terms or "", s.adv_pct or 0, adv_amt or adv_paid, s.ret_pct or 0, ret)
     return {"project": p.name or "", "grid": grid, "contract": contract, "terms": terms, "remarks": pc.remarks or "Nil",
-            "rows": rows, "check": r2(rows[-1][3])}
+            "rows": rows, "prev_certified": prev_paid, "adv_before": r2(adv_before), "prev_line": npp}
 
 
 def build_doc(db, pc):
@@ -895,7 +910,7 @@ def build_doc(db, pc):
         inv_lines = json.loads(pc.inv_lines or "[]") or []
     except ValueError:
         inv_lines = []
-    cover = cover_page(s, pc, p, _pm, sh, work, var, total_exec, adv_paid, adv_prev, rest, r2(c["prev_net"]), cats, deds, typed_other,
+    cover = cover_page(s, pc, p, _pm, sh, work, var, total_exec, adv_paid, r2(adv_paid - (pc.adv_amount or 0)), rest, r2(c["prev_net"]), cats, deds, typed_other,
                        r2(pc.mos_cum), c, sum(1 for x in prev if x.pc_type == "Advance"))
     return {
         "cover": cover,
@@ -1338,10 +1353,15 @@ def _render_pdf(doc, fit=1.0):
     for i, h in enumerate(doc["hist"], 1):
         hb.append([str(i), h["name"], h["period"], h["cert"], _m(h["amount"]), _m(h["paid"]), _m(h["vat"]), _m(h["ret"])])
     ht = doc["hist_total"]
-    hb.append(["", "Total carried to the Certificate page", "", "", _m(ht["amount"]), _m(ht["paid"]), _m(ht["vat"]), _m(ht["ret"])])
+    cvb = doc["cover"]
+    tot_row = len(hb)
+    hb.append(["", "Total certified before this certificate", "", "", _m(ht["amount"]), _m(ht["paid"]), _m(ht["vat"]), _m(ht["ret"])])
+    if cvb["adv_before"] and ht["amount"]:            # the advance is counted in its own lines on the certificate page
+        hb.append(["", "Less: advance (in the advance lines of the certificate page)", "", "", _m(-cvb["adv_before"]), "", "", ""])
+        hb.append(["", f"Carried to the certificate page, line {cvb['prev_line']}", "", "", _m(cvb["prev_certified"]), "", "", ""])
     bst = [("FONTSIZE", (0, 0), (-1, -1), 7.4), ("BACKGROUND", (0, 0), (-1, 0), HEAD), ("TEXTCOLOR", (0, 0), (-1, 0), INK2), ("LINEBELOW", (0, 0), (-1, 0), 1, RED),
            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("GRID", (0, 0), (-1, -1), .3, LINE), ("ALIGN", (4, 0), (-1, -1), "RIGHT"),
-           ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold")]
+           ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"), ("FONTNAME", (0, tot_row), (-1, tot_row), "Helvetica-Bold")]
     hb, bst, bw = _drop_cols(hb, bst, [8 * mm, tw - 8 * mm - 6 * 22 * mm] + [22 * mm] * 6, HIDE.get("B", []))
     t = Table(hb, colWidths=bw, repeatRows=1)
     t.setStyle(TableStyle(bst))
@@ -1467,7 +1487,10 @@ def render_html(doc, pdf_url, toggle_url=""):
     hb = "".join(f"<tr><td>{i}</td><td>{e(h['name'])}</td><td>{e(h['period'])}</td><td>{e(h['cert'])}</td><td class=r>{_m(h['amount'])}</td><td class=r>{_m(h['paid'])}</td><td class=r>{_m(h['vat'])}</td><td class=r>{_m(h['ret'])}</td></tr>" for i, h in enumerate(doc["hist"], 1))
     ht = doc["hist_total"]
     appb = (f"<h2>Appendix - B &nbsp; Previous Payments</h2><table class=t data-k=B><tr><th>Sr</th><th>Payment Certificate No.</th><th>Period ending</th><th>Certified on</th><th>Certified</th><th>Paid</th><th>VAT</th><th>Retention</th></tr>{hb}"
-            f"<tr class=b><td></td><td>Total carried to the Certificate page</td><td></td><td></td><td class=r>{_m(ht['amount'])}</td><td class=r>{_m(ht['paid'])}</td><td class=r>{_m(ht['vat'])}</td><td class=r>{_m(ht['ret'])}</td></tr></table>")
+            f"<tr class=b><td></td><td>Total certified before this certificate</td><td></td><td></td><td class=r>{_m(ht['amount'])}</td><td class=r>{_m(ht['paid'])}</td><td class=r>{_m(ht['vat'])}</td><td class=r>{_m(ht['ret'])}</td></tr>"
+            + ((f"<tr><td></td><td>Less: advance (in the advance lines of the certificate page)</td><td></td><td></td><td class=r>{_m(-doc['cover']['adv_before'])}</td><td></td><td></td><td></td></tr>"
+                f"<tr class=b><td></td><td>Carried to the certificate page, line {doc['cover']['prev_line']}</td><td></td><td></td><td class=r>{_m(doc['cover']['prev_certified'])}</td><td></td><td></td><td></td></tr>")
+               if doc["cover"]["adv_before"] and ht["amount"] else "") + "</table>")
     appc = ""
     if doc["deds"]:
         appc = "<h2>Appendix - C &nbsp; Deductions</h2>"
