@@ -182,6 +182,32 @@ BANK_PLACES = [("vendorpayments", "vendorpayments", "payment_id", "description_c
                ("banktransactions", "banktransactions", "transaction_id", "search_text")]
 
 
+def _ask_zoho(db, x):
+    """Is this line's Zoho entry still there? Asked now. "there" | "relinked" | "cancelled"."""
+    import zohoapi
+    if not zohoapi.connected(db):
+        return "there"
+    try:
+        return zohoapi.recheck_line(db, x)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Could not ask Zoho just now ({str(e)[:80]}) - try again in a minute.")
+
+
+def _same_line(db, f, not_id=None):
+    """The same ADCB reference for the same amount and party already entered (not deleted in Zoho)."""
+    ref = (f.get("reference") or "").strip()
+    if not ref:
+        return None
+    q = db.query(models.BankEntry).filter(models.BankEntry.reference == ref, models.BankEntry.kind == f["kind"],
+                                          models.BankEntry.zoho_status != "cancelled")
+    if not_id:
+        q = q.filter(models.BankEntry.id != not_id)
+    for o in q.all():
+        if abs((o.amount or 0) - (f.get("amount") or 0)) < 0.005 and (o.party or "").strip().lower() == (f.get("party") or "").strip().lower():
+            return o
+    return None
+
+
 def _send(db, rows, user):
     """Send each line once (see zohoapi.claim); refusals wait with Zoho's reason."""
     import zohoapi
@@ -202,6 +228,10 @@ def _send(db, rows, user):
         try:
             zid = zohoapi.find_existing(db, f"[BK-{x.id}]", BANK_PLACES) if unsure else ""
             label = "Found in Zoho"
+            if not zid:                 # typed in Zoho by hand already (same ADCB ref, amount, party): follow it, do not add a second
+                zid, hand = zohoapi.hand_made_twin(db, x)
+                if zid:
+                    label = f"{hand} (typed in Zoho)"
             if not zid:
                 with zohoapi.about("bank", x.id, f"BK-{x.id}", user.id):
                     zid, label = push(db, x)
@@ -271,7 +301,12 @@ def scopes(db: Session = Depends(get_db), user: models.User = BK):
 
 @router.post("/store/bank")
 def add(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = BK):
-    x = models.BankEntry(**_clean(payload), bank="ADCB", created_by=user.id, updated_by=user.id)
+    f = _clean(payload)
+    twin = _same_line(db, f)
+    if twin:
+        raise HTTPException(status_code=400, detail=f"Already entered: {twin.on_date:%d/%m/%Y} {twin.party} {twin.amount:,.2f} ref. {twin.reference} - "
+                                                    "open that line instead of entering it again.")
+    x = models.BankEntry(**f, bank="ADCB", created_by=user.id, updated_by=user.id)
     db.add(x); db.flush()
     try:
         link_receipt(db, x)
@@ -299,6 +334,8 @@ def edit(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), use
         # In Zoho: only where it sits on Project payments may change here.
         free = {"scope_id", "net_amount"}
         moved = [k for k, v in new.items() if k not in free and getattr(x, k) != v]
+        if moved and x.zoho_status == "sent" and _ask_zoho(db, x) == "cancelled":
+            moved = []                 # deleted in Zoho: it may be changed and sent again
         if moved:
             raise HTTPException(status_code=400, detail="It is in Zoho already - change it in Zoho, or delete it there (it then shows cancelled here) and enter it again.")
     for k, v in new.items():
@@ -325,7 +362,10 @@ def delete(bid: int, db: Session = Depends(get_db), user: models.User = BK):
         raise HTTPException(status_code=404, detail="That line is no longer there.")
     import zohoapi
     if x.zoho_status == "sent":
-        raise HTTPException(status_code=400, detail="It is in Zoho - delete it in Zoho; it is then cancelled here.")
+        st = _ask_zoho(db, x)          # deleted in Zoho a moment ago: known now, not in half an hour
+        if st != "cancelled":
+            raise HTTPException(status_code=400, detail=("It is in Zoho as " + (x.zoho_ref or "an entry") + " - delete it in Zoho first; it is then cancelled here.")
+                                if st == "there" else f"Zoho now holds it as {x.zoho_ref} (typed there by hand) - this line follows it, nothing to remove.")
     if zohoapi.in_doubt(x):
         raise HTTPException(status_code=400, detail="Zoho did not answer when this line was sent - press Send first (Zoho is checked), then remove it if it is not there.")
     M.log_action(db, user.id, "bank_delete", f"#{bid} {KINDS[x.kind]} {x.party} {x.amount:,.2f}")

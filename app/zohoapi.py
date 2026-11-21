@@ -769,22 +769,78 @@ def check_deleted(db, force=False):
     return 0
 
 
-def _check_deleted_now(db):
-    n = 0
-    lines = (list(db.query(models.PettyCash).filter(models.PettyCash.zoho_status == "sent", models.PettyCash.zoho_id != "").limit(400))
-             + list(db.query(models.BankEntry).filter(models.BankEntry.zoho_status == "sent", models.BankEntry.zoho_id != "").limit(400)))
-    for x in lines:
-        kind, _, zid = (x.zoho_id or "").partition(":")
-        path = {"expense": "expenses", "journal": "journals", "banktransaction": "banktransactions",
-                "vendorpayment": "vendorpayments", "customerpayment": "customerpayments"}.get(kind)
-        if not path:
+_PATHS = {"expense": "expenses", "journal": "journals", "banktransaction": "banktransactions",
+          "vendorpayment": "vendorpayments", "customerpayment": "customerpayments"}
+
+
+def gone_from_zoho(db, x):
+    """True when Zoho says the entry this line points at no longer exists; False when it is there.
+    Any other trouble (no answer, rate limit) is raised - not knowing is not "gone"."""
+    kind, _, zid = (x.zoho_id or "").partition(":")
+    path = _PATHS.get(kind)
+    if not path or not zid:
+        return False
+    try:
+        call(db, "GET", f"{path}/{zid}")
+        return False
+    except ZohoError as e:
+        if e.code == 404 or "not exist" in e.msg.lower() or "does not" in e.msg.lower():
+            return True
+        raise
+
+
+def hand_made_twin(db, x):
+    """A supplier / client payment for this bank line typed in Zoho by hand (same ADCB reference, same amount, same
+    party) that no other portal line points at -> ("vendorpayment:id", "Payment Made 2348"); else ("", "").
+    So a line whose entry was deleted in Zoho and typed again there by hand follows it (21/11/2026, Al Raida
+    42,924.00: the portal's two copies deleted in Zoho, then entered by hand as Payment Made 2348)."""
+    if x.__class__ is not models.BankEntry or x.kind not in ("vendor", "customer") or not (x.reference or "").strip():
+        return "", ""
+    path, key, idk, lab, pid = (("vendorpayments", "vendorpayments", "payment_id", "Payment Made", "vendor_id") if x.kind == "vendor"
+                                else ("customerpayments", "customerpayments", "payment_id", "Customer Payment", "customer_id"))
+    d = call(db, "GET", path, {"reference_number": x.reference.strip(), "per_page": 50})
+    taken = {r.zoho_id for r in db.query(models.BankEntry).filter(models.BankEntry.id != x.id, models.BankEntry.zoho_status.in_(("sent", "sending")))}
+    for e in d.get(key, []):
+        zid = f"{key[:-1]}:{e.get(idk)}"
+        if zid in taken or zid == (x.zoho_id if x.zoho_status == "cancelled" else ""):
             continue
+        if (e.get("reference_number") or "").strip() != x.reference.strip() or abs(float(e.get("amount") or 0) - (x.amount or 0)) > 0.005:
+            continue
+        if x.party_id and str(e.get(pid) or "") not in ("", str(x.party_id)):
+            continue
+        return zid, f"{lab} {e.get('payment_number') or ''}".strip()
+    return "", ""
+
+
+def recheck_line(db, x):
+    """One line said to be in Zoho, asked now: still there -> unchanged; deleted there but typed again by hand ->
+    points at that entry; deleted -> cancelled. Returns "there" | "relinked" | "cancelled". Commits."""
+    if (x.zoho_status or "") != "sent" or not x.zoho_id:
+        return "there"
+    if not gone_from_zoho(db, x):
+        return "there"
+    zid, label = hand_made_twin(db, x)
+    if zid:
+        x.zoho_id, x.zoho_ref, x.zoho_err = zid, f"{label} (typed in Zoho)", ""
+        db.commit()
+        return "relinked"
+    x.zoho_status = "cancelled"
+    x.zoho_err = f"Deleted in Zoho ({datetime.now(timezone.utc):%d/%m/%Y})"
+    db.commit()
+    return "cancelled"
+
+
+def _check_deleted_now(db):
+    """Newest first, the bank lines before the petty cash (21/11/2026: 400 petty cash lines were asked first and
+    Zoho's limit stopped the run before it reached the bank lines, so a line deleted in Zoho stayed "In Zoho")."""
+    n = 0
+    lines = (list(db.query(models.BankEntry).filter(models.BankEntry.zoho_status == "sent", models.BankEntry.zoho_id != "")
+                  .order_by(models.BankEntry.id.desc()).limit(150))
+             + list(db.query(models.PettyCash).filter(models.PettyCash.zoho_status == "sent", models.PettyCash.zoho_id != "")
+                    .order_by(models.PettyCash.id.desc()).limit(150)))
+    for x in lines:
         try:
-            call(db, "GET", f"{path}/{zid}")
-        except ZohoError as e:
-            if e.code == 404 or "not exist" in e.msg.lower() or "does not" in e.msg.lower():
-                x.zoho_status = "cancelled"
-                x.zoho_err = f"Deleted in Zoho ({datetime.now(timezone.utc):%d/%m/%Y})"
+            if recheck_line(db, x) != "there":
                 n += 1
         except Exception:
             break
