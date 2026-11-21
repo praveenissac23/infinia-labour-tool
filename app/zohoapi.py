@@ -806,8 +806,13 @@ def hand_made_twin(db, x):
             continue
         if (e.get("reference_number") or "").strip() != x.reference.strip() or abs(float(e.get("amount") or 0) - (x.amount or 0)) > 0.005:
             continue
-        if x.party_id and str(e.get(pid) or "") not in ("", str(x.party_id)):
-            continue
+        zpid = str(e.get(pid) or "")
+        zname = " ".join(str(e.get("vendor_name" if x.kind == "vendor" else "customer_name") or "").lower().split())
+        if x.party_id and zpid:
+            if zpid != str(x.party_id):
+                continue
+        elif not zname or zname != " ".join((x.party or "").lower().split()):
+            continue                # no id to compare: the name must be the same - a cheque no. can repeat between parties
         return zid, f"{lab} {e.get('payment_number') or ''}".strip()
     return "", ""
 
@@ -819,14 +824,18 @@ def recheck_line(db, x):
         return "there"
     if not gone_from_zoho(db, x):
         return "there"
+    what = "bank" if x.__class__ is models.BankEntry else "petty cash"
+    was = f"{x.zoho_ref or x.zoho_id}"
     zid, label = hand_made_twin(db, x)
     if zid:
         x.zoho_id, x.zoho_ref, x.zoho_err = zid, f"{label} (typed in Zoho)", ""
         db.commit()
+        M.log_action(db, None, "zoho_relink", f"{what} #{x.id}: {was} deleted in Zoho - now follows {label} ({zid}), typed there by hand")
         return "relinked"
     x.zoho_status = "cancelled"
     x.zoho_err = f"Deleted in Zoho ({datetime.now(timezone.utc):%d/%m/%Y})"
     db.commit()
+    M.log_action(db, None, "zoho_deleted", f"{what} #{x.id}: {was} ({x.zoho_id}) deleted in Zoho - cancelled here")
     return "cancelled"
 
 
@@ -834,10 +843,19 @@ def _check_deleted_now(db):
     """Newest first, the bank lines before the petty cash (21/11/2026: 400 petty cash lines were asked first and
     Zoho's limit stopped the run before it reached the bank lines, so a line deleted in Zoho stayed "In Zoho")."""
     n = 0
-    lines = (list(db.query(models.BankEntry).filter(models.BankEntry.zoho_status == "sent", models.BankEntry.zoho_id != "")
-                  .order_by(models.BankEntry.id.desc()).limit(150))
-             + list(db.query(models.PettyCash).filter(models.PettyCash.zoho_status == "sent", models.PettyCash.zoho_id != "")
-                    .order_by(models.PettyCash.id.desc()).limit(150)))
+    # every run: the newest 60 of each, then the next 120 older ones in turn (a cursor kept between runs), so in
+    # time every line is asked again - not only the newest (reviewer, 21/11/2026)
+    lines = []
+    for model, key in ((models.BankEntry, "check_bank_below"), (models.PettyCash, "check_petty_below")):
+        base = db.query(model).filter(model.zoho_status == "sent", model.zoho_id != "")
+        newest = base.order_by(model.id.desc()).limit(60).all()
+        lines += newest
+        below = int(_get(db, key, "0") or 0) or (min((x.id for x in newest), default=0))
+        older = base.filter(model.id < below).order_by(model.id.desc()).limit(120).all() if below else []
+        if newest and len(newest) == 60:
+            lines += older
+            _put(db, key, str(older[-1].id if len(older) == 120 else 0))     # 0: back to the newest next time
+        db.commit()
     for x in lines:
         try:
             if recheck_line(db, x) != "there":

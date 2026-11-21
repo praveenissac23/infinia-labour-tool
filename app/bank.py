@@ -196,10 +196,13 @@ def _ask_zoho(db, x):
 def _same_line(db, f, not_id=None):
     """The same ADCB reference for the same amount and party already entered (not deleted in Zoho)."""
     ref = (f.get("reference") or "").strip()
-    if not ref:
-        return None
+    if not ref or f.get("kind") not in ("vendor", "customer") or not f.get("on_date"):
+        return None                    # a monthly transfer or charge may carry the same text and amount each time
+    from datetime import timedelta
     q = db.query(models.BankEntry).filter(models.BankEntry.reference == ref, models.BankEntry.kind == f["kind"],
-                                          models.BankEntry.zoho_status != "cancelled")
+                                          models.BankEntry.zoho_status != "cancelled",
+                                          models.BankEntry.on_date >= f["on_date"] - timedelta(days=7),
+                                          models.BankEntry.on_date <= f["on_date"] + timedelta(days=7))
     if not_id:
         q = q.filter(models.BankEntry.id != not_id)
     for o in q.all():
@@ -229,7 +232,16 @@ def _send(db, rows, user):
             zid = zohoapi.find_existing(db, f"[BK-{x.id}]", BANK_PLACES) if unsure else ""
             label = "Found in Zoho"
             if not zid:                 # typed in Zoho by hand already (same ADCB ref, amount, party): follow it, do not add a second
-                zid, hand = zohoapi.hand_made_twin(db, x)
+                try:
+                    zid, hand = zohoapi.hand_made_twin(db, x)
+                except Exception as e:
+                    # nothing was posted: a plain wait (not "no answer"), so the line stays free to change
+                    x.zoho_status, x.zoho_err = was, f"Zoho was not reached to look for a copy typed there by hand - nothing sent, press Send again ({str(e)[:60]})"
+                    failed.append({"id": x.id, "why": x.zoho_err})
+                    db.commit()
+                    if isinstance(e, zohoapi.ZohoError) and e.code == 429:
+                        break           # Zoho's limit: the rest wait for the next Send
+                    continue
                 if zid:
                     label = f"{hand} (typed in Zoho)"
             if not zid:

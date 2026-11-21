@@ -113,6 +113,40 @@ r = c.post("/store/bank", headers=H, json=dict(LINE, reference="PHUB222", amount
 s.expire_all(); y = s.get(models.BankEntry, r.json()["id"])
 ok(y.zoho_id != "vendorpayment:P9002", "same reference but another amount in Zoho: not taken for it", y.zoho_id)
 
+# --- reviewer cases (21/11/2026)
+# a cheque no. repeating between two parties: never linked by reference + amount alone
+ZOHO["P7001"] = {"payment_id": "P7001", "payment_number": "7001", "reference_number": "000001", "amount": 5000.0, "vendor_id": "V-OTHER",
+                 "vendor_name": "Some Other Supplier LLC", "description": ""}
+o1 = models.BankEntry(**bank._clean(dict(LINE, reference="000001", amount=5000, mode="Cheque", party_id=""))); s.add(o1); s.commit()
+import zohoapi as _Z
+ok(_Z.hand_made_twin(s, o1) == ("", ""), "same cheque no. and amount but another supplier (no id on the line): not taken")
+ZOHO["P7001"]["vendor_name"] = "Al Raida Electromechanical Services LLC"; ZOHO["P7001"]["vendor_id"] = ""
+ok(_Z.hand_made_twin(s, o1)[0] == "vendorpayment:P7001", "... same supplier name: taken")
+o1.party_id = "V-RAIDA"; ZOHO["P7001"]["vendor_id"] = "V-OTHER"; s.commit()
+ok(_Z.hand_made_twin(s, o1) == ("", ""), "ids differ: not taken, whatever the name")
+s.delete(o1); s.commit()
+# a monthly transfer with the same text and amount: not refused
+T = {"kind": "transfer", "date": "2026-10-01", "amount": 5000, "account": "Company Petty Cash", "reference": "PETTY CASH"}
+s.add(models.BankEntry(**bank._clean(T))); s.commit()
+ok(bank._same_line(s, bank._clean(dict(T, date="2026-11-01"))) is None, "a monthly transfer with the same reference and amount: not refused")
+ok(bank._same_line(s, bank._clean(dict(LINE, reference="PHUB111", amount=700, date="2026-09-01"))) is None, "same supplier payment ref two months apart: not refused")
+# the lookup failing: nothing posted, the line not left "in doubt"
+real = Z.call
+def down(db_, method, path, params=None, body=None):
+    if path == "vendorpayments" and method == "GET":
+        raise Z.ZohoError(429, "too many requests")
+    return real(db_, method, path, params, body)
+Z.call = down
+z1 = models.BankEntry(**bank._clean(dict(LINE, reference="PHUB333", amount=10))); z2 = models.BankEntry(**bank._clean(dict(LINE, reference="PHUB444", amount=11)))
+s.add_all([z1, z2]); s.commit()
+n0 = len(ZOHO)
+sent, failed = bank._send(s, [z1, z2], models.User(id=1))
+s.refresh(z1); s.refresh(z2)
+ok(sent == 0 and len(ZOHO) == n0 and not Z.in_doubt(z1) and z1.zoho_status == "" and "nothing sent" in z1.zoho_err,
+   "lookup refused (rate limit): nothing posted, line waits plainly (still editable)", (z1.zoho_status, z1.zoho_err))
+ok(len(failed) == 1 and z2.zoho_status == "", "rate limit: the batch stops, the next line just waits", failed)
+Z.call = real
+
 # --- background check: newest bank lines first, and before the petty cash
 for i in range(5):
     s.add(models.PettyCash(book="site", on_date=date(2026, 11, 1), description=f"p{i}", paid=1, zoho_status="sent", zoho_id=f"vendorpayment:GONE{i}"))
@@ -123,5 +157,13 @@ gets = [p for m, p in CALLS if m == "GET" and p.startswith("vendorpayments/")]
 bank_ids = [int(e.zoho_id.split(":")[1][1:]) if e.zoho_id.split(":")[1][1:].isdigit() else 0 for e in s.query(models.BankEntry).filter(models.BankEntry.zoho_status == "sent").order_by(models.BankEntry.id.desc())]
 ok(gets and not gets[0].startswith("vendorpayments/GONE"), "background check asks the bank lines before the petty cash", gets[:4])
 ok(all(p.zoho_status == "cancelled" for p in s.query(models.PettyCash).all()), "petty cash lines deleted in Zoho still found and cancelled")
+# --- in time every petty cash line is asked again, not only the newest
+for i in range(400):
+    s.add(models.PettyCash(book="site", on_date=date(2026, 10, 1), description=f"old{i}", paid=1, zoho_status="sent", zoho_id=f"vendorpayment:OLD{i}"))
+s.commit()
+for _ in range(5):
+    Z._check_deleted_now(s)
+left = s.query(models.PettyCash).filter(models.PettyCash.zoho_status == "sent").count()
+ok(left == 0, "five runs: all 400 older petty cash lines deleted in Zoho are found (newest 60 + 120 older in turn)", left)
 print("\n" + ("ALL PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)
