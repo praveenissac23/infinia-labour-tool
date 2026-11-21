@@ -259,6 +259,90 @@ def add_credential(payload: dict = Body(...), db: Session = Depends(get_db), use
     return _row(c, user)
 
 
+# ---- paste a list (21 Nov 2026) ----------------------------------------------
+_U = re.compile(r"^(?:user\s*name|username|user\s*id|user|login\s*id|login|e-?mail(?:\s*id)?|mail\s*id|id)\s*[:=\-–]\s*(.+)$", re.I)
+_P = re.compile(r"^(?:pass\s*word|password|pass|pwd|pin)\s*[:=\-–]\s*(.+)$", re.I)
+_W = re.compile(r"^(?:website|site|url|link|portal|web)\s*[:=\-–]\s*(.+)$", re.I)
+
+
+def parse_list(text):
+    """Logins typed or pasted as a list - "Username: x" then "Password: y", one pair after another, as people
+    send them on WhatsApp. Headings, blank lines and *bold* stars are skipped; a Website line belongs to the
+    login it sits with. Returns [{username, secret, url}] in the order given; a username with no password (or
+    the other way round) is kept so the page can show it, flagged incomplete."""
+    out, cur = [], None
+    for raw in (text or "").splitlines():
+        ln = raw.strip().strip("*_`•·-").strip()
+        if not ln:
+            continue
+        mu, mp, mw = _U.match(ln), _P.match(ln), _W.match(ln)
+        if mu:
+            if cur and (cur["username"] or cur["secret"]):
+                out.append(cur)
+            cur = {"username": mu.group(1).strip(), "secret": "", "url": cur["url"] if cur and not cur["username"] and not cur["secret"] else ""}
+        elif mp:
+            pw = raw.strip()
+            pw = re.sub(r"^[*_`•·\s-]*(?:pass\s*word|password|pass|pwd|pin)\s*[:=\-–]\s*", "", pw, flags=re.I)   # the password exactly as typed
+            if cur is None or cur["secret"]:
+                if cur:
+                    out.append(cur)
+                cur = {"username": "", "secret": "", "url": ""}
+            cur["secret"] = pw.rstrip()
+        elif mw:
+            if cur is None or (cur["username"] and cur["secret"]):
+                if cur:
+                    out.append(cur)
+                cur = {"username": "", "secret": "", "url": ""}
+            cur["url"] = mw.group(1).strip()
+    if cur and (cur["username"] or cur["secret"]):
+        out.append(cur)
+    return out
+
+
+@router.post("/employees/accounts/credentials/paste")
+def paste_list(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = CR):
+    """Admin only. Read a pasted list of logins; with save=true store the complete ones (encrypted, as one by one)
+    and skip any already saved (same username on the same website). The passwords never come back in the answer."""
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Only an admin can paste a list of logins.")
+    items = parse_list(payload.get("text") or "")
+    if not items:
+        raise HTTPException(status_code=400, detail="No logins found. Write each as 'Username: ...' and then 'Password: ...' on the next line.")
+    site = (payload.get("url") or "").strip()
+    cat = payload.get("category") if payload.get("category") in CATEGORIES else "Other"
+    admin_only = bool(payload.get("admin_only", True))
+    have = {((c.username or "").lower(), c.domain or "") for c in db.query(Credential).all()}
+    logos, rows, saved = {}, [], 0
+    for it in items:
+        url = it["url"] or site
+        mail_dom = it["username"].split("@", 1)[1].lower() if "@" in it["username"] else ""
+        d = domain_of(url) or mail_dom
+        name = it["username"] if "@" in it["username"] else (f"{name_from_domain(d)} - {it['username']}" if d else it["username"])
+        if url and "@" in it["username"]:
+            name = f"{name_from_domain(domain_of(url))} - {it['username']}"
+        state = "ok"
+        if not it["username"] or not it["secret"]:
+            state = "no password" if it["username"] else "no username"
+        elif (it["username"].lower(), d) in have:
+            state = "already saved"
+        rows.append({"name": name[:80], "username": it["username"], "domain": d, "chars": len(it["secret"]), "state": state})
+        if payload.get("save") and state == "ok":
+            if d not in logos:
+                logos[d] = fetch_logo(d)
+            c = Credential(name=name[:80], url=url[:300], domain=d, kind="login", category=cat, username=it["username"][:200],
+                           secret=lock(it["secret"]), notes=lock(""), logo=logos[d], admin_only=admin_only,
+                           created_by=user.id, updated_by=user.id)
+            db.add(c)
+            have.add((it["username"].lower(), d))
+            rows[-1]["state"] = "saved"
+            saved += 1
+    if payload.get("save"):
+        db.commit()
+        if saved:
+            M.log_action(db, user.id, "credential_added", f"{saved} logins pasted as a list" + (" (admin only)" if admin_only else ""))
+    return {"rows": rows, "saved": saved}
+
+
 @router.put("/employees/accounts/credentials/{cid}")
 def edit_credential(cid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = CR):
     c = _get_or_404(db, cid, user)

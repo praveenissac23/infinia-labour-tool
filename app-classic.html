@@ -1074,6 +1074,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
 .cr-wrap{display:grid;grid-template-columns:1fr 360px;gap:16px;align-items:start}
 .cr-card{background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
 .cr-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.cr-pl-back{position:fixed;inset:0;background:rgba(20,22,26,.45);z-index:900;display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto}
+.cr-pl{background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.25);padding:18px 20px;width:min(760px,100%)}
+.cr-pl textarea{width:100%;box-sizing:border-box;min-height:180px;font:13px/1.45 ui-monospace,Menlo,Consolas,monospace;border:1px solid #D9D3CC;border-radius:9px;padding:9px}
+.cr-pl-opts{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:10px 0}.cr-pl-opts .cr-f{flex:1;min-width:160px;margin:0}
+.cr-pl table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}.cr-pl th,.cr-pl td{border-bottom:1px solid #EEE9E3;padding:6px 8px;text-align:left}.cr-pl th{background:#F7F4F0;font-size:12px}
+.cr-pl .st-ok{color:#1E7B34;font-weight:700}.cr-pl .st-no{color:#B03A2E;font-weight:700}.cr-pl .st-skip{color:#8A8178}
 .cr-search{flex:1;min-width:220px;height:38px;border:1px solid #D5D9DE;border-radius:9px;padding:0 12px 0 34px;font-size:13.5px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%23999' stroke-width='2'%3E%3Ccircle cx='6' cy='6' r='4.5'/%3E%3Cpath d='M9.5 9.5L13 13'/%3E%3C/svg%3E") no-repeat 12px center}
 .cr-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .cr-chip{padding:5px 12px;border-radius:20px;border:1px solid #E4DED6;font-size:12.5px;color:#5B6167;background:#fff;cursor:pointer}
@@ -3922,7 +3928,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <div class="cr-card">
               <div class="cr-top">
                 <input class="cr-search" id="cr-q" placeholder="Search name, website, username..." oninput="crDraw()">
-                <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="crExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="crExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="crExport('excel')">Export Excel</button></div>
+                <div class="exp-btns"><button type="button" class="btn btn-dark" onclick="crExport('view')">Preview</button><button type="button" class="btn btn-dark" onclick="crExport('pdf')">Export PDF</button><button type="button" class="btn btn-dark" onclick="crExport('excel')">Export Excel</button></div><button type="button" class="btn btn-gray" id="cr-paste-btn" style="display:none;" onclick="crPasteOpen()">Paste a list</button>
               </div>
               <div class="cr-chips" id="cr-chips"></div>
               <div id="cr-list"><div class="cr-empty">Loading...</div></div>
@@ -3943,6 +3949,22 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="status-msg" id="cr-status" style="margin-top:8px;"></div>
               <div class="cr-note">&#128274; Stored encrypted. Only logins given this tab can open it, and a login ticked Admin only is seen by admins alone; every password shown, copied or exported is recorded in the Activity monitor. Preview, PDF and Excel include the passwords - keep them safe.</div>
             </div>
+          </div>
+        </div>
+
+        <div class="cr-pl-back" id="cr-pl" style="display:none;" onclick="if(event.target===this)crPasteClose()">
+          <div class="cr-pl">
+            <div style="display:flex;align-items:center;gap:8px;"><h2 style="flex:1;margin:0;">Paste a list of logins</h2><button class="btn btn-gray" onclick="crPasteClose()">Close</button></div>
+            <p class="cr-hint" style="margin:6px 0 10px;">Paste the list as you have it - each login as <b>Username: ...</b> with <b>Password: ...</b> on the next line. Headings and blank lines are skipped. Check the table, then Save all.</p>
+            <textarea id="cr-pl-text" autocomplete="off" data-spell="off" spellcheck="false" placeholder="Username: info@company.com&#10;Password: ..."></textarea>
+            <div class="cr-pl-opts">
+              <label class="cr-f"><span>Website (optional)</span><input type="text" id="cr-pl-url" placeholder="e.g. outlook.office.com"></label>
+              <label class="cr-f"><span>Category</span><select id="cr-pl-cat"></select></label>
+              <label class="cr-lock"><input type="checkbox" id="cr-pl-admin" checked><span><b>&#128274; Admin only</b></span></label>
+              <button class="btn btn-dark" onclick="crPasteRead()">Check</button>
+            </div>
+            <div id="cr-pl-out"></div>
+            <div class="status-msg" id="cr-pl-status"></div>
           </div>
         </div>
 
@@ -17764,7 +17786,36 @@ async function crLoad() {
   const sel = document.getElementById("cr-cat");
   if (!sel.options.length) sel.innerHTML = CR_CATS.map(c => `<option>${escapeHtml(c)}</option>`).join("");
   document.getElementById("cr-admin-f").style.display = CR_ADMIN ? "" : "none";
+  document.getElementById("cr-paste-btn").style.display = CR_ADMIN ? "" : "none";
   crDraw();
+}
+// Paste a list (21/11/2026): many logins at once, read on the server, shown back without the passwords, saved on one press
+function crPasteOpen() {
+  const sel = document.getElementById("cr-pl-cat");
+  if (!sel.options.length) sel.innerHTML = CR_CATS.map(c => `<option${c === "Email & IT" ? " selected" : ""}>${escapeHtml(c)}</option>`).join("");
+  document.getElementById("cr-pl-out").innerHTML = ""; document.getElementById("cr-pl-status").innerHTML = "";
+  document.getElementById("cr-pl").style.display = "flex"; document.getElementById("cr-pl-text").focus();
+}
+function crPasteClose() {
+  document.getElementById("cr-pl-text").value = "";          // the passwords do not stay on the page
+  document.getElementById("cr-pl-out").innerHTML = "";
+  document.getElementById("cr-pl").style.display = "none";
+}
+async function crPasteRead(save) {
+  const body = { text: document.getElementById("cr-pl-text").value, url: document.getElementById("cr-pl-url").value,
+                 category: document.getElementById("cr-pl-cat").value, admin_only: document.getElementById("cr-pl-admin").checked, save: !!save };
+  let d; try { d = await apiCall("/employees/accounts/credentials/paste", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+  catch (e) { document.getElementById("cr-pl-out").innerHTML = ""; showStatus("cr-pl-status", "error", errText(e)); return; }
+  const lab = { ok: ["st-ok", "Ready"], saved: ["st-ok", "Saved"], "already saved": ["st-skip", "Already saved - skipped"], "no password": ["st-no", "No password - skipped"], "no username": ["st-no", "No username - skipped"] };
+  const ready = d.rows.filter(r => r.state === "ok").length;
+  document.getElementById("cr-pl-out").innerHTML = `<table><tr><th>#</th><th>Name</th><th>Username</th><th>Password</th><th></th></tr>${d.rows.map((r, i) =>
+    `<tr><td>${i + 1}</td><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.username || "-")}</td><td>${r.chars ? "&bull;".repeat(Math.min(r.chars, 12)) + ` <span class="cr-hint">${r.chars} characters</span>` : "-"}</td><td class="${(lab[r.state] || ["", r.state])[0]}">${escapeHtml((lab[r.state] || ["", r.state])[1])}</td></tr>`).join("")}</table>` +
+    (save ? "" : ready ? `<div style="margin-top:10px;display:flex;gap:8px;align-items:center;"><button class="btn btn-primary" onclick="crPasteRead(true)">Save all ${ready}</button><span class="cr-hint">${body.admin_only ? "&#128274; Admin only - other logins with this tab will not see them." : "Seen by every login given this tab."}</span></div>` : "");
+  if (save) {
+    document.getElementById("cr-pl-text").value = "";
+    showStatus("cr-pl-status", "ok", `Saved ${d.saved} login${d.saved === 1 ? "" : "s"}, encrypted.`);
+    crLoad();
+  }
 }
 function crTile(r, big) {
   if (r.logo) return `<div class="cr-logo img"><img src="${escapeAttr(r.logo)}" alt=""></div>`;
