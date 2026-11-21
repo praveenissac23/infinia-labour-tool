@@ -75,5 +75,40 @@ with mock.patch.object(CRD, "fetch_logo", lambda d: "data:image/png;base64,AAAA"
     ck("with a website: name and logo from the website", r.json()["rows"][0]["name"] == "Office - info@example.com" and r.json()["rows"][0]["domain"] == "outlook.office.com", r.json()["rows"][0])
     log = SessionLocal().query(models.AuditLog).filter(models.AuditLog.action == "credential_added").all() if hasattr(models, "AuditLog") else None
     ck("activity log records the paste (count only, no passwords)", log is None or (any("pasted as a list" in (x.details or "") for x in log) and not any("Ab@Cd" in (x.details or "") for x in log)))
+# 21/11/2026: Save all pressed three times while the first was still saving -> each login three times
+import threading, time as _t
+slow = lambda d: (_t.sleep(0.4), "data:image/png;base64,AAAA")[1]
+with mock.patch.object(CRD, "fetch_logo", slow):
+    TXT = "Username: x1@corp.com\nPassword: a1\nUsername: x2@corp.com\nPassword: a2"
+    outs = []
+    th = [threading.Thread(target=lambda: outs.append(c.post("/employees/accounts/credentials/paste", headers=B, json={"text": TXT, "save": True}).json())) for _ in range(3)]
+    [t.start() for t in th]; [t.join() for t in th]
+s = SessionLocal(); n = s.query(CRD.Credential).filter(CRD.Credential.username.in_(["x1@corp.com", "x2@corp.com"])).count(); s.close()
+ck("three presses of Save all at once: each login saved once", n == 2 and sorted(o["saved"] for o in outs) == [0, 0, 2], (n, [o.get("saved") for o in outs]))
+js = open(os.path.join(os.path.dirname(__file__), "..", "app-classic.html"), encoding="utf-8").read()
+ck("the page lets one press through at a time (button shows Saving...)", "if (CR_PASTING) return;" in js and 'bt.textContent = "Saving..."' in js)
+# the one-time fix takes out twins saved together, keeps the first, leaves older look-alikes
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "deploy"))
+from datetime import datetime as _dt, timedelta as _td
+s = SessionLocal()
+base = _dt(2026, 11, 21, 5, 11)
+mk = lambda **k: CRD.Credential(kind="login", category="Email & IT", admin_only=True, notes=CRD.lock(""), **k)
+for i in range(3):
+    s.add(mk(name="dup@corp.ae", username="dup@corp.ae", domain="corp.ae", secret=CRD.lock("P1"), created_at=base + _td(seconds=i * 20)))
+s.add(mk(name="dup@corp.ae", username="dup@corp.ae", domain="corp.ae", secret=CRD.lock("OTHER"), created_at=base))           # different password: kept
+s.add(mk(name="old@corp.ae", username="old@corp.ae", domain="corp.ae", secret=CRD.lock("P2"), created_at=base - _td(days=40)))
+s.add(mk(name="old@corp.ae", username="old@corp.ae", domain="corp.ae", secret=CRD.lock("P2"), created_at=base))              # 40 days apart: kept
+s.commit()
+import importlib.util
+spec = importlib.util.spec_from_file_location("fixtw", os.path.join(os.path.dirname(__file__), "..", "deploy", "fix_credential_twins_2026_11_21.py"))
+FX = importlib.util.module_from_spec(spec); spec.loader.exec_module(FX)
+g = FX.twins(s)
+ck("fix: the two extra copies found, the first kept, the different password and the old look-alike left",
+   sorted(x.username for x, _ in g) == ["dup@corp.ae", "dup@corp.ae"] and all(f.id < x.id for x, f in g), [(x.id, f.id, x.username) for x, f in g])
+ids_before = s.query(CRD.Credential).count(); s.close()
+FX.run(False)
+s = SessionLocal(); ck("fix without --apply changes nothing", s.query(CRD.Credential).count() == ids_before); s.close()
+FX.run(True)
+s = SessionLocal(); ck("fix with --apply takes out exactly two", s.query(CRD.Credential).count() == ids_before - 2 and not FX.twins(s)); s.close()
 print("\n" + ("ALL PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)

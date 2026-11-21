@@ -17801,7 +17801,15 @@ function crPasteClose() {
   document.getElementById("cr-pl-out").innerHTML = "";
   document.getElementById("cr-pl").style.display = "none";
 }
+let CR_PASTING = false;
 async function crPasteRead(save) {
+  if (CR_PASTING) return;                     // one press at a time (21/11/2026: three presses saved the list three times)
+  const bt = save ? document.querySelector("#cr-pl-out .btn-primary") : null;
+  if (bt) { bt.disabled = true; bt.textContent = "Saving..."; }
+  CR_PASTING = true;
+  try { await crPasteGo(save); } finally { CR_PASTING = false; }
+}
+async function crPasteGo(save) {
   const body = { text: document.getElementById("cr-pl-text").value, url: document.getElementById("cr-pl-url").value,
                  category: document.getElementById("cr-pl-cat").value, admin_only: document.getElementById("cr-pl-admin").checked, save: !!save };
   let d; try { d = await apiCall("/employees/accounts/credentials/paste", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }

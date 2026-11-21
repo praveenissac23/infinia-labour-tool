@@ -299,6 +299,10 @@ def parse_list(text):
     return out
 
 
+import threading
+_PASTE_LOCK = threading.Lock()      # two presses of Save all at once: the second waits, then finds them saved
+
+
 @router.post("/employees/accounts/credentials/paste")
 def paste_list(payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = CR):
     """Admin only. Read a pasted list of logins; with save=true store the complete ones (encrypted, as one by one)
@@ -308,6 +312,13 @@ def paste_list(payload: dict = Body(...), db: Session = Depends(get_db), user: m
     items = parse_list(payload.get("text") or "")
     if not items:
         raise HTTPException(status_code=400, detail="No logins found. Write each as 'Username: ...' and then 'Password: ...' on the next line.")
+    if payload.get("save"):
+        with _PASTE_LOCK:
+            return _paste(db, user, items, payload)
+    return _paste(db, user, items, payload)
+
+
+def _paste(db, user, items, payload):
     site = (payload.get("url") or "").strip()
     cat = payload.get("category") if payload.get("category") in CATEGORIES else "Other"
     admin_only = bool(payload.get("admin_only", True))
