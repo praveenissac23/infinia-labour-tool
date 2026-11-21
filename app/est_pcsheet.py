@@ -741,7 +741,7 @@ def _pc(v):
     return f"{round(v, 2):g}%"
 
 
-def terms_with_values(text, adv_pct, adv_amt, ret_pct, ret_amt):
+def terms_with_values(text, adv_pct, adv_amt, ret_pct, ret_amt, ret_rel=0.0):
     """The payment terms as written in the agreement, with the money beside the advance and retention percentages:
     "10% Advance" -> "10% (AED 56,000.00) Advance" (20 Nov 2026, Praveen). Only the clause the % sits in counts
     (between , ; and full stops), and the nearer of "advance" / "retention" in it decides; "advance recovery 10%" and
@@ -767,7 +767,7 @@ def terms_with_values(text, adv_pct, adv_amt, ret_pct, ret_amt):
             if best[1] == "advance" and adv_pct and abs(v - adv_pct) < 1e-6 and adv_amt and "recover" not in cl:
                 return f"{m.group(0)} (AED {_m(adv_amt, False)})"
             if best[1] == "retention" and ret_pct and abs(v - ret_pct) < 1e-6 and ret_amt and "release" not in cl:
-                return f"{m.group(0)} (AED {_m(ret_amt, False)} held to date)"
+                return f"{m.group(0)} (AED {_m(ret_amt, False)} " + (f"to date, AED {_m(ret_rel, False)} released)" if ret_rel else "held to date)")
             return m.group(0)
         ln = re.sub(r"(\d+(?:\.\d+)?)\s?%(?!\s*\(AED)", put, ln)
         if ln.strip():
@@ -843,7 +843,7 @@ def cover_page(s, pc, p, pm, sh, work, var, total_exec, adv_paid, adv_before, re
     else:
         contract.append((("Approved Variations", "N/A"), ("Certified Amount", f"AED {_m(total_exec, False)}")))
     adv_amt = r2((s.adv_pct or 0) * cv / 100) if cv else adv_paid
-    terms = terms_with_values(s.pay_terms or "", s.adv_pct or 0, adv_amt or adv_paid, s.ret_pct or 0, ret)
+    terms = terms_with_values(s.pay_terms or "", s.adv_pct or 0, adv_amt or adv_paid, s.ret_pct or 0, ret, rel)
     return {"project": p.name or "", "grid": grid, "contract": contract, "terms": terms, "remarks": pc.remarks or "Nil",
             "rows": rows, "prev_certified": prev_paid, "adv_before": r2(adv_before), "prev_line": npp}
 

@@ -55,7 +55,8 @@ ck("retention basis shows held and released", rows[2][2] == "10% held (54,880.00
 ck("kinds: additions green, deductions red, totals", [r[0] for r in rows] == ["add", "less", "less", "sub", "less", "sub", "plain", "total"])
 t = " ".join(cv["terms"])
 ck("payment terms: 10% (AED 56,000.00) beside the advance", "10% (AED 56,000.00) Advance payment" in t, t[:200])
-ck("payment terms: 10% (AED 54,880.00 held to date) beside the retention", "10% (AED 54,880.00 held to date) Retention" in t, t[-80:])
+ck("payment terms: 10% (AED 54,880.00 to date, AED 27,440.00 released) beside the retention", "10% (AED 54,880.00 to date, AED 27,440.00 released) Retention" in t, t[-90:])
+ck("payment terms: no release yet -> 'held to date'", S.terms_with_values("10% Retention", 0, 0, 10, 500) == ["10% (AED 500.00 held to date) Retention"])
 ck("payment terms: 100% progressive left as written; AED 10,000 line untouched", "•100% progressive" in t and "–AED10,000/-" in t)
 ck("details: dates DD/MM/YYYY, agreement date beside the ref",
    (("Agreement Ref.", "IC/906/SCA/03/24"), ("Agreement Date", "07/10/2024")) in cv["grid"] and (("Commencement Date", "23/10/2024"), ("Measurement Date", "19/11/2026")) in cv["grid"])
