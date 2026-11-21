@@ -1136,3 +1136,10 @@ html.crystal body.glass .freeze-head th, html.crystal body.glass .freeze-head td
 .add-link { color: var(--muted); font-size: 12px; text-decoration: underline; }
 .pfilt { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: auto; font-weight: 400; }
 .pfilt select { font-size: 12.5px; padding: 4px 8px; }
+
+/* Subcontract > Payment certificates: Print / Delete stay on screen at the right however wide the table is
+   (21/11/2026 - on a laptop they were past the edge, behind a sideways scroll) */
+table.t th.pcact, table.t td.pcact { position: sticky; right: 0; background: #fff; box-shadow: -8px 0 10px -8px rgba(0,0,0,.18); white-space: nowrap; z-index: 1; }
+table.t th.pcact { background: #F7F5F2; z-index: 2; }
+table.t td.pcact .btn { display: block; width: 100%; margin: 2px 0; }
+body.glass table.t td.pcact, body.glass table.t th.pcact { background: rgba(24,27,31,.94) !important; }
