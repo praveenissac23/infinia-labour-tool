@@ -744,9 +744,14 @@ def search(db, user, q, scope="all", month="", date_from="", date_to=""):
         hay = " ".join([x.description or "", x.supplier or "", x.site or "", x.receipt_no or "", x.trn or "",
                         vf.get(x.visa_file_id, "") if x.visa_file_id else "", f"{amt:.2f}", f"{amt:,.2f}"]).lower()
         if all(w in hay for w in words):
+            # a word found only where the table does not show it (a receipt no., a TRN, the visa's person) is named
+            # under the description, so every line found says why (21/11/2026: "745" found receipt 174533)
+            shown = " ".join([x.description or "", x.supplier or "", x.site or "", f"{amt:.2f}", f"{amt:,.2f}"]).lower()
+            hidden = [("Receipt no.", x.receipt_no or ""), ("TRN", x.trn or ""), ("Visa", vf.get(x.visa_file_id, "") if x.visa_file_id else "")]
+            also = [{"label": lb, "value": v} for lb, v in hidden if v and any(w in v.lower() and w not in shown for w in words)]
             rows.append({"id": x.id, "book": bk, "book_label": BOOKS[bk][0], "date": x.on_date.isoformat(),
                          "description": x.description or "", "supplier": x.supplier or "", "site": x.site or "",
-                         "receipt_no": x.receipt_no or "", "received": round(x.received or 0, 2), "paid": round(x.paid or 0, 2)})
+                         "receipt_no": x.receipt_no or "", "received": round(x.received or 0, 2), "paid": round(x.paid or 0, 2), "also": also})
     by_book = {}
     for r in rows:
         k = by_book.setdefault(r["book"], {"book": r["book"], "book_label": r["book_label"], "lines": 0, "received": 0.0, "paid": 0.0})
@@ -775,7 +780,8 @@ def _s_html(s, pdf_url, excel_url):
     head = "<th>Date</th>" + ("<th class='l'>Book</th>" if many else "") + "<th class='l'>Description</th><th class='l'>Supplier / Contact</th><th>Site</th><th class='n'>Received (AED)</th><th class='n'>Paid (AED)</th>"
     m = lambda v: _money(v) if v else ""
     body = "".join(f"<tr><td>{_dmy(r['date'])}</td>" + (f"<td class='l'>{escape(r['book_label'])}</td>" if many else "")
-                   + f"<td class='l'>{escape(r['description'])}</td><td class='l'>{escape(r['supplier'])}</td><td>{escape(r['site'])}</td>"
+                   + f"<td class='l'>{escape(r['description'])}" + "".join(f"<div style='color:#888;font-size:11px'>{escape(a['label'])} {escape(a['value'])}</div>" for a in r.get("also", []))
+                   + f"</td><td class='l'>{escape(r['supplier'])}</td><td>{escape(r['site'])}</td>"
                    f"<td class='n'>{m(r['received'])}</td><td class='n'>{m(r['paid'])}</td></tr>" for r in s["rows"]) \
         or f"<tr><td colspan='{6 + many}' style='padding:18px;color:#888'>Nothing found.</td></tr>"
     ntext = 4 + many
@@ -842,8 +848,8 @@ def _s_pdf(s):
     data = [[P(c.upper(), st) for c, _, st in cols]]
     m = lambda v: _money(v) if v else ""
     for r in s["rows"]:
-        data.append([P(_dmy(r["date"]), cen)] + ([P(r["book_label"])] if many else []) + [P(r["description"]), P(r["supplier"]), P(r["site"], cen),
-                                                                                          P(m(r["received"]), rt), P(m(r["paid"]), rt)])
+        data.append([P(_dmy(r["date"]), cen)] + ([P(r["book_label"])] if many else []) + [Paragraph(escape(r["description"]) + "".join(f"<br/><font size='7' color='#888888'>{escape(a['label'])} {escape(a['value'])}</font>" for a in r.get("also", [])), base),
+                                                                                          P(r["supplier"]), P(r["site"], cen), P(m(r["received"]), rt), P(m(r["paid"]), rt)])
     if not s["rows"]:
         data.append([P("Nothing found.")] + [""] * (len(cols) - 1))
     nt = len(cols) - 2
@@ -881,7 +887,7 @@ def _s_excel(s):
     thin = Side(style="thin", color="DDDDDD")
     row = 5
     for r in s["rows"]:
-        vals = [M._as_date(r["date"])] + ([r["book_label"]] if many else []) + [r["description"], r["supplier"], r["site"], r["received"] or None, r["paid"] or None]
+        vals = [M._as_date(r["date"])] + ([r["book_label"]] if many else []) + [r["description"] + "".join(f"  ({a['label']} {a['value']})" for a in r.get("also", [])), r["supplier"], r["site"], r["received"] or None, r["paid"] or None]
         for i, v in enumerate(vals, 1):
             c = ws.cell(row, i, v); c.border = Border(bottom=thin)
             c.alignment = Alignment(wrap_text=True, vertical="center")

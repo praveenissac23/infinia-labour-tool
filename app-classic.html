@@ -22303,7 +22303,7 @@ function pcDrawSearch(d) {
   const cell = v => v ? pcMoney(v) : "", ntext = 4 + many;
   const hi = t => { let h = escapeHtml(t); d.q.split(" ").filter(Boolean).forEach(w => { h = h.replace(new RegExp("(" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig"), "<mark>$1</mark>"); }); return h; };
   document.getElementById("pc-body").innerHTML = d.rows.slice().reverse().map(r => `<tr><td>${pcDate(r.date)}</td>${many ? `<td class="l">${escapeHtml(r.book_label)}</td>` : ""}
-      <td class="l">${hi(r.description)}</td><td class="l">${hi(r.supplier)}</td><td>${hi(r.site)}</td><td class="n">${cell(r.received)}</td><td class="n">${cell(r.paid)}</td><td></td></tr>`).join("")
+      <td class="l">${hi(r.description)}${(r.also || []).map(a => `<div class="small" style="color:#888;">${escapeHtml(a.label)} ${hi(a.value)}</div>`).join("")}</td><td class="l">${hi(r.supplier)}</td><td>${hi(r.site)}</td><td class="n">${cell(r.received)}</td><td class="n">${cell(r.paid)}</td><td></td></tr>`).join("")
     || `<tr><td colspan="${ntext + 3}" style="color:#999; padding:18px;">Nothing found for &ldquo;${escapeHtml(d.q)}&rdquo; in ${escapeHtml(d.label.toLowerCase())}${d.all ? "" : " - try Show: Full history"}.</td></tr>`;
   document.getElementById("pc-foot").innerHTML = `<tr><td colspan="${ntext}" class="l">TOTAL · ${d.rows.length} line${d.rows.length === 1 ? "" : "s"}</td><td class="n">${pcMoney(d.received)}</td><td class="n">${pcMoney(d.paid)}</td><td></td></tr>`;
   document.getElementById("pc-stats").innerHTML = `<div class="pc-stat"><span>Found &ldquo;${escapeHtml(d.q)}&rdquo;</span><b>${d.rows.length} line${d.rows.length === 1 ? "" : "s"}</b></div>

@@ -41,6 +41,10 @@ ck("two words: both on the line", [r["description"] for r in S(q="guddu advance"
    ["Advance to GUDDU (mason) for food - site 906", "Salary advance - Guddu Kumar, labour no. 1123, returned part"])
 ck("an amount", len(S(q="1,234.50", month="all").json()["rows"]) == 1 and len(S(q="350.5", month="all").json()["rows"]) == 1)
 ck("a receipt no.", len(S(q="R-77", month="all").json()["rows"]) == 1)
+# 21/11/2026: "745" found two lines with nothing visible - the receipt no. held it. Now named under the description.
+rr = S(q="R-77", month="all").json()["rows"][0]
+ck("a line found by its receipt no. says so", rr["also"] == [{"label": "Receipt no.", "value": "R-77"}], rr.get("also"))
+ck("a line found by its description names nothing extra", all(r["also"] == [] for r in S(q="guddu advance", month="all").json()["rows"]))
 ck("a site", len(S(q="906", month="all").json()["rows"]) == 1)
 ck("nothing typed: asked for a word", S(q="  ").status_code == 400)
 # a login with the site book only sees the site book's lines
