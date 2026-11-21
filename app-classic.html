@@ -20103,7 +20103,7 @@ function bkDraw() {
     <td class="l">${escapeHtml(r.party || (r.kind === "transfer" ? "To " + r.account : r.kind === "charge" ? "ADCB" : "-"))}${r.notes ? `<span class="sub">${escapeHtml(r.notes)}</span>` : ""}${r.by ? `<span class="sub">by ${escapeHtml(r.by)}</span>` : ""}</td>
     <td>${escapeHtml(r.mode)}</td><td class="l">${escapeHtml(r.reference || "-")}</td><td class="l">${escapeHtml(r.docs.map(d => d.number).join(", ") || "-")}${r.receipt ? `<span class="sub">Receipt ${r.receipt.cancelled ? `${escapeHtml(r.receipt.number)} (cancelled)` : xlink(r.receipt.number, `rcPdf(${r.receipt.id})`, null, "Open the receipt made from this line")}</span>` : ""}${r.kind === "expense" && r.account ? `<span class="sub">${escapeHtml(r.account.replace(/^Office › /, "").split(" › ").pop())}</span>` : ""}${""}</td>
     <td>${escapeHtml(r.site || ((BK_SCOPES || []).find(x => x.id === r.scope_id) || {}).project || "-")}${r.pp_id ? `<span class="sub" title="On Project payments, excl. VAT">PP ${pcMoney(r.net_amount)}</span>` : ""}</td><td class="n">${r.out ? pcMoney(r.amount) : ""}</td><td class="n">${r.out ? "" : pcMoney(r.amount)}</td><td>${BK._verified && BK._verified.has(r.id) ? `<span class="zx-tag zx-ok" title="On the ADCB statement">Bank ✓</span>` : `<span class="sub" style="display:inline;" title="Not on an uploaded ADCB statement yet">-</span>`}</td><td>${bkTag(r)}</td>
-    <td class="pc-act">${r.zoho === "sent" ? (r.kind === "customer" ? `<button class="btn btn-gray btn-sm" onclick="bkEdit(${r.id})" title="In Zoho - only the Project payments scope can change">Project</button>` : `<span class="sub">In Zoho</span>`) : `<button class="btn btn-gray btn-sm" onclick="bkEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="bkDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
+    <td class="pc-act">${r.zoho === "sent" ? (r.kind === "customer" ? `<button class="btn btn-gray btn-sm" onclick="bkEdit(${r.id})" title="In Zoho - only the Project payments scope can change">Project</button>` : `<button class="btn btn-gray btn-sm" onclick="bkCheck(${r.id}, this)" title="Ask Zoho now whether this entry is still there - if it was deleted in Zoho, the line can then be changed or removed">Check Zoho</button>`) : `<button class="btn btn-gray btn-sm" onclick="bkEdit(${r.id})">Edit</button><button class="btn btn-gray btn-sm" onclick="bkDelete(${r.id})">Remove</button>`}</td></tr>`).join("")
     || `<tr><td colspan="12" style="color:#999; padding:18px;">Nothing entered for ${escapeHtml(BK.label)} yet.</td></tr>`;
   const po = rows.filter(r => r.out).reduce((a, r) => a + r.amount, 0), rc = rows.filter(r => !r.out).reduce((a, r) => a + r.amount, 0);
   document.getElementById("bk-foot").innerHTML = rows.length ? `<tr><td colspan="7" class="l">TOTAL</td><td class="n">${pcMoney(po)}</td><td class="n">${pcMoney(rc)}</td><td colspan="3"></td></tr>` : "";
@@ -20158,6 +20158,11 @@ async function bkEdit(id) {
   bkDocsDraw(); bkMode(); bkSum();
   document.getElementById("bk-cancel").style.display = ""; bkDraw();
   document.getElementById("bk-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+async function bkCheck(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "Checking..."; }
+  try { const d = await apiCall(`/store/bank/${id}/check`, { method: "POST", body: "{}" }); await bkLoad(); showStatus("bk-status", d.state === "there" ? "ok" : "ok", d.message); }
+  catch (e) { if (btn) { btn.disabled = false; btn.textContent = "Check Zoho"; } showStatus("bk-status", "err", errText(e)); }
 }
 async function bkDelete(id) {
   const r = BK.rows.find(x => x.id === id);

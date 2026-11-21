@@ -367,6 +367,22 @@ def edit(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), use
     return {"ok": True, "sent": sent, "failed": failed}
 
 
+@router.post("/store/bank/{bid}/check")
+def check_in_zoho(bid: int, db: Session = Depends(get_db), user: models.User = BK):
+    """"Check Zoho" on a line shown In Zoho (21/11/2026): ask Zoho now whether its entry is still there."""
+    x = db.get(models.BankEntry, bid)
+    if not x:
+        raise HTTPException(status_code=404, detail="That line is no longer there.")
+    if x.zoho_status != "sent":
+        return {"state": x.zoho_status or "waiting", "message": "This line is not marked as in Zoho."}
+    st = _ask_zoho(db, x)
+    msg = {"there": f"Still in Zoho as {x.zoho_ref} - nothing to change.",
+           "relinked": f"It was deleted in Zoho and typed there again by hand - this line now follows {x.zoho_ref}.",
+           "cancelled": "Deleted in Zoho - this line can now be changed or removed."}[st]
+    M.log_action(db, user.id, "bank_zoho_check", f"#{x.id} {x.party} {x.amount:,.2f}: {msg}")
+    return {"state": st, "message": msg}
+
+
 @router.delete("/store/bank/{bid}")
 def delete(bid: int, db: Session = Depends(get_db), user: models.User = BK):
     x = db.get(models.BankEntry, bid)

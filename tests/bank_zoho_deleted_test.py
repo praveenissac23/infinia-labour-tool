@@ -92,6 +92,17 @@ s.close(); s = SessionLocal()
 ok(r.status_code == 200 and s.query(models.BankEntry).filter(models.BankEntry.id == bid).count() == 0, "second copy: deleted in Zoho, 2348 already followed by the first -> removed", r.text[:200])
 ok(len([p for p in ZOHO.values() if p["reference_number"] == "PHUB753519384" and p["amount"] == 42924]) == 1, "Zoho holds the 42,924.00 payment once")
 
+# --- the "Check Zoho" button (no Remove on a line shown In Zoho)
+k1 = models.BankEntry(**bank._clean(dict(LINE, reference="PHUB555", amount=321))); s.add(k1); s.commit()
+bank._send(s, [k1], models.User(id=1)); s.refresh(k1)
+r = c.post(f"/store/bank/{k1.id}/check", headers=H)
+ok(r.json()["state"] == "there" and "Still in Zoho" in r.json()["message"], "Check Zoho: still there -> says so", r.text[:200])
+ZOHO.pop(k1.zoho_id.split(":")[1])
+r = c.post(f"/store/bank/{k1.id}/check", headers=H)
+s.expire_all(); k1 = s.get(models.BankEntry, k1.id)
+ok(r.json()["state"] == "cancelled" and k1.zoho_status == "cancelled", "Check Zoho: deleted -> cancelled, Edit / Remove come back", r.text[:200])
+ok('onclick="bkCheck(${r.id}, this)"' in open(os.path.join(os.path.dirname(__file__), "..", "app-classic.html"), encoding="utf-8").read(), "the button is on a line shown In Zoho")
+
 # --- edit of a line deleted in Zoho: allowed (it is cancelled first); no Zoho: refused as before
 x = models.BankEntry(**bank._clean(dict(LINE, reference="PHUB000000001", amount=500))); s.add(x); s.commit()
 bank._send(s, [x], models.User(id=1)); s.refresh(x)
