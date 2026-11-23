@@ -4711,8 +4711,18 @@ def delete_backup(backup_id: int, db: Session = Depends(get_db),
 def _app_build():
     """The moment app.html last changed. A browser holding an older copy
     of the page compares this with what it loaded and fetches afresh."""
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    # 23/11/2026: the same fingerprint the page carries inside it (app-version.json is written with app.html), so a
+    # page can tell for certain whether it IS the current one - not a guess from a note kept on the phone.
     try:
-        return int(os.path.getmtime(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app.html")))
+        with open(os.path.join(root, "app-version.json"), encoding="utf-8") as f:
+            b = str((json.load(f) or {}).get("build") or "")
+        if b:
+            return b
+    except (OSError, ValueError):
+        pass
+    try:
+        return int(os.path.getmtime(os.path.join(root, "app.html")))
     except OSError:
         return 0
 

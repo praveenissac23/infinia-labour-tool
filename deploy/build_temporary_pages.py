@@ -1515,7 +1515,7 @@ def build():
     # refreshes its copy and reloads once.
     import hashlib
     build = hashlib.sha1(page.encode("utf-8")).hexdigest()[:12]
-    check = ('<script>(function(){var B="%s";try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"})'
+    check = ('<script>window.__PAGE_BUILD="%s";(function(){var B=window.__PAGE_BUILD;try{fetch("/app-version.json?t="+Date.now(),{cache:"no-store"})'
              '.then(function(r){return r.ok?r.json():null}).then(function(v){if(!v||!v.build||v.build===B)return;'
              'var k="app-reload-"+v.build;try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,"1")}catch(e){}'
              'Promise.all([fetch(location.href,{cache:"reload"}),fetch("/app.html",{cache:"reload"}),fetch("/",{cache:"reload"})])'

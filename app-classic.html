@@ -16565,26 +16565,40 @@ function checkBuild() {
   fetch(API + "/health", { cache: "no-store" }).then(r => r.json()).then(h => {
     if (!h || !h.build) return;
     const build = String(h.build);
-    const seen = localStorage.getItem("infinia_build");
-    if (!seen || seen === build) localStorage.setItem("infinia_build", build);
     window.__newBuild = build;
-    if (seen === build) { sessionStorage.removeItem("infinia_reloaded"); return; }
-    if (!seen) return;
+    // 23/11/2026: the page knows its own build (written into it when it is made). When that is the server's build
+    // this page IS the current one - no bar, whatever an older note on this phone says. Before, the bar compared
+    // the server with a note kept in the phone's storage; when that note went stale the bar came back after every
+    // refresh and never went away.
+    const mine = window.__PAGE_BUILD ? String(window.__PAGE_BUILD) : "";
+    if (mine) {
+      try { localStorage.setItem("infinia_build", build); } catch (e) {}
+      if (mine === build) { sessionStorage.removeItem("infinia_reloaded"); return; }
+      // Refreshed for this build already and the phone still handed back the old page: say it once, not forever.
+      if (sessionStorage.getItem("infinia_refreshed_for") === build) return;
+    } else {
+      let seen = null;
+      try { seen = localStorage.getItem("infinia_build"); if (!seen || seen === build) localStorage.setItem("infinia_build", build); } catch (e) { return; }
+      if (seen === build) { sessionStorage.removeItem("infinia_reloaded"); return; }
+      if (!seen) return;
+    }
     const typing = document.activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName);
     const quiet = Date.now() - opened < 2500 && !sessionStorage.getItem("infinia_token") && !typing
                   && !sessionStorage.getItem("infinia_reloaded");
     if (quiet) { sessionStorage.setItem("infinia_reloaded", "1"); hardReload(); return; }
     const bar = document.createElement("div"); bar.id = "build-bar";
     bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:5000;background:#2E3238;color:#fff;padding:8px 14px;font-size:13px;display:flex;gap:12px;align-items:center;justify-content:center;";
-    bar.innerHTML = "The app has been updated. <button style=\"background:#C0392B;color:#fff;border:0;border-radius:6px;padding:5px 12px;font-weight:600;cursor:pointer;\">Refresh now</button>";
+    bar.innerHTML = "The app has been updated. <button style=\"background:#C0392B;color:#fff;border:0;border-radius:6px;padding:5px 12px;font-weight:600;cursor:pointer;\">Refresh now</button>"
+      + "<button class=\"bb-x\" title=\"Hide - it asks again at the next update\" style=\"background:none;color:#fff;border:0;font-size:18px;line-height:1;cursor:pointer;padding:2px 6px;\">&times;</button>";
     bar.querySelector("button").onclick = hardReload;
+    bar.querySelector(".bb-x").onclick = () => { try { sessionStorage.setItem("infinia_refreshed_for", build); } catch (e) {} bar.remove(); };
     document.body.appendChild(bar);
   }).catch(() => {});
 }
 // A refresh that really is fresh: the page and its caches fetched again,
 // not answered from what the browser kept.
 async function hardReload() {
-  try { if (window.__newBuild) localStorage.setItem("infinia_build", window.__newBuild); } catch (e) {}
+  try { if (window.__newBuild) { localStorage.setItem("infinia_build", window.__newBuild); sessionStorage.setItem("infinia_refreshed_for", window.__newBuild); } } catch (e) {}
   try { if (window.caches) { for (const k of await caches.keys()) if (!k.startsWith("infinia-off")) await caches.delete(k); } } catch (e) {}
   try { await fetch(location.pathname, { cache: "reload" }); } catch (e) {}
   const u = new URL(location.href); u.searchParams.set("v", window.__newBuild || Date.now());
