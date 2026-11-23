@@ -151,12 +151,14 @@ def leave_runs_on(db, employee, rows):
         return rows
     by_day = {r.full_date: r for r in rows}
     first = min(by_day)
-    before = None
-    if first >= LEAVE_RUNS_ON_FROM:              # the day before the cycle, for a Sunday on its first day
-        before = (db.query(models.DailyRow).filter(models.DailyRow.emp_no == employee.emp_no,
-                                                    models.DailyRow.full_date == first - timedelta(days=1)).first()
-                  if db is not None else None)
-    out, prev_leave = [], bool(before is not None and _on_leave_at_end_of(before))
+    keep_from = first
+    if first >= LEAVE_RUNS_ON_FROM and db is not None:   # the week before the cycle, for a run crossing into it
+        for r in (db.query(models.DailyRow).filter(models.DailyRow.emp_no == employee.emp_no,
+                                                   models.DailyRow.full_date >= first - timedelta(days=7),
+                                                   models.DailyRow.full_date < first).all()):
+            by_day[r.full_date] = r
+        first = min(by_day)
+    out, prev_leave = [], False
     d = first
     last = max(by_day)
     while d <= last:
@@ -166,18 +168,22 @@ def leave_runs_on(db, employee, rows):
         else:
             am, pm = (r.am or "").strip().lower(), (r.pm or "").strip().lower()
             rest_day = d.weekday() == 6 or (am == "holiday" and pm in ("holiday", ""))
-            if (prev_leave and d >= LEAVE_RUNS_ON_FROM and rest_day and am in _REST and pm in _REST
-                    and not (getattr(r, "ot", 0) or 0)):
+            runs_on = prev_leave and rest_day and am in _REST and pm in _REST and not (getattr(r, "ot", 0) or 0)
+            if runs_on and d < LEAVE_RUNS_ON_FROM:
+                prev_leave = True                    # before the rule: the day keeps its pay, the run still carries on
+            elif runs_on:
                 r = SimpleNamespace(full_date=r.full_date, am="Leave", pm="Leave", ot=0, bh=getattr(r, "bh", 0) or 0,
                                     site=getattr(r, "site", ""), engineer=getattr(r, "engineer", ""),
-                                    comments=(getattr(r, "comments", "") or "") or "Leave runs on to the next working day",
-                                    emp_no=r.emp_no, leave_run_on=True)
+                                    comments="; ".join(x for x in ((getattr(r, "comments", "") or "").strip(), "Leave runs on to the next working day") if x),
+                                    emp_no=r.emp_no, leave_run_on=True, month_year=getattr(r, "month_year", ""),
+                                    emp_name=getattr(r, "emp_name", ""), trade=getattr(r, "trade", ""), day=getattr(r, "day", r.full_date.day),
+                                    employee_id=getattr(r, "employee_id", None), id=getattr(r, "id", None))
                 prev_leave = True
             else:
                 prev_leave = _on_leave_at_end_of(r)
             out.append(r)
         d += timedelta(days=1)
-    return out
+    return [r for r in out if r.full_date >= keep_from]
 
 
 def card_rows(db, employee, month_year, rows):

@@ -118,7 +118,7 @@ st = models.Employee(emp_no="S-1", name="Staff One", trade="QS", total_salary=60
                      joined_on=date(2024, 1, 1))
 s.add(st); s.commit()
 def leave(e, d, kind, portion=1.0, rule="auto"):
-    s.add(models.StaffLeave(employee_id=e.id, on_date=d, portion=portion, kind=kind, paid=False, pay_rule=rule, reason="", batch="b1")); s.commit()
+    s.add(models.StaffLeave(employee_id=e.id, on_date=d, portion=portion, kind=kind, paid=False, pay_rule=rule, reason="", batch=f"b{e.id}{kind}")); s.commit()
 for d in (date(2026, 11, 5), date(2026, 11, 6), sat):
     leave(st, d, "unpaid")
 a, b = M._staff_month_bounds("November 2026")
@@ -155,5 +155,47 @@ s.add(st5); s.commit()
 leave(st5, sat, "unpaid"); leave(st5, sun, "sick")
 got = [(x.on_date, M._leave_kind(x)) for x in M._month_rows(s, st5.id, a, b)]
 ok(got == [(sat, "unpaid"), (sun, "sick")], "a Sunday with its own entry keeps it", got)
+# ---- reviewer cases ----
+# the run crossing the cycle edge: leave Sat 24/10, Sunday 25/10 marked "Sunday" (last day of October's cycle),
+# public holiday Mon 26/10 (first day of November's) -> the holiday is leave on November's card
+w12 = worker("T-12")
+fill(w12, date(2026, 9, 26), date(2026, 10, 25), leave={date(2026, 10, 24)})
+fill(w12, A, B, holiday={A})
+ok(s.query(models.DailyRow).filter_by(emp_no="T-12", full_date=date(2026, 10, 25)).first().am == "Sunday", "set-up: 25/10 marked Sunday")
+sm12 = services.recalculate_summary(s, w12, "November 2026"); s.commit()
+ok(sm12.leave_days == 1 and sm12.holiday_days == 0, "a run crossing the cycle edge (Sat leave, Sun, Mon holiday on the 26th): the holiday is leave", (sm12.leave_days, sm12.holiday_days))
+# an existing comment on the Sunday keeps the reason too
+r1 = s.query(models.DailyRow).filter_by(emp_no="T-1", full_date=sun).first(); r1.comments = "site closed"; s.commit()
+rc = next(x for x in services.card_rows(s, w1, "November 2026", s.query(models.DailyRow).filter_by(emp_no="T-1", month_year="November 2026").all()) if x.full_date == sun)
+ok(rc.comments == "site closed; Leave runs on to the next working day", "the Sunday's own comment stays, with the reason added", rc.comments)
+# the full-month preview (Pay full salary now) agrees with the card
+import paystatus
+card = services.recalculate_summary(s, w1, "November 2026"); s.commit()
+ok(abs(paystatus._full_cycle_preview(s, w1, "November 2026", card) - card.final_salary) < 0.01, "Pay-full-salary preview = the card", (paystatus._full_cycle_preview(s, w1, "November 2026", card), card.final_salary))
+# the site / custom report counts the day as leave, as the card does
+import reports
+rr = s.query(models.DailyRow).filter_by(emp_no="T-1", month_year="November 2026").all()
+res = reports.build_custom_report("daily", ["emp_no"], ["leave_days", "final_salary_cost"], {}, rr, [card])
+if res is not None:
+    row = res.rows[0]
+    ok(abs((row.get("final_salary_cost") or 0) - card.final_salary) < 0.05, "custom report: the salary spread over the days adds up to the card", (row, card.final_salary))
+# office: the register line carries the Sunday and the cost the salary deducts
+from fastapi.testclient import TestClient
+s.add(models.User(username="hr1", hashed_password=__import__("auth").hash_password("p"), full_name="HR", role="admin")); s.commit()
+c = TestClient(M.app)
+H = {"Authorization": "Bearer " + c.post("/auth/login", data={"username": "hr1", "password": "p"}).json()["access_token"]}
+reg = c.get("/employees/leave?month_year=November%202026&emp_no=S-1", headers=H).json()
+line = reg["rows"][0]
+ok(line["unpaid_days"] == 4 and line["to"] == "2026-11-08" and "next working day" in line["why"] and abs(line["cost"] - ded) < 0.02,
+   "absence register: the leave line includes the Sunday, its cost = the salary deduction", (line["unpaid_days"], line["to"], line["why"], line["cost"], ded))
+reg4 = c.get("/employees/leave?month_year=November%202026&emp_no=S-4", headers=H).json()["rows"]
+hol = [r for r in reg4 if r["kind"] == "holiday"]
+ok(hol and hol[0]["pay"] == "Counted in the leave before it", "a company holiday taken into the leave says so on the register", reg4)
+reg2 = c.get("/employees/leave?month_year=November%202026&emp_no=S-2", headers=H).json()["rows"]
+ok(reg2 and reg2[0]["unpaid_days"] == 1 and reg2[0]["to"] == "2026-11-01", "leave ending 31/10: November's register shows the Sunday 01/11 it runs on to", reg2)
+# gratuity / service days: not changed by the rule (it is a salary rule)
+nsv = M._unpaid_days(s, st, date(2026, 11, 30), split=True)
+if nsv is not None:
+    ok(nsv == (3.0, 0.0), "service days: the 3 days entered count, not the Sunday", nsv)
 print("\n" + ("ALL PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)

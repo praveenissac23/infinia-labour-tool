@@ -941,6 +941,16 @@ def build_custom_report(data_source, dimensions, measures, filters, daily_rows, 
 
     if data_source == "daily":
         rows = _apply_common_filters(daily_rows, filters)
+        # a Sunday / holiday the leave runs on to counts as Leave here too, as on the card (23/11/2026)
+        try:
+            import services
+            from types import SimpleNamespace as _NS
+            by_emp = {}
+            for r in rows:
+                by_emp.setdefault(r.emp_no, []).append(r)
+            rows = [x for no, rs in by_emp.items() for x in services.leave_runs_on(None, _NS(emp_no=no), rs)]
+        except Exception as ex:
+            print("report leave run-on:", ex)
         dim_fn = _builder_daily_dim_value
         dim_catalog, measure_catalog = BUILDER_DAILY_DIMENSIONS, BUILDER_DAILY_MEASURES
         source_items = rows

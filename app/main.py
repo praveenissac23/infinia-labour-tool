@@ -2709,6 +2709,16 @@ def save_attendance(payload: schemas.BulkSaveRequest, db: Session = Depends(get_
     for emp_no, month_year in touched_cycles:
         employee = db.query(models.Employee).filter(models.Employee.emp_no == emp_no).first()
         services.recalculate_summary(db, employee, month_year)
+        # leave at the end of a cycle runs on into the next one (services.leave_runs_on): its card follows
+        try:
+            ce = pcyc.cycle_end_of(month_year)
+            if ce:
+                _, _, nxt = pcyc.cycle_bounds_for(ce + timedelta(days=1))
+                if db.query(models.EmployeeSummary).filter(models.EmployeeSummary.emp_no == emp_no,
+                                                           models.EmployeeSummary.month_year == nxt).first():
+                    services.recalculate_summary(db, employee, nxt)
+        except Exception as ex:
+            print("next cycle recalc:", ex)
     marked_left = _leaving_from_attendance(db, {e for e, _ in touched_cycles}, user.id)
     if marked_left:
         _enforce_terminations(db)
@@ -11850,7 +11860,7 @@ def _unpaid_days(db, e, upto, split=False):
         # way the salary counted it.
         a = date(y, m, 1)
         b = date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
-        for l, _, unpaid, _ in _judge_days(_month_rows(db, e.id, a, b)):
+        for l, _, unpaid, _ in _judge_days([x for x in ls]):   # as entered: the run-on Sunday is a salary rule, not service
             if l.on_date > upto:
                 continue
             if _leave_kind(l) == "vacation":
@@ -12947,7 +12957,7 @@ STAFF_LEAVE_RUNS_ON_FROM = date(2026, 11, 1)       # office staff: the November 
 def _month_rows(db, employee_id, a, b):
     rows = (db.query(models.StaffLeave)
               .filter(models.StaffLeave.employee_id == employee_id,
-                      models.StaffLeave.on_date >= a - timedelta(days=7), models.StaffLeave.on_date <= b)
+                      models.StaffLeave.on_date >= a - timedelta(days=14), models.StaffLeave.on_date <= b)
               .all())
     rows = _leave_runs_on_staff(rows)
     return [l for l in rows if a <= l.on_date <= b]
@@ -12979,7 +12989,8 @@ def _leave_runs_on_staff(rows):
                     break                                        # its own entry stands (or the leave goes on anyway)
                 v = SimpleNamespace(id=None, employee_id=l.employee_id, on_date=n, portion=1.0, kind=kind, paid=l.paid,
                                     pay_rule=l.pay_rule, reason="Leave runs on to the next working day", certificate=False,
-                                    notes="", batch=l.batch, run_on=True, created_by=None, created_at=None)
+                                    notes="", batch=l.batch, run_on=True, run_of=(l.batch or f"L{l.id}"),
+                                    replaces=[x.id for x in hol], created_by=None, created_at=None)
                 for x in hol:
                     out.remove(x)
                 out.append(v)
@@ -13077,18 +13088,24 @@ def _staff_by_code(db, emp_no):
     return e
 
 
-def _entry_dict(db, rows, e, judged_by_id, month_bounds=None):
+def _entry_dict(db, rows, e, judged_by_id, month_bounds=None, run_on=(), replaced=()):
     rows = sorted(rows, key=lambda l: l.on_date)
     first = rows[0]
     kind = _leave_kind(first)
     batch = first.batch or f"L{first.id}"
     in_month = rows if not month_bounds else [
         l for l in rows if month_bounds[0] <= l.on_date <= month_bounds[1]]
-    paid = sum(judged_by_id.get(l.id, (0, 0))[0] for l in in_month)
-    unpaid = sum(judged_by_id.get(l.id, (0, 0))[1] for l in in_month)
-    days = sum(l.portion or 1.0 for l in in_month)
+    gone = [l for l in in_month if l.id in replaced]          # a holiday entry taken into the leave before it
+    in_month = [l for l in in_month if l.id not in replaced]
+    paid = sum(judged_by_id.get(l.id, (0, 0))[0] for l in in_month) + sum(p for _, p, _ in run_on)
+    unpaid = sum(judged_by_id.get(l.id, (0, 0))[1] for l in in_month) + sum(u for _, _, u in run_on)
+    days = sum(l.portion or 1.0 for l in in_month) + sum(l.portion or 1.0 for l, _, _ in run_on)
     whys = {judged_by_id.get(l.id, (0, 0, ""))[2] for l in in_month} - {""}
-    if unpaid and paid:
+    if run_on:
+        whys.add("with " + ", ".join(f"{l.on_date:%d/%m/%Y}" for l, _, _ in run_on) + " - leave runs on to the next working day")
+    if gone and not in_month:
+        pay = "Counted in the leave before it"
+    elif unpaid and paid:
         pay = f"{paid:g} paid, {unpaid:g} deducted"
     elif unpaid:
         pay = "Deducted"
@@ -13104,7 +13121,7 @@ def _entry_dict(db, rows, e, judged_by_id, month_bounds=None):
     return {
         "batch": batch, "emp_no": e.emp_no, "name": e.name, "employee_id": e.id,
         "kind": kind, "kind_label": LEAVE_KINDS.get(kind, kind.title()),
-        "from": rows[0].on_date.isoformat(), "to": rows[-1].on_date.isoformat(),
+        "from": rows[0].on_date.isoformat(), "to": max([rows[-1].on_date] + [l.on_date for l, _, _ in run_on]).isoformat(),
         "half": len(rows) == 1 and (first.portion or 1.0) < 1,
         "days_total": round(sum(l.portion or 1.0 for l in rows), 2),
         "days": round(days, 2), "paid_days": round(paid, 2), "unpaid_days": round(unpaid, 2),
@@ -13137,12 +13154,17 @@ def list_leave(month_year: str = "", emp_no: str = "", db: Session = Depends(get
     hits = q.all()
     # Judge each person's whole month, so the sick allowance is counted
     # the same way the salary cycle counts it.
-    judged = {}
+    judged, extras, replaced = {}, {}, set()
+    def take(month_rows):
+        for l, p, u, why in _judge_days(month_rows):
+            if getattr(l, "run_on", False):          # a Sunday / holiday the leave runs on to (23/11/2026)
+                extras.setdefault(l.run_of, []).append((l, p, u))
+                replaced.update(l.replaces)
+            else:
+                judged[l.id] = (p, u, why)
     for eid in {l.employee_id for l in hits}:
         if bounds:
-            month = _month_rows(db, eid, *bounds)
-            for l, p, u, why in _judge_days(month):
-                judged[l.id] = (p, u, why)
+            take(_month_rows(db, eid, *bounds))
         else:
             by_month = {}
             for l in hits:
@@ -13151,11 +13173,22 @@ def list_leave(month_year: str = "", emp_no: str = "", db: Session = Depends(get
             for (y, m) in by_month:
                 a = date(y, m, 1)
                 b = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1))
-                for l, p, u, why in _judge_days(_month_rows(db, eid, a, b)):
-                    judged[l.id] = (p, u, why)
+                take(_month_rows(db, eid, a, b))
+    if bounds:                                       # a leave ending the month before, running on into this one
+        for eid in {l.employee_id for l in db.query(models.StaffLeave).filter(
+                models.StaffLeave.on_date >= bounds[0] - timedelta(days=14), models.StaffLeave.on_date < bounds[0],
+                models.StaffLeave.kind.in_(("vacation", "unpaid"))).all()} - {l.employee_id for l in hits}:
+            if not emp_no.strip() or (emps.get(eid) and emps[eid].emp_no == emp_no.strip()):
+                take(_month_rows(db, eid, *bounds))
     batches = {}
     for l in hits:
         batches.setdefault(l.batch or f"L{l.id}", []).append(l)
+    for key, ex in extras.items():
+        if key not in batches:
+            src = (db.query(models.StaffLeave).filter(models.StaffLeave.batch == key).all() if not key.startswith("L")
+                   else db.query(models.StaffLeave).filter(models.StaffLeave.id == int(key[1:])).all() if key[1:].isdigit() else [])
+            if src:
+                batches[key] = src
     # A range reaching outside the month still shows whole, so its dates
     # read right; only the days inside the month are counted.
     rows = []
@@ -13165,7 +13198,7 @@ def list_leave(month_year: str = "", emp_no: str = "", db: Session = Depends(get
             continue
         whole = (db.query(models.StaffLeave).filter(models.StaffLeave.batch == batch).all()
                  if ls[0].batch else ls)
-        rows.append(_entry_dict(db, whole, e, judged, bounds))
+        rows.append(_entry_dict(db, whole, e, judged, bounds, extras.get(batch, []), replaced))
     rows.sort(key=lambda r: (r["from"], r["emp_no"]))
     return {"rows": rows, "kinds": LEAVE_KINDS,
             "days": round(sum(r["days"] for r in rows), 2),

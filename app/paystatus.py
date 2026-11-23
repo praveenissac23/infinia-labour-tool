@@ -488,6 +488,8 @@ def _full_cycle_preview(db, e, month, card):
             st = "Sunday" if d.weekday() == 6 else "Present"
             rows.append(SimpleNamespace(full_date=d, am=st, pm=st, ot=0, bh=0, site="", engineer="", comments="", emp_no=e.emp_no))
         d += timedelta(days=1)
+    import services
+    rows = sorted(services.leave_runs_on(db, e, rows), key=lambda r: r.full_date)   # the same as the card (23/11/2026)
     comp = de.recalculate_from_daily_rows(rows, card.total_salary or e.total_salary, e.basic_salary,
                                           card.allowances or 0.0, card.other_deduction or 0.0,
                                           pay_type=(e.pay_type or "daily"), cycle_days=(ce - cs).days + 1,
