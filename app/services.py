@@ -129,6 +129,57 @@ def with_days_paid_in_advance(db, employee, month_year, rows):
     return rows
 
 
+# ---- Leave runs on to the next working day (from the November 2026 cycle, 23/11/2026, Praveen) ----
+# A man on leave who comes back after a Sunday (or a public holiday) is back on the next working day: the Sunday
+# after his last day of leave is part of the leave, not a paid rest day. Only Leave (vacation) pulls it in - a
+# plain Absent does not. Nothing is written to the attendance; the card counts the day as Leave and prints it so.
+LEAVE_RUNS_ON_FROM = __import__("datetime").date(2026, 10, 26)       # first day of the November 2026 cycle
+_REST = {"", "sunday", "holiday", "friday"}
+
+
+def _on_leave_at_end_of(r):
+    am, pm = (r.am or "").strip().lower(), (r.pm or "").strip().lower()
+    return pm == "leave" or (am == "leave" and pm == "")
+
+
+def leave_runs_on(db, employee, rows):
+    """Rows with each rest day that follows a day of leave turned into Leave (a run: Saturday leave -> Sunday ->
+    a holiday on Monday). A rest day he worked (Present, OT) or was sick on keeps its mark."""
+    from types import SimpleNamespace
+    from datetime import timedelta
+    if not rows:
+        return rows
+    by_day = {r.full_date: r for r in rows}
+    first = min(by_day)
+    before = None
+    if first >= LEAVE_RUNS_ON_FROM:              # the day before the cycle, for a Sunday on its first day
+        before = (db.query(models.DailyRow).filter(models.DailyRow.emp_no == employee.emp_no,
+                                                    models.DailyRow.full_date == first - timedelta(days=1)).first()
+                  if db is not None else None)
+    out, prev_leave = [], bool(before is not None and _on_leave_at_end_of(before))
+    d = first
+    last = max(by_day)
+    while d <= last:
+        r = by_day.get(d)
+        if r is None:
+            prev_leave = False
+        else:
+            am, pm = (r.am or "").strip().lower(), (r.pm or "").strip().lower()
+            rest_day = d.weekday() == 6 or (am == "holiday" and pm in ("holiday", ""))
+            if (prev_leave and d >= LEAVE_RUNS_ON_FROM and rest_day and am in _REST and pm in _REST
+                    and not (getattr(r, "ot", 0) or 0)):
+                r = SimpleNamespace(full_date=r.full_date, am="Leave", pm="Leave", ot=0, bh=getattr(r, "bh", 0) or 0,
+                                    site=getattr(r, "site", ""), engineer=getattr(r, "engineer", ""),
+                                    comments=(getattr(r, "comments", "") or "") or "Leave runs on to the next working day",
+                                    emp_no=r.emp_no, leave_run_on=True)
+                prev_leave = True
+            else:
+                prev_leave = _on_leave_at_end_of(r)
+            out.append(r)
+        d += timedelta(days=1)
+    return out
+
+
 def card_rows(db, employee, month_year, rows):
     """The days exactly as the salary card counts them - used by the card's
     own calculation below AND by every printed / previewed card, so the grid
@@ -148,7 +199,8 @@ def card_rows(db, employee, month_year, rows):
                                 site="", engineer="", comments=getattr(r, "comments", ""), emp_no=r.emp_no)
                 if r.full_date > t and ((r.am or "") != "Terminated" or (r.pm or "") != "Terminated") else r
                 for r in rows]
-    return with_days_paid_in_advance(db, employee, month_year, rows)
+    rows = with_days_paid_in_advance(db, employee, month_year, rows)
+    return sorted(leave_runs_on(db, employee, rows), key=lambda r: r.full_date)
 
 
 def recalculate_summary(db: Session, employee: models.Employee, month_year: str) -> models.EmployeeSummary:

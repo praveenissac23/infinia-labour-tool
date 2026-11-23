@@ -12941,11 +12941,52 @@ def _judge_days(rows):
     return out
 
 
+STAFF_LEAVE_RUNS_ON_FROM = date(2026, 11, 1)       # office staff: the November 2026 month on (23/11/2026)
+
+
 def _month_rows(db, employee_id, a, b):
-    return (db.query(models.StaffLeave)
+    rows = (db.query(models.StaffLeave)
               .filter(models.StaffLeave.employee_id == employee_id,
-                      models.StaffLeave.on_date >= a, models.StaffLeave.on_date <= b)
+                      models.StaffLeave.on_date >= a - timedelta(days=7), models.StaffLeave.on_date <= b)
               .all())
+    rows = _leave_runs_on_staff(rows)
+    return [l for l in rows if a <= l.on_date <= b]
+
+
+def _leave_runs_on_staff(rows):
+    """Leave runs on to the next working day (23/11/2026, Praveen): a vacation or unpaid leave whose last day is a
+    Saturday (or the day before his company holiday) also takes the Sunday / holiday after it - he is back on the
+    next working day, and his salary starts from there. Nothing is written: the day is added here, where the salary
+    and the absence register read the month, with the same kind and pay rule as the leave before it. A Sunday he
+    has an entry of his own for (absent, sick) keeps that entry; a company-holiday entry on it gives way."""
+    from types import SimpleNamespace
+    by_day = {}
+    for l in rows:
+        by_day.setdefault(l.on_date, []).append(l)
+    out = list(rows)
+    for d in sorted(by_day):
+        for l in by_day[d]:
+            kind = _leave_kind(l)
+            if kind not in ("vacation", "unpaid") or (l.portion or 1.0) < 1:
+                continue
+            n = d + timedelta(days=1)
+            while n >= STAFF_LEAVE_RUNS_ON_FROM:
+                there = by_day.get(n, [])
+                hol = [x for x in there if _leave_kind(x) == "holiday"]
+                if n.weekday() != 6 and not hol:
+                    break                                        # a working day: he is back
+                if [x for x in there if x not in hol]:
+                    break                                        # its own entry stands (or the leave goes on anyway)
+                v = SimpleNamespace(id=None, employee_id=l.employee_id, on_date=n, portion=1.0, kind=kind, paid=l.paid,
+                                    pay_rule=l.pay_rule, reason="Leave runs on to the next working day", certificate=False,
+                                    notes="", batch=l.batch, run_on=True, created_by=None, created_at=None)
+                for x in hol:
+                    out.remove(x)
+                out.append(v)
+                by_day[n] = [v]
+                n += timedelta(days=1)
+            break
+    return sorted(out, key=lambda x: (x.on_date, x.id or 0))
 
 
 def _day_rate(gross):
