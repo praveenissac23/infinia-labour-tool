@@ -3958,7 +3958,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <p class="cr-hint" style="margin:6px 0 10px;">Paste the list as you have it - each login as <b>Username: ...</b> with <b>Password: ...</b> on the next line. Headings and blank lines are skipped. Check the table, then Save all.</p>
             <textarea id="cr-pl-text" autocomplete="off" data-spell="off" spellcheck="false" placeholder="Username: info@company.com&#10;Password: ..."></textarea>
             <div class="cr-pl-opts">
-              <label class="cr-f"><span>Website (optional)</span><input type="text" id="cr-pl-url" placeholder="e.g. outlook.office.com"></label>
+              <label class="cr-f"><span>Website (optional)</span><input type="text" id="cr-pl-url" placeholder="e.g. outlook.office.com" title="Where these logins are used. Leave it empty for email logins - the name and logo then come from the email address."></label>
               <label class="cr-f"><span>Category</span><select id="cr-pl-cat"></select></label>
               <label class="cr-lock"><input type="checkbox" id="cr-pl-admin" checked><span><b>&#128274; Admin only</b></span></label>
               <button class="btn btn-dark" onclick="crPasteRead()">Check</button>
