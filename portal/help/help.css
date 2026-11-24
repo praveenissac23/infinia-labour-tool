@@ -102,3 +102,11 @@
 .help-tipbox { white-space: pre-line; }
 th .help-i.in-head { background: rgba(255,255,255,.85); color: #8C2F26; }
 th .help-i.in-head.pre { margin: 0 5px 0 0; }
+
+/* 24/11/2026: on the dark dashboards the top bar turns every span white (!important) - the search list sits in the
+   top bar but is a white card, so its text keeps its own colours. (:not(#hx) lifts it above those rules.) */
+html body:not(#hx) .help-results:not(#hx), html body:not(#hx) .help-results:not(#hx) .help-r { color: #2B2622 !important; }
+html body:not(#hx) .help-results:not(#hx) .help-area { color: #C0392B !important; }
+html body:not(#hx) .help-results:not(#hx) .help-area.task { color: #16857A !important; }
+html body:not(#hx) .help-results:not(#hx) .help-where { color: #8A8178 !important; }
+html body:not(#hx) .help-results:not(#hx) .help-none { color: #777 !important; }
