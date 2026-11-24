@@ -176,6 +176,15 @@
   .dayhead { display: flex; justify-content: space-between; align-items: center; margin: 20px 20px 10px; }
   .dayhead b { font-size: 17px; } .dayhead button { font-size: 14px; font-weight: 700; color: var(--redtx); }
   .notes { padding: 6px 16px; gap: 12px; } .note { border-radius: 20px; padding: 15px; min-height: 124px; border: 1px solid var(--line); }
+  .snd { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .snd button { display: flex; justify-content: space-between; align-items: center; padding: 13px 14px; border-radius: 14px; background: var(--soft); font-weight: 600; border: 1.5px solid transparent; }
+  .snd button:last-child:nth-child(odd) { grid-column: span 2; }
+  .snd button i { font-style: normal; font-size: 11px; color: var(--mute); }
+  .snd button.on { border-color: var(--red); background: var(--redbg); color: var(--redtx); } .snd button.on i { color: var(--redtx); }
+  .mic.rec { box-shadow: 0 0 0 calc(var(--lvl, 0) * 10px) #C0392B40; animation: none; transition: box-shadow .1s; }
+  .mic.rec::after { content: "Tap to stop"; }
+  .mic.busy { background: var(--soft); color: var(--mute); }
+  .mic.busy svg { animation: blink 1s infinite; } @keyframes blink { 50% { opacity: .3; } }
   @media (min-width: 900px) {
     .two { display: grid; grid-template-columns: 1fr 380px; gap: 10px; align-items: start; }
     .two .side { position: sticky; top: 10px; }
@@ -341,7 +350,7 @@ function renderNext() {
   const secs = [["overdue", "● Overdue", "red"], ["today", "Today"], ["tomorrow", "Tomorrow"], ["week", "This week"], ["later", "Later"], ["nodate", "Any time"]];
   let h = "";
   for (const [k, l, c] of secs) { const rs = open.filter(i => bucket(i) === k); if (rs.length) h += `<div class="sec ${c || ""}">${l}</div>` + rs.map(i => rowHtml(i, k)).join(""); }
-  $("pg-next").innerHTML = h || `<div class="empty">Nothing waiting.<br>Type or speak below - “pay DEWA tomorrow”, “call the bank Thursday 10am”.</div>`;
+  $("pg-next").innerHTML = h || `<div class="empty">Nothing waiting.<br>Type or speak below.</div>`;
 }
 // ----- calendar: 6 months back, 18 ahead; swipe the months, the strip follows and lights up the one in view -----
 let CALIDX = null, CALN = 0, MLIST = [];
@@ -508,39 +517,93 @@ function toast(msg, act, fn) {
 }
 
 // ---------------- voice ----------------
-// Safari on the iPhone keeps listening until told to stop: the mic stops by itself 1.5 s after you stop talking
-// (or after 12 s), and a second tap stops it at once. What was heard stays in the box to check, then ↑ to add.
-let REC = null, RECT = null, RECMAX = null;
-function stopRec() { clearTimeout(RECT); clearTimeout(RECMAX); if (REC) { try { REC.stop(); } catch (e) {} } }
-function speak() {
+// Safari's own speech recognition does not work in a Home Screen app on the iPhone (24/11/2026). So the phone
+// records, stops by itself 1.4 s after you stop talking (or a second tap, or 20 s), and the server writes it out.
+// What was heard goes in the box to check, then ↑ adds it. Server not set up / no mic → the keyboard's own 🎤.
+let REC = null, RECMAX = null, VOICE = null, LVL = null;
+function keyboardMic(msg) { $("q").focus(); $("hint").textContent = msg || "Tap the 🎤 on your keyboard and speak."; }
+async function voiceReady() {
+  if (VOICE === null) { try { VOICE = !!(await api("/users/personal/voice")).ready; } catch (e) { VOICE = false; } }
+  return VOICE;
+}
+function stopRec() { clearTimeout(RECMAX); if (REC && REC.state !== "inactive") { try { REC.stop(); } catch (e) {} } }
+async function speak() {
   if (REC) { stopRec(); return; }
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { $("q").focus(); $("hint").textContent = "Tap the 🎤 on your keyboard and speak."; return; }
-  const r = new SR(); REC = r; r.lang = "en-GB"; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
-  let heard = "";
-  $("mic").classList.add("rec"); $("hint").textContent = "Listening… e.g. “remind me tomorrow 9am to sign the payroll”";
-  RECMAX = setTimeout(stopRec, 12000);
-  r.onresult = e => {
-    heard = Array.from(e.results).map(x => x[0].transcript).join(" ").trim();
-    $("q").value = heard; $("q").dispatchEvent(new Event("input"));
-    clearTimeout(RECT); RECT = setTimeout(stopRec, e.results[e.results.length - 1].isFinal ? 300 : 1500);
+  if ($("mic").classList.contains("busy")) return;
+  if (!navigator.mediaDevices || !window.MediaRecorder || !(await voiceReady())) return keyboardMic();
+  let st;
+  try { st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+  catch (e) { return keyboardMic("Allow the microphone for this app (iPhone Settings), or tap the 🎤 on your keyboard."); }
+  const mt = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+  const r = new MediaRecorder(st, mt ? { mimeType: mt } : {}), parts = []; REC = r;
+  let spoke = false, loud = 0, floor = 0, n = 0; const t0 = Date.now();
+  // listen to the level: tells when you have finished, and makes the mic glow as you talk
+  try {
+    const C = ac(), an = C.createAnalyser(); an.fftSize = 1024; C.createMediaStreamSource(st).connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    LVL = setInterval(() => {
+      an.getByteTimeDomainData(buf); let sum = 0; for (const v of buf) sum += (v - 128) * (v - 128);
+      const rms = Math.sqrt(sum / buf.length) / 128, now = Date.now();
+      if (n++ < 4) { floor = Math.max(floor, rms); return; }                    // the room's own noise, first 0.4 s
+      if (rms > Math.max(.025, floor * 2.5)) { spoke = true; loud = now; }
+      $("mic").style.setProperty("--lvl", Math.min(1, rms * 8).toFixed(2));
+      if ((spoke && now - loud > 1400) || (!spoke && now - t0 > 7000)) stopRec();
+    }, 100);
+  } catch (e) { spoke = true; }
+  r.ondataavailable = e => { if (e.data && e.data.size) parts.push(e.data); };
+  r.onstop = async () => {
+    clearInterval(LVL); st.getTracks().forEach(t => t.stop()); REC = null;
+    const m = $("mic"); m.classList.remove("rec"); m.style.removeProperty("--lvl");
+    const blob = new Blob(parts, { type: r.mimeType || mt || "audio/mp4" });
+    if (!spoke || blob.size < 1000) { $("hint").textContent = "Didn't hear anything - tap the mic and speak."; return; }
+    m.classList.add("busy"); $("hint").textContent = "Writing it out…";
+    try {
+      const res = await fetch("/users/personal/voice?k=" + encodeURIComponent(K), { method: "POST", body: blob, headers: { "Content-Type": blob.type, "X-Personal-Device": DEV } });
+      const d = await res.json().catch(() => ({}));
+      if (res.status === 503) { VOICE = false; return keyboardMic(); }
+      if (!res.ok) throw new Error(d.detail || "Could not write that out.");
+      if (!d.text) { $("hint").textContent = "Didn't catch that - tap the mic and try again."; return; }
+      const q = $("q"); q.value = (q.value.trim() ? q.value.trim() + " " : "") + d.text.replace(/\.$/, "");
+      q.dispatchEvent(new Event("input")); $("hint").textContent = "Check it, then press ↑ to add";
+    } catch (e) { $("hint").textContent = e.message + " Or tap the 🎤 on your keyboard."; }
+    finally { m.classList.remove("busy"); }
   };
-  r.onspeechend = () => { clearTimeout(RECT); RECT = setTimeout(stopRec, 300); };
-  r.onend = () => { REC = null; clearTimeout(RECT); clearTimeout(RECMAX); $("mic").classList.remove("rec");
-    $("hint").textContent = heard ? "Check it, then press ↑ to add" : "Didn't catch that - tap 🎤 and try again."; };
-  r.onerror = e => { REC = null; clearTimeout(RECT); clearTimeout(RECMAX); $("mic").classList.remove("rec");
-    $("hint").textContent = e && e.error === "not-allowed" ? "Allow the microphone for this page in Settings, or tap the 🎤 on your keyboard." : "Tap the 🎤 on your keyboard and speak."; };
-  try { r.start(); } catch (e) { REC = null; $("mic").classList.remove("rec"); $("q").focus(); }
+  r.start(250); $("mic").classList.add("rec"); $("hint").textContent = "Listening…";
+  RECMAX = setTimeout(stopRec, 20000);
 }
 
-// ---------------- reminders while the page is open: banner + sound ----------------
-function chime() {
+// ---------------- reminder sounds (played by this page; the phone's own sound when the app is closed) -----------
+let AC = null;
+function ac() {
+  if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+  if (AC.state === "suspended") AC.resume();
+  return AC;
+}
+// the iPhone only lets a page make sound after a touch - wake the sound up on the first one
+["touchend", "pointerdown", "keydown"].forEach(ev => document.addEventListener(ev, () => { try { ac(); } catch (e) {} }, { passive: true }));
+const SOUNDS = {        // [pitch Hz, start s, length s, wave, loudness]
+  chime:   { name: "Chime",   notes: [[880, 0, .5, "sine", .35], [660, .28, .6, "sine", .35]] },
+  crystal: { name: "Crystal", notes: [[1568, 0, 1, "sine", .22], [2093, .12, 1, "sine", .16], [3136, .24, 1.3, "sine", .08]] },
+  marimba: { name: "Marimba", notes: [[523, 0, .3, "triangle", .45], [659, .13, .3, "triangle", .45], [784, .26, .5, "triangle", .45]] },
+  harp:    { name: "Harp",    notes: [[392, 0, .8, "sine", .3], [494, .09, .8, "sine", .3], [587, .18, .8, "sine", .3], [784, .27, .9, "sine", .3], [988, .36, 1.2, "sine", .25]] },
+  pulse:   { name: "Pulse",   notes: [[1046, 0, .13, "square", .07], [1046, .2, .13, "square", .07], [1046, .7, .13, "square", .07], [1046, .9, .13, "square", .07]] },
+};
+function soundKey() { let k = "chime"; try { k = localStorage.getItem("me_sound") || "chime"; } catch (e) {} return SOUNDS[k] ? k : "chime"; }
+function play(key) {
   try {
-    const C = new (window.AudioContext || window.webkitAudioContext)();
-    [[880, 0], [660, .28]].forEach(([f, t]) => { const o = C.createOscillator(), g = C.createGain(); o.frequency.value = f; o.connect(g); g.connect(C.destination);
-      g.gain.setValueAtTime(.0001, C.currentTime + t); g.gain.exponentialRampToValueAtTime(.35, C.currentTime + t + .02); g.gain.exponentialRampToValueAtTime(.0001, C.currentTime + t + .5);
-      o.start(C.currentTime + t); o.stop(C.currentTime + t + .55); });
+    const C = ac(), t0 = C.currentTime + .03;
+    for (const [f, t, d, w, v] of SOUNDS[key || soundKey()].notes) {
+      const o = C.createOscillator(), g = C.createGain(); o.type = w; o.frequency.value = f; o.connect(g); g.connect(C.destination);
+      g.gain.setValueAtTime(.0001, t0 + t); g.gain.exponentialRampToValueAtTime(v, t0 + t + .015); g.gain.exponentialRampToValueAtTime(.0001, t0 + t + d);
+      o.start(t0 + t); o.stop(t0 + t + d + .05);
+    }
   } catch (e) {}
+}
+function chime() { play(); }
+function setSound(k) {
+  try { localStorage.setItem("me_sound", k); } catch (e) {}
+  document.querySelectorAll("#soundList button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+  play(k);
 }
 function checkRing() {
   const n = dubaiNow();
@@ -583,7 +646,9 @@ async function openSettings() {
     ${ios && !standalone() ? `<p style="line-height:1.5">First put this page on your Home Screen: tap <b>Share</b> (the square with the arrow ↑ at the bottom of Safari) → <b>Add to Home Screen</b> → <b>Add</b>. Then open it from the new icon and come back here.</p>` :
       `<p style="line-height:1.5;color:var(--noteInk)">Reminders pop up with sound at their time, even when this page is closed. ${perm === "granted" ? "✅ Allowed on this device." : ""}</p>
        <div class="acts" style="margin-top:4px"><button class="btn pri" onclick="pushOn()">Turn on reminders</button><button class="btn" onclick="pushTest()">Send a test</button></div>`}
-    <p style="font-size:13px;color:var(--mute);line-height:1.5;margin-top:16px">Sound follows the phone: Silent mode or a Focus keeps it quiet.</p>
+    <h3 style="margin-top:18px">Reminder sound</h3>
+    <div class="snd" id="soundList">${Object.entries(SOUNDS).map(([k, x]) => `<button data-k="${k}" class="${soundKey() === k ? "on" : ""}" onclick="setSound('${k}')"><span>${x.name}</span><i>▶</i></button>`).join("")}</div>
+    <p style="font-size:13px;color:var(--mute);line-height:1.5;margin-top:8px">Tap one to hear it. It plays when a reminder comes up while this app is open. When the app is closed, the iPhone plays its own notification sound - Apple does not let web apps choose it. Silent mode or a Focus keeps both quiet.</p>
     <h3 style="margin-top:18px">Look</h3>
     <div class="seg" id="themeSeg">${[["auto", "As the phone"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => `<button class="${theme() === k ? "on" : ""}" onclick="setTheme('${k}')">${l}</button>`).join("")}</div>
     <h3 style="margin-top:18px">Signed-in devices</h3><div id="devs" style="font-size:14px;color:var(--noteInk)">…</div>

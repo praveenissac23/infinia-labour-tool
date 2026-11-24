@@ -30,7 +30,7 @@ import threading
 import time
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String, Text, update
 from sqlalchemy.orm import Session
@@ -598,6 +598,48 @@ def delete_item(iid: int, s: PersonalSettings = Depends(me), db: Session = Depen
     i.deleted, i.updated_at = True, datetime.utcnow()
     db.commit()
     return {"ok": True}
+
+
+# ---- voice: the phone records, this server writes it out (voice_stt.py) --------------------------------------------
+
+_VOICE_LOCK = threading.Lock()
+
+
+@router.get("/users/personal/voice")
+def voice_ready(s: PersonalSettings = Depends(me)):
+    import voice_stt
+    return {"ready": voice_stt.ready()}
+
+
+def _transcribe(data: bytes, kind: str) -> str:
+    import subprocess, sys, tempfile
+    import voice_stt
+    ext = ".webm" if "webm" in kind else ".ogg" if "ogg" in kind else ".wav" if "wav" in kind else ".m4a"
+    with _VOICE_LOCK, tempfile.NamedTemporaryFile(suffix=ext) as f:      # one at a time - memory stays small
+        f.write(data); f.flush()
+        try:
+            r = subprocess.run([sys.executable, voice_stt.__file__, voice_stt.model_dir(), f.name],
+                               capture_output=True, timeout=60, env={**os.environ, "OMP_NUM_THREADS": "2"})
+        except subprocess.TimeoutExpired:
+            raise HTTPException(504, "That took too long - try a shorter sentence.")
+    if r.returncode != 0:
+        raise HTTPException(500, "Could not read that recording - try again.")
+    return r.stdout.decode("utf-8", "replace").strip()
+
+
+@router.post("/users/personal/voice")
+async def voice(request: Request, s: PersonalSettings = Depends(me)):
+    import voice_stt
+    from starlette.concurrency import run_in_threadpool
+    if not voice_stt.ready():
+        raise HTTPException(503, "voice-off")
+    data = await request.body()
+    if len(data) < 1000:
+        return {"text": ""}
+    if len(data) > 3_000_000:
+        raise HTTPException(413, "Too long - keep it under 30 seconds.")
+    text = await run_in_threadpool(_transcribe, data, request.headers.get("content-type", ""))
+    return {"text": text[:500]}
 
 
 # ---- phone notifications ---------------------------------------------------------------------------------------------

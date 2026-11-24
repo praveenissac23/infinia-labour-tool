@@ -201,12 +201,43 @@ with mock.patch.object(push, "available", lambda: True):
 s = SessionLocal()
 ck("a reminder 5 days old (server was off) is not rung late, just marked", n3 == 0 and s.get(P.PersonalItem, iid).reminded_at is not None); s.close()
 
+# ---- voice: written out on the server, in its own short process ----
+fake = tempfile.mkdtemp(); os.makedirs(os.path.join(fake, "faster_whisper"))
+open(os.path.join(fake, "faster_whisper", "__init__.py"), "w").write(
+    "import os\nclass S:\n    def __init__(s, t): s.text = t\n"
+    "class WhisperModel:\n    def __init__(s, d, **k): s.d = d\n"
+    "    def transcribe(s, path, **k):\n        n = os.path.getsize(path)\n"
+    "        if n == 4444: raise SystemExit(3)\n"
+    "        return iter([S(' Remind me tomorrow 9am'), S(' to sign the payroll.')]), None\n")
+import voice_stt
+mdir = os.path.join(fake, "model"); os.makedirs(mdir)
+ck("voice before the server is set up: says so (the page then uses the keyboard mic)",
+   c.get(f"/users/personal/voice?k={K}", headers=D).json() == {"ready": False} and
+   c.post(f"/users/personal/voice?k={K}", headers={**D, "Content-Type": "audio/mp4"}, content=b"x" * 5000).status_code == 503)
+open(os.path.join(mdir, "model.bin"), "wb").write(b"m")
+sys.path.insert(0, fake); os.environ["PYTHONPATH"] = fake + os.pathsep + os.environ.get("PYTHONPATH", ""); os.environ["INFINIA_VOICE_DIR"] = mdir
+ck("voice set up: ready", c.get(f"/users/personal/voice?k={K}", headers=D).json() == {"ready": True})
+ck("voice needs this device's key", c.post(f"/users/personal/voice?k={K}", headers={"Content-Type": "audio/mp4"}, content=b"x" * 5000).status_code == 401)
+r = c.post(f"/users/personal/voice?k={K}", headers={**D, "Content-Type": "audio/mp4"}, content=b"x" * 5000)
+ck("a clip comes back as text", r.status_code == 200 and r.json() == {"text": "Remind me tomorrow 9am to sign the payroll."}, r.text)
+ck("an empty clip: nothing, no error", c.post(f"/users/personal/voice?k={K}", headers={**D, "Content-Type": "audio/webm"}, content=b"x" * 10).json() == {"text": ""})
+ck("a huge upload is refused", c.post(f"/users/personal/voice?k={K}", headers={**D, "Content-Type": "audio/mp4"}, content=b"x" * 3_000_001).status_code == 413)
+r = c.post(f"/users/personal/voice?k={K}", headers={**D, "Content-Type": "audio/mp4"}, content=b"x" * 4444)
+ck("a clip that can't be read: a plain message, the app carries on", r.status_code == 500 and "try again" in r.json()["detail"], r.text)
+ck("another admin's device can't use this address's voice", c.post(f"/users/personal/voice?k={KB}", headers={**D, "Content-Type": "audio/mp4"}, content=b"x" * 5000).status_code == 401)
+
 # ---- the page and the Settings card ----
 root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 page = open(os.path.join(root, "portal", "me.html"), encoding="utf-8").read()
 ck("the page has its own notification worker (not the work app's)", 'register("/portal/me-sw.js", { scope: "/portal/me" })' in page and os.path.exists(os.path.join(root, "portal", "me-sw.js")))
 ck("swipe between Next / Calendar / Notes / Done, months slide with a strip that lights up", 'class="pager" id="pager"' in page and "scroll-snap-type: x mandatory" in page and 'id="mstrip"' in page and "function monthChanged" in page)
-ck("voice stops by itself after a pause, and on a second tap", "RECT = setTimeout(stopRec" in page and "if (REC) { stopRec(); return; }" in page)
+ck("voice: records (Safari's own recognition is not used), stops by itself after a pause, on a second tap, or at 20 s",
+   "new MediaRecorder(" in page and "webkitSpeechRecognition" not in page and "now - loud > 1400" in page and "if (REC) { stopRec(); return; }" in page and "setTimeout(stopRec, 20000)" in page)
+ck("voice not set up / no mic: falls back to the keyboard's own mic", "if (res.status === 503) { VOICE = false; return keyboardMic(); }" in page)
+ck("5 reminder sounds to pick in settings, each plays when tapped, kept on this phone",
+   page.count('notes: [[') == 5 and 'id="soundList"' in page and "localStorage.setItem(\"me_sound\", k)" in page and "play(k);" in page)
+ck("the sound is woken by the first touch (the iPhone stays quiet otherwise)", '["touchend", "pointerdown", "keydown"].forEach' in page)
+ck("no example sentence on the empty list", "call the bank" not in page)
 ck("light / dark / as the phone", "html[data-theme=dark]" in page and "function setTheme" in page)
 ck("its own Home Screen icon", 'href="/portal/me-icon-180.png"' in page and m.json()["icons"][0]["src"] == "/portal/me-icon-192.png" and os.path.exists(os.path.join(root, "portal", "me-icon-512.png")))
 ck("the page: not indexed, no referrer, iPhone app look", 'name="robots" content="noindex' in page and 'name="referrer" content="no-referrer"' in page and "apple-mobile-web-app-capable" in page)
