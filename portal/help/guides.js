@@ -763,7 +763,7 @@ window.HELP_GUIDES = [
       { say: "Press the eye to show it for 20 seconds, or the copy button to copy it.", el: "#cr-list" }] },
   // ---------------- Estimation > Trello ----------------
   { id: "est-project", area: "Estimation", title: "How to add a project to Estimation",
-    words: "estimation project new project add project site code contract value qs projects dropdown",
+    words: "estimation project new project add project site code contract value qs projects dropdown area statement plot area bua gfa built up area sqm sqft square feet type of contract",
     go: { page: "estimation", tab: "estproj", est: "home.dash" },
     steps: [{ say: "Go to Estimation > Projects and press + New project." },
             { say: "Pick the site code - the name is filled in. Add the client and contract value (left empty, it comes from Accounts > Project payments)." },
@@ -832,7 +832,7 @@ window.HELP_GUIDES = [
             { say: "Approved variations go in as variation lines (tick Variation, type V01 or the LPO no.)." }],
     tip: "Set up once. Every certificate is then made line by line and printed as Appendix A - no attachments." },
   { id: "est-pcsheet", area: "Estimation", title: "How to make a subcontractor PC on the sheet (lines, deductions, sign-off)",
-    words: "payment certificate sheet pc lines percentage measured quantity deduction material manpower plant back charge retention release sign prepared checked reviewed approved verified at site print appendix",
+    words: "hide columns hide column internal columns int qty contract amount show internal payment certificate sheet pc lines percentage measured quantity deduction material manpower plant back charge retention release sign prepared checked reviewed approved verified at site print appendix",
     go: { page: "estimation", tab: "estproj", est: "subs.pcs" },
     steps: [{ say: "On the invoice tracker press Certify - a subcontract with an item schedule opens the full sheet. It starts as a copy of the last certificate." },
             { say: "Change only the lines that moved: % done, W x H, or the quantity to date, and any deduction on the line. Enter moves down the column." },
@@ -1076,7 +1076,7 @@ window.HELP_GUIDES = [
       { say: "For tax and proforma invoices: choose the invoice signature here and press Upload. Until one is uploaded, invoices print with the purchase-order signature.", el: "#sig-file-invoice" }] },
   // ---------------- Reports ----------------
   { id: "report-cycle", area: "Reports", title: "How to get a labour salary report",
-    words: "report salary report cycle report total cost summary labour export excel pdf",
+    words: "report salary report cycle report total cost summary labour export excel pdf tick employees show only ticked some workers selected people only them",
     go: { page: "reports", tab: "labour", sub: "builder" },
     steps: [
       { say: "Choose the cycle and company.", el: "#report-cycle" },
