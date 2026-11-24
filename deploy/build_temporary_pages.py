@@ -1616,5 +1616,22 @@ def brand_hand_written(menu_rights=None):
             open(path, "w", encoding="utf-8").write(new)
 
 
+def stamp_me_page():
+    """The personal space (portal/me.html) carries a fingerprint of itself; the Home Screen app compares it with the
+    server's and reloads itself when the page was updated (24/11/2026)."""
+    import hashlib, re
+    path = os.path.join(ROOT, "portal", "me.html")
+    if not os.path.exists(path):
+        return
+    text = open(path, encoding="utf-8").read()
+    rx = re.compile(r'(<meta name="me-build" content=")[^"]*(")')
+    v = hashlib.sha256(rx.sub(r"\1\2", text).encode("utf-8")).hexdigest()[:12]
+    new = rx.sub(r"\g<1>" + v + r"\2", text)
+    if new != text:
+        open(path, "w", encoding="utf-8").write(new)
+        print("stamped portal/me.html", v)
+
+
 if __name__ == "__main__":
     brand_hand_written(build())
+    stamp_me_page()

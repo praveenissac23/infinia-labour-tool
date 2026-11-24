@@ -271,6 +271,23 @@ ck("the mic tap starts at once (no waiting first - the iPhone ignores a mic, key
 ck("5 reminder sounds to pick in settings, each plays when tapped, kept on this phone",
    page.count('notes: [[') == 5 and 'id="soundList"' in page and "localStorage.setItem(\"me_sound\", k)" in page and "play(k);" in page)
 ck("the sound is woken by the first touch (the iPhone stays quiet otherwise)", '["touchend", "pointerdown", "keydown"].forEach' in page)
+ck("the page carries an up-to-date version stamp (run python3 deploy/build_temporary_pages.py after changing me.html)",
+   P.page_stamp(page) in page and 'name="me-build" content="' + P.page_stamp(page) + '"' in page)
+v = c.get("/users/personal/version")
+ck("the server tells the page its newest version, never cached", v.json()["v"] == P.page_stamp(page) and "no-store" in v.headers.get("cache-control", ""))
+ck("the app checks for a new version on every open and reloads itself; a Refresh button in settings",
+   "checkVersion();" in page and "if (!document.hidden) { checkVersion();" in page and 'onclick="hardRefresh()"' in page and '"&r=" + Date.now()' in page and 'sessionStorage.setItem("me_reload", v)' in page)
+ck("every section can show as List, Compact, Grid or Tiles (button on each page, all four in settings), kept on the phone",
+   all(f'["{k}",' in page for k in ("list", "compact", "grid", "tiles")) and "function pickLay" in page and "layRows()" in page and
+   'wrapLay("notes"' in page and 'wrapLay("rem"' in page and 'wrapLay("cal"' in page and 'wrapLay("done"' in page and 'localStorage.setItem("me_lay_" + sec, v)' in page)
+ck("remind me: a Custom choice for any amount before (minutes / hours / days / weeks)", '["custom", "Custom…"]' in page and 'id="e-cn"' in page and "n * +$(\"e-cu\").value" in page)
+r = c.post(f"/users/personal/items?k={K}", headers=D, json={"kind": "event", "title": "Site handover", "due_on": "2026-12-10", "due_time": "15:00", "remind_before": "300"}).json()
+ck("a custom 5 hours before rings at 10:00 for a 15:00 meeting", r["remind_at"] == "2026-12-10T10:00" and r["remind_before"] == 300, r)
+c.delete(f"/users/personal/items/{r['id']}?k={K}", headers=D)
+ck("no space wasted: ＋, 🎤 and layout are small buttons in the header (no add bar or + New note tile)", "function headActs()" in page and 'id="hacts"' in page and "+ New note" not in page and "Speak a ${K1[kind]}</button><button" not in page)
+ck("calendar: a small + by the day (no big Add-on-this-day button)", "+ Add on this day" not in page and 'class="dplus"' in page)
+ck("Done: group by day / section / work-personal / none, sort newest / oldest / A-Z, kept on the phone",
+   "function pickDone()" in page and all(x in page for x in ('["day", "Day"]', '["kind", "Section"]', '["tag", "Work / Personal"]', '["az", "A to Z"]', '"me_done_group"', '"me_done_sort"')))
 ck("Dashboard: reminders, calendar and notes together, each with its own mic", "function renderDash()" in page and 'dhead("Reminders", "task"' in page and 'dhead("Calendar", "event"' in page and 'dhead("Notes", "note"' in page and "TITLES = { dash: \"Dashboard\"" in page)
 ck("five tabs: Dashboard, Reminders, Calendar, Notes, Done", all(f'data-v="{v}"' in page for v in ("dash", "rem", "cal", "notes", "done")) and 'data-v="next"' not in page)
 ck("swipe a row: left for its actions, right to tick it off", "function swipeWrap" in page and '"touchmove"' in page and "{ passive: false }" in page and "x > 80" in page)

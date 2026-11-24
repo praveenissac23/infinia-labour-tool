@@ -6,6 +6,7 @@
      Only at its own secret address (?k=...), only with the owner's login + PIN once per device. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<meta name="me-build" content="96c2fe205b87">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -256,6 +257,49 @@
   .tgt button { width: 22px; height: 22px; border-radius: 50%; font-size: 11px; color: var(--redtx); }
   .lk { font-size: 12.5px; font-weight: 700; color: var(--redtx); padding: 2px 8px 0; }
   .nav button { font-size: 10.5px; }
+  .cust { display: flex; gap: 8px; align-items: center; margin: -4px 0 12px; }
+  .cust input { width: 84px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 16px; background: var(--field); text-align: center; }
+  .cust select { flex: 1; border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 16px; background: var(--field); }
+  .cust span { color: var(--mute); font-weight: 600; }
+  .toprow { align-items: center; } .toprow h1 { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hacts { display: flex; gap: 7px; margin-left: 8px; margin-right: 7px; }
+  .subrow { max-width: 1100px; margin: 0 auto; padding: 0 20px; } .subrow .sub { margin-top: 2px; }
+  .hb { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--barbg); border: 1px solid var(--gedge);
+        box-shadow: inset 0 1px 0 var(--ghi), 0 4px 14px var(--gsh); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); touch-action: manipulation; }
+  .hb svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; }
+  .hb.pri { background: var(--red); color: #fff; border-color: transparent; } .hb.pri svg { stroke-width: 2.4; }
+  .dha { display: flex; align-items: center; gap: 10px; }
+  .dplus { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--red); color: #fff !important; }
+  .dplus svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+  .sec .cnt { font-size: 11px; color: var(--mute); background: var(--soft); padding: 1px 7px; border-radius: 999px; margin-left: 4px; letter-spacing: 0; }
+  .seg.wrap { flex-wrap: wrap; } .seg.wrap button { flex: 1 1 45%; }
+  /* layouts */
+  .lbtn { flex: none; width: 44px; justify-content: center; padding: 10px 0; } .lbtn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+  .lays { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .lays button { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 4px; border-radius: 16px; background: var(--soft); font-weight: 700; font-size: 13.5px; border: 1.5px solid transparent; }
+  .lays button.on { border-color: var(--red); color: var(--redtx); background: var(--redbg); }
+  .lays svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+  .layrow { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; } .layrow > span { width: 82px; font-size: 14px; font-weight: 600; flex: none; }
+  .layrow .seg { flex: 1; } .layrow .seg button { padding: 8px 2px; font-size: 12.5px; }
+  .lay-compact .sw { margin-bottom: 5px; } .lay-compact .it { padding: 9px 12px; border-radius: 13px; gap: 10px; }
+  .lay-compact .tick { width: 23px; height: 23px; } .lay-compact .t1 { font-size: 15px; } .lay-compact .t2 { font-size: 11.5px; margin-top: 0; }
+  .lay-compact .t2 .tg { font-size: 10px; padding: 0 6px; } .lay-compact .rt { font-size: 12px; }
+  .lay-grid, .lay-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; padding: 0 16px 9px; }
+  .dcard .lay-grid, .dcard .lay-tiles { padding: 0 10px 8px; }
+  .lay-grid .sw, .lay-tiles .sw, .dcard .lay-grid .sw, .dcard .lay-tiles .sw { margin: 0; }
+  .lay-grid .it, .lay-tiles .it { flex-direction: column; align-items: flex-start; gap: 8px; height: 100%; padding: 12px 13px; }
+  .lay-grid .tx, .lay-tiles .tx { width: 100%; flex: 1; } .lay-grid .rt, .lay-tiles .rt { text-align: left; white-space: normal; }
+  .lay-grid .later, .lay-tiles .later { padding-left: 6px; }
+  .lay-grid .it { min-height: 112px; border-radius: 16px; } .lay-grid .tick { width: 25px; height: 25px; }
+  .lay-grid .t1 { font-size: 15px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .lay-tiles .it { min-height: 150px; border-radius: 22px; border-color: transparent; background: var(--tA); }
+  .lay-tiles .sw:nth-child(4n+2) .it { background: var(--tB); } .lay-tiles .sw:nth-child(4n+3) .it { background: var(--tC); } .lay-tiles .sw:nth-child(4n) .it { background: var(--tD); }
+  .lay-tiles .t1 { font-size: 16.5px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+  .lay-tiles .tick { border-color: #0000002e; background: #ffffff80; }
+  .lay-grid .sact, .lay-tiles .sact { display: none; }
+  :root { --tA: #FFF3C4; --tB: #FDE3DE; --tC: #ECE3FB; --tD: #DDF2EC; }
+  html[data-theme=dark] { --tA: #3A3420; --tB: #3A221F; --tC: #2A2338; --tD: #1B3330; }
+  html[data-theme=dark] .lay-tiles .tick { border-color: #ffffff40; background: #ffffff14; }
   @media (min-width: 900px) {
     .two { display: grid; grid-template-columns: 1fr 380px; gap: 10px; align-items: start; }
     .two .side { position: sticky; top: 10px; }
@@ -266,8 +310,9 @@
 <div id="gate" class="gate" style="display:none"></div>
 <div id="app" style="display:none">
   <header class="top">
-    <div class="toprow"><div><h1 id="h1">What's next</h1><div class="sub" id="sub"></div></div>
-      <button class="gear" onclick="openSettings()" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></div>
+    <div class="toprow"><h1 id="h1">Dashboard</h1>
+      <div class="hacts" id="hacts"></div><button class="gear" onclick="openSettings()" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></div>
+    <div class="subrow"><div class="sub" id="sub"></div></div>
     <div class="chips" id="chips"></div>
   </header>
   <main class="pager" id="pager">
@@ -376,8 +421,30 @@ async function unlock(isNew) {
 }
 
 // ---------------- the list ----------------
+// ----- updates: the Home Screen app keeps the old page in memory; on every open it asks the server for the newest
+// version and reloads itself when it differs (24/11/2026). Never in the middle of speaking, typing or editing.
+const MY_BUILD = (document.querySelector('meta[name="me-build"]') || {}).content || "";
+async function checkVersion() {
+  try {
+    const r = await fetch("/users/personal/version?t=" + Date.now(), { cache: "no-store" });
+    const v = (await r.json()).v;
+    if (!v || !MY_BUILD || v === MY_BUILD) return false;
+    let tried = ""; try { tried = sessionStorage.getItem("me_reload") || ""; } catch (e) {}
+    if (tried === v) return false;                               // already reloaded once for this version - no loop
+    if (LIVE || $("q").value.trim() || $("sheet").classList.contains("open")) { toast("A new version is ready", "Refresh", hardRefresh); return true; }
+    try { sessionStorage.setItem("me_reload", v); } catch (e) {}
+    hardRefresh(); return true;
+  } catch (e) { return false; }
+}
+async function hardRefresh() {
+  try { const reg = await navigator.serviceWorker.getRegistration("/portal/me"); if (reg) await reg.update(); } catch (e) {}
+  try { if (window.caches) for (const k of await caches.keys()) await caches.delete(k); } catch (e) {}
+  location.replace("/portal/me.html?k=" + encodeURIComponent(K) + "&r=" + Date.now());   // a new address: never the cached page
+}
 async function ready() {
   $("app").style.display = ""; $("gate").style.display = "none";
+  if (new URLSearchParams(location.search).get("r")) history.replaceState(null, "", "?k=" + encodeURIComponent(K));
+  checkVersion();
   try { if ("serviceWorker" in navigator) navigator.serviceWorker.register("/portal/me-sw.js", { scope: "/portal/me" }).catch(() => {}); } catch (e) {}
   pagerSetup();
   voiceReady();
@@ -386,7 +453,8 @@ async function ready() {
   if (open) { const it = ITEMS.find(x => String(x.id) === open); if (it) edit(it.id); history.replaceState(null, "", "?k=" + encodeURIComponent(K)); }
   setInterval(load, 60000);
   setInterval(checkRing, 15000);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { checkVersion(); load(); } });
+  window.addEventListener("pageshow", e => { if (e.persisted) checkVersion(); });
 }
 async function load() {
   try { const d = await api("/users/personal/items"); ITEMS = d.items; render(); checkRing(); } catch (e) {}
@@ -442,8 +510,33 @@ const byWhen = (a, b) => (a.due_on || "9999") + (a.due_time || "99") < (b.due_on
 const openTasks = () => ITEMS.filter(i => i.kind === "task" && !i.done_at && keep(i)).sort(byWhen);
 const openNotes = () => ITEMS.filter(i => i.kind === "note" && !i.done_at && keep(i)).sort((a, b) => (b.pinned - a.pinned) || (a.updated_at < b.updated_at ? 1 : -1));
 const comingEvents = () => { const t = iso(dubaiNow()); return ITEMS.filter(i => i.kind === "event" && !i.done_at && i.due_on >= t && keep(i)).sort(byWhen); };
-function addBar(kind) {
-  return `<div class="padd"><button class="pill mic1" onclick="speak('${kind}')">${MICI}Speak a ${K1[kind]}</button><button class="pill" onclick="edit(null,null,'${kind}')">＋ Type</button></div>`;
+// ----- layouts (24/11/2026): each section shows as List, Compact, Grid or Tiles - kept on this phone -----
+const LAYS = [["list", "List"], ["compact", "Compact"], ["grid", "Grid"], ["tiles", "Tiles"]];
+const LAYI = {
+  list: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="6" rx="2"/><rect x="3.5" y="14" width="17" height="6" rx="2"/></svg>',
+  compact: '<svg viewBox="0 0 24 24"><path d="M4 5h16M4 9.7h16M4 14.3h16M4 19h16"/></svg>',
+  grid: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>',
+  tiles: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7.5" height="11" rx="2"/><rect x="13" y="3.5" width="7.5" height="7" rx="2"/><rect x="3.5" y="16.5" width="7.5" height="4" rx="1.5"/><rect x="13" y="12.5" width="7.5" height="8" rx="2"/></svg>' };
+const LAYSEC = { rem: "Reminders", cal: "Calendar", notes: "Notes", done: "Done" };
+function lay(sec) { let v = ""; try { v = localStorage.getItem("me_lay_" + sec) || ""; } catch (e) {} return LAYI[v] ? v : "list"; }
+function setLay(sec, v) { try { localStorage.setItem("me_lay_" + sec, v); } catch (e) {} render(); headActs(); }
+const wrapLay = (sec, html) => html ? `<div class="lay lay-${lay(sec)}">${html}</div>` : "";
+function layBtn(sec) { return `<button class="pill lbtn" onclick="pickLay('${sec}')" aria-label="Layout">${LAYI[lay(sec)]}</button>`; }
+function pickLay(sec) {
+  sheet(`<h3>Show ${LAYSEC[sec]} as</h3><div class="lays">${LAYS.map(([k, l]) => `<button class="${lay(sec) === k ? "on" : ""}" onclick="setLay('${sec}','${k}');closeSheet()">${LAYI[k]}<span>${l}</span></button>`).join("")}</div>
+    <p style="font-size:13px;color:var(--mute);margin-top:12px">All four sections can be set in ⚙ too.</p>`);
+}
+function layRows() {
+  return Object.entries(LAYSEC).map(([sec, name]) => `<div class="layrow"><span>${name}</span><div class="seg">${LAYS.map(([k, l]) => `<button class="${lay(sec) === k ? "on" : ""}" onclick="setLay('${sec}','${k}');segOn(this)">${l}</button>`).join("")}</div></div>`).join("");
+}
+function addBar(kind) { return ""; }    // the page's ＋, 🎤 and layout sit in the header now (no space taken)
+const SORTI = '<svg viewBox="0 0 24 24"><path d="M4 6h11M4 12h8M4 18h5M18 5v14M15 16l3 3 3-3"/></svg>';
+const PLUSI = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
+function headActs() {
+  const k = { rem: "task", cal: "event", notes: "note" }[VIEW];
+  $("hacts").innerHTML = VIEW === "done" ? `<button class="hb" onclick="pickDone()" aria-label="Group and sort">${SORTI}</button>` :
+    (LAYSEC[VIEW] ? `<button class="hb" onclick="pickLay('${VIEW}')" aria-label="Layout">${LAYI[lay(VIEW)]}</button>` : "") +
+    (k ? `<button class="hb" onclick="speak('${k}')" aria-label="Speak a ${K1[k]}">${MICI}</button><button class="hb pri" onclick="edit(null,${VIEW === "cal" ? "CALSEL" : "null"},'${k}')" aria-label="New ${K1[k]}">${PLUSI}</button>` : "");
 }
 function dhead(title, kind, n) {
   return `<div class="dhead"><button class="dt" onclick="show('${KV[kind]}')">${title}${n ? `<span class="n">${n}</span>` : ""}<i>›</i></button><button class="smic" onclick="speak('${kind}')" aria-label="Speak a ${K1[kind]}">${MICI}</button></div>`;
@@ -452,14 +545,14 @@ function renderDash() {
   const n = dubaiNow(), today = iso(n);
   const ts = openTasks(), soon = ts.filter(i => ["overdue", "today", "tomorrow"].includes(bucket(i)));
   const shown = (soon.length ? soon : ts).slice(0, 5);
-  let h = `<div class="dcard">${dhead("Reminders", "task", ts.length)}${shown.map(i => rowHtml(i, bucket(i))).join("") || `<div class="dempty">Nothing due. Tap 🎤 and say “remind me tomorrow 9am to…”</div>`}${ts.length > shown.length ? `<button class="more" onclick="show('rem')">All ${ts.length} reminders ›</button>` : ""}</div>`;
+  let h = `<div class="dcard">${dhead("Reminders", "task", ts.length)}${wrapLay("rem", shown.map(i => rowHtml(i, bucket(i))).join("")) || `<div class="dempty">Nothing due. Tap 🎤 and say “remind me tomorrow 9am to…”</div>`}${ts.length > shown.length ? `<button class="more" onclick="show('rem')">All ${ts.length} reminders ›</button>` : ""}</div>`;
   const byDay = {}; ITEMS.filter(i => i.due_on && i.kind !== "note" && !i.done_at && keep(i)).forEach(i => (byDay[i.due_on] = byDay[i.due_on] || []).push(i));
   let wk = ""; for (let k = 0; k < 7; k++) { const d = new Date(n); d.setDate(n.getDate() + k); const sd = iso(d), its = byDay[sd] || [];
     wk += `<button class="${k === 0 ? "td" : ""}" onclick="openDay('${sd}')"><small>${DAY[d.getDay()]}</small><b>${d.getDate()}</b><span class="dots">${its.slice(0, 3).map(i => `<i class="${i.kind === "event" ? "e" : i.tag === "personal" ? "p" : ""}"></i>`).join("")}</span></button>`; }
   const ev = comingEvents(), evs = ev.slice(0, 4);
-  h += `<div class="dcard">${dhead("Calendar", "event", ev.length)}<div class="wk">${wk}</div>${evs.map(i => rowHtml(i, i.due_on === today ? "" : "ev")).join("") || `<div class="dempty">No meetings coming up. Tap 🎤 and say “meeting with the client Thursday 3pm”.</div>`}${ev.length > evs.length ? `<button class="more" onclick="show('cal')">All ${ev.length} coming up ›</button>` : ""}</div>`;
+  h += `<div class="dcard">${dhead("Calendar", "event", ev.length)}<div class="wk">${wk}</div>${wrapLay("cal", evs.map(i => rowHtml(i, i.due_on === today ? "" : "ev")).join("")) || `<div class="dempty">No meetings coming up. Tap 🎤 and say “meeting with the client Thursday 3pm”.</div>`}${ev.length > evs.length ? `<button class="more" onclick="show('cal')">All ${ev.length} coming up ›</button>` : ""}</div>`;
   const ns = openNotes(), nsh = ns.slice(0, 6);
-  h += `<div class="dcard">${dhead("Notes", "note", ns.length)}${nsh.map(i => rowHtml(i, "")).join("") || `<div class="dempty">No notes. Tap 🎤 and say “add a note to follow up…”</div>`}${ns.length > nsh.length ? `<button class="more" onclick="show('notes')">All ${ns.length} notes ›</button>` : ""}</div>`;
+  h += `<div class="dcard">${dhead("Notes", "note", ns.length)}${wrapLay("notes", nsh.map(i => rowHtml(i, "")).join("")) || `<div class="dempty">No notes. Tap 🎤 and say “add a note to follow up…”</div>`}${ns.length > nsh.length ? `<button class="more" onclick="show('notes')">All ${ns.length} notes ›</button>` : ""}</div>`;
   $("pg-dash").innerHTML = h;
 }
 function openDay(d) { CALSEL = d; const n = dubaiNow(), m = new Date(d + "T12:00"); show("cal"); setTimeout(() => goMonth(6 + (m.getFullYear() - n.getFullYear()) * 12 + m.getMonth() - n.getMonth(), false), 350); setTimeout(() => pickDay(d), 400); }
@@ -467,7 +560,7 @@ function renderRem() {
   const open = openTasks();
   const secs = [["overdue", "● Overdue", "red"], ["today", "Today"], ["tomorrow", "Tomorrow"], ["week", "This week"], ["later", "Later"], ["nodate", "Any time"]];
   let h = addBar("task");
-  for (const [k, l, c] of secs) { const rs = open.filter(i => bucket(i) === k); if (rs.length) h += `<div class="sec ${c || ""}">${l}</div>` + rs.map(i => rowHtml(i, k)).join(""); }
+  for (const [k, l, c] of secs) { const rs = open.filter(i => bucket(i) === k); if (rs.length) h += `<div class="sec ${c || ""}">${l}</div>` + wrapLay("rem", rs.map(i => rowHtml(i, k)).join("")); }
   $("pg-rem").innerHTML = h + (open.length ? "" : `<div class="empty">No reminders waiting.</div>`);
 }
 // ----- calendar: 6 months back, 18 ahead; swipe the months, the strip follows and lights up the one in view -----
@@ -481,7 +574,7 @@ function renderCal() {
   const pg = $("pg-cal"), keepTop = pg.scrollTop;
   pg.innerHTML = addBar("event") + `<div class="mstrip" id="mstrip">${MLIST.map((m, k) => `<button data-k="${k}" class="${k === CALIDX ? "on" : ""}" onclick="goMonth(${k}, true)">${MON[m.getMonth()].slice(0, 3)}${m.getMonth() === 0 || k === 0 ? `<small>${m.getFullYear()}</small>` : ""}</button>`).join("")}</div>
     <div class="months" id="months">${MLIST.map((m, k) => monthHtml(m, byDay, n)).join("")}</div>
-    <div class="dayhead"><b id="dayt"></b><button onclick="goToday()">Today</button></div><div id="daylist"></div>`;
+    <div class="dayhead"><b id="dayt"></b><div class="dha"><button onclick="goToday()">Today</button><button class="dplus" onclick="edit(null,CALSEL,'event')" aria-label="Add on this day">${PLUSI}</button></div></div><div id="daylist"></div>`;
   const ms = $("months");
   requestAnimationFrame(() => { ms.scrollLeft = CALIDX * ms.clientWidth; centerChip(false); pg.scrollTop = keepTop; });
   let t = null;
@@ -523,17 +616,34 @@ function renderDay(byDay) {
   const day = (byDay[CALSEL] || []).sort((a, b) => (a.due_time || "99") < (b.due_time || "99") ? -1 : 1);
   const d = new Date(CALSEL + "T12:00");
   $("dayt").textContent = `${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d.getDay()]} ${dmy(CALSEL)}`;
-  $("daylist").innerHTML = day.map(i => rowHtml(i, i.done_at ? "" : bucket(i) === "overdue" ? "overdue" : "")).join("") +
-    `<div style="padding:4px 16px"><button class="btn" style="width:100%" onclick="edit(null,'${CALSEL}','event')">+ Add on this day</button></div>`;
+  $("daylist").innerHTML = wrapLay("cal", day.map(i => rowHtml(i, i.done_at ? "" : i.kind === "task" && bucket(i) === "overdue" ? "overdue" : "")).join("")) || `<div class="dempty" style="padding:2px 20px 10px">Nothing on this day.</div>`;
 }
 function renderNotes() {
   const ns = openNotes(), fin = ITEMS.filter(i => i.kind === "note" && i.done_at && keep(i)).sort((a, b) => a.done_at < b.done_at ? 1 : -1);
-  $("pg-notes").innerHTML = addBar("note") + (ns.length ? ns.map(i => rowHtml(i, "")).join("") : `<div class="empty">No notes. Say “add a note to follow up…”</div>`) +
-    (fin.length ? `<div class="sec">Finished</div>` + fin.slice(0, 15).map(i => rowHtml(i, "")).join("") : "");
+  $("pg-notes").innerHTML = addBar("note") + (ns.length ? wrapLay("notes", ns.map(i => rowHtml(i, "")).join("")) : `<div class="empty">No notes. Say “add a note to follow up…”</div>`) +
+    (fin.length ? `<div class="sec">Finished</div>` + wrapLay("notes", fin.slice(0, 15).map(i => rowHtml(i, "")).join("")) : "");
+}
+// Done: grouped and sorted the way you choose (kept on this phone)
+const DGROUP = [["day", "Day"], ["kind", "Section"], ["tag", "Work / Personal"], ["none", "No groups"]], DSORT = [["new", "Newest first"], ["old", "Oldest first"], ["az", "A to Z"]];
+function pref(k, d, ok) { let v = ""; try { v = localStorage.getItem(k) || ""; } catch (e) {} return ok.some(x => x[0] === v) ? v : d; }
+function setPref(k, v) { try { localStorage.setItem(k, v); } catch (e) {} render(); }
+function pickDone() {
+  const g = pref("me_done_group", "day", DGROUP), so = pref("me_done_sort", "new", DSORT);
+  sheet(`<h3>Done</h3><div class="f"><label>Group by</label><div class="seg wrap">${DGROUP.map(([k, l]) => `<button class="${g === k ? "on" : ""}" onclick="segOn(this);setPref('me_done_group','${k}')">${l}</button>`).join("")}</div></div>
+    <div class="f"><label>Sort</label><div class="seg">${DSORT.map(([k, l]) => `<button class="${so === k ? "on" : ""}" onclick="segOn(this);setPref('me_done_sort','${k}')">${l}</button>`).join("")}</div></div>
+    <div class="f"><label>Show as</label><div class="seg">${LAYS.map(([k, l]) => `<button class="${lay("done") === k ? "on" : ""}" onclick="segOn(this);setLay('done','${k}')">${l}</button>`).join("")}</div></div>
+    <div class="acts"><button class="btn pri" onclick="closeSheet()">Done</button></div>`);
 }
 function renderDone() {
-  const ds = ITEMS.filter(i => i.done_at && keep(i)).sort((a, b) => a.done_at < b.done_at ? 1 : -1);
-  $("pg-done").innerHTML = ds.length ? `<div class="sec">Last 30 days</div>` + ds.map(i => rowHtml(i, "")).join("") : `<div class="empty">Ticked-off things show here for 30 days.</div>`;
+  const g = pref("me_done_group", "day", DGROUP), so = pref("me_done_sort", "new", DSORT);
+  const ds = ITEMS.filter(i => i.done_at && keep(i)).sort(so === "az" ? (a, b) => a.title.localeCompare(b.title) : so === "old" ? (a, b) => a.done_at < b.done_at ? -1 : 1 : (a, b) => a.done_at < b.done_at ? 1 : -1);
+  if (!ds.length) { $("pg-done").innerHTML = `<div class="empty">Ticked-off things show here for 30 days.</div>`; return; }
+  const n = dubaiNow(), today = iso(n), y = new Date(n); y.setDate(n.getDate() - 1); const yest = iso(y), w = new Date(n); w.setDate(n.getDate() - 7); const wk = iso(w);
+  const key = i => g === "kind" ? KL[i.kind] : g === "tag" ? (i.tag === "work" ? "Work" : "Personal") : g === "none" ? "Last 30 days" :
+    (d => d === today ? "Today" : d === yest ? "Yesterday" : d > wk ? "This week" : "Earlier")(i.done_at.slice(0, 10));
+  const groups = []; for (const i of ds) { const k = key(i); let gr = groups.find(x => x[0] === k); if (!gr) groups.push(gr = [k, []]); gr[1].push(i); }
+  if (g === "kind") groups.sort((a, b) => ["Reminders", "Calendar", "Notes"].indexOf(a[0]) - ["Reminders", "Calendar", "Notes"].indexOf(b[0]));
+  $("pg-done").innerHTML = groups.map(([k, rs]) => `<div class="sec">${k} <span class="cnt">${rs.length}</span></div>` + wrapLay("done", rs.map(i => rowHtml(i, "")).join(""))).join("");
 }
 // ----- swipe a row: left shows its actions, right ticks it off. A sideways swipe on a row never turns the page.
 let SW = null;
@@ -541,7 +651,7 @@ function closeSwipes(except) { document.querySelectorAll(".sw.open, .sw.sw-on").
 function actW(w) { return [...w.querySelector(".sact").children].reduce((a, x) => a + x.offsetWidth + 6, 8); }
 document.addEventListener("touchstart", e => {
   const it = e.target.closest && e.target.closest(".sw > .it"); closeSwipes(it && it.parentNode);
-  if (!it) { SW = null; return; }
+  if (!it || it.closest(".lay-grid, .lay-tiles")) { SW = null; return; }
   const t = e.touches[0], w = it.parentNode; SW = { it, w, x: t.clientX, y: t.clientY, dx: 0, mode: null, base: w.classList.contains("open") ? -actW(w) : 0 };
 }, { passive: true });
 document.addEventListener("touchmove", e => {
@@ -577,7 +687,7 @@ function pagerSetup() {
   navOn();
 }
 function navOn() {
-  closeSwipes();
+  closeSwipes(); headActs();
   document.querySelectorAll(".nav button").forEach(b => b.style.color = b.dataset.v === VIEW ? "var(--redtx)" : "var(--mute)");
   $("h1").textContent = TITLES[VIEW];
 }
@@ -637,8 +747,16 @@ const REMS = [["", "No reminder"], ["0", "At the time"], ["10", "10 min before"]
 function remBefore(i, kind) {
   if (!i) return kind === "event" ? "15" : "0";          // a new reminder rings at its time, a meeting 15 min before
   const m = i.remind_before === "" || i.remind_before == null ? "" : String(i.remind_before);
-  return REMS.some(x => x[0] === m) ? m : (m ? "0" : "");
+  return REMS.some(x => x[0] === m) ? m : (m ? "custom" : "");
 }
+// any amount before: "5 hours", "3 days", "45 minutes" (24/11/2026)
+const UNITS = [["1", "minutes"], ["60", "hours"], ["1440", "days"], ["10080", "weeks"]];
+function custParts(mins) {
+  mins = +mins || 0; if (!mins) return [5, "60"];
+  for (const [u] of [...UNITS].reverse()) if (mins % +u === 0) return [mins / +u, u];
+  return [mins, "1"];
+}
+function remSel() { const c = $("e-rem").value === "custom"; $("e-cust").style.display = c ? "flex" : "none"; if (c) $("e-cn").focus(); }
 function edit(id, day, kind) {
   closeSwipes();
   const src = id ? ITEMS.find(x => x.id === id) : null;
@@ -655,8 +773,10 @@ function edit(id, day, kind) {
     <div class="f"><div class="seg" id="e-tag">${["personal", "work"].map(t => `<button class="${i.tag === t ? "on" : ""}" data-t="${t}" onclick="segOn(this)">${t === "work" ? "Work" : "Personal"}</button>`).join("")}</div></div>
     ${note ? `<div class="f"><label><input type="checkbox" id="e-pin" ${i.pinned ? "checked" : ""} style="width:auto;margin-right:8px">Pin to the top</label></div>`
     : `<div class="row2"><div class="f"><label>Date</label><input id="e-date" type="date" value="${i.due_on}"></div><div class="f"><label>Time</label><input id="e-time" type="time" value="${i.due_time}"></div></div>
-      <div class="row2"><div class="f"><label>Remind me</label><select id="e-rem">${REMS.map(([v, l]) => `<option value="${v}" ${remBefore(src && src.kind === k ? i : null, k) === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div class="row2"><div class="f"><label>Remind me</label><select id="e-rem" onchange="remSel()">${[...REMS, ["custom", "Custom…"]].map(([v, l]) => `<option value="${v}" ${remBefore(src && src.kind === k ? i : null, k) === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
       <div class="f"><label>Repeat</label><select id="e-rep">${[["", "Never"], ["daily", "Every day"], ["weekly", "Every week"], ["monthly", "Every month"], ["yearly", "Every year"]].map(([v, l]) => `<option value="${v}" ${i.repeat === v ? "selected" : ""}>${l}</option>`).join("")}</select></div></div>
+      <div class="cust" id="e-cust" style="display:${remBefore(src && src.kind === k ? i : null, k) === "custom" ? "flex" : "none"}"><input id="e-cn" type="number" inputmode="numeric" min="1" max="999" value="${custParts(i.remind_before)[0]}">
+        <select id="e-cu">${UNITS.map(([v, l]) => `<option value="${v}" ${custParts(i.remind_before)[1] === v ? "selected" : ""}>${l}</option>`).join("")}</select><span>before</span></div>
       <div class="f"><label>Details</label><textarea id="e-body" placeholder="Anything to remember about it">${esc(i.body)}</textarea></div>`}
     <div class="acts">${id ? `<button class="btn del" onclick="del(${id})">Delete</button>` : ""}<button class="btn" onclick="closeSheet()">Cancel</button><button class="btn pri" onclick="saveEdit(${id || 0}, '${k}')">Save</button></div>`);
   if (!id) setTimeout(() => (note ? $("e-text") : $("e-title")).focus(), 250);
@@ -671,6 +791,11 @@ async function saveEdit(id, kind) {
   } else {
     p.title = $("e-title").value.trim(); p.body = $("e-body").value;
     p.due_on = $("e-date").value; p.due_time = $("e-time").value; p.repeat = $("e-rep").value; p.remind_before = p.due_on ? $("e-rem").value : "";
+    if (p.remind_before === "custom") {
+      const n = Math.round(+$("e-cn").value);
+      if (!(n >= 1 && n <= 999)) { $("e-cn").focus(); toast("Type how many - 1 to 999"); return; }
+      p.remind_before = String(n * +$("e-cu").value);
+    }
     if (!p.title) { $("e-title").focus(); return; }
     if (kind === "event" && !p.due_on) { $("e-date").focus(); return; }
   }
@@ -852,6 +977,10 @@ async function openSettings() {
     <p style="font-size:13px;color:var(--mute);line-height:1.5;margin-top:8px">Tap one to hear it. It plays when a reminder comes up while this app is open. When the app is closed, the iPhone plays its own notification sound - Apple does not let web apps choose it. Silent mode or a Focus keeps both quiet.</p>
     <h3 style="margin-top:18px">Look</h3>
     <div class="seg" id="themeSeg">${[["auto", "As the phone"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => `<button class="${theme() === k ? "on" : ""}" onclick="setTheme('${k}')">${l}</button>`).join("")}</div>
+    <h3 style="margin-top:18px">Layout</h3><div id="layRows">${layRows()}</div>
+    <h3 style="margin-top:18px">App version</h3>
+    <div class="acts" style="margin-top:0"><button class="btn" onclick="hardRefresh()">↻ Refresh to the latest version</button></div>
+    <p style="font-size:13px;color:var(--mute);line-height:1.5;margin-top:8px">It also updates by itself each time you open it. Version ${esc(MY_BUILD || "-")}</p>
     <h3 style="margin-top:18px">Signed-in devices</h3><div id="devs" style="font-size:14px;color:var(--noteInk)">…</div>
     <div class="menu" style="margin-top:10px">
       <button onclick="changePin()">Change my PIN</button>

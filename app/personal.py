@@ -652,6 +652,27 @@ def delete_item(iid: int, s: PersonalSettings = Depends(me), db: Session = Depen
     return {"ok": True}
 
 
+# ---- the page's version: a Home Screen app keeps the old page; it asks this and reloads itself when newer ----------
+
+ME_PAGE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "portal", "me.html")
+_STAMP_RE = re.compile(r'(<meta name="me-build" content=")[^"]*(")')
+
+
+def page_stamp(text: str) -> str:
+    """Fingerprint of the page without its own stamp (deploy/build_temporary_pages.py writes it into the page)."""
+    return hashlib.sha256(_STAMP_RE.sub(r"\1\2", text).encode("utf-8")).hexdigest()[:12]
+
+
+@router.get("/users/personal/version")
+def page_version():
+    try:
+        m = _STAMP_RE.search(open(ME_PAGE, encoding="utf-8").read())
+    except OSError:
+        m = None
+    return Response(json.dumps({"v": m.group(0).split('content="')[1].rstrip('"') if m else ""}), media_type="application/json",
+                    headers={"Cache-Control": "no-store"})
+
+
 # ---- voice: the phone records, this server writes it out (voice_stt.py) --------------------------------------------
 
 _VOICE_LOCK = threading.Lock()
