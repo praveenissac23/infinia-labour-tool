@@ -207,7 +207,7 @@ open(os.path.join(fake, "faster_whisper", "__init__.py"), "w").write(
     "import os\nclass S:\n    def __init__(s, t): s.text = t\n"
     "class WhisperModel:\n    def __init__(s, d, **k): s.d = d\n"
     "    def transcribe(s, path, **k):\n        n = os.path.getsize(path)\n"
-    "        if n == 4444: raise SystemExit(3)\n"
+    "        if n == 4444: raise ValueError('broken clip')\n"
     "        return iter([S(' Remind me tomorrow 9am'), S(' to sign the payroll.')]), None\n")
 import voice_stt
 mdir = os.path.join(fake, "model"); os.makedirs(mdir)
@@ -221,9 +221,17 @@ ck("voice needs this device's key", c.post(f"/users/personal/voice?k={K}", heade
 r = c.post(f"/users/personal/voice?k={K}", headers={**D, "Content-Type": "audio/mp4"}, content=b"x" * 5000)
 ck("a clip comes back as text", r.status_code == 200 and r.json() == {"text": "Remind me tomorrow 9am to sign the payroll."}, r.text)
 ck("an empty clip: nothing, no error", c.post(f"/users/personal/voice?k={K}", headers={**D, "Content-Type": "audio/webm"}, content=b"x" * 10).json() == {"text": ""})
-ck("a huge upload is refused", c.post(f"/users/personal/voice?k={K}", headers={**D, "Content-Type": "audio/mp4"}, content=b"x" * 3_000_001).status_code == 413)
+ck("a huge upload is refused", c.post(f"/users/personal/voice?k={K}", headers={**D, "Content-Type": "audio/mp4"}, content=b"x" * 6_000_001).status_code == 413)
 r = c.post(f"/users/personal/voice?k={K}", headers={**D, "Content-Type": "audio/mp4"}, content=b"x" * 4444)
 ck("a clip that can't be read: a plain message, the app carries on", r.status_code == 500 and "try again" in r.json()["detail"], r.text)
+w1 = P._VW["p"]
+c.post(f"/users/personal/voice?k={K}", headers={**D, "Content-Type": "audio/mp4"}, content=b"y" * 6000)
+ck("live mode: the speech model stays loaded between updates (one worker)", w1 is not None and P._VW["p"] is w1 and w1.poll() is None)
+P._VW["last"] = 0; P._stop_worker()
+ck("idle: the worker is stopped and its memory given back", P._VW["p"] is None and w1.wait(5) is not None)
+r = c.post(f"/users/personal/voice?k={K}", headers={**D, "Content-Type": "audio/mp4"}, content=b"x" * 5000)
+ck("after being stopped it starts again by itself", r.status_code == 200 and r.json()["text"].startswith("Remind me"), r.text)
+P._stop_worker()
 ck("another admin's device can't use this address's voice", c.post(f"/users/personal/voice?k={KB}", headers={**D, "Content-Type": "audio/mp4"}, content=b"x" * 5000).status_code == 401)
 
 # ---- the page and the Settings card ----
@@ -231,9 +239,10 @@ root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 page = open(os.path.join(root, "portal", "me.html"), encoding="utf-8").read()
 ck("the page has its own notification worker (not the work app's)", 'register("/portal/me-sw.js", { scope: "/portal/me" })' in page and os.path.exists(os.path.join(root, "portal", "me-sw.js")))
 ck("swipe between Next / Calendar / Notes / Done, months slide with a strip that lights up", 'class="pager" id="pager"' in page and "scroll-snap-type: x mandatory" in page and 'id="mstrip"' in page and "function monthChanged" in page)
-ck("voice: records (Safari's own recognition is not used), stops by itself after a pause, on a second tap, or at 20 s",
-   "new MediaRecorder(" in page and "webkitSpeechRecognition" not in page and "now - loud > 1400" in page and "if (REC) { stopRec(); return; }" in page and "setTimeout(stopRec, 20000)" in page)
-ck("voice not set up / no mic: falls back to the keyboard's own mic", "if (VOICE === false ||" in page and "VOICE = false; $(\"hint\").textContent = \"Voice is not set up" in page)
+ck("voice like Claude: words type out live, keeps listening until ✓ (no stop on a pause), ✕ throws it away",
+   "new MediaRecorder(" in page and "webkitSpeechRecognition" not in page and "r.start(1000)" in page and "pump(L)" in page and
+   'onclick="finishRec()"' in page and 'onclick="cancelRec()"' in page and "now - loud" not in page and "liveText(t)" in page)
+ck("voice not set up / no mic: falls back to the keyboard's own mic", "if (VOICE === false ||" in page and "Voice is not set up on the server yet" in page)
 ck("the mic tap starts at once (no waiting first - the iPhone ignores a mic, keyboard or sound started after a wait)",
    "\nfunction speak() {" in page and "async function speak" not in page and "voiceReady();\n  await load();" in page and "touch-action: manipulation" in page)
 ck("5 reminder sounds to pick in settings, each plays when tapped, kept on this phone",

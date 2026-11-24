@@ -66,7 +66,7 @@
   .bar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bar); border-top: 1px solid var(--line); padding: 10px 14px calc(8px + var(--safe-b)); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); z-index: 20; }
   .bar .in { max-width: 1100px; margin: 0 auto; }
   .cap { display: flex; gap: 8px; align-items: center; }
-  .cap input { flex: 1; min-width: 0; border: 0; background: var(--soft); border-radius: 999px; padding: 13px 18px; font-size: 16px; outline: none; }
+  .cap #q { flex: 1; min-width: 0; border: 0; background: var(--soft); border-radius: 999px; padding: 13px 18px; font-size: 16px; outline: none; }
   .mic, .go { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 20px; }
   .mic { background: var(--soft); } .mic.rec { background: var(--red); color: #fff; animation: pulse 1s infinite; }
   .go { background: var(--red); color: #fff; font-weight: 800; }
@@ -202,10 +202,25 @@
   .bar { left: 10px; right: 10px; bottom: calc(10px + var(--safe-b)); border-radius: 30px; padding: 10px 10px 6px; background: var(--barbg);
          border: 1px solid var(--gedge); box-shadow: inset 0 1px 0 var(--ghi), 0 10px 30px var(--gsh);
          -webkit-backdrop-filter: blur(28px) saturate(180%); backdrop-filter: blur(28px) saturate(180%); }
-  .cap input { background: var(--soft); } .cap input::placeholder { color: var(--mute); opacity: 1; }
+  .cap #q { background: var(--soft); } .cap #q::placeholder { color: var(--mute); opacity: 1; }
   .nav .ind { border-radius: 16px; }
   .sheet { background: color-mix(in srgb, var(--card) 88%, transparent); -webkit-backdrop-filter: blur(30px) saturate(160%); backdrop-filter: blur(30px) saturate(160%); }
   .mon .grid button.sel.td { color: #fff; box-shadow: none; }
+  .cap { align-items: flex-end; }
+  .cap #q { border-radius: 24px; resize: none; max-height: 30vh; line-height: 1.35; display: block; overflow-y: auto; font-family: inherit; }
+  /* live voice panel */
+  .listen { display: none; }
+  .bar.listening .listen { display: block; } .bar.listening .cap, .bar.listening .nav, .bar.listening .hint { display: none; }
+  .lt { font-size: 19px; line-height: 1.4; min-height: 56px; max-height: 34vh; overflow-y: auto; padding: 6px 8px 10px; word-break: break-word; }
+  .lt::after { content: ""; display: inline-block; width: 2px; height: 1.1em; margin-left: 2px; vertical-align: -3px; background: var(--red); animation: caret 1s steps(1) infinite; }
+  .lt:empty::before { content: attr(data-empty); color: var(--mute); } @keyframes caret { 50% { opacity: 0; } }
+  .lrow { display: flex; align-items: center; gap: 12px; padding: 2px 2px 4px; }
+  .lx, .lok { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; flex: none; touch-action: manipulation; }
+  .lx { background: var(--soft); color: var(--ink); } .lok { background: var(--red); color: #fff; }
+  .lx svg, .lok svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .lok.busy svg { animation: blink 1s infinite; }
+  .wave { flex: 1; height: 40px; display: flex; align-items: center; justify-content: center; gap: 5px; }
+  .wave i { width: 5px; height: 36px; border-radius: 3px; background: var(--red); transform: scaleY(.18); transition: transform .08s; opacity: .85; }
   @media (min-width: 900px) {
     .two { display: grid; grid-template-columns: 1fr 380px; gap: 10px; align-items: start; }
     .two .side { position: sticky; top: 10px; }
@@ -227,8 +242,14 @@
     <section class="pg" id="pg-done"></section>
   </main>
   <div class="bar"><div class="in">
+    <div class="listen" id="listen">
+      <div class="lt" id="lt" data-empty="Listening…"></div>
+      <div class="lrow"><button class="lx" onclick="cancelRec()" aria-label="Cancel"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        <div class="wave" id="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <button class="lok" id="lok" onclick="finishRec()" aria-label="Done"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button></div>
+    </div>
     <div class="cap">
-      <input id="q" placeholder="Remind me…" enterkeyhint="done" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();quickAdd();}">
+      <textarea id="q" rows="1" placeholder="Remind me…" enterkeyhint="done" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();quickAdd();}"></textarea>
       <button class="mic" id="mic" onclick="speak()" aria-label="Speak"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
       <button class="go" id="gobtn" onclick="quickAdd()" aria-label="Add" style="display:none"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
     </div>
@@ -460,6 +481,7 @@ function navOn() {
 function show(v) { const pg = $("pager"); pg.scrollTo({ left: VIEWS.indexOf(v) * pg.clientWidth, behavior: "smooth" }); }
 
 // ---------------- add, tick, later ----------------
+$("q").addEventListener("input", () => { const q = $("q"); q.style.height = "auto"; q.style.height = q.scrollHeight + "px"; });
 $("q").addEventListener("input", () => { const has = !!$("q").value.trim(); $("gobtn").style.display = has ? "" : "none"; $("mic").style.display = has ? "none" : ""; });
 async function quickAdd() {
   const t = $("q").value.trim(); if (!t) return;
@@ -548,59 +570,72 @@ async function voiceReady() {
   if (VOICE === null) { try { VOICE = !!(await api("/users/personal/voice")).ready; } catch (e) { VOICE = false; } }
   return VOICE;
 }
-function stopRec() { clearTimeout(RECMAX); if (REC && REC.state !== "inactive") { try { REC.stop(); } catch (e) {} } }
-// Everything here starts in the same moment as the tap: on the iPhone, a keyboard, a microphone or sound started
-// after waiting for the server does not count as the tap and silently does nothing (the bug of 24/11/2026).
+// Like Claude's voice (24/11/2026): the words type out live while you speak, and it keeps listening until ✓.
+// The phone sends what it has heard so far about every second; the server writes it all out again each time, so
+// the text tidies itself as you go. ✓ puts the text in the box to check, then ↑ adds it. ✕ throws it away.
+// Everything starts in the same moment as the tap: on the iPhone a mic, keyboard or sound started after a wait
+// does not count as the tap and silently does nothing.
+let LIVE = null;
 function speak() {
-  const m = $("mic");
-  if (REC) { stopRec(); return; }
-  if (m.classList.contains("busy") || m.classList.contains("rec")) return;
+  if (LIVE) return;
   try { ac(); } catch (e) {}                                     // wake the sound now, inside the tap
   if (VOICE === false || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) return keyboardMic();
-  m.classList.add("rec"); $("hint").textContent = "Starting the mic…";
+  openListen("Starting the mic…");
+  LIVE = { parts: [], sent: 0, busy: false, stopping: false, cancelled: false, text: "" };
   navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
-    .then(st => record(st))
-    .catch(() => { m.classList.remove("rec"); keyboardMic("Allow the microphone: iPhone Settings → Safari → Microphone → Allow. Or tap the 🎤 on your keyboard."); });
+    .then(st => { if (LIVE && !LIVE.cancelled) record(st); else st.getTracks().forEach(t => t.stop()); })
+    .catch(() => { LIVE = null; closeListen(); keyboardMic("Allow the microphone: iPhone Settings → Safari → Microphone → Allow. Or tap the 🎤 on your keyboard."); });
 }
 function record(st) {
-  const mt = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
-  let r; try { r = new MediaRecorder(st, mt ? { mimeType: mt } : {}); } catch (e) { st.getTracks().forEach(t => t.stop()); $("mic").classList.remove("rec"); return keyboardMic(); }
-  const parts = []; REC = r;
-  let spoke = false, loud = 0, floor = 0, n = 0; const t0 = Date.now();
-  // listen to the level: tells when you have finished, and makes the mic glow as you talk
-  try {
-    const C = ac(), an = C.createAnalyser(); an.fftSize = 1024; C.createMediaStreamSource(st).connect(an);
-    const buf = new Uint8Array(an.fftSize);
-    LVL = setInterval(() => {
+  const L = LIVE, mt = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+  let r; try { r = new MediaRecorder(st, mt ? { mimeType: mt } : {}); } catch (e) { st.getTracks().forEach(t => t.stop()); LIVE = null; closeListen(); return keyboardMic(); }
+  L.r = r; L.st = st; L.type = r.mimeType || mt || "audio/mp4";
+  try {                                                          // the bars move with your voice
+    const C = ac(), an = C.createAnalyser(); an.fftSize = 512; C.createMediaStreamSource(st).connect(an);
+    const buf = new Uint8Array(an.fftSize), bars = document.querySelectorAll("#wave i");
+    L.lvl = setInterval(() => {
       an.getByteTimeDomainData(buf); let sum = 0; for (const v of buf) sum += (v - 128) * (v - 128);
-      const rms = Math.sqrt(sum / buf.length) / 128, now = Date.now();
-      if (n++ < 4) { floor = Math.max(floor, rms); return; }                    // the room's own noise, first 0.4 s
-      if (rms > Math.max(.025, floor * 2.5)) { spoke = true; loud = now; }
-      $("mic").style.setProperty("--lvl", Math.min(1, rms * 8).toFixed(2));
-      if ((spoke && now - loud > 1400) || (!spoke && now - t0 > 7000)) stopRec();
-    }, 100);
-  } catch (e) { spoke = true; }
-  r.ondataavailable = e => { if (e.data && e.data.size) parts.push(e.data); };
-  r.onstop = async () => {
-    clearInterval(LVL); st.getTracks().forEach(t => t.stop()); REC = null;
-    const m = $("mic"); m.classList.remove("rec"); m.style.removeProperty("--lvl");
-    const blob = new Blob(parts, { type: r.mimeType || mt || "audio/mp4" });
-    if (!spoke || blob.size < 1000) { $("hint").textContent = "Didn't hear anything - tap the mic and speak."; return; }
-    m.classList.add("busy"); $("hint").textContent = "Writing it out…";
-    try {
-      const res = await fetch("/users/personal/voice?k=" + encodeURIComponent(K), { method: "POST", body: blob, headers: { "Content-Type": blob.type, "X-Personal-Device": DEV } });
-      const d = await res.json().catch(() => ({}));
-      if (res.status === 503) { VOICE = false; $("hint").textContent = "Voice is not set up on the server yet - tap the box, then the 🎤 on your keyboard."; return; }
-      if (!res.ok) throw new Error(d.detail || "Could not write that out.");
-      if (!d.text) { $("hint").textContent = "Didn't catch that - tap the mic and try again."; return; }
-      const q = $("q"); q.value = (q.value.trim() ? q.value.trim() + " " : "") + d.text.replace(/\.$/, "");
-      q.dispatchEvent(new Event("input")); $("hint").textContent = "Check it, then press ↑ to add";
-    } catch (e) { $("hint").textContent = e.message + " Or tap the 🎤 on your keyboard."; }
-    finally { m.classList.remove("busy"); }
-  };
-  r.start(250); $("mic").classList.add("rec"); $("hint").textContent = "Listening… tap the mic when done";
-  RECMAX = setTimeout(stopRec, 20000);
+      const v = Math.min(1, Math.sqrt(sum / buf.length) / 128 * 9);
+      bars.forEach((b, k) => b.style.transform = `scaleY(${(.18 + v * (.5 + .5 * Math.abs(Math.sin(Date.now() / 160 + k)))).toFixed(2)})`);
+    }, 80);
+  } catch (e) {}
+  r.ondataavailable = e => { if (e.data && e.data.size) { L.parts.push(e.data); pump(L); } };
+  r.onstop = () => { clearInterval(L.lvl); st.getTracks().forEach(t => t.stop()); if (!L.cancelled) finish(L); };
+  r.start(1000);
+  $("lt").dataset.empty = "Listening… speak now";
+  L.max = setTimeout(finishRec, 180000);                         // 3 minutes at most
 }
+async function sendClip(L) {
+  const res = await fetch("/users/personal/voice?k=" + encodeURIComponent(K), { method: "POST", body: new Blob(L.parts, { type: L.type }), headers: { "Content-Type": L.type, "X-Personal-Device": DEV } });
+  const d = await res.json().catch(() => ({}));
+  if (res.status === 503) { VOICE = false; throw new Error("Voice is not set up on the server yet - tap the box, then the 🎤 on your keyboard."); }
+  if (!res.ok) throw new Error(d.detail || "Could not write that out.");
+  return d.text || "";
+}
+async function pump(L) {
+  if (L.busy || L.stopping || L.cancelled || L.parts.length === L.sent) return;
+  L.busy = true; L.sent = L.parts.length;
+  try { const t = await sendClip(L); if (!L.stopping && !L.cancelled) { L.text = t; liveText(t); } }
+  catch (e) { if (!VOICE) { cancelRec(); $("hint").textContent = e.message; } }
+  L.busy = false;
+  if (!L.stopping) pump(L);
+}
+function liveText(t) { const el = $("lt"); el.textContent = t; el.scrollTop = el.scrollHeight; }
+function finishRec() { const L = LIVE; if (!L || L.stopping) return; L.stopping = true; clearTimeout(L.max);
+  $("lok").classList.add("busy"); if (!L.r) { cancelRec(); return; } try { L.r.stop(); } catch (e) { finish(L); } }
+function cancelRec() { const L = LIVE; if (!L) return; L.cancelled = L.stopping = true; clearTimeout(L.max);
+  try { L.r && L.r.state !== "inactive" && L.r.stop(); } catch (e) {} LIVE = null; closeListen(); }
+async function finish(L) {
+  while (L.busy) await new Promise(r => setTimeout(r, 100));     // the last live update first
+  let t = L.text, err = "";
+  try { if (L.parts.length) t = await sendClip(L); } catch (e) { err = e.message; }
+  LIVE = null; closeListen();
+  t = (t || "").replace(/\.$/, "");
+  if (t) { const q = $("q"); q.value = (q.value.trim() ? q.value.trim() + " " : "") + t; q.dispatchEvent(new Event("input")); $("hint").textContent = "Check it, then press ↑ to add"; }
+  else $("hint").textContent = err || "Didn't hear anything - tap the mic and speak.";
+}
+function openListen(msg) { const el = $("lt"); el.textContent = ""; el.dataset.empty = msg; $("lok").classList.remove("busy"); document.querySelector(".bar").classList.add("listening"); }
+function closeListen() { document.querySelector(".bar").classList.remove("listening"); }
 
 // ---------------- reminder sounds (played by this page; the phone's own sound when the app is closed) -----------
 let AC = null;

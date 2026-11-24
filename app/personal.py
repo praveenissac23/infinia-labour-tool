@@ -611,20 +611,72 @@ def voice_ready(s: PersonalSettings = Depends(me)):
     return {"ready": voice_stt.ready()}
 
 
-def _transcribe(data: bytes, kind: str) -> str:
-    import subprocess, sys, tempfile
+_VW = {"p": None, "last": 0.0}            # the live speech worker (voice_stt.py --serve), started when first needed
+
+
+def _worker():
+    import subprocess, sys
     import voice_stt
+    p = _VW["p"]
+    if p is None or p.poll() is not None:
+        p = subprocess.Popen([sys.executable, voice_stt.__file__, "--serve", voice_stt.model_dir()],
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             env={**os.environ, "OMP_NUM_THREADS": "2"})
+        _VW["p"] = p
+        if not _read_line(p, 60).get("ready"):
+            _stop_worker()
+            raise HTTPException(500, "Voice could not start - try again.")
+        threading.Thread(target=_reaper, daemon=True).start()
+    return p
+
+
+def _read_line(p, timeout) -> dict:
+    import select
+    r, _, _ = select.select([p.stdout], [], [], timeout)
+    if not r:
+        return {}
+    line = p.stdout.readline()
+    try:
+        return json.loads(line or b"{}")
+    except ValueError:
+        return {}
+
+
+def _stop_worker():
+    p, _VW["p"] = _VW["p"], None
+    if p and p.poll() is None:
+        try:
+            p.stdin.close(); p.wait(5)
+        except Exception:
+            p.kill()
+
+
+def _reaper():
+    """The model's memory is given back 90 s after the mic was last used."""
+    me_p = _VW["p"]
+    while _VW["p"] is me_p and me_p is not None:
+        time.sleep(15)
+        with _VOICE_LOCK:
+            if _VW["p"] is me_p and time.time() - _VW["last"] > 90:
+                _stop_worker()
+
+
+def _transcribe(data: bytes, kind: str) -> str:
+    import tempfile
     ext = ".webm" if "webm" in kind else ".ogg" if "ogg" in kind else ".wav" if "wav" in kind else ".m4a"
     with _VOICE_LOCK, tempfile.NamedTemporaryFile(suffix=ext) as f:      # one at a time - memory stays small
         f.write(data); f.flush()
-        try:
-            r = subprocess.run([sys.executable, voice_stt.__file__, voice_stt.model_dir(), f.name],
-                               capture_output=True, timeout=60, env={**os.environ, "OMP_NUM_THREADS": "2"})
-        except subprocess.TimeoutExpired:
-            raise HTTPException(504, "That took too long - try a shorter sentence.")
-    if r.returncode != 0:
+        _VW["last"] = time.time()
+        p = _worker()
+        p.stdin.write((f.name + "\n").encode()); p.stdin.flush()
+        out = _read_line(p, 45)
+        _VW["last"] = time.time()
+        if not out:
+            _stop_worker()
+            raise HTTPException(504, "That took too long - try again.")
+    if "error" in out:
         raise HTTPException(500, "Could not read that recording - try again.")
-    return r.stdout.decode("utf-8", "replace").strip()
+    return (out.get("text") or "").strip()
 
 
 @router.post("/users/personal/voice")
@@ -636,8 +688,8 @@ async def voice(request: Request, s: PersonalSettings = Depends(me)):
     data = await request.body()
     if len(data) < 1000:
         return {"text": ""}
-    if len(data) > 3_000_000:
-        raise HTTPException(413, "Too long - keep it under 30 seconds.")
+    if len(data) > 6_000_000:
+        raise HTTPException(413, "Too long - keep it under 3 minutes.")
     text = await run_in_threadpool(_transcribe, data, request.headers.get("content-type", ""))
     return {"text": text[:500]}
 
