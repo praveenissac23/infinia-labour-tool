@@ -21,6 +21,9 @@ ck("LPO IC/LPO/20260219 raised", r.status_code == 200 and r.json()["ref"] == "IC
 o1 = r.json()["id"]
 r = c.get(f"/store/purchase/orders/{o1}/next-revision", headers=H)
 ck("REVISED on IC/LPO/20260219 -> IC/LPO/20260219R1", r.status_code == 200 and r.json()["ref"] == "IC/LPO/20260219R1" and r.json()["replaces"] == "IC/LPO/20260219", r.text)
+# the supplier's bill already checked on the first LPO (amount for 9.091 t at 2,800 + VAT)
+r = c.post(f"/store/purchase/orders/{o1}/bill", json={"bill_no": "INV-5521", "bill_date": "2026-11-24", "bill_amount": 26727.54, "checked": True}, headers=H)
+ck("bill checked on the first LPO", r.status_code == 200, r.text[:200])
 r = c.post("/store/purchase/orders", json=body("IC/LPO/20260219R1", 2800), headers=H)
 ck("the revision saves", r.status_code == 200 and r.json()["ref"] == "IC/LPO/20260219R1", r.text[:300])
 o2 = r.json()["id"]
@@ -28,6 +31,19 @@ db = database.SessionLocal()
 a, b = db.get(models.PurchaseOrder, o1), db.get(models.PurchaseOrder, o2)
 ck("the earlier one is cancelled, replaced by R1", a.status == "cancelled" and a.superseded_by == "IC/LPO/20260219R1", (a.status, a.superseded_by))
 ck("R1 carries the same plot, site, scope and the new rate", b.plot_no == "3471004" and b.project_location == "913" and b.job_scope.startswith("Steel for the roof") and b.lines[0].rate == 2800)
+ck("the supplier's bill check moved to R1 (it is the same bill)", b.bill_no == "INV-5521" and b.bill_checked and not a.bill_no, (a.bill_no, b.bill_no))
+# accounts: only R1 counts - site costs, register totals, the Zoho list - and the bell says so with the difference
+import projexpense as PX, pozoho as PZ
+from datetime import date as _d
+got = [x["ref"] for x in PX._lpos(db, lambda *a: ["913"], _d(2026, 11, 1), _d(2026, 11, 30))]
+ck("site costs: only R1 (the first LPO is not added on top)", "IC/LPO/20260219R1" in got and "IC/LPO/20260219" not in got, got)
+rep = c.get("/store/purchase/report?group_by=supplier&measures=total&status=issued", headers=H).json()
+tot = sum(float(r_.get("total") or 0) for r_ in rep.get("rows", []))
+want = round(9.091 * 2800 * 1.05, 2)
+ck(f"LPO register by supplier: AED {want:,.2f} - R1 only, not both", abs(tot - want) < 0.01, (tot, rep.get("rows")))
+bl = [x for x in PZ.bell(db) if x["lpo_id"] == o1]
+ck("accounts bell: 'replaced by R1', both totals and the difference", bl and "replaced by IC/LPO/20260219R1" in bl[0]["title"]
+   and any("difference -" in x for x in bl[0]["changes"]) and any("Only IC/LPO/20260219R1 counts" in x for x in bl[0]["changes"]), bl)
 db.close()
 r = c.get(f"/store/purchase/orders/{o2}/next-revision", headers=H)
 ck("REVISED on R1 -> R2", r.json().get("ref") == "IC/LPO/20260219R2", r.text)

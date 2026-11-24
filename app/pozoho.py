@@ -420,7 +420,7 @@ def bell(db):
         out.append({"id": f"lpochg-{o.id}-{d.get('seq', 1)}", "kind": "zoho", "screen": "zoho", "lpo_change": True,
                     "lpo_id": o.id, "ref": o.ref, "cancelled": cancel, "by_hand": hand,
                     "changes": [x for it in d["items"] for x in (it.get("changes") or [])][:30], "zoho_result": last.get("zoho") or "",
-                    "title": f"{o.ref} {'cancelled' if cancel else 'edited'} by {last.get('who') or 'purchasing'}"
+                    "title": f"{o.ref} {('replaced by ' + o.superseded_by) if (cancel and o.superseded_by) else ('cancelled' if cancel else 'edited')} by {last.get('who') or 'purchasing'}"
                              + (f" - {o.supplier_name}" if o.supplier_name else ""),
                     "detail": "; ".join(lines)[:300], "lines": lines,
                     "when": M._dubai_today().isoformat(), "level": "warn"})

@@ -862,8 +862,25 @@ def apply_revision(db, o, user, call_zoho=True):
             r.order_id = o.id
         old.request_line_ids = ""
         old.request_id = None
+        # 24/11/2026: the purchaser's check of the supplier's bill goes with the order - it is the same bill
+        if (old.bill_no or old.bill_amount) and not (o.bill_no or o.bill_amount):
+            for k in ("bill_no", "bill_date", "bill_amount", "bill_checked", "bill_checked_by", "bill_checked_at", "bill_note"):
+                setattr(o, k, getattr(old, k))
+                setattr(old, k, None)
         M._cancel_lpo_core(db, old, f"Replaced by {o.ref}", not_needed=False, user=user, release=False,
                            superseded_by=o.ref, call_zoho=call_zoho)
+        # What accounts read on the bell: only the revision counts from now - the two totals and the difference
+        try:
+            import json as _j, pozoho as _pz
+            was, now = M.lpo_total(old), M.lpo_total(o)
+            d = _pz.note_of(old)
+            if d.get("items"):
+                d["items"][-1]["changes"] = (d["items"][-1].get("changes") or []) + [
+                    f"Revision {o.ref}: AED {now:,.2f} (difference {now - was:+,.2f})",
+                    f"Only {o.ref} counts from now - {old.ref} is out of site costs, the LPO register totals and Zoho"]
+                old.acc_note = _j.dumps(d)
+        except Exception as e:
+            print("revision note:", e)
     if olds:
         db.flush()
         rekey_receipts(db, o)
