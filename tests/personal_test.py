@@ -75,6 +75,15 @@ x = pp("meeting with client next monday 9:30am"); ck("'next monday 9:30am'", (x[
 x = pp("Send proposal fri #personal"); ck("#personal wins over work words", (x["tag"], x["due_on"]) == ("personal", date(2026, 11, 27)), x)
 x = pp("note: weekly review ideas tomorrow"); ck("a note keeps every word (no date read from it)", (x["kind"], x["title"], x["due_on"], x["repeat"]) == ("note", "weekly review ideas tomorrow", None, ""), x)
 x = pp("renew car registration yesterday"); ck("'yesterday' -> overdue at once", (x["title"], x["due_on"]) == ("Renew car registration", date(2026, 11, 23)), x)
+for t, want in [("send 3 amendments to client", ("Send 3 amendments to client", None, "")),
+                ("order 2 amps for villa 909", ("Order 2 amps for villa 909", None, "")),
+                ("pay 1.5 lakh to supplier", ("Pay 1.5 lakh to supplier", None, "")),
+                ("pay AED 12.50 to Ali", ("Pay AED 12.50 to Ali", None, "")),
+                ("buy sun cream", ("Buy sun cream", None, "")),
+                ("3-4 workers for slab", ("3-4 workers for slab", None, "")),
+                ("call supplier sat", ("Call supplier", date(2026, 11, 28), "")),
+                ("site visit on sun 8am", ("Site visit", date(2026, 11, 29), "08:00"))]:
+    x = pp(t); ck(f"'{t}' read right", (x["title"], x["due_on"], x["due_time"]) == want, x)
 x = pp("buy milk"); ck("no date: any time, no reminder", (x["title"], x["due_on"], x["remind"]) == ("Buy milk", None, False), x)
 
 # ---- items through the API ----
@@ -105,10 +114,51 @@ with mock.patch.object(P, "dubai_now", lambda: datetime(2026, 11, 24, 20, 5)):
 ck("Later > tomorrow morning: 25/11 09:00 with a reminder", (r["due_on"], r["due_time"], r["remind_at"]) == ("2026-11-25", "09:00", "2026-11-25T09:00"), r)
 ck("delete", c.delete(f"/users/personal/items/{n['id']}?k={K}", headers=D).status_code == 200 and
    n["id"] not in [i["id"] for i in c.get(f"/users/personal/items?k={K}", headers=D).json()["items"]])
-# sign out a device
+# review 24/11/2026 - repeats, past rings, snooze, months
+with mock.patch.object(P, "dubai_now", lambda: datetime(2026, 11, 24, 15, 0)):
+    w = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "water plants daily"}).json()
+    ck("'water plants daily' typed at 15:00: rings tomorrow 09:00 (not now, not never)", w["repeat"] == "daily" and w["remind_at"] == "2026-11-25T09:00", w)
+    r = c.post(f"/users/personal/items?k={K}", headers=D, json={"title": "Something today", "due_on": "2026-11-24", "due_time": "", "remind_before": "0"}).json()
+    ck("edit form: a ring already gone is not set (no instant notification)", r["remind_at"] == "", r)
+    r = c.post(f"/users/personal/items?k={K}", headers=D, json={"title": "Yesterday thing", "due_on": "2026-11-23", "remind_before": "0"}).json()
+    ck("a date in the past: no ring", r["remind_at"] == "", r)
+    dly = c.post(f"/users/personal/items?k={K}", headers=D, json={"title": "Daily 9", "due_on": "2026-11-24", "due_time": "09:00", "repeat": "daily", "remind_before": "0"}).json()
+    r = c.post(f"/users/personal/items/{dly['id']}/done?k={K}", headers=D).json()
+    ck("daily 09:00 ticked late at 15:00: moves to tomorrow 09:00 (not today again)", (r["due_on"], r["remind_at"]) == ("2026-11-25", "2026-11-25T09:00"), r)
+    r = c.post(f"/users/personal/items/{dly['id']}/snooze?k={K}", headers=D, json={"how": "1h"}).json()
+    ck("snoozing a repeat moves only this ring - it stays a daily 09:00", (r["due_on"], r["due_time"], r["remind_at"]) == ("2026-11-25", "09:00", "2026-11-24T16:00"), r)
+    rent = c.post(f"/users/personal/items?k={K}", headers=D, json={"title": "Rent", "due_on": "2027-01-31", "repeat": "monthly", "remind_before": ""}).json()
+ds = []
+for _ in range(3):
+    with mock.patch.object(P, "dubai_now", lambda: datetime(2027, 6, 1)):
+        pass
+s2 = SessionLocal(); it = s2.get(P.PersonalItem, rent["id"]); d0 = it.due_on
+for _ in range(3):
+    d0 = P._next(d0, "monthly", it.base_day); ds.append(d0.isoformat())
+s2.close()
+ck("monthly on the 31st: 28/02, then 31/03, 30/04 (back to the 31st)", ds == ["2027-02-28", "2027-03-31", "2027-04-30"], ds)
+
+# sign out a device - its notification address goes with it
+s3 = SessionLocal(); d2id = s3.query(P.PersonalDevice).filter(P.PersonalDevice.token_hash == P._h(D2["X-Personal-Device"])).one().id; s3.close()
+c.post(f"/users/personal/push/subscribe?k={K}", headers=D2, json={"subscription": {"endpoint": "https://push.example/mac", "keys": {"p256dh": "k", "auth": "a"}}})
+dv = c.get(f"/users/personal/devices?k={K}", headers=D2).json()["devices"]
+ck("devices listed, this one marked", len(dv) == 2 and sum(1 for x in dv if x["this"]) == 1, dv)
 c.post(f"/users/personal/forget-device?k={K}", headers=D2)
+s3 = SessionLocal(); ck("signed out: that device's notifications stop", s3.query(P.PersonalPush).filter_by(endpoint="https://push.example/mac").count() == 0); s3.close()
 ck("a signed-out device is refused", c.get(f"/users/personal/items?k={K}", headers=D2).status_code == 401)
 ck("the other device still works", c.get(f"/users/personal/items?k={K}", headers=D).status_code == 200)
+D3 = {"X-Personal-Device": c.post(f"/users/personal/unlock?k={K}", headers=BO, json={"pin": "2468"}).json()["device"]}
+ck("a lost phone: sign out all others", c.post(f"/users/personal/sign-out-others?k={K}", headers=D).json()["signed_out"] == 1 and
+   c.get(f"/users/personal/items?k={K}", headers=D3).status_code == 401 and c.get(f"/users/personal/items?k={K}", headers=D).status_code == 200)
+ck("change PIN needs the current one", c.post(f"/users/personal/pin?k={K}", headers=D, json={"old": "1111", "new": "9876"}).status_code == 401 and
+   c.post(f"/users/personal/pin?k={K}", headers=D, json={"old": "2468", "new": "9876"}).status_code == 200)
+# forty guesses at once are forty tries
+import threading
+codes = []
+def guess(): codes.append(c.post(f"/users/personal/unlock?k={K}", headers=BO, json={"pin": "0001"}).status_code)
+th = [threading.Thread(target=guess) for _ in range(12)]; [t.start() for t in th]; [t.join() for t in th]
+ck("12 wrong PINs at once: at most 5 checked, the rest locked out", codes.count(401) <= 5 and codes.count(429) >= 7, codes)
+s3 = SessionLocal(); st3 = s3.query(P.PersonalSettings).filter_by(slug=K).one(); st3.locked_until = None; st3.pin_tries = 0; s3.commit(); s3.close()
 # an admin who stops being admin loses it
 s = SessionLocal(); s.query(models.User).filter_by(username="brother").one().role = "office"; s.commit(); s.close()
 ck("no longer admin: refused", c.get(f"/users/personal/items?k={KB}", headers={"X-Personal-Device": rB}).status_code == 403)
@@ -120,11 +170,12 @@ s.add(models.PushSubscription(user_id=uid, endpoint="https://push.example/work",
 s.commit(); s.close()
 sent = []
 import push
+os.environ["INFINIA_NO_PUSH"] = "0"
 with mock.patch.object(push, "available", lambda: True), mock.patch.object(push, "vapid_keys", lambda *a: ("key", "pub")), \
      mock.patch.object(push, "send", lambda key, pub, sub, msg, ttl=0: (sent.append((sub.endpoint, msg)), 201)[1]):
     n1 = P.due_reminders(SessionLocal, datetime(2026, 11, 25, 9, 30))
     n2 = P.due_reminders(SessionLocal, datetime(2026, 11, 25, 9, 31))
-ck("by 09:30 the two due reminders (09:00, 09:30) ring once each", n1 == 2 and n2 == 0, (n1, n2, sent))
+ck("by 09:30 the three due reminders (car 09:00, plants 09:00, payroll 09:30) ring once each", n1 == 3 and n2 == 0, (n1, n2, sent))
 ck("only to the personal phone, never the work one", {e for e, _ in sent} == {"https://push.example/abc"}, sent)
 ck("the notification names the thing and opens it on the page", any(m["title"] == "Sign payroll" and f"k={K}&open=" in m["url"] and m["body"].startswith("09:30") for _, m in sent), sent)
 with mock.patch.object(push, "available", lambda: True), mock.patch.object(push, "vapid_keys", lambda *a: ("key", "pub")), \
@@ -132,11 +183,28 @@ with mock.patch.object(push, "available", lambda: True), mock.patch.object(push,
     s = SessionLocal(); it = P.PersonalItem(user_id=uid, title="Old one", remind_at=datetime(2026, 11, 20, 9, 0)); s.add(it); s.commit(); iid = it.id; s.close()
     n3 = P.due_reminders(SessionLocal, datetime(2026, 11, 25, 9, 32))
 s = SessionLocal()
+s = SessionLocal()
+s.add(P.PersonalPush(user_id=uid, endpoint="https://push.example/broken", p256dh="", auth=""))
+it2 = P.PersonalItem(user_id=uid, title="After a broken one", remind_at=datetime(2026, 11, 25, 9, 33)); s.add(it2); s.commit(); s.close()
+got = []
+def flaky(key, pub, sub, msg, ttl=0):
+    if sub.endpoint.endswith("broken"): raise ValueError("bad key")
+    got.append(sub.endpoint); return 201
+with mock.patch.object(push, "available", lambda: True), mock.patch.object(push, "vapid_keys", lambda *a: ("key", "pub")), mock.patch.object(push, "send", flaky):
+    P.due_reminders(SessionLocal, datetime(2026, 11, 25, 9, 34))
+s = SessionLocal()
+ck("a broken notification address is dropped; the reminder still reaches the good phone", got == ["https://push.example/abc"] and
+   s.query(P.PersonalPush).filter_by(endpoint="https://push.example/broken").count() == 0, got); s.close()
+os.environ["INFINIA_NO_PUSH"] = "1"
+with mock.patch.object(push, "available", lambda: True):
+    ck("the test copy (INFINIA_NO_PUSH) never reaches a phone", c.post(f"/users/personal/push/test?k={K}", headers=D).json()["sent"] == 0)
+s = SessionLocal()
 ck("a reminder 5 days old (server was off) is not rung late, just marked", n3 == 0 and s.get(P.PersonalItem, iid).reminded_at is not None); s.close()
 
 # ---- the page and the Settings card ----
 root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 page = open(os.path.join(root, "portal", "me.html"), encoding="utf-8").read()
+ck("the page has its own notification worker (not the work app's)", 'register("/portal/me-sw.js", { scope: "/portal/me" })' in page and os.path.exists(os.path.join(root, "portal", "me-sw.js")))
 ck("the page: not indexed, no referrer, iPhone app look", 'name="robots" content="noindex' in page and 'name="referrer" content="no-referrer"' in page and "apple-mobile-web-app-capable" in page)
 app = open(os.path.join(root, "app-classic.html"), encoding="utf-8").read()
 ck("Settings card for admins only", 'id="pg-me-card"' in app and 'show("pg-me-card", CURRENT_ROLE === "admin")' in app)

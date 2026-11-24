@@ -11,8 +11,9 @@ Who can open it
     signed out from the page; the key is stored only as a hash.
 
 Reminders
-  * An item with remind_at is pushed to the phones turned on for the personal space (their own subscriptions - the
-    work bell does not come here, and these do not go to the work app) at that minute, any hour - the person set it.
+  * An item with remind_at is pushed to the devices turned on for the personal space (their own subscriptions, made
+    by a service worker of the page's own, /portal/me-sw.js - so the work app's notifications and these never share
+    one) at that minute, any hour - the person set it.
   * Several server processes may run the loop: the reminder is claimed with one UPDATE ... WHERE reminded_at IS
     NULL, so it goes once.
 
@@ -83,7 +84,9 @@ class PersonalItem(Base):
     tag = Column(String, default="personal")       # personal / work
     due_on = Column(Date, nullable=True)
     due_time = Column(String, default="")          # "HH:MM", Dubai; empty = any time that day
-    remind_at = Column(DateTime, nullable=True)    # Dubai time
+    remind_at = Column(DateTime, nullable=True)    # Dubai time - the next ring
+    remind_before = Column(Integer, nullable=True)  # minutes before the date/time; kept so a repeat rings every time
+    base_day = Column(Integer, nullable=True)       # the day of the month it was set for (31st stays 31st after Feb)
     reminded_at = Column(DateTime, nullable=True)
     repeat = Column(String, default="")            # daily / weekly / monthly / yearly
     pinned = Column(Boolean, default=False)
@@ -98,6 +101,7 @@ class PersonalPush(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, index=True, nullable=False)
     endpoint = Column(Text, unique=True, nullable=False)
+    device_id = Column(Integer, nullable=True, index=True)   # signed out = its notifications stop too
     p256dh = Column(Text, default="")
     auth = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -127,7 +131,7 @@ def _settings_for_slug(db, k: str) -> PersonalSettings:
 
 
 def me(k: str = Query(""), x_personal_device: str = Header(""), db: Session = Depends(get_db)) -> PersonalSettings:
-    """The owner of this secret address, when this device holds their key."""
+    """The owner of this secret address, when this device holds their key. (s.device_id = the device asking.)"""
     s = _settings_for_slug(db, k)
     d = db.query(PersonalDevice).filter(PersonalDevice.token_hash == _h(x_personal_device),
                                         PersonalDevice.revoked == False).first() if x_personal_device else None  # noqa: E712
@@ -138,6 +142,7 @@ def me(k: str = Query(""), x_personal_device: str = Header(""), db: Session = De
         raise HTTPException(403, "Not available.")
     if not d.last_seen or datetime.utcnow() - d.last_seen > timedelta(minutes=10):
         d.last_seen = datetime.utcnow(); db.commit()
+    s.device_id = d.id                       # not a column - who is asking, for this request only
     return s
 
 
@@ -175,22 +180,28 @@ def unlock(payload: dict = Body(...), k: str = Query(""), db: Session = Depends(
     if user.id != s.user_id or not _is_admin(user):
         raise HTTPException(404, "Not found.")
     now = datetime.utcnow()
-    if s.locked_until and s.locked_until > now:
-        mins = int((s.locked_until - now).total_seconds() // 60) + 1
-        raise HTTPException(429, f"Too many wrong PINs - try again in {mins} min.")
     pin = str(payload.get("pin") or "").strip()
     if not re.fullmatch(r"\d{4,6}", pin):
         raise HTTPException(400, "The PIN is 4 to 6 digits.")
-    if not s.pin_hash:
-        s.pin_hash = auth.hash_password(pin)
-    elif not auth.verify_password(pin, s.pin_hash):
-        s.pin_tries = (s.pin_tries or 0) + 1
-        if s.pin_tries >= PIN_TRIES:
-            s.pin_tries, s.locked_until = 0, now + timedelta(minutes=PIN_LOCK_MIN)
-            db.commit()
+    if s.pin_hash:
+        # The try is counted before the PIN is checked, in one statement: forty guesses sent at once are forty tries.
+        db.execute(update(PersonalSettings).where(PersonalSettings.user_id == s.user_id)
+                   .values(pin_tries=PersonalSettings.pin_tries + 1))
+        db.commit(); db.refresh(s)
+        if s.locked_until and s.locked_until > now:
+            mins = int((s.locked_until - now).total_seconds() // 60) + 1
+            raise HTTPException(429, f"Too many wrong PINs - try again in {mins} min.")
+        if (s.pin_tries or 0) > PIN_TRIES:
+            s.locked_until = now + timedelta(minutes=PIN_LOCK_MIN); s.pin_tries = 0; db.commit()
             raise HTTPException(429, f"Too many wrong PINs - locked for {PIN_LOCK_MIN} min.")
-        db.commit()
-        raise HTTPException(401, f"Wrong PIN - {PIN_TRIES - s.pin_tries} tries left.")
+        if not auth.verify_password(pin, s.pin_hash):
+            left = PIN_TRIES - (s.pin_tries or 0)
+            if left <= 0:
+                s.locked_until = now + timedelta(minutes=PIN_LOCK_MIN); s.pin_tries = 0; db.commit()
+                raise HTTPException(429, f"Too many wrong PINs - locked for {PIN_LOCK_MIN} min.")
+            raise HTTPException(401, f"Wrong PIN - {left} tries left.")
+    else:
+        s.pin_hash = auth.hash_password(pin)
     s.pin_tries, s.locked_until = 0, None
     token = secrets.token_urlsafe(32)
     db.add(PersonalDevice(user_id=user.id, token_hash=_h(token), label=str(payload.get("label") or "")[:80], last_seen=now))
@@ -202,7 +213,41 @@ def unlock(payload: dict = Body(...), k: str = Query(""), db: Session = Depends(
 def forget_device(x_personal_device: str = Header(""), s: PersonalSettings = Depends(me), db: Session = Depends(get_db)):
     d = db.query(PersonalDevice).filter(PersonalDevice.token_hash == _h(x_personal_device)).first()
     if d:
-        d.revoked = True; db.commit()
+        d.revoked = True
+        db.query(PersonalPush).filter(PersonalPush.device_id == d.id).delete()
+        db.commit()
+    return {"ok": True}
+
+
+@router.get("/users/personal/devices")
+def devices(s: PersonalSettings = Depends(me), db: Session = Depends(get_db)):
+    rows = db.query(PersonalDevice).filter(PersonalDevice.user_id == s.user_id, PersonalDevice.revoked == False).all()  # noqa: E712
+    return {"devices": [{"id": d.id, "label": d.label or "Device", "this": d.id == s.device_id,
+                         "since": d.created_at.date().isoformat() if d.created_at else "",
+                         "seen": d.last_seen.isoformat(timespec="minutes") if d.last_seen else ""} for d in rows]}
+
+
+@router.post("/users/personal/sign-out-others")
+def sign_out_others(s: PersonalSettings = Depends(me), db: Session = Depends(get_db)):
+    """A lost phone: every other device is signed out and its notifications stop."""
+    gone = [d.id for d in db.query(PersonalDevice).filter(PersonalDevice.user_id == s.user_id, PersonalDevice.revoked == False,  # noqa: E712
+                                                           PersonalDevice.id != s.device_id).all()]
+    if gone:
+        db.query(PersonalDevice).filter(PersonalDevice.id.in_(gone)).update({"revoked": True}, synchronize_session=False)
+        db.query(PersonalPush).filter(PersonalPush.user_id == s.user_id, PersonalPush.device_id.in_(gone)).delete(synchronize_session=False)
+    db.query(PersonalPush).filter(PersonalPush.user_id == s.user_id, PersonalPush.device_id == None).delete(synchronize_session=False)  # noqa: E711
+    db.commit()
+    return {"signed_out": len(gone)}
+
+
+@router.post("/users/personal/pin")
+def change_pin(payload: dict = Body(...), s: PersonalSettings = Depends(me), db: Session = Depends(get_db)):
+    old, new = str(payload.get("old") or ""), str(payload.get("new") or "")
+    if not re.fullmatch(r"\d{4,6}", new):
+        raise HTTPException(400, "The new PIN is 4 to 6 digits.")
+    if not auth.verify_password(old, s.pin_hash or ""):
+        raise HTTPException(401, "The current PIN is not right.")
+    s.pin_hash = auth.hash_password(new); db.commit()
     return {"ok": True}
 
 
@@ -236,11 +281,12 @@ def parse(text: str, now: datetime = None) -> dict:
     out = {"kind": "task", "tag": "", "due_on": None, "due_time": "", "repeat": "", "remind": False}
 
     def cut(pat, fn=None, flags=re.I):
+        """Take the match out of the text - unless the reader turned it down (returns False): then the words stay."""
         nonlocal t
         m = re.search(pat, t, flags)
         if m:
-            if fn:
-                fn(m)
+            if fn and fn(m) is False:
+                return None
             t = t[:m.start()] + " " + t[m.end():]
         return m
 
@@ -276,10 +322,11 @@ def parse(text: str, now: datetime = None) -> dict:
             h += 12
         if ap.startswith("a") and h == 12:
             h = 0
-        if 0 <= h < 24 and 0 <= mi < 60:
-            out["due_time"] = f"{h:02d}:{mi:02d}"
+        if not (0 <= h < 24 and 0 <= mi < 60):
+            return False
+        out["due_time"] = f"{h:02d}:{mi:02d}"
     if not out["due_time"]:
-        cut(r"\b(?:at\s+)?(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)", tm) or \
+        cut(r"\b(?:at\s+)?(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)(?![a-z])", tm) or \
             cut(r"\b(?:at\s+)(\d{1,2})[:.](\d{2})()\b", tm) or cut(r"\b(\d{1,2}):(\d{2})()\b", tm)
     if cut(r"\bnoon\b|\bmidday\b"):
         out["due_time"] = "12:00"
@@ -292,7 +339,7 @@ def parse(text: str, now: datetime = None) -> dict:
         w = (m.group(2) or "").lower()
         i = _DAYS.index(w) if w in _DAYS else _DAYS_SHORT.get(w)
         if i is None:
-            return
+            return False
         ahead = (i - today.weekday()) % 7
         if ahead == 0 or (m.group(1) or "").strip().lower() == "next":
             ahead = ahead or 7
@@ -308,8 +355,10 @@ def parse(text: str, now: datetime = None) -> dict:
             out["due_on"] = today + timedelta(days=2)
         elif cut(r"\bnext\s+week\b"):
             out["due_on"] = today + timedelta(days=7 - today.weekday())
-        elif cut(r"\b(?:on\s+)?(next\s+|this\s+)?(" + "|".join(_DAYS + sorted(_DAYS_SHORT, key=len, reverse=True)) + r")\b", wd):
-            pass
+        elif cut(r"\b(?:on\s+)?(next\s+|this\s+)?(" + "|".join(_DAYS) + r")\b", wd) or \
+                cut(r"\b(?:on\s+)?(next\s+|this\s+)?(" + "|".join(sorted(_DAYS_SHORT, key=len, reverse=True)) + r")\b(?=\s*$|\s*#|\s+\d|\s+at\b)", wd) or \
+                cut(r"\b(on\s+|next\s+|this\s+)(" + "|".join(sorted(_DAYS_SHORT, key=len, reverse=True)) + r")\b", wd):
+            pass        # a short day (sun, sat) only at the end, before a time, or after on/next/this - not "sun cream"
         else:
             def dmy(m):
                 d, mo = int(m.group(1)), m.group(2)
@@ -320,11 +369,13 @@ def parse(text: str, now: datetime = None) -> dict:
                 try:
                     dd = date(y, mo, d)
                 except (TypeError, ValueError):
-                    return
+                    return False
                 if not m.group(3) and dd < today:
                     dd = date(y + 1, mo, d)
                 out["due_on"] = dd
-            cut(r"\b(?:on\s+)?(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?\b", dmy) or \
+            # 28/11 or 28/11/2026, 28-11-2026 - never 1.5 or 12.50 (amounts)
+            cut(r"(?<![\d.,])\b(?:on\s+)?(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b(?![.,]\d)", dmy) or \
+                cut(r"(?<![\d.,])\b(?:on\s+)?(\d{1,2})-(\d{1,2})-(\d{4})\b", dmy) or \
                 cut(r"\b(?:on\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(jan\w*|feb\w*|mar\w*|apr\w*|may|jun\w*|jul\w*|aug\w*|sep\w*|oct\w*|nov\w*|dec\w*)(?:\s+(\d{4}))?\b", dmy)
     if out["due_time"] and not out["due_on"]:
         hh, mm = map(int, out["due_time"].split(":"))
@@ -351,10 +402,30 @@ def _remind_time(due_on, due_time, before_min):
     return datetime(due_on.year, due_on.month, due_on.day, hh, mm) - timedelta(minutes=before_min)
 
 
+def _set_ring(i: PersonalItem):
+    """The next ring from the date, time and 'minutes before' - never one already gone (it would ring at once).
+    A repeat whose ring has gone rings at its next date instead."""
+    new = _remind_time(i.due_on, i.due_time, i.remind_before) if i.remind_before is not None else None
+    nowm = dubai_now().replace(second=0, microsecond=0)
+    if new and new < nowm:
+        if i.repeat and i.due_on:
+            d = i.due_on
+            for _ in range(800):
+                d = _next(d, i.repeat, i.base_day)
+                new = _remind_time(d, i.due_time, i.remind_before)
+                if new >= nowm:
+                    break
+        else:
+            new = None
+    if new != i.remind_at:
+        i.remind_at, i.reminded_at = new, None
+
+
 def _dict(i: PersonalItem) -> dict:
     return {"id": i.id, "kind": i.kind, "title": i.title or "", "body": i.body or "", "tag": i.tag or "personal",
             "due_on": i.due_on.isoformat() if i.due_on else "", "due_time": i.due_time or "",
             "remind_at": i.remind_at.isoformat(timespec="minutes") if i.remind_at else "",
+            "remind_before": i.remind_before if i.remind_before is not None else "",
             "reminded": bool(i.reminded_at), "repeat": i.repeat or "", "pinned": bool(i.pinned),
             "done_at": i.done_at.isoformat(timespec="minutes") if i.done_at else "",
             "updated_at": i.updated_at.isoformat(timespec="seconds") if i.updated_at else ""}
@@ -378,6 +449,7 @@ def _apply(i: PersonalItem, p: dict):
             i.due_on = date.fromisoformat(p["due_on"]) if p["due_on"] else None
         except ValueError:
             raise HTTPException(400, "The date is not right.")
+        i.base_day = i.due_on.day if i.due_on else None
     if "due_time" in p:
         v = str(p["due_time"] or "")
         if v and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", v):
@@ -385,9 +457,9 @@ def _apply(i: PersonalItem, p: dict):
         i.due_time = v
     if "remind_before" in p:                     # minutes before the time; None / "" = no reminder
         rb = p["remind_before"]
-        new = _remind_time(i.due_on, i.due_time, int(rb)) if rb not in (None, "") else None
-        if new != i.remind_at:
-            i.remind_at, i.reminded_at = new, None
+        i.remind_before = int(rb) if rb not in (None, "") else None
+    if "remind_before" in p or "due_on" in p or "due_time" in p:
+        _set_ring(i)
     i.updated_at = datetime.utcnow()
     if i.kind != "note" and not i.title:
         raise HTTPException(400, "Type what it is.")
@@ -425,10 +497,7 @@ def quick(payload: dict = Body(...), s: PersonalSettings = Depends(me), db: Sess
                "tag": p["tag"], "repeat": p["repeat"],
                "due_on": p["due_on"].isoformat() if p["due_on"] else "", "due_time": p["due_time"]})
     if p["due_on"] and p["kind"] == "task":
-        # a date without a time still rings - at 9:00 that morning; never for a time already gone
-        _apply(i, {"remind_before": 0})
-        if i.remind_at and i.remind_at < dubai_now().replace(second=0, microsecond=0):
-            i.remind_at = None
+        _apply(i, {"remind_before": 0})          # a date without a time still rings - at 9:00 that morning
     db.add(i); db.commit()
     return _dict(i)
 
@@ -449,16 +518,19 @@ def edit_item(iid: int, payload: dict = Body(...), s: PersonalSettings = Depends
     return _dict(i)
 
 
-def _next(d: date, rep: str) -> date:
+def _next(d: date, rep: str, base_day: int = None) -> date:
+    """The next date of a repeat. Monthly and yearly keep the day it was set for: the 31st is the 28th in February
+    and the 31st again in March."""
+    day = base_day or d.day
     if rep == "daily":
         return d + timedelta(days=1)
     if rep == "weekly":
         return d + timedelta(days=7)
     if rep == "monthly":
         y, m = (d.year + (d.month // 12), d.month % 12 + 1)
-        return date(y, m, min(d.day, _cal.monthrange(y, m)[1]))
+        return date(y, m, min(day, _cal.monthrange(y, m)[1]))
     if rep == "yearly":
-        return date(d.year + 1, d.month, min(d.day, _cal.monthrange(d.year + 1, d.month)[1]))
+        return date(d.year + 1, d.month, min(day, _cal.monthrange(d.year + 1, d.month)[1]))
     return d
 
 
@@ -467,17 +539,15 @@ def done(iid: int, s: PersonalSettings = Depends(me), db: Session = Depends(get_
     """Ticked off. A repeating one moves on to its next date instead (its reminder with it)."""
     i = _mine(db, s, iid)
     if i.repeat and i.due_on:
-        before = None
-        if i.remind_at:
-            hh, mm = (map(int, i.due_time.split(":")) if i.due_time else (9, 0))
-            before = int((datetime(i.due_on.year, i.due_on.month, i.due_on.day, hh, mm) - i.remind_at).total_seconds() // 60)
-        nxt = _next(i.due_on, i.repeat)
-        today = dubai_now().date()
-        while nxt < today:                      # long overdue: straight to the next one still to come
-            nxt = _next(nxt, i.repeat)
+        now = dubai_now()
+        at = lambda d: _remind_time(d, i.due_time, 0)            # the date and time itself
+        nxt = _next(i.due_on, i.repeat, i.base_day)
+        for _ in range(800):                     # ticked late: straight to the next one still to come
+            if at(nxt) > now:
+                break
+            nxt = _next(nxt, i.repeat, i.base_day)
         i.due_on = nxt
-        i.remind_at = _remind_time(i.due_on, i.due_time, before) if before is not None else None
-        i.reminded_at = None
+        _set_ring(i)
         db.add(PersonalItem(user_id=s.user_id, kind=i.kind, title=i.title, tag=i.tag, done_at=datetime.utcnow(),
                             body="(repeats - moved on)"))
     else:
@@ -501,6 +571,7 @@ def snooze(iid: int, payload: dict = Body(...), s: PersonalSettings = Depends(me
     i = _mine(db, s, iid)
     now = dubai_now().replace(second=0, microsecond=0)
     how = payload.get("how") or "1h"
+    # (a repeat keeps its own day and time - only this ring moves)
     if how == "1h":
         w = now + timedelta(hours=1)
     elif how == "evening":
@@ -511,7 +582,11 @@ def snooze(iid: int, payload: dict = Body(...), s: PersonalSettings = Depends(me
         w = (now + timedelta(days=7 - now.weekday())).replace(hour=9, minute=0)
     else:
         raise HTTPException(400, "Snooze how?")
-    i.due_on, i.due_time = w.date(), w.strftime("%H:%M")
+    if not i.repeat:
+        i.due_on, i.due_time = w.date(), w.strftime("%H:%M")
+        i.base_day = i.due_on.day
+        if i.remind_before is None:
+            i.remind_before = 0
     i.remind_at, i.reminded_at, i.updated_at = w, None, datetime.utcnow()
     db.commit()
     return _dict(i)
@@ -548,7 +623,7 @@ def push_subscribe(payload: dict = Body(...), s: PersonalSettings = Depends(me),
     if not row:
         row = PersonalPush(user_id=s.user_id, endpoint=ep)
         db.add(row)
-    row.p256dh, row.auth = keys["p256dh"], keys["auth"]
+    row.p256dh, row.auth, row.device_id = keys["p256dh"], keys["auth"], s.device_id
     db.commit()
     return {"ok": True, "devices": db.query(PersonalPush).filter(PersonalPush.user_id == s.user_id).count()}
 
@@ -562,12 +637,15 @@ def push_test(s: PersonalSettings = Depends(me), db: Session = Depends(get_db)):
 
 def _send(db, uid, msg) -> int:
     import push
-    if not push.available():
+    if not push.available() or os.environ.get("INFINIA_NO_PUSH") == "1":     # the test copy never reaches a phone
         return 0
     key, pub = push.vapid_keys(db, models)
     sent = 0
     for sub in db.query(PersonalPush).filter(PersonalPush.user_id == uid).all():
-        st = push.send(key, pub, sub, msg, ttl=6 * 3600)
+        try:
+            st = push.send(key, pub, sub, msg, ttl=6 * 3600)
+        except Exception as e:                    # a broken address: dropped, the others still get it
+            print("personal push:", e); db.delete(sub); continue
         if st in (200, 201, 202):
             sub.last_ok = datetime.utcnow(); sent += 1
         elif st in (404, 410):
@@ -593,10 +671,13 @@ def due_reminders(SessionLocal, now: datetime = None) -> int:
                 continue                          # another server process has it
             if now - i.remind_at > timedelta(hours=12):
                 continue                          # the server was off: not rung half a day late (it shows overdue)
-            s = db.get(PersonalSettings, i.user_id)
-            when = (i.due_time + " · ") if i.due_time else ""
-            sent += _send(db, i.user_id, {"title": i.title or "Reminder", "body": when + ("Work" if i.tag == "work" else "Personal"),
-                                          "tag": f"me-{i.id}", "url": f"/portal/me.html?k={s.slug}&open={i.id}" if s else "/"})
+            try:
+                s = db.get(PersonalSettings, i.user_id)
+                when = (i.due_time + " · ") if i.due_time else ""
+                sent += _send(db, i.user_id, {"title": i.title or "Reminder", "body": when + ("Work" if i.tag == "work" else "Personal"),
+                                              "tag": f"me-{i.id}", "url": f"/portal/me.html?k={s.slug}&open={i.id}" if s else "/"})
+            except Exception as e:                # one item failing never holds up the others
+                print("personal reminder:", e); db.rollback()
     finally:
         db.close()
     return sent

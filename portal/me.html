@@ -219,7 +219,7 @@ async function unlock(isNew) {
 // ---------------- the list ----------------
 async function ready() {
   $("app").style.display = ""; $("gate").style.display = "none";
-  try { if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {}); } catch (e) {}
+  try { if ("serviceWorker" in navigator) navigator.serviceWorker.register("/portal/me-sw.js", { scope: "/portal/me" }).catch(() => {}); } catch (e) {}
   await load();
   const open = new URLSearchParams(location.search).get("open");
   if (open) { const it = ITEMS.find(x => String(x.id) === open); if (it) edit(it.id); history.replaceState(null, "", "?k=" + encodeURIComponent(K)); }
@@ -330,9 +330,9 @@ async function snooze(id, how) { closeSheet(); try { const r = await api(`/users
 // ---------------- edit ----------------
 const REMS = [["", "No reminder"], ["0", "At the time"], ["10", "10 min before"], ["30", "30 min before"], ["60", "1 hour before"], ["1440", "1 day before"]];
 function remBefore(i) {
-  if (!i || !i.remind_at || !i.due_on) return i ? "" : "0";
-  const due = new Date(i.due_on + "T" + (i.due_time || "09:00") + ":00"), r = new Date(i.remind_at + ":00");
-  const m = String(Math.round((due - r) / 60000)); return REMS.some(x => x[0] === m) ? m : "0";
+  if (!i) return "0";                                   // a new one rings at its time
+  const m = i.remind_before === "" || i.remind_before == null ? "" : String(i.remind_before);
+  return REMS.some(x => x[0] === m) ? m : (m ? "0" : "");
 }
 function edit(id, day, kind) {
   const i = id ? ITEMS.find(x => x.id === id) : { kind: kind || "task", title: "", body: "", tag: FILTER === "work" ? "work" : "personal", due_on: day || "", due_time: "", repeat: "", pinned: false };
@@ -420,14 +420,32 @@ async function openSettings() {
       `<p style="line-height:1.5;color:#5d544c">Reminders pop up with sound at their time, even when this page is closed. ${perm === "granted" ? "✅ Allowed on this device." : ""}</p>
        <div class="acts" style="margin-top:4px"><button class="btn pri" onclick="pushOn()">Turn on reminders</button><button class="btn" onclick="pushTest()">Send a test</button></div>`}
     <p style="font-size:13px;color:#8A8178;line-height:1.5;margin-top:16px">Sound follows the phone: Silent mode or a Focus keeps it quiet.</p>
-    <div class="menu" style="margin-top:10px"><button onclick="signOut()" style="color:#C0392B">Sign out this device</button></div>`);
+    <h3 style="margin-top:18px">Signed-in devices</h3><div id="devs" style="font-size:14px;color:#5d544c">…</div>
+    <div class="menu" style="margin-top:10px">
+      <button onclick="changePin()">Change my PIN</button>
+      <button onclick="signOutOthers()">Sign out all other devices (a lost phone)</button>
+      <button onclick="signOut()" style="color:#C0392B">Sign out this device</button></div>`);
+  try { const d = await api("/users/personal/devices"); $("devs").innerHTML = d.devices.map(x => `<div style="padding:6px 0">${esc(x.label)}${x.this ? " <b>(this one)</b>" : ""} <span style="color:#8A8178">· since ${dmy(x.since)}</span></div>`).join(""); } catch (e) {}
+}
+async function signOutOthers() {
+  if (!confirm("Sign out every other phone and computer? They need the login and PIN again, and their reminders stop.")) return;
+  try { const r = await api("/users/personal/sign-out-others", { method: "POST" }); closeSheet(); toast(`${r.signed_out} other device${r.signed_out === 1 ? "" : "s"} signed out`); } catch (e) { toast(esc(e.message)); }
+}
+function changePin() {
+  sheet(`<h3>Change my PIN</h3><div class="f"><input id="p-old" class="pin" inputmode="numeric" type="password" maxlength="6" placeholder="Current PIN"></div>
+    <div class="f"><input id="p-new" inputmode="numeric" type="password" maxlength="6" placeholder="New PIN (4-6 digits)"></div>
+    <div class="acts"><button class="btn" onclick="closeSheet()">Cancel</button><button class="btn pri" onclick="savePin()">Save</button></div>`);
+}
+async function savePin() {
+  try { await api("/users/personal/pin", { method: "POST", body: JSON.stringify({ old: $("p-old").value, new: $("p-new").value }) }); closeSheet(); toast("PIN changed"); } catch (e) { toast(esc(e.message)); }
 }
 function b64(s) { const p = "=".repeat((4 - s.length % 4) % 4), b = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(b, c => c.charCodeAt(0)); }
 async function pushOn() {
   try {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("This browser cannot show reminders - open it from the Home Screen icon.");
     const p = await Notification.requestPermission(); if (p !== "granted") throw new Error("Allow notifications for it in the phone's Settings.");
-    const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" }); await navigator.serviceWorker.ready;
+    const reg = await navigator.serviceWorker.register("/portal/me-sw.js", { scope: "/portal/me" });
+    await new Promise(r => { if (reg.active) return r(); const w = reg.installing || reg.waiting; if (!w) return r(); w.addEventListener("statechange", () => w.state === "activated" && r()); setTimeout(r, 4000); });
     const { key } = await api("/users/personal/push/key");
     let sub = await reg.pushManager.getSubscription();
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
@@ -438,6 +456,7 @@ async function pushOn() {
 async function pushTest() { try { const r = await api("/users/personal/push/test", { method: "POST" }); toast(r.sent ? "Sent - it arrives in a few seconds" : "Turn reminders on first"); } catch (e) { toast(esc(e.message)); } }
 async function signOut() {
   try { await api("/users/personal/forget-device", { method: "POST" }); } catch (e) {}
+  try { const reg = await navigator.serviceWorker.getRegistration("/portal/me"); const sub = reg && await reg.pushManager.getSubscription(); if (sub) await sub.unsubscribe(); } catch (e) {}
   try { localStorage.removeItem(DEVKEY); } catch (e) {} DEV = ""; closeSheet(); gate(true);
 }
 start();
