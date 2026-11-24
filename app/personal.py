@@ -273,12 +273,53 @@ _MONTHS = {m.lower(): i for i, m in enumerate(_cal.month_abbr) if m} | {m.lower(
 WORK_WORDS = r"\b(lpo|ipc|pc|invoice|payroll|site|client|subcontract|zoho|bank|pdc|boq|quotation|proposal|consultant|qs|meeting|tender|salary|labour|staff|project|villa|plot|approve|sign)\b"
 
 
-def parse(text: str, now: datetime = None) -> dict:
-    """Read a quick-add line into an item: when, what time, remind, repeat, personal or work, note or task."""
+# Where a spoken or typed line goes (24/11/2026): three kinds, said the way you would say it.
+#   note   "add a note to follow up the BOQ", "note: ...", "follow up with ...", "... to my notes", or nothing timed
+#   event  "add a meeting with the client Thursday 3pm", "... to my calendar", "calendar: ...", "meeting with ... <day>"
+#   task   (a reminder) "remind me ...", "set a reminder ...", or anything with a day or a time
+_P = r"^\s*(?:please\s+|can\s+you\s+|could\s+you\s+)?"
+_NOTE_CMD = _P + r"(?:(?:put|add|save|write|keep)\s+(?:this|it|that)\s+(?:in|to|into|on)\s+(?:my\s+|the\s+)?notes?|(?:add|make|create|write|put|save|take|start)\s+(?:a\s+|an\s+|the\s+)?(?:new\s+)?notes?|new\s+note|notes?|ideas?|note\s+down|jot\s+down)\b\s*(?:(?:to|that|saying|says|about|for|on)\b|[:\-])?\s*"
+_NOTE_END = r"\s+(?:to|in|on|into)\s+(?:my\s+|the\s+)?notes?\s*[.!]?\s*$"
+_EVENT_CMD = _P + r"(?:(?:put|add|save|keep)\s+(?:this|it|that)\s+(?:in|to|into|on)\s+(?:my\s+|the\s+)?(?:calendar|diary)|(?:add|put|schedule|book|set\s+up|create|make)\s+(?:a\s+|an\s+)?(?:new\s+)?(?:calendar\s+)?(?:(event|entry)|(meeting|appointment|call|site\s+visit|visit|lunch|dinner|flight|birthday|anniversary))\b|calendar\b\s*[:\-]?)\s*(?:(?:for|on|called|:)\b|[:\-])?\s*"
+_EVENT_END = r"\s+(?:to|in|on|into)\s+(?:my\s+|the\s+)?(?:calendar|diary|schedule)\s*[.!]?\s*$"
+_EVENT_WORD = r"^\s*(meeting|appointment|site\s+visit|lunch\s+with|dinner\s+with|flight|interview)\b"
+_REM_CMD = _P + r"(?:(?:add|set|create|make)\s+(?:a\s+|an\s+)?(?:new\s+)?reminder|reminder)\b\s*(?:(?:to|for|that|about|on)\b|[:\-])?\s*"
+
+
+def parse(text: str, now: datetime = None, kind: str = None) -> dict:
+    """Read a quick-add line into an item: note, calendar event or reminder; when, what time, repeat, personal or
+    work. kind = the section it was said into (its own mic) - then it goes there whatever the words."""
     now = now or dubai_now()
     today = now.date()
-    t = " " + (text or "").strip() + " "
+    raw = (text or "").strip()
     out = {"kind": "task", "tag": "", "due_on": None, "due_time": "", "repeat": "", "remind": False}
+    said = None                                  # the kind the words asked for
+    m = re.search(_NOTE_CMD, raw, re.I)
+    if m and m.group(0).strip():
+        said, raw = "note", raw[m.end():]
+    elif re.search(_NOTE_END, raw, re.I):
+        said, raw = "note", re.sub(_NOTE_END, "", raw, flags=re.I)
+    elif re.match(_P + r"follow[\s-]*up\b", raw, re.I):
+        said = "note"                            # "follow up with Anoop on the BOQ" - kept as said
+    else:
+        m = re.search(_EVENT_CMD, raw, re.I)
+        if m and m.group(0).strip():
+            noun = m.group(2)
+            said, raw = "event", ((noun + " ") if noun else "") + raw[m.end():]
+        elif re.search(_EVENT_END, raw, re.I):
+            said, raw = "event", re.sub(_EVENT_END, "", raw, flags=re.I)
+        else:
+            m = re.search(_REM_CMD, raw, re.I)
+            if m and m.group(0).strip():
+                said, raw, out["remind"] = "task", raw[m.end():], True
+    kind = kind if kind in KINDS else None
+    if (kind or said) == "note":
+        out["kind"] = "note"                     # a note is kept as written - no dates read out of it
+        body = re.sub(r"\s+", " ", re.sub(r"#(work|office|personal|home|me)\b", "", raw, flags=re.I)).strip(" ,.-")
+        out["title"] = body[:1].upper() + body[1:]
+        out["tag"] = "work" if re.search(r"#(work|office)\b", raw, re.I) or re.search(WORK_WORDS, raw, re.I) else "personal"
+        return out
+    t = " " + raw + " "
 
     def cut(pat, fn=None, flags=re.I):
         """Take the match out of the text - unless the reader turned it down (returns False): then the words stay."""
@@ -388,7 +429,18 @@ def parse(text: str, now: datetime = None) -> dict:
     out["title"] = (title[:1].upper() + title[1:]) if title else (text or "").strip()
     if not out["tag"]:
         out["tag"] = "work" if re.search(WORK_WORDS, text or "", re.I) else "personal"
-    if out["due_time"] and out["kind"] == "task":
+    k = kind or said
+    if not k:
+        if re.match(_EVENT_WORD, raw, re.I) and out["due_on"]:
+            k = "event"                          # "meeting with the client Thursday 3pm"
+        elif out["due_on"] or out["due_time"] or out["repeat"] or out["remind"]:
+            k = "task"
+        else:
+            return parse(text, now, "note")      # nothing timed: it goes on the follow-up list
+    out["kind"] = k
+    if k == "event" and not out["due_on"]:
+        out["due_on"] = today
+    if out["due_time"] and k == "task":
         out["remind"] = True                     # a time given = ring at that time (the point of the page)
     return out
 
@@ -484,20 +536,20 @@ def items(s: PersonalSettings = Depends(me), db: Session = Depends(get_db)):
 @router.post("/users/personal/quick")
 def quick(payload: dict = Body(...), s: PersonalSettings = Depends(me), db: Session = Depends(get_db)):
     """The type-or-speak box: read the line and save it."""
-    p = parse(str(payload.get("text") or ""))
+    p = parse(str(payload.get("text") or ""), kind=payload.get("kind") or None)
     if not p["title"]:
-        raise HTTPException(400, "Type what it is.")
+        raise HTTPException(400, "Say or type what it is.")
     i = PersonalItem(user_id=s.user_id)
     title, body = p["title"], ""
-    if p["kind"] == "note":                     # "Gift list - watch strap, perfume" -> title + the rest under it
-        full = (payload.get("text") or "").split(":", 1)[-1].strip()
-        m = re.match(r"(.{1,60}?)\s+[-–:]\s+(.+)$", full, re.S)
-        title, body = (m.group(1), m.group(2)) if m else (full[:60], full if len(full) > 60 else "")
+    if len(title) > 500:                         # a long note: the rest goes under it, nothing lost
+        title, body = title[:500], title[500:]
     _apply(i, {"kind": p["kind"], "title": title, "body": body,
                "tag": p["tag"], "repeat": p["repeat"],
                "due_on": p["due_on"].isoformat() if p["due_on"] else "", "due_time": p["due_time"]})
     if p["due_on"] and p["kind"] == "task":
         _apply(i, {"remind_before": 0})          # a date without a time still rings - at 9:00 that morning
+    elif p["due_on"] and p["kind"] == "event":
+        _apply(i, {"remind_before": 15 if p["due_time"] else 0})   # a meeting rings 15 min before; all day at 9:00
     db.add(i); db.commit()
     return _dict(i)
 
