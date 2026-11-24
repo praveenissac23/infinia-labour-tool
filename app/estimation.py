@@ -202,6 +202,7 @@ class EstSubPC(Base):
     other_cum = Column(Float, default=0.0)      # other deductions to date (back-charges, manpower ...)
     other_note = Column(String, default="")
     remarks = Column(Text, default="")
+    cert_note = Column(Text, default="")       # 24/11/2026: printed in red under the signatures (e.g. balance on pending documents)
     var_cum = Column(Float, default=0.0)        # value of variations executed to date (kept apart from the work)
     measured_on = Column(Date, nullable=True)   # measurement date printed on the certificate
     inv_lines = Column(Text, default="")        # the subcontractor's bill lines, JSON [{d, a}]
@@ -813,7 +814,7 @@ KINDS = {
                                     "to_site": D, "site_back": D, "certified_on": D, "issued": D, "to_accounts": D, "paid_on": D,
                                     "paid_amount": F, "paid_ref": S, "status": S, "work_cum": F, "mos_cum": F, "adv_amount": F,
                                     "adv_rec_cum": F, "adv_auto": B, "ret_cum": F, "ret_auto": B, "ret_rel_cum": F, "other_cum": F,
-                                    "other_note": S, "remarks": S, "var_cum": F, "measured_on": D, "inv_lines": S,
+                                    "other_note": S, "remarks": S, "cert_note": S, "var_cum": F, "measured_on": D, "inv_lines": S,
                                     "verified_by": S, "verified_on": D, "prep_by": S, "prep_on": D, "chk_by": S, "chk_on": D,
                                     "rev_by": S, "rev_on": D, "app_by": S, "app_on": D}),
     "clientpcs": (EstClientPC, "project_id", {"seq": I, "pc_type": S, "period_to": D, "submitted": D, "claimed_cum": F,

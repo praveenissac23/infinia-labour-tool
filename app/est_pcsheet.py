@@ -561,7 +561,7 @@ def get_sheet(rid: int, db: Session = Depends(get_db), user: models.User = PAYER
     return sheet(db, pc, user)
 
 
-PC_FIELDS = {"measured_on": "d", "inv_ref": "s", "inv_date": "d", "inv_amount": "f", "received": "d", "remarks": "s", "mos_cum": "f",
+PC_FIELDS = {"measured_on": "d", "inv_ref": "s", "inv_date": "d", "inv_amount": "f", "received": "d", "remarks": "s", "cert_note": "s", "mos_cum": "f",
              "adv_amount": "f", "ret_rel_cum": "f", "adv_auto": "b", "ret_auto": "b", "adv_rec_cum": "f", "ret_cum": "f", "pc_type": "s",
              "inv_lines": "j", "work_cum": "f", "var_cum": "f", "other_cum": "f", "other_note": "s"}
 
@@ -943,7 +943,7 @@ def build_doc(db, pc):
         "D": [("Retention Release", "", r2(pc.ret_rel_cum))], "mos": r2(pc.mos_cum),
         "E": e_lines, "E_total": r2(c["prev_net"]),
         "net": c["this"], "vat_pct": s.vat_pct or 0, "vat": c["vat"], "payable": c["payable"],
-        "sign": sign_boxes(pc), "paid_line": paid_line(pc),
+        "sign": sign_boxes(pc), "paid_line": paid_line(pc), "note": (pc.cert_note or "").strip(),
         "verified": (pc.verified_by, pc.verified_on),
         "changed": sum(1 for b in bills for r in b["rows"] if r["chg"]),
         "changed_note": (lambda n: "" if not n else (f"Shaded: the {n} line{'s' if n > 1 else ''} claimed on this certificate (the first one)." if not prev else
@@ -977,7 +977,7 @@ def sign_boxes(pc):
             ("Prepared by", "PREPARED", pc.prep_by, "Quantity Surveyor", _stamp_time(pc, "Prepared", pc.prep_on) if pc.prep_by else ""),
             ("Approved by", "APPROVED", pc.chk_by, "Contracts Manager", _stamp_time(pc, "CM approved", pc.chk_on) if pc.chk_by else ""),
             ("Verified by", "VERIFIED", pc.rev_by, "Accounts", _stamp_time(pc, "Verified", pc.rev_on) if pc.rev_by else ""),
-            ("Approved by", "APPROVED", "Managing Director" if pc.app_by else "", "Digitally approved", _stamp_time(pc, "MD approved", pc.app_on) if pc.app_by else ""),
+            ("Approved by", "APPROVED", "MD" if pc.app_by else "", "Digitally approved", _stamp_time(pc, "MD approved", pc.app_on) if pc.app_by else ""),
             ("Subcontractor", "", "", "", "")]
 
 
@@ -1268,6 +1268,9 @@ def _render_pdf(doc, fit=1.0):
     t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), .5, GRID_C), ("BACKGROUND", (0, 0), (-1, 0), DARK),
                            ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("TOPPADDING", (0, 0), (-1, -1), 3), ("VALIGN", (0, 1), (-1, 1), "TOP")]))
     parts = [t]
+    if doc.get("note"):          # 24/11/2026: a note for the subcontractor, red and centred under the signatures
+        parts.append(Paragraph("<b>Note :</b> " + X(doc["note"]).replace("\n", "<br/>"),
+                               ParagraphStyle("pcn", fontName="Helvetica-Bold", fontSize=9, leading=11.5, alignment=1, textColor=RED, spaceBefore=5)))
     if doc.get("paid_line"):
         parts.append(Paragraph(X(doc["paid_line"]), ParagraphStyle("pl", fontName="Helvetica-Bold", fontSize=7.5, textColor=colors.black, spaceBefore=3)))
     el.append(KeepTogether(parts))
@@ -1450,6 +1453,8 @@ def render_html(doc, pdf_url, toggle_url=""):
         sig_after = f"<p class=paidl>{e(doc['paid_line'])}</p>"
     else:
         sig_after = ""
+    if doc.get("note"):
+        sig_after = f"<p class=pcnote><b>Note :</b> {e(doc['note'])}</p>" + sig_after
     if doc["bills"]:
         ae = "<section class='pg wide'><h2>Appendix - A &nbsp; Value of Work done &amp; Variations</h2>"
         if doc["changed_note"]:
@@ -1541,7 +1546,7 @@ table{{border-collapse:collapse;width:100%}} .hd{{border:1px solid #C9CDD2;margi
 .leg{{font-size:10px;color:#777;text-align:right}} .leg i{{display:inline-block;width:10px;height:10px;border:1px solid #ccc;vertical-align:-1px;margin:0 3px 0 10px}} .leg .g{{background:#EAF5EC}} .leg .rd{{background:#FBEDEC}}
 @media print{{.ce tr td,.cp th,.sig th,.cg th{{-webkit-print-color-adjust:exact;print-color-adjust:exact}}}}
 .r{{text-align:right;white-space:nowrap}} .c{{text-align:center;white-space:nowrap}}
-.stp{{display:block;margin-top:4px;color:#22262A;font-size:10.5px;line-height:1.4}} .stp b{{font-weight:700}} .paidl{{font-weight:700;margin:6px 0 0}}
+.stp{{display:block;margin-top:4px;color:#22262A;font-size:10.5px;line-height:1.4}} .stp b{{font-weight:700}} .paidl{{font-weight:700;margin:6px 0 0}} .pcnote{{color:#C0392B;font-weight:700;text-align:center;margin:10px 0 0;font-size:13px;white-space:pre-line}}
 
 .m{{color:#6B7178;font-size:10.5px}} .tw{{overflow-x:auto}}
 .t tr.mv td{{background:#FFFBEB}} .t tr.mv td.chg{{background:#FDF1C7}} .t tr.mv td:first-child{{box-shadow:inset 3px 0 0 #E0B84C}} .mvkey{{font-size:10.5px;color:#6B5A1E;margin:-2px 0 6px}} .mvkey i{{display:inline-block;width:11px;height:11px;background:#FDF1C7;border:1px solid #E0B84C;vertical-align:-1px;margin-right:4px}}

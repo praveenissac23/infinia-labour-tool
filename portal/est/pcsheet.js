@@ -138,7 +138,7 @@ async function pcSheet(pcid) {
     const p = d.pc; let inv = []; try { inv = JSON.parse(p.inv_lines || "[]") || []; } catch (e) {}
     S.f = { measured_on: p.measured_on || today(), inv_ref: p.inv_ref, inv_date: p.inv_date, inv_amount: p.inv_amount || "", received: p.received, remarks: p.remarks, mos_cum: p.mos_cum || "",
             adv_amount: p.adv_amount || "", ret_rel_cum: p.ret_rel_cum || "", adv_auto: p.adv_auto, ret_auto: p.ret_auto, adv_rec_cum: p.adv_rec_cum || "", ret_cum: p.ret_cum || "",
-            work_cum: p.work_cum || "", var_cum: p.var_cum || "", other_cum: p.other_cum || "", other_note: p.other_note || "", inv_lines: inv };
+            work_cum: p.work_cum || "", var_cum: p.var_cum || "", other_cum: p.other_cum || "", other_note: p.other_note || "", cert_note: p.cert_note || "", inv_lines: inv };
   };
   init();
   const lineAmt = (it, l) => !l ? 0 : it.measure === "qty" ? r2(num(l.qty) * it.rate * (num(l.pct) ? num(l.pct) / 100 : 1) - num(l.deduct)) : r2((it.amount - num(l.deduct)) * num(l.pct) / 100);
@@ -245,7 +245,8 @@ async function pcSheet(pcid) {
           <div class="f"><label>Invoice date</label><input type="date" data-f="inv_date" value="${S.f.inv_date || ""}"></div>
           <div class="f"><label>Invoice amount (AED)</label><input class="money" data-f="inv_amount" value="${S.f.inv_amount}"></div>
           <div class="f"><label>Received in office</label><input type="date" data-f="received" value="${S.f.received || ""}"></div>
-          <div class="f full"><label>Remarks (printed)</label><input data-f="remarks" value="${esc(S.f.remarks)}" placeholder="Nil"></div></div>
+          <div class="f full"><label>Remarks (printed)</label><input data-f="remarks" value="${esc(S.f.remarks)}" placeholder="Nil"></div>
+          <div class="f full"><label>Note on the certificate (printed in red under the signatures)</label><textarea data-f="cert_note" rows="2" title="Printed in red, centred under the signatures on page 1. Leave empty for no note." placeholder="e.g. Balance payment shall be released upon receipt of the pending documents.">${esc(S.f.cert_note)}</textarea></div></div>
           <details class="inv" ${S.f.inv_lines.length ? "open" : ""}><summary>Lines of the subcontractor's bill (optional - instead of attaching it)</summary>
             <div id="invl">${S.f.inv_lines.map((x, i) => `<div class="il"><input data-il="${i}" data-k="d" value="${esc(x.d)}" placeholder="Description"><input class="money" data-il="${i}" data-k="a" value="${x.a || ""}" placeholder="Amount"><button class="btn btn-plain btn-sm" data-ildel="${i}">&times;</button></div>`).join("")}</div>
             <button class="btn btn-ghost btn-sm" id="il-add">+ Bill line</button></details>

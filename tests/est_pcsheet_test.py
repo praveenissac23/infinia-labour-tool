@@ -212,12 +212,21 @@ ck("the Managing Director approves", r.status_code == 200 and r.json()["pc"]["ap
 r = c.post(f"/store/est/subpcs/{pc12}/sign", json={"role": "prep", "undo": True}, headers=ACC)
 ck("someone else can't take off the QS's signature", r.status_code in (400, 403))
 
+# 24/11/2026: MD signs as "MD" (whichever director is in); a note printed in red under the signatures
+NOTE = "Balance payment shall be released upon receipt of the pending documents."
+r = put(f"/store/est/subpcs/{pc12}/sheet", {"pc": {"cert_note": NOTE}})
+ck("a note on the certificate is saved", r.status_code == 200 and db.query(E.EstSubPC).get(pc12).cert_note == NOTE or
+   (db.expire_all() or db.query(E.EstSubPC).get(pc12).cert_note == NOTE), r.text[:200])
+import est_pcsheet as PS
+md = PS.sign_boxes(db.query(E.EstSubPC).get(pc12))[4]
+ck("the MD's box reads MD, not a person's name", md[2] == "MD" and "Praveen" not in md[2], md)
+
 # ============ print: certificate + appendices, preview and PDF ============
 tok = c.post("/auth/download-token", headers=QS).json()
 tok = tok.get("token") or tok.get("download_token")
 for name, pid, want in [("910", None, ["33,053.90", "34,706.60", "159,906.76", "28,742.73", "18,864.95", "IPC-01 to IPC-04"]),
                         ("913", None, ["34,202.00", "35,912.10", "6,623.00", "5,944.00", "1,584.00", "Not deducted"]),
-                        ("915", pc12, ["9,738.75", "10,225.69", "10,588.75", "ARATHI.S", "SHAFEEQ", "PRAVEEN", "MANAGING", "Verified at site"])]:
+                        ("915", pc12, ["9,738.75", "10,225.69", "10,588.75", "ARATHI.S", "SHAFEEQ", "PRAVEEN", "Note :", "Balance payment shall be released upon receipt of the", "Verified at site"])]:
     if pid is None:
         sid = {"910": s910, "913": s913}[name]
         pid = max(x.id for x in db.query(E.EstSubPC).filter_by(sub_id=sid).all())
