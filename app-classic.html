@@ -447,6 +447,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pu-tag { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 700; margin-left: 4px; white-space: nowrap; }
   .pu-st-ordered { background: #E3EEFB; color: #1565C0; } .pu-st-part { background: #FDF0D5; color: #8A6100; }
   .lpr-act { margin-top: 6px; }
+  /* 24/11/2026: an LPO that went through revision - the original and its revisions together, a purple edge */
+  .lpr-revtag { background: #EFE7FB; color: #5B2C9F; font-weight: 700; }
+  #lpr-body tr.lpr-fam > td:first-child { box-shadow: inset 4px 0 0 #8E5BD6; }
   .lpr-act .lpr-btns { display: flex; flex-wrap: wrap; gap: 4px; }
   .lpr-act .lpr-btns .btn { padding: 3px 9px; font-size: 11.5px; }
   .lpr-act .lpr-btns .btn { margin: 0; white-space: nowrap; }
@@ -4425,6 +4428,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                 <input type="text" id="lpr-supplier" list="lpr-supplier-list" placeholder="Any - start typing"
                        oninput="debouncedLpoReport()" autocomplete="off" style="width:190px;">
                 <datalist id="lpr-supplier-list"></datalist></div>
+              <div class="field"><label>LPO no</label><input type="text" id="lpr-lpo" placeholder="e.g. 20260219" oninput="debouncedLpoReport()" style="width:140px;" title="Part of the LPO number - the LPO and all its revisions (R1, R2 ...) are listed together"></div>
               <div class="field"><label>Project location</label><input type="text" id="lpr-site" placeholder="Any" oninput="debouncedLpoReport()" style="width:130px;"></div>
               <div class="field"><label>Material</label><input type="text" id="lpr-material" placeholder="Any" oninput="debouncedLpoReport()" style="width:150px;"></div>
             </div>
@@ -14343,6 +14347,7 @@ function lprParams() {
        + `&date_from=${v("lpr-from")}&date_to=${v("lpr-to")}`
        + `&supplier=${encodeURIComponent(v("lpr-supplier"))}`
        + `&site=${encodeURIComponent(v("lpr-site"))}`
+       + `&lpo=${encodeURIComponent(v("lpr-lpo"))}`
        + `&material=${encodeURIComponent(v("lpr-material"))}`
        + `&status=${document.getElementById("lpr-show").value}`;
 }
@@ -14403,10 +14408,11 @@ async function loadLpoReport() {
       const cells = [];
       if (r.group_by === "order") {
         cells.push(`<td style="text-align:left;"><strong class="lpr-no">${row.label}</strong>${
+          row.revision ? ` <span class="pill lpr-revtag" title="Revision ${row.revision} of ${escapeAttr(row.base_ref || "")}">REVISED R${row.revision}</span>` : ""}${
           row.status === "cancelled" ? ` <span class="pill lpr-cx" style="background:#FBE0DE; color:#C0392B; font-weight:700;">CANCELLED</span>${row.cancel_reason ? `<div class="lpr-why" style="font-size:11.5px;color:#B03A2E;margin-top:2px;">${row.cancelled_on ? escapeHtml(dmy(row.cancelled_on)) + " - " : ""}${escapeHtml(row.cancel_reason)}</div>` : ""}` : ""}${
           row.edited && row.status !== "cancelled"
             ? ` <span class="pill" style="background:#FDF0D5; color:#8A6100;" title="Corrected on ${dmy(row.edited_on)}">edited</span>` : ""}${
-          row.superseded_by ? `<div class="lpr-why" style="font-size:11.5px;color:#B03A2E;">replaced by ${escapeHtml(row.superseded_by)}</div>` : ""}${
+          row.superseded_by && !(row.cancel_reason || "").includes(row.superseded_by) ? `<div class="lpr-why" style="font-size:11.5px;color:#B03A2E;">replaced by ${escapeHtml(row.superseded_by)}</div>` : ""}${
           row.status !== "cancelled" && row.delivery ? `<div style="margin-top:2px;">${puTag(row.delivery)}${row.bill_checked
             ? ` <span class="pu-tag pu-st-delivered" title="Supplier's bill ${escapeAttr(row.bill_no || "")} checked against the LPO and DN">bill checked</span>`
             : (row.bill_no ? ` <span class="pu-tag pu-st-part" title="Bill ${escapeAttr(row.bill_no)} entered, not ticked checked yet">bill not checked</span>` : "")}</div>` : ""}</td>`);
@@ -14433,7 +14439,8 @@ async function loadLpoReport() {
       // token fetch makes it a pop-up, which the browser blocks.
       const open = r.group_by === "order"
         ? ` onclick="openLpo(${row.id}, window.open('', '_blank'))" style="cursor:pointer;" title="Open the order"` : "";
-      return `<tr${open}${r.group_by === "order" && row.status === "cancelled" ? ' class="lpr-cxrow"' : ""}>${cells.join("")}</tr>`;
+      const cls = [r.group_by === "order" && row.status === "cancelled" ? "lpr-cxrow" : "", r.group_by === "order" && row.family ? "lpr-fam" : ""].filter(Boolean).join(" ");
+      return `<tr${open}${cls ? ` class="${cls}"` : ""}>${cells.join("")}</tr>`;
     }).join("");
 
     const tcells = [`<td style="text-align:left;">TOTAL</td>`];

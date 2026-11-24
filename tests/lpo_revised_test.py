@@ -95,12 +95,30 @@ db = database.SessionLocal()
 ch = [x for x in PZ.bell(db) if x["lpo_id"] == w1][0]["changes"]
 ck("accounts note: 'Total was AED 7,936.27' (1,500 x 5.0389 + VAT), difference -61.27", any("Total was AED 7,936.27" in x for x in ch) and any("difference -61.27" in x for x in ch), ch)
 db.close()
+# LPO register (24/11/2026, purchaser): search by LPO no lists the original and its revisions; they sit together,
+# newest revision first, whatever their dates; a revision carries its number for the purple REVISED tag
+c.post("/store/purchase/orders", json=dict(body("IC/LPO/20260400", 10), order_date="2026-11-01"), headers=H)
+c.post("/store/purchase/orders", json=dict(body("IC/LPO/20260401", 10), order_date="2026-11-02"), headers=H)
+for k in range(1, 11):                                              # R1 ... R10 (R10 must come above R2, not below)
+    c.post("/store/purchase/orders", json=dict(body(f"IC/LPO/20260400R{k}", 10 + k), order_date="2026-11-24"), headers=H)
+rep = c.get("/store/purchase/report?group_by=order&status=all&lpo=20260400", headers=H).json()["rows"]
+labs = [x["label"] for x in rep]
+ck("search '20260400': the original and all 10 revisions, nothing else", labs[-1] == "IC/LPO/20260400" and len(labs) == 11 and "IC/LPO/20260401" not in labs, labs)
+ck("listed R10, R9 ... R1, then the original (R10 above R2)", labs == [f"IC/LPO/20260400R{k}" for k in range(10, 0, -1)] + ["IC/LPO/20260400"], labs)
+ck("rows carry revision no. and family (for the REVISED tag and purple edge)", rep[0]["revision"] == 10 and rep[-1]["revision"] == 0 and all(x.get("family") == 11 for x in rep), rep[0])
+rep = c.get("/store/purchase/report?group_by=order&status=all", headers=H).json()["rows"]
+labs = [x["label"] for x in rep]
+i = labs.index("IC/LPO/20260400")
+ck("whole register: the family together, right under IC/LPO/20260401 - not split by date", labs[i - 10:i + 1] == [f"IC/LPO/20260400R{k}" for k in range(10, 0, -1)] + ["IC/LPO/20260400"] and labs[i - 11] == "IC/LPO/20260401", labs[max(0, i - 12):i + 2])
+ck("search with a space or lower case ('lpo/20260400 r1') still finds R1 and R10",
+   {"IC/LPO/20260400R1", "IC/LPO/20260400R10"} <= {x["label"] for x in c.get("/store/purchase/report?group_by=order&status=all&lpo=lpo/20260400%20r1", headers=H).json()["rows"]})
 import agent as AG
 ck("INFI is told to leave cancelled / replaced LPOs out of spend", "skip status 'cancelled' (also revised ones)" in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "agent.py")).read())
 js = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app-classic.html"), encoding="utf-8").read()
 ck("the form and the register have the REVISED button", 'id="lpo-revise-btn"' in js and "lprRevise(${row.id})" in js and "async function lpoRevise()" in js)
 ck("REVISED keeps the original LPO date (cost stays in its month; a pre-Zoho LPO stays out of Zoho)",
    "isoLocal(new Date())" not in js[js.index("async function lpoRevise()"):js.index("function closeLpoForm()")])
+ck("register: LPO no box and the purple REVISED tag", 'id="lpr-lpo"' in js and "lpr-revtag" in js and "lpr-fam" in js)
 ck("REVISED is hidden on a cancelled LPO", '["superseded", "cancelled"].includes(o.status)' in js)
 print("\n" + ("ALL PASS" if not fails else f"{len(fails)} FAILED"))
 sys.exit(1 if fails else 0)

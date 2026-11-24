@@ -9300,10 +9300,23 @@ def lpo_price_search(q: str = "", limit: int = 12, db: Session = Depends(get_db)
     return {"query": q, "materials": out[:limit]}
 
 
+def _lpo_family(ref):
+    """(base, revision) of an LPO number: IC/LPO/20260219R2 -> ("IC/LPO/20260219", 2); no revision -> (ref, 0)."""
+    t = re.sub(r"\s+", "", ref or "")
+    m = re.fullmatch(r"(.*\d)R(\d+)", t, re.I)
+    return (m.group(1), int(m.group(2))) if m else (t, 0)
+
+
+def _lpo_sort(base):
+    """The order LPO numbers are listed in: by the number in them (IC/LPO/20260219 before IC/LPO/9103374), then as text."""
+    d = re.findall(r"\d+", base or "")
+    return (int(d[-1]) if d else -1, base or "")
+
+
 @app.get("/store/purchase/report")
 def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,total",
                 date_from: str = "", date_to: str = "", supplier: str = "", site: str = "",
-                material: str = "", status: str = "issued",
+                material: str = "", status: str = "issued", lpo: str = "",
                 db: Session = Depends(get_db),
                 user: models.User = Depends(require_screen("approvals"))):
     """The purchase register, asked whatever question is put to it.
@@ -9331,6 +9344,10 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
     orders = q.order_by(models.PurchaseOrder.po_no.desc()).all()
 
     sup_q, site_q, mat_q = supplier.strip().lower(), site.strip().lower(), material.strip().lower()
+    # LPO no (24/11/2026, purchaser): "20260219" finds IC/LPO/20260219 and every revision of it (R1, R2 ...)
+    lpo_q = re.sub(r"\s+", "", lpo or "").upper()
+    if lpo_q:
+        orders = [o for o in orders if lpo_q in re.sub(r"\s+", "", o.ref or "").upper()]
     wanted = [m for m in measures.split(",") if m in LPO_MEASURES] or ["total"]
     group_by = group_by if group_by in LPO_GROUPS else "order"
 
@@ -9401,13 +9418,27 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
             r["delivery"] = deliv.get(o.id, "")
             r["superseded_by"] = getattr(o, "superseded_by", "") or ""
             r["bill_no"], r["bill_checked"] = (o.bill_no or ""), bool(o.bill_checked)
+            base, rev = _lpo_family(o.ref)
+            r["revision"], r["base_ref"] = rev, base
         out.append(r)
     # A round off on any order shown gets its own column just before Total, so Sub Total + VAT + Round off
     # = Total reads across the row. Not a box to tick: there only when it is needed.
     if "total" in wanted and "round_off" not in wanted and \
             any(r["round_off"] for r in out if r["status"] != "cancelled" or status == "cancelled"):
         wanted.insert(wanted.index("total"), "round_off")
-    out.sort(key=lambda x: (-x["total"]) if group_by != "order" else x["label"], reverse=(group_by == "order"))
+    if group_by == "order":
+        # An LPO and its revisions next to each other, newest revision on top (R2, R1, the original) - whatever their
+        # dates or numbers in the series. Families in LPO-number order, newest first, as before.
+        fam = {}
+        for r in out:
+            fam.setdefault(r.get("base_ref") or r["label"], []).append(r)
+        for b, rs in fam.items():
+            if len(rs) > 1 or rs[0].get("revision"):
+                for x in rs:
+                    x["family"] = len(rs)
+        out.sort(key=lambda x: (_lpo_sort(x.get("base_ref") or x["label"]), x.get("revision") or 0), reverse=True)
+    else:
+        out.sort(key=lambda x: -x["total"])
 
     counts = [r for r in out if r["status"] != "cancelled" or status == "cancelled"]
     totals = {m: round(sum(r[m] for r in counts), 2) for m in wanted}
@@ -9431,11 +9462,11 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
 def export_lpo_report(token: str, format: str = "excel", group_by: str = "order",
                        measures: str = "orders,sub_total,vat,total",
                        date_from: str = "", date_to: str = "", supplier: str = "",
-                       site: str = "", material: str = "", status: str = "issued",
+                       site: str = "", material: str = "", status: str = "issued", lpo: str = "",
                        inline: bool = False, db: Session = Depends(get_db)):
     auth.get_download_user_from_token(token, db)
     data = lpo_report(group_by=group_by, measures=measures, date_from=date_from, date_to=date_to,
-                      supplier=supplier, site=site, material=material, status=status,
+                      supplier=supplier, site=site, material=material, status=status, lpo=lpo,
                       db=db, user=_SystemUser())
     rows = []
     for r in data["rows"]:
@@ -11390,27 +11421,27 @@ def view_store_report(kind: str = "stock", date_from: str = None, date_to: str =
 def view_lpo_report(token: str, group_by: str = "order",
                      measures: str = "orders,sub_total,vat,total",
                      date_from: str = "", date_to: str = "", supplier: str = "",
-                     site: str = "", material: str = "", status: str = "issued",
+                     site: str = "", material: str = "", status: str = "issued", lpo: str = "",
                      db: Session = Depends(get_db)):
     user = auth.get_download_user_from_token(token, db)
     t = quote(auth.create_view_token(user.username), safe="")
     extra = f"&group_by={quote(group_by, safe='')}&measures={quote(measures, safe='')}" \
             f"&status={quote(status, safe='')}"
     for k, v in (("date_from", date_from), ("date_to", date_to), ("supplier", supplier),
-                 ("site", site), ("material", material)):
+                 ("site", site), ("material", material), ("lpo", lpo)):
         if v:
             extra += f"&{k}={quote(str(v), safe='')}"
     bits = []
     if date_from or date_to:
         bits.append(f"{date_from or 'the start'} to {date_to or 'today'}")
-    for label, v in (("supplier", supplier), ("site", site), ("material", material)):
+    for label, v in (("supplier", supplier), ("site", site), ("material", material), ("LPO no", lpo)):
         if v:
             bits.append(f"{label}: {v}")
     if status in ("all", "cancelled"):
         bits.append({"all": "including cancelled", "cancelled": "cancelled only"}[status])
     data = lpo_report(group_by=group_by, measures=measures, date_from=date_from,
                       date_to=date_to, supplier=supplier, site=site, material=material,
-                      status=status, db=db, user=_SystemUser())
+                      status=status, lpo=lpo, db=db, user=_SystemUser())
     rows = []
     for r in data["rows"]:
         row = {data["group_label"]: r["label"]}
