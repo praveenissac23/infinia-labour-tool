@@ -9,7 +9,7 @@
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Next">
 <meta name="theme-color" content="#F7F3F1" id="theme-color">
 <meta name="color-scheme" content="light dark">
@@ -185,48 +185,26 @@
   .mic.rec::after { content: "Tap to stop"; }
   .mic.busy { background: var(--soft); color: var(--mute); }
   .mic.busy svg { animation: blink 1s infinite; } @keyframes blink { 50% { opacity: .3; } }
-  /* ===== Infinia red glass (24/11/2026, option 6): colour glows behind, every surface is frosted glass over it ===== */
-  html[data-theme] { --ink:#FFF4F2; --mute:rgba(255,236,232,.66); --line:rgba(255,255,255,.14); --tick:rgba(255,255,255,.55);
-          --glass:rgba(255,255,255,.085); --gedge:rgba(255,255,255,.17); --ghi:rgba(255,255,255,.26); --gsh:rgba(0,0,0,.30);
-          --sheetbg:rgba(52,12,17,.80); --barbg:rgba(46,10,15,.62); --soft:rgba(255,255,255,.10); --field:rgba(255,255,255,.08); --card:rgba(255,255,255,.10);
-          --red:#FF7A6B; --redtx:#FFB3A8; --redbg:rgba(255,122,107,.18); --purtx:#E2C6FF; --purbg:rgba(190,140,255,.18);
-          --grnbg:rgba(80,220,200,.16); --dark:#fff; --onDark:#B3261E; --accent:#fff; --onAccent:#B3261E;
-          --note:rgba(255,215,120,.13); --noteW:rgba(255,122,107,.14); --noteInk:rgba(255,236,232,.8); color-scheme: dark;
-          --bgimg: radial-gradient(80% 50% at 80% 0%, #E2493A 0, transparent 70%), radial-gradient(70% 50% at 0% 70%, #8E1F2A 0, transparent 70%), linear-gradient(180deg, #4A0E14, #14070A); }
-  /* "Light" = the same red, brighter */
-  html[data-theme=light] { --glass:rgba(255,255,255,.13); --gedge:rgba(255,255,255,.28); --ghi:rgba(255,255,255,.4); --gsh:rgba(60,0,0,.22);
-          --sheetbg:rgba(150,32,28,.82); --barbg:rgba(160,30,30,.58); --soft:rgba(255,255,255,.16); --field:rgba(255,255,255,.14);
-          --bgimg: radial-gradient(80% 50% at 85% 0%, #FF8A6E 0, transparent 70%), radial-gradient(70% 50% at 0% 75%, #C42B2B 0, transparent 70%), linear-gradient(180deg, #E5483B, #8E1A22); }
-  html, body { background: #14070A; } html[data-theme=light], html[data-theme=light] body { background: #9A1D24; }
-  #app { background: var(--bgimg); }
-  body::before { content: ""; position: fixed; inset: 0; background: var(--bgimg); z-index: -1; }
-  .top { background: transparent; }
-  .it, .note, .mon .card, .chips button, .gear, .bar, .mic, .cap input, .dayhead + .it, .ring, .toast, .seg, .snd button, .addnote, .gate input {
-    background: var(--glass); border: 1px solid var(--gedge);
-    -webkit-backdrop-filter: blur(26px) saturate(170%); backdrop-filter: blur(26px) saturate(170%);
-    box-shadow: inset 0 1px 0 var(--ghi), 0 8px 26px var(--gsh); }
-  .cap input, .mic, .seg, .snd button { box-shadow: inset 0 1px 0 var(--ghi); }
-  .it.od { box-shadow: inset 3px 0 0 var(--red), inset 0 1px 0 var(--ghi), 0 8px 26px var(--gsh); }
-  .chips button { color: var(--ink); opacity: .9; } .chips button.on { background: var(--accent); color: var(--onAccent); border-color: transparent; opacity: 1; }
-  .mstrip button.on { background: var(--accent); color: var(--onAccent); }
-  .mon .grid button.sel, .go, .btn.pri { background: var(--accent); color: var(--onAccent); }
-  .mon .grid button.td { box-shadow: inset 0 0 0 1.5px var(--red); color: var(--redtx); }
-  .tick { border-color: var(--tick); }
-  .bar { left: 10px; right: 10px; bottom: calc(10px + var(--safe-b)); border-radius: 30px; padding: 10px 10px 6px; }
-  .nav .ind { background: var(--soft); border: 1px solid var(--gedge); }
-  .nav button.on { color: var(--ink); }
-  .sheet { background: var(--sheetbg); -webkit-backdrop-filter: blur(34px) saturate(160%); backdrop-filter: blur(34px) saturate(160%);
-           border: 1px solid var(--gedge); border-bottom: 0; box-shadow: inset 0 1px 0 var(--ghi), 0 -10px 40px #0000004d; }
-  .shade { background: #0000004d; }
-  .btn { background: var(--soft); } .seg button.on { background: var(--accent); color: var(--onAccent); }
-  .snd button.on { background: var(--accent); color: var(--onAccent); border-color: transparent; } .snd button.on i { color: var(--onAccent); }
-  .toast { color: var(--ink); } .toast button { color: var(--redtx); }
-  .ring .ic { background: var(--accent); color: var(--onAccent); }
-  .top .gear { background: var(--glass); color: var(--ink); }
-  .bar { background: var(--barbg); }
-  .cap input::placeholder { color: var(--mute); opacity: 1; }
-  .mon .grid button.sel.td, .mon .grid button.sel { color: var(--onAccent); box-shadow: none; }
-  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .sheet { background: var(--card); } }
+  /* ===== Calm glass (24/11/2026, option 5): today's warm look; soft colour glows top and bottom; the header and the
+     floating bottom bar are frosted glass over them; cards stay solid and easy to read ===== */
+  :root { --glowA:#F9C7BC; --glowB:#E5D6FA; --glowC:#FFE6B8; --barbg:rgba(255,253,251,.62); --gedge:rgba(255,255,255,.85); --ghi:#fff; --gsh:rgba(120,60,40,.12); }
+  html[data-theme=dark] { --glowA:rgba(192,57,43,.38); --glowB:rgba(109,59,209,.30); --glowC:rgba(200,120,40,.22);
+          --barbg:rgba(30,26,28,.62); --gedge:rgba(255,255,255,.10); --ghi:rgba(255,255,255,.10); --gsh:rgba(0,0,0,.45); }
+  #app { background: var(--bg); }
+  #app::before, #app::after { content: ""; position: absolute; left: -40px; right: -40px; pointer-events: none; z-index: 0; }
+  #app::before { top: -40px; height: 300px; background: radial-gradient(50% 60% at 28% 45%, var(--glowA), transparent 70%), radial-gradient(40% 60% at 88% 30%, var(--glowB), transparent 70%); }
+  #app::after { bottom: -20px; height: 340px; background: radial-gradient(50% 60% at 72% 72%, var(--glowA), transparent 70%), radial-gradient(40% 50% at 18% 82%, var(--glowC), transparent 70%); }
+  .top, .pager { position: relative; z-index: 1; } .top { background: transparent; }
+  .gear { background: var(--barbg); border: 1px solid var(--gedge); box-shadow: inset 0 1px 0 var(--ghi), 0 4px 14px var(--gsh);
+          -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); }
+  .chips button:not(.on) { background: var(--barbg); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+  .bar { left: 10px; right: 10px; bottom: calc(10px + var(--safe-b)); border-radius: 30px; padding: 10px 10px 6px; background: var(--barbg);
+         border: 1px solid var(--gedge); box-shadow: inset 0 1px 0 var(--ghi), 0 10px 30px var(--gsh);
+         -webkit-backdrop-filter: blur(28px) saturate(180%); backdrop-filter: blur(28px) saturate(180%); }
+  .cap input { background: var(--soft); } .cap input::placeholder { color: var(--mute); opacity: 1; }
+  .nav .ind { border-radius: 16px; }
+  .sheet { background: color-mix(in srgb, var(--card) 88%, transparent); -webkit-backdrop-filter: blur(30px) saturate(160%); backdrop-filter: blur(30px) saturate(160%); }
+  .mon .grid button.sel.td { color: #fff; box-shadow: none; }
   @media (min-width: 900px) {
     .two { display: grid; grid-template-columns: 1fr 380px; gap: 10px; align-items: start; }
     .two .side { position: sticky; top: 10px; }
@@ -665,7 +643,7 @@ function theme() { try { return localStorage.getItem("me_theme") || "auto"; } ca
 function applyTheme() {
   const t = theme(), dark = t === "dark" || (t === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-  $("theme-color").setAttribute("content", dark ? "#5A1218" : "#E5483B");
+  $("theme-color").setAttribute("content", dark ? "#0F0D0E" : "#F7F3F1");
 }
 function setTheme(t) { try { localStorage.setItem("me_theme", t); } catch (e) {} applyTheme(); document.querySelectorAll("#themeSeg button").forEach((b, k) => b.classList.toggle("on", ["auto", "light", "dark"][k] === t)); }
 try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme); } catch (e) {}
@@ -692,7 +670,7 @@ async function openSettings() {
     <div class="snd" id="soundList">${Object.entries(SOUNDS).map(([k, x]) => `<button data-k="${k}" class="${soundKey() === k ? "on" : ""}" onclick="setSound('${k}')"><span>${x.name}</span><i>▶</i></button>`).join("")}</div>
     <p style="font-size:13px;color:var(--mute);line-height:1.5;margin-top:8px">Tap one to hear it. It plays when a reminder comes up while this app is open. When the app is closed, the iPhone plays its own notification sound - Apple does not let web apps choose it. Silent mode or a Focus keeps both quiet.</p>
     <h3 style="margin-top:18px">Look</h3>
-    <div class="seg" id="themeSeg">${[["auto", "As the phone"], ["light", "Bright red"], ["dark", "Deep red"]].map(([k, l]) => `<button class="${theme() === k ? "on" : ""}" onclick="setTheme('${k}')">${l}</button>`).join("")}</div>
+    <div class="seg" id="themeSeg">${[["auto", "As the phone"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => `<button class="${theme() === k ? "on" : ""}" onclick="setTheme('${k}')">${l}</button>`).join("")}</div>
     <h3 style="margin-top:18px">Signed-in devices</h3><div id="devs" style="font-size:14px;color:var(--noteInk)">…</div>
     <div class="menu" style="margin-top:10px">
       <button onclick="changePin()">Change my PIN</button>

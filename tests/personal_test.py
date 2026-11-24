@@ -239,9 +239,8 @@ ck("5 reminder sounds to pick in settings, each plays when tapped, kept on this 
 ck("the sound is woken by the first touch (the iPhone stays quiet otherwise)", '["touchend", "pointerdown", "keydown"].forEach' in page)
 ck("no example sentence on the empty list", "call the bank" not in page)
 ck("light / dark / as the phone", "html[data-theme=dark]" in page and "function setTheme" in page)
-ck("Infinia red glass: red gradient behind (deep and bright), frosted surfaces, no rose/plain look",
-   "html[data-theme] {" in page and "#4A0E14" in page and "html[data-theme=light] {" in page and "#E5483B" in page and
-   "backdrop-filter: blur(26px)" in page and '["light", "Bright red"], ["dark", "Deep red"]' in page)
+ck("Calm glass: soft glows top and bottom, glass header buttons and floating glass bar, solid cards", "Calm glass" in page and
+   "#app::before" in page and "#app::after" in page and "backdrop-filter: blur(28px)" in page and "Bright red" not in page)
 ck("its own Home Screen icon", 'href="/portal/me-icon-180.png"' in page and m.json()["icons"][0]["src"] == "/portal/me-icon-192.png" and os.path.exists(os.path.join(root, "portal", "me-icon-512.png")))
 ck("the page: not indexed, no referrer, iPhone app look", 'name="robots" content="noindex' in page and 'name="referrer" content="no-referrer"' in page and "apple-mobile-web-app-capable" in page)
 app = open(os.path.join(root, "app-classic.html"), encoding="utf-8").read()
