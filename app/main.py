@@ -10072,10 +10072,6 @@ def _track_lpo(db, o, user, creating=False):
 
 def _lpo_snap(o):
     """What an LPO says, for telling accounts what an edit changed."""
-    def tot(lines, disc):
-        sub = sum((l["qty"] or 0) * (l["rate"] or 0) for l in lines) * (1 - (disc or 0) / 100)
-        vat = sum((l["qty"] or 0) * (l["rate"] or 0) * (1 - (disc or 0) / 100) * (l["tax"] or 0) / 100 for l in lines)
-        return round(sub + vat, 2)
     lines = [{"desc": " - ".join(x for x in ((l.description or "").strip(), (l.description2 or "").strip()) if x) or "(no description)",
               "qty": round(l.qty or 0, 3), "unit": l.unit or "", "rate": round(l.rate or 0, 2), "tax": round(l.tax_pct or 0, 2),
               "to": (getattr(l, "cost_to", "") or "") if getattr(o, "combined", False) else ""}
@@ -10084,7 +10080,7 @@ def _lpo_snap(o):
             "delivery": o.delivery_date.strftime("%d/%m/%Y") if o.delivery_date else (getattr(o, "delivery_note", "") or ""),
             "discount": round(o.discount_pct or 0, 2), "supplier_ref": o.supplier_ref or "", "site": o.project_location or "",
             "terms": o.terms or "", "lines": lines,
-            "round_off": lpo_round_off(o), "total": lpo_total(o) if lpo_open(o) else round(tot(lines, o.discount_pct) + lpo_round_off(o), 2),
+            "round_off": lpo_round_off(o), "total": lpo_total(o),   # 24/11/2026: the real total - a rate of 5.0389 rounded to 5.04 here gave 22,113.00 for 22,111.27
             "combined": bool(getattr(o, "combined", False)), "rental": getattr(o, "rental", None), "open_lpo": lpo_open(o)}
 
 

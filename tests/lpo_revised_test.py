@@ -87,6 +87,14 @@ c.post(f"/store/purchase/orders/{q1}/bill", json={"bill_no": "INV-10", "bill_amo
 r = c.post("/store/purchase/orders", json=body("IC/LPO/20260301R1", 2700), headers=H)
 db = database.SessionLocal(); q2 = db.get(models.PurchaseOrder, r.json()["id"])
 ck("bill no longer agrees with R1's total: moved, but to be checked again", q2.bill_no == "INV-10" and not q2.bill_checked); db.close()
+# a rate with 4 decimals (5.0389): the accounts note gives the LPO's real total, not one from a rounded rate
+r = c.post("/store/purchase/orders", json=dict(body("IC/LPO/20260302", 0), lines=[{"description": "Solid block 6in", "qty": 1500, "unit": "NOS", "rate": 5.0389, "tax_pct": 5}]), headers=H)
+w1 = r.json()["id"]
+c.post("/store/purchase/orders", json=dict(body("IC/LPO/20260302R1", 0), lines=[{"description": "Solid block 6in", "qty": 1500, "unit": "NOS", "rate": 5.0, "tax_pct": 5}]), headers=H)
+db = database.SessionLocal()
+ch = [x for x in PZ.bell(db) if x["lpo_id"] == w1][0]["changes"]
+ck("accounts note: 'Total was AED 7,936.27' (1,500 x 5.0389 + VAT), difference -61.27", any("Total was AED 7,936.27" in x for x in ch) and any("difference -61.27" in x for x in ch), ch)
+db.close()
 import agent as AG
 ck("INFI is told to leave cancelled / replaced LPOs out of spend", "skip status 'cancelled' (also revised ones)" in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "agent.py")).read())
 js = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app-classic.html"), encoding="utf-8").read()

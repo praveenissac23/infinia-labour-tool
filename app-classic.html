@@ -446,6 +446,9 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .pu-modal .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
   .pu-tag { display: inline-block; padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 700; margin-left: 4px; white-space: nowrap; }
   .pu-st-ordered { background: #E3EEFB; color: #1565C0; } .pu-st-part { background: #FDF0D5; color: #8A6100; }
+  .lpr-act { text-align: right; }
+  .lpr-act .lpr-btns { display: grid; grid-template-columns: auto auto; gap: 5px; justify-content: end; }
+  .lpr-act .lpr-btns .btn { margin: 0; white-space: nowrap; }
   .pu-st-delivered, .pu-st-closed { background: #E3F4E5; color: #2E7D32; } .pu-st-superseded, .pu-st-cancelled { background: #FBE0DE; color: #C0392B; }
   .pu-svc { background: #EEE; color: #555; } .pu-rent { background: #EDE7F6; color: #5E35B1; }
   .inv-list tr.cx td { color: #999; } .inv-list tr.cx td.num { text-decoration: line-through; }
@@ -14420,9 +14423,10 @@ async function loadLpoReport() {
       // Add another item, fix a line, redo a save made too soon - opens
       // the same order back in the form rather than raising a new one.
       if (r.group_by === "order") {
-        cells.push(`<td style="text-align:right; white-space:nowrap;">${row.status === "cancelled" ? "" :
-          `<button class="btn btn-gray btn-sm lpr-dlv" title="What came against it - booking, bill and cancel are on the Order tracker" onclick="event.stopPropagation(); lpoDlvOpen(${row.id}, null, true)">Deliveries</button>${
-            otCanDo("purchaser") ? ` <button class="btn btn-gray btn-sm lpr-edit" title="Change the LPO - quantities, rates, lines. It keeps its number; Accounts are told what changed." onclick="event.stopPropagation(); lprEdit(${row.id})">Edit</button> <button class="btn btn-sm" style="background:#FBEFED; color:#A93226; border:1px solid #E6B8B1;" title="A new LPO with the same supplier, lines and rates - fill in the other plot" onclick="event.stopPropagation(); lprCopy(${row.id})">Copy</button> <button class="btn btn-sm" style="background:#FFF4D6; color:#8A5A00; border:1px solid #E8C877; font-weight:700;" title="REVISED LPO: the same LPO under the next number (R1, R2 ...) - saving it replaces this one" onclick="event.stopPropagation(); lprRevise(${row.id})">Revised</button>` : ""}`}</td>`);
+        // 24/11/2026: the four buttons two by two - in one row the last one (Revised) was cut off on a laptop
+        cells.push(`<td class="lpr-act">${row.status === "cancelled" ? "" :
+          `<div class="lpr-btns"><button class="btn btn-gray btn-sm lpr-dlv" title="What came against it - booking, bill and cancel are on the Order tracker" onclick="event.stopPropagation(); lpoDlvOpen(${row.id}, null, true)">Deliveries</button>${
+            otCanDo("purchaser") ? ` <button class="btn btn-gray btn-sm lpr-edit" title="Change the LPO - quantities, rates, lines. It keeps its number; Accounts are told what changed." onclick="event.stopPropagation(); lprEdit(${row.id})">Edit</button> <button class="btn btn-sm" style="background:#FBEFED; color:#A93226; border:1px solid #E6B8B1;" title="A new LPO with the same supplier, lines and rates - fill in the other plot" onclick="event.stopPropagation(); lprCopy(${row.id})">Copy</button> <button class="btn btn-sm" style="background:#FFF4D6; color:#8A5A00; border:1px solid #E8C877; font-weight:700;" title="REVISED LPO: the same LPO under the next number (R1, R2 ...) - saving it replaces this one" onclick="event.stopPropagation(); lprRevise(${row.id})">Revised</button>` : ""}</div>`}</td>`);
       }
       // The tab is claimed in the click itself - asking for it after the
       // token fetch makes it a pop-up, which the browser blocks.
