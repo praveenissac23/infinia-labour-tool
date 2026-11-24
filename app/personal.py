@@ -260,8 +260,8 @@ def manifest(k: str = Query(""), db: Session = Depends(get_db)):
     m = {"name": f"{first} - Next", "short_name": "Next", "id": f"/portal/me.html?k={s.slug}",
          "start_url": f"/portal/me.html?k={s.slug}", "scope": "/portal/", "display": "standalone",
          "background_color": "#F7F3F1", "theme_color": "#F7F3F1",
-         "icons": [{"src": "/portal/icon-192.png", "sizes": "192x192", "type": "image/png"},
-                   {"src": "/portal/icon-512.png", "sizes": "512x512", "type": "image/png"}]}
+         "icons": [{"src": "/portal/me-icon-192.png", "sizes": "192x192", "type": "image/png"},
+                   {"src": "/portal/me-icon-512.png", "sizes": "512x512", "type": "image/png"}]}
     return Response(json.dumps(m), media_type="application/manifest+json", headers={"Cache-Control": "no-store"})
 
 

@@ -8,7 +8,7 @@ self.addEventListener("push", e => {
   try { m = e.data ? e.data.json() : {}; } catch (x) { m = { title: "Reminder", body: e.data ? e.data.text() : "" }; }
   e.waitUntil(self.registration.showNotification(m.title || "Reminder", {
     body: m.body || "", tag: m.tag || undefined, renotify: !!m.tag, requireInteraction: true,
-    icon: "/portal/icon-192.png", badge: "/portal/icon-192.png", data: { url: m.url || "/portal/me.html" }
+    icon: "/portal/me-icon-192.png", badge: "/portal/me-icon-192.png", data: { url: m.url || "/portal/me.html" }
   }));
 });
 self.addEventListener("notificationclick", e => {

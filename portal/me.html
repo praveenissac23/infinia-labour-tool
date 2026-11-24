@@ -11,10 +11,18 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Next">
-<meta name="theme-color" content="#F7F3F1">
-<link rel="apple-touch-icon" href="/portal/icon-192.png">
+<meta name="theme-color" content="#F7F3F1" id="theme-color">
+<meta name="color-scheme" content="light dark">
+<link rel="apple-touch-icon" sizes="180x180" href="/portal/me-icon-180.png">
+<link rel="icon" type="image/png" href="/portal/me-icon-192.png">
 <title>Next</title>
 <script>
+  // light / dark / as the phone (24/11/2026) - set before the page draws, so it never flashes white
+  (function () {
+    var t = "auto"; try { t = localStorage.getItem("me_theme") || "auto"; } catch (e) {}
+    var dark = t === "dark" || (t === "auto" && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  })();
   // the Home Screen icon opens at this exact address, as an app of its own
   (function () {
     var k = new URLSearchParams(location.search).get("k") || "";
@@ -23,96 +31,150 @@
 </script>
 <style>
   :root { --bg:#F7F3F1; --card:#fff; --ink:#2B2622; --mute:#8A8178; --line:#EEE6E2; --red:#C0392B; --redbg:#FDF0EE;
-          --pur:#5B2C9F; --purbg:#EFE7FB; --grn:#16857A; --grnbg:#E8F5F3; --safe-b: env(safe-area-inset-bottom, 0px); }
+          --pur:#5B2C9F; --purbg:#EFE7FB; --grn:#16857A; --grnbg:#E8F5F3; --safe-b: env(safe-area-inset-bottom, 0px);
+          --soft:#F1ECE9; --field:#FCFAF9; --bar:#fffffff5; --dark:#2E3238; --onDark:#fff; --note:#FFF8D8; --noteW:#FDF0EE; --noteInk:#5d544c;
+          --tick:#C9BDB6; --sh:#0000000c; --redtx:#C0392B; --purtx:#5B2C9F; }
+  html[data-theme=dark] { --bg:#0F0D0E; --card:#1C1A1B; --ink:#F2EEEC; --mute:#9E958F; --line:#2C2829; --redbg:#3A1C1A; --purbg:#2B2140;
+          --grnbg:#13302C; --soft:#2A2627; --field:#232021; --bar:#161415f2; --dark:#F2EEEC; --onDark:#141213; --note:#3A3420; --noteW:#3A1F1C;
+          --noteInk:#D8D0CA; --tick:#5A5250; --sh:#00000055; --redtx:#FF8A7A; --purtx:#C9A9F5; color-scheme: dark; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", Roboto, sans-serif; font-size: 16px; }
   body { padding-top: env(safe-area-inset-top, 0px); min-height: 100vh; }
   button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
   input, select, textarea { font: inherit; color: var(--ink); }
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 0 calc(150px + var(--safe-b)); }
-  .hd { display: flex; align-items: flex-end; justify-content: space-between; padding: 14px 18px 4px; }
+    .hd { display: flex; align-items: flex-end; justify-content: space-between; padding: 14px 18px 4px; }
   .hd h1 { font-size: 30px; font-weight: 800; margin: 0; letter-spacing: -.01em; }
   .hd .sub { color: var(--mute); font-size: 14px; margin-top: 3px; }
-  .gear { width: 40px; height: 40px; border-radius: 50%; background: var(--card); box-shadow: 0 1px 4px #0001; font-size: 18px; }
+  .gear { width: 44px; height: 44px; border-radius: 50%; background: var(--card); box-shadow: 0 1px 4px var(--sh); font-size: 19px; }
   .chips { display: flex; gap: 7px; padding: 10px 18px 2px; overflow-x: auto; }
   .chips button { padding: 8px 14px; border-radius: 999px; background: var(--card); font-size: 14px; font-weight: 700; color: var(--mute); white-space: nowrap; }
-  .chips button.on { background: #2E3238; color: #fff; }
+  .chips button.on { background: var(--dark); color: var(--onDark); }
   .sec { font-size: 12.5px; font-weight: 800; letter-spacing: .1em; margin: 18px 18px 7px; text-transform: uppercase; }
-  .sec.red { color: var(--red); }
-  .it { background: var(--card); border-radius: 15px; margin: 0 14px 8px; display: flex; gap: 12px; align-items: center; padding: 12px 14px; box-shadow: 0 1px 4px #0000000c; }
+  .sec.red { color: var(--redtx); }
+  .it { background: var(--card); border-radius: 15px; margin: 0 14px 8px; display: flex; gap: 12px; align-items: center; padding: 12px 14px; box-shadow: 0 1px 4px var(--sh); }
   .it.od { box-shadow: inset 4px 0 0 var(--red), 0 1px 4px #0000000c; }
-  .tick { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #C9BDB6; flex: none; display: grid; place-items: center; }
+  .tick { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--tick); flex: none; display: grid; place-items: center; }
   .tick.done { background: var(--grn); border-color: var(--grn); color: #fff; font-size: 14px; }
   .it .tx { flex: 1; min-width: 0; }
   .it .t1 { font-size: 16px; line-height: 1.3; word-break: break-word; }
   .it .t2 { font-size: 12.5px; color: var(--mute); margin-top: 2px; }
   .it .rt { text-align: right; font-size: 13px; font-weight: 700; color: var(--mute); white-space: nowrap; }
-  .it .later { display: block; margin-top: 4px; font-size: 12.5px; color: var(--red); font-weight: 700; }
+  .it .later { display: inline-block; margin-top: 2px; padding: 6px 0 6px 10px; font-size: 13px; color: var(--redtx); font-weight: 700; }
   .tg { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-right: 4px; }
-  .tg.work { background: var(--redbg); color: var(--red); } .tg.personal { background: var(--purbg); color: var(--pur); }
+  .tg.work { background: var(--redbg); color: var(--redtx); } .tg.personal { background: var(--purbg); color: var(--purtx); }
   .empty { text-align: center; color: var(--mute); padding: 50px 20px; font-size: 15px; line-height: 1.5; }
-  .bar { position: fixed; left: 0; right: 0; bottom: 0; background: #fffffff5; border-top: 1px solid var(--line); padding: 10px 14px calc(8px + var(--safe-b)); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); z-index: 20; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bar); border-top: 1px solid var(--line); padding: 10px 14px calc(8px + var(--safe-b)); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); z-index: 20; }
   .bar .in { max-width: 1100px; margin: 0 auto; }
   .cap { display: flex; gap: 8px; align-items: center; }
-  .cap input { flex: 1; min-width: 0; border: 0; background: #F1ECE9; border-radius: 999px; padding: 13px 18px; font-size: 16px; outline: none; }
+  .cap input { flex: 1; min-width: 0; border: 0; background: var(--soft); border-radius: 999px; padding: 13px 18px; font-size: 16px; outline: none; }
   .mic, .go { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 20px; }
-  .mic { background: #F1ECE9; } .mic.rec { background: var(--red); color: #fff; animation: pulse 1s infinite; }
+  .mic { background: var(--soft); } .mic.rec { background: var(--red); color: #fff; animation: pulse 1s infinite; }
   .go { background: var(--red); color: #fff; font-weight: 800; }
   @keyframes pulse { 50% { transform: scale(1.08); } }
   .hint { font-size: 12px; color: var(--mute); margin: 6px 6px 0; min-height: 15px; }
   .nav { display: flex; justify-content: space-around; margin-top: 6px; }
   .nav button { font-size: 11.5px; font-weight: 700; color: var(--mute); padding: 4px 10px; text-align: center; }
   .nav button b { display: block; font-size: 20px; line-height: 1.2; }
-  .nav button.on { color: var(--red); }
+  .nav button.on { color: var(--redtx); }
   /* calendar */
   .cal { background: var(--card); border-radius: 18px; margin: 10px 14px; padding: 12px; box-shadow: 0 1px 4px #0000000c; }
   .calh { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-  .calh b { font-size: 18px; } .calh button { width: 38px; height: 38px; border-radius: 50%; background: #F1ECE9; font-size: 16px; }
+  .calh b { font-size: 18px; } .calh button { width: 40px; height: 40px; border-radius: 50%; background: var(--soft); font-size: 18px; }
   .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
   .grid .dn { font-size: 11px; font-weight: 800; color: var(--mute); padding: 4px 0; }
   .grid button { aspect-ratio: 1 / 1; border-radius: 12px; font-size: 15px; position: relative; }
-  .grid button.oth { color: #CFC6C0; } .grid button.td { color: var(--red); font-weight: 800; }
-  .grid button.sel { background: #2E3238; color: #fff; }
+  .grid button.oth { color: var(--tick); } .grid button.td { color: var(--red); font-weight: 800; }
+  .grid button.sel { background: var(--dark); color: var(--onDark); }
   .grid button .dots { position: absolute; left: 0; right: 0; bottom: 5px; display: flex; gap: 2px; justify-content: center; }
   .grid button .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--red); }
   .grid button .dots i.p { background: #8E5BD6; }
   /* notes */
   .notes { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; padding: 10px 14px; }
-  .note { background: #FFF8D8; border-radius: 15px; padding: 13px; min-height: 110px; text-align: left; box-shadow: 0 1px 4px #0000000c; }
-  .note.work { background: #FDF0EE; } .note b { display: block; font-size: 15px; margin-bottom: 5px; }
-  .note span { font-size: 13.5px; color: #5d544c; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+  .note { background: var(--note); color: var(--ink); border-radius: 15px; padding: 13px; min-height: 110px; text-align: left; box-shadow: 0 1px 4px #0000000c; }
+  .note.work { background: var(--noteW); } .note b { display: block; font-size: 15px; margin-bottom: 5px; }
+  .note span { font-size: 13.5px; color: var(--noteInk); white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
   .note .pin { float: right; }
-  .addnote { border: 2px dashed #DCCFC8; background: none; color: var(--mute); display: grid; place-items: center; font-weight: 700; }
+  .addnote { border: 2px dashed var(--tick); background: none; color: var(--mute); display: grid; place-items: center; font-weight: 700; }
   /* sheet */
   .shade { position: fixed; inset: 0; background: #0006; z-index: 40; display: none; }
   .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 92vh; overflow-y: auto; background: var(--card); border-radius: 22px 22px 0 0;
            padding: 10px 18px calc(18px + var(--safe-b)); z-index: 41; transform: translateY(105%); transition: transform .22s ease; max-width: 640px; margin: 0 auto; }
   .sheet.open { transform: none; } .shade.open { display: block; }
-  .grab { width: 40px; height: 5px; border-radius: 3px; background: #DDD3CD; margin: 2px auto 12px; }
+  .grab { width: 40px; height: 5px; border-radius: 3px; background: var(--tick); margin: 2px auto 12px; }
   .sheet h3 { margin: 0 0 12px; font-size: 19px; }
   .f { margin-bottom: 12px; } .f label { display: block; font-size: 12.5px; font-weight: 700; color: var(--mute); margin-bottom: 5px; }
-  .f input, .f select, .f textarea { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 16px; background: #FCFAF9; }
+  .f input, .f select, .f textarea { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 16px; background: var(--field); }
   .f textarea { min-height: 120px; resize: vertical; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .seg { display: flex; background: #F1ECE9; border-radius: 12px; padding: 3px; }
+  .seg { display: flex; background: var(--soft); border-radius: 12px; padding: 3px; }
   .seg button { flex: 1; padding: 9px; border-radius: 10px; font-weight: 700; color: var(--mute); }
-  .seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px #0002; }
+  .seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px var(--sh); }
   .acts { display: flex; gap: 10px; margin-top: 16px; }
-  .btn { flex: 1; padding: 14px; border-radius: 14px; font-weight: 800; font-size: 16px; background: #F1ECE9; }
-  .btn.pri { background: var(--red); color: #fff; } .btn.del { flex: 0 0 auto; color: var(--red); background: var(--redbg); }
+  .btn { flex: 1; padding: 14px; border-radius: 14px; font-weight: 800; font-size: 16px; background: var(--soft); }
+  .btn.pri { background: var(--red); color: #fff; } .btn.del { flex: 0 0 auto; color: var(--redtx); background: var(--redbg); }
   .menu button { display: block; width: 100%; text-align: left; padding: 15px 4px; border-bottom: 1px solid var(--line); font-size: 16px; }
+  .bar { transition: transform .15s ease; }
+  html, body { overscroll-behavior-y: none; }
+  .mic.rec::after { content: "Tap to stop"; position: absolute; bottom: 58px; right: 0; white-space: nowrap; font-size: 12px; font-weight: 700; color: #fff;
+                    background: var(--red); padding: 4px 9px; border-radius: 8px; }
+  .mic { position: relative; }
   .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(150px + var(--safe-b)); background: #2E3238; color: #fff; padding: 12px 16px;
            border-radius: 14px; font-size: 14.5px; z-index: 60; display: none; gap: 14px; align-items: center; box-shadow: 0 8px 24px #0004; max-width: 92vw; }
   .toast button { color: #F5B7AE; font-weight: 800; }
-  .ring { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 10px; right: 10px; max-width: 520px; margin: 0 auto; background: #fff; border-radius: 18px;
+  .ring { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 10px; right: 10px; max-width: 520px; margin: 0 auto; background: var(--card); color: var(--ink); border-radius: 18px;
           box-shadow: 0 12px 34px #0003; padding: 13px 15px; z-index: 70; display: none; gap: 12px; align-items: center; }
   .ring .ic { width: 40px; height: 40px; border-radius: 10px; background: var(--red); color: #fff; display: grid; place-items: center; font-size: 20px; flex: none; }
   /* sign in */
   .gate { max-width: 380px; margin: 0 auto; padding: 60px 24px; }
   .gate h1 { font-size: 30px; margin: 0 0 6px; } .gate p { color: var(--mute); margin: 0 0 22px; line-height: 1.5; }
-  .gate input { width: 100%; border: 1px solid var(--line); background: #fff; border-radius: 14px; padding: 14px; font-size: 17px; margin-bottom: 10px; }
+  .gate input { width: 100%; border: 1px solid var(--line); background: var(--card); border-radius: 14px; padding: 14px; font-size: 17px; margin-bottom: 10px; }
   .gate .pin { letter-spacing: .5em; text-align: center; font-size: 26px; }
-  .err { color: var(--red); font-size: 14px; min-height: 18px; margin: 4px 0 10px; }
+  .err { color: var(--redtx); font-size: 14px; min-height: 18px; margin: 4px 0 10px; }
+  /* ===== the app shell (24/11/2026): four pages side by side - swipe between them ===== */
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+  .top { padding: calc(env(safe-area-inset-top, 0px) + 12px) 0 4px; background: var(--bg); z-index: 5; }
+  .toprow { display: flex; align-items: flex-end; justify-content: space-between; padding: 0 20px; max-width: 1100px; margin: 0 auto; }
+  .top h1 { font-size: 34px; font-weight: 800; letter-spacing: -.025em; margin: 0; line-height: 1.05; }
+  .top .sub { color: var(--mute); font-size: 14px; margin-top: 5px; font-weight: 500; }
+  .gear { display: grid; place-items: center; }
+  .gear svg, .mic svg, .go svg, .nav svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .nav circle { fill: currentColor; stroke: none; } .nav button[data-v=done] circle, .nav button[data-v=cal] rect { fill: none; stroke: currentColor; }
+  .chips { max-width: 1100px; margin: 0 auto; padding: 12px 20px 6px; }
+  .chips button { border: 1px solid var(--line); background: transparent; padding: 7px 15px; font-weight: 600; }
+  .chips button.on { border-color: transparent; }
+  .pager { flex: 1; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .pager::-webkit-scrollbar, .months::-webkit-scrollbar, .mstrip::-webkit-scrollbar { display: none; }
+  .pg { flex: 0 0 100%; width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; scroll-snap-align: start; scroll-snap-stop: always;
+        padding-bottom: calc(190px + var(--safe-b)); -webkit-overflow-scrolling: touch; }
+  .pg > * { max-width: 1100px; margin-left: auto; margin-right: auto; }
+  .it { border-radius: 18px; border: 1px solid var(--line); box-shadow: 0 1px 2px var(--sh); margin: 0 16px 9px; padding: 14px 15px; transition: opacity .3s, transform .3s; }
+  .it.gone { opacity: 0; transform: translateX(30px); }
+  .sec { font-size: 11.5px; letter-spacing: .14em; color: var(--mute); margin: 22px 20px 9px; font-weight: 700; }
+  .tick { transition: transform .15s; } .tick:active { transform: scale(.88); }
+  .tick.done { animation: pop .3s ease; } @keyframes pop { 50% { transform: scale(1.18); } }
+  .bell { width: 13px; height: 13px; vertical-align: -1px; margin-left: 3px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .bar { border-top: 0; box-shadow: 0 -1px 0 var(--line); }
+  .nav { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 8px; }
+  .nav button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 4px; font-size: 11px; font-weight: 600; z-index: 1; transition: color .2s; }
+  .nav .ind { position: absolute; top: 2px; bottom: 0; left: 0; width: 25%; border-radius: 14px; background: var(--redbg); transition: transform .08s linear; }
+  .mic, .go { width: 46px; height: 46px; }
+  .mic.rec { background: var(--red); color: #fff; }
+  /* calendar: a month strip that slides and lights up the month in view, and months you swipe through */
+  .mstrip { display: flex; gap: 6px; overflow-x: auto; padding: 8px 16px 10px; scroll-snap-type: x proximity; scrollbar-width: none; }
+  .mstrip button { flex: none; padding: 8px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--mute); scroll-snap-align: center; transition: all .25s; }
+  .mstrip button.on { background: var(--dark); color: var(--onDark); transform: scale(1.04); }
+  .mstrip button small { display: block; font-size: 10px; font-weight: 600; opacity: .7; line-height: 1; }
+  .months { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .mon { flex: 0 0 100%; padding: 0 16px; scroll-snap-align: center; scroll-snap-stop: always; }
+  .mon .card { background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: 16px 12px 12px; box-shadow: 0 1px 2px var(--sh); }
+  .mon h2 { margin: 0 6px 12px; font-size: 22px; font-weight: 800; letter-spacing: -.02em; } .mon h2 span { color: var(--mute); font-weight: 600; }
+  .mon .grid button { aspect-ratio: auto; height: 46px; border-radius: 50%; width: 46px; margin: 0 auto; font-weight: 500; }
+  .mon .grid button.td { color: var(--redtx); font-weight: 800; box-shadow: inset 0 0 0 1.5px var(--red); }
+  .mon .grid button.sel { background: var(--red); color: #fff; box-shadow: none; }
+  .mon .grid button .dots { bottom: 3px; }
+  .dayhead { display: flex; justify-content: space-between; align-items: center; margin: 20px 20px 10px; }
+  .dayhead b { font-size: 17px; } .dayhead button { font-size: 14px; font-weight: 700; color: var(--redtx); }
+  .notes { padding: 6px 16px; gap: 12px; } .note { border-radius: 20px; padding: 15px; min-height: 124px; border: 1px solid var(--line); }
   @media (min-width: 900px) {
     .two { display: grid; grid-template-columns: 1fr 380px; gap: 10px; align-items: start; }
     .two .side { position: sticky; top: 10px; }
@@ -122,24 +184,30 @@
 <body>
 <div id="gate" class="gate" style="display:none"></div>
 <div id="app" style="display:none">
-  <div class="wrap">
-    <div class="hd"><div><h1 id="h1">What's next</h1><div class="sub" id="sub"></div></div>
-      <button class="gear" onclick="openSettings()" title="Notifications and this device">⚙︎</button></div>
-    <div id="view"></div>
-  </div>
+  <header class="top">
+    <div class="toprow"><div><h1 id="h1">What's next</h1><div class="sub" id="sub"></div></div>
+      <button class="gear" onclick="openSettings()" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></div>
+    <div class="chips" id="chips"></div>
+  </header>
+  <main class="pager" id="pager">
+    <section class="pg" id="pg-next"></section>
+    <section class="pg" id="pg-cal"></section>
+    <section class="pg" id="pg-notes"></section>
+    <section class="pg" id="pg-done"></section>
+  </main>
   <div class="bar"><div class="in">
     <div class="cap">
       <input id="q" placeholder="Remind me…" enterkeyhint="done" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();quickAdd();}">
-      <button class="mic" id="mic" onclick="speak()" title="Speak">🎤</button>
-      <button class="go" id="gobtn" onclick="quickAdd()" title="Add" style="display:none">↑</button>
+      <button class="mic" id="mic" onclick="speak()" aria-label="Speak"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+      <button class="go" id="gobtn" onclick="quickAdd()" aria-label="Add" style="display:none"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
     </div>
-    <div class="hint" id="hint">e.g. “call the bank Thursday 10am”, “pay DEWA every month 28/11”, “note: gift ideas”</div>
-    <div class="nav">
-      <button data-v="next" class="on" onclick="show('next')"><b>☰</b>Next</button>
-      <button data-v="cal" onclick="show('cal')"><b>📅</b>Calendar</button>
-      <button data-v="notes" onclick="show('notes')"><b>📝</b>Notes</button>
-      <button data-v="done" onclick="show('done')"><b>✓</b>Done</button>
-    </div>
+    <div class="hint" id="hint">“call the bank Thursday 10am” · “pay DEWA every month 28/11” · “note: gift ideas”</div>
+    <nav class="nav" id="nav"><span class="ind" id="ind"></span>
+      <button data-v="next" onclick="show('next')"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.3"/><circle cx="4.5" cy="12" r="1.3"/><circle cx="4.5" cy="18" r="1.3"/></svg>Next</button>
+      <button data-v="cal" onclick="show('cal')"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Calendar</button>
+      <button data-v="notes" onclick="show('notes')"><svg viewBox="0 0 24 24"><path d="M6 3.5h9l4 4V20a.5.5 0 0 1-.5.5h-12A.5.5 0 0 1 6 20z"/><path d="M14.5 3.5V8H19M9 12.5h7M9 16h5"/></svg>Notes</button>
+      <button data-v="done" onclick="show('done')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.2l2.5 2.5 5-5.2"/></svg>Done</button>
+    </nav>
   </div></div>
 </div>
 <div class="shade" id="shade" onclick="closeSheet()"></div>
@@ -177,7 +245,7 @@ async function start() {
   if (!K) { document.body.innerHTML = '<div class="gate"><h1>Not found</h1></div>'; return; }
   try {
     const st = await api("/users/personal/state", { noGate: true });
-    if (st.ready) { $("h1").textContent = "What's next"; ready(); return; }
+    if (st.ready) { ready(); return; }
     gate(st.has_pin);
   } catch (e) { document.body.innerHTML = '<div class="gate"><h1>Not found</h1><p>Check the address, or open it again from the app (Settings › General).</p></div>'; }
 }
@@ -220,6 +288,7 @@ async function unlock(isNew) {
 async function ready() {
   $("app").style.display = ""; $("gate").style.display = "none";
   try { if ("serviceWorker" in navigator) navigator.serviceWorker.register("/portal/me-sw.js", { scope: "/portal/me" }).catch(() => {}); } catch (e) {}
+  pagerSetup();
   await load();
   const open = new URLSearchParams(location.search).get("open");
   if (open) { const it = ITEMS.find(x => String(x.id) === open); if (it) edit(it.id); history.replaceState(null, "", "?k=" + encodeURIComponent(K)); }
@@ -251,7 +320,7 @@ function rowHtml(i, b) {
     <button class="tick${i.done_at ? " done" : ""}" onclick="event.stopPropagation(); ${i.done_at ? "undo" : "tick"}(${i.id}, this)" aria-label="Done">${i.done_at ? "✓" : ""}</button>
     <div class="tx" onclick="edit(${i.id})"><div class="t1">${esc(i.title)}</div>
       <div class="t2"><span class="tg ${i.tag}">${i.tag === "work" ? "Work" : "Personal"}</span>${i.repeat ? "↻ " + i.repeat + " " : ""}${b === "overdue" ? (late ? `${late} day${late > 1 ? "s" : ""} late` : "late") : ""}${i.body ? " · " + esc(i.body.slice(0, 40)) : ""}</div></div>
-    <div class="rt" onclick="edit(${i.id})">${esc(tm)}${i.remind_at && !i.reminded ? " 🔔" : ""}${!i.done_at && (b === "overdue" || b === "today") ? `<span class="later" onclick="event.stopPropagation(); later(${i.id})">Later ›</span>` : ""}</div></div>`;
+    <div class="rt" onclick="edit(${i.id})">${esc(tm)}${i.remind_at && !i.reminded ? '<svg class="bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>' : ""}${!i.done_at && (b === "overdue" || b === "today") ? `<span class="later" onclick="event.stopPropagation(); later(${i.id})">Later ›</span>` : ""}</div></div>`;
 }
 function counts() {
   const open = ITEMS.filter(i => i.kind !== "note" && !i.done_at);
@@ -259,45 +328,104 @@ function counts() {
   const n = dubaiNow();
   $("sub").textContent = `${DAY[n.getDay()]} ${pad(n.getDate())}/${pad(n.getMonth() + 1)}` + (o ? ` · ${o} overdue` : "") + ` · ${t} today`;
 }
+const VIEWS = ["next", "cal", "notes", "done"], TITLES = { next: "What's next", cal: "Calendar", notes: "Notes", done: "Done" };
+const keep = i => FILTER === "all" || i.tag === FILTER;
 function render() {
   counts();
-  document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("on", b.dataset.v === VIEW));
-  const v = $("view");
-  const chips = `<div class="chips">${[["all", "All"], ["personal", "Personal"], ["work", "Work"]].map(([k, l]) => `<button class="${FILTER === k ? "on" : ""}" onclick="FILTER='${k}';render()">${l}</button>`).join("")}</div>`;
-  const keep = i => FILTER === "all" || i.tag === FILTER;
-  if (VIEW === "next") {
-    $("h1").textContent = "What's next";
-    const open = ITEMS.filter(i => i.kind !== "note" && !i.done_at && keep(i)).sort((a, b) => (a.due_on || "9999") + (a.due_time || "99") < (b.due_on || "9999") + (b.due_time || "99") ? -1 : 1);
-    const secs = [["overdue", "● Overdue", "red"], ["today", "Today"], ["tomorrow", "Tomorrow"], ["week", "This week"], ["later", "Later"], ["nodate", "Any time"]];
-    let h = chips;
-    for (const [k, l, c] of secs) { const rs = open.filter(i => bucket(i) === k); if (rs.length) h += `<div class="sec ${c || ""}">${l}</div>` + rs.map(i => rowHtml(i, k)).join(""); }
-    if (!open.length) h += `<div class="empty">Nothing waiting. 🎉<br>Type or speak below - “pay DEWA tomorrow”, “call the bank Thursday 10am”.</div>`;
-    v.innerHTML = h;
-  } else if (VIEW === "cal") {
-    $("h1").textContent = "Calendar";
-    const n = dubaiNow(); CALM = CALM || new Date(n.getFullYear(), n.getMonth(), 1); CALSEL = CALSEL || iso(n);
-    const first = new Date(CALM), startD = new Date(first); startD.setDate(1 - ((first.getDay() + 6) % 7));
-    const byDay = {}; ITEMS.filter(i => i.due_on && i.kind !== "note" && keep(i)).forEach(i => (byDay[i.due_on] = byDay[i.due_on] || []).push(i));
-    let g = ["M", "T", "W", "T", "F", "S", "S"].map(x => `<div class="dn">${x}</div>`).join("");
-    for (let k = 0; k < 42; k++) {
-      const d = new Date(startD); d.setDate(startD.getDate() + k); const s = iso(d), its = byDay[s] || [];
-      g += `<button class="${d.getMonth() !== CALM.getMonth() ? "oth" : ""}${s === iso(n) ? " td" : ""}${s === CALSEL ? " sel" : ""}" onclick="CALSEL='${s}';render()">${d.getDate()}${its.length ? `<span class="dots">${its.slice(0, 3).map(i => `<i class="${i.tag === "personal" ? "p" : ""}"></i>`).join("")}</span>` : ""}</button>`;
-    }
-    const day = (byDay[CALSEL] || []).sort((a, b) => (a.due_time || "99") < (b.due_time || "99") ? -1 : 1);
-    v.innerHTML = chips + `<div class="two"><div class="cal"><div class="calh"><button onclick="CALM.setMonth(CALM.getMonth()-1);render()">‹</button><b>${MON[CALM.getMonth()]} ${CALM.getFullYear()}</b><button onclick="CALM.setMonth(CALM.getMonth()+1);render()">›</button></div><div class="grid">${g}</div></div>
-      <div class="side"><div class="sec">${DAY[new Date(CALSEL + "T12:00").getDay()]} ${dmy(CALSEL)}</div>${day.map(i => rowHtml(i, "")).join("") || `<div class="empty" style="padding:20px">Nothing on this day.</div>`}
-      <div style="padding:0 14px"><button class="btn" style="width:100%" onclick="edit(null,'${CALSEL}')">+ Add on this day</button></div></div></div>`;
-  } else if (VIEW === "notes") {
-    $("h1").textContent = "Notes";
-    const ns = ITEMS.filter(i => i.kind === "note" && keep(i)).sort((a, b) => (b.pinned - a.pinned) || (a.updated_at < b.updated_at ? 1 : -1));
-    v.innerHTML = chips + `<div class="notes"><button class="note addnote" onclick="edit(null,null,'note')">+ New note</button>${ns.map(n => `<button class="note ${n.tag}" onclick="edit(${n.id})">${n.pinned ? '<span class="pin">📌</span>' : ""}<b>${esc(n.title || "Note")}</b><span>${esc(n.body)}</span></button>`).join("")}</div>`;
-  } else {
-    $("h1").textContent = "Done";
-    const ds = ITEMS.filter(i => i.done_at && keep(i)).sort((a, b) => a.done_at < b.done_at ? 1 : -1);
-    v.innerHTML = chips + (ds.length ? `<div class="sec">Last 30 days</div>` + ds.map(i => rowHtml(i, "")).join("") : `<div class="empty">Ticked-off things show here for 30 days.</div>`);
-  }
+  $("chips").innerHTML = [["all", "All"], ["personal", "Personal"], ["work", "Work"]].map(([k, l]) => `<button class="${FILTER === k ? "on" : ""}" onclick="FILTER='${k}';render()">${l}</button>`).join("");
+  renderNext(); renderCal(); renderNotes(); renderDone();
 }
-function show(v) { VIEW = v; render(); window.scrollTo(0, 0); }
+function renderNext() {
+  const open = ITEMS.filter(i => i.kind !== "note" && !i.done_at && keep(i)).sort((a, b) => (a.due_on || "9999") + (a.due_time || "99") < (b.due_on || "9999") + (b.due_time || "99") ? -1 : 1);
+  const secs = [["overdue", "● Overdue", "red"], ["today", "Today"], ["tomorrow", "Tomorrow"], ["week", "This week"], ["later", "Later"], ["nodate", "Any time"]];
+  let h = "";
+  for (const [k, l, c] of secs) { const rs = open.filter(i => bucket(i) === k); if (rs.length) h += `<div class="sec ${c || ""}">${l}</div>` + rs.map(i => rowHtml(i, k)).join(""); }
+  $("pg-next").innerHTML = h || `<div class="empty">Nothing waiting.<br>Type or speak below - “pay DEWA tomorrow”, “call the bank Thursday 10am”.</div>`;
+}
+// ----- calendar: 6 months back, 18 ahead; swipe the months, the strip follows and lights up the one in view -----
+let CALIDX = null, CALN = 0, MLIST = [];
+function renderCal() {
+  const n = dubaiNow();
+  MLIST = []; for (let k = -6; k <= 18; k++) MLIST.push(new Date(n.getFullYear(), n.getMonth() + k, 1));
+  if (CALIDX == null) CALIDX = 6;
+  CALSEL = CALSEL || iso(n);
+  const byDay = {}; ITEMS.filter(i => i.due_on && i.kind !== "note" && keep(i)).forEach(i => (byDay[i.due_on] = byDay[i.due_on] || []).push(i));
+  const pg = $("pg-cal"), keepTop = pg.scrollTop;
+  pg.innerHTML = `<div class="mstrip" id="mstrip">${MLIST.map((m, k) => `<button data-k="${k}" class="${k === CALIDX ? "on" : ""}" onclick="goMonth(${k}, true)">${MON[m.getMonth()].slice(0, 3)}${m.getMonth() === 0 || k === 0 ? `<small>${m.getFullYear()}</small>` : ""}</button>`).join("")}</div>
+    <div class="months" id="months">${MLIST.map((m, k) => monthHtml(m, byDay, n)).join("")}</div>
+    <div class="dayhead"><b id="dayt"></b><button onclick="goToday()">Today</button></div><div id="daylist"></div>`;
+  const ms = $("months");
+  requestAnimationFrame(() => { ms.scrollLeft = CALIDX * ms.clientWidth; centerChip(false); pg.scrollTop = keepTop; });
+  let t = null;
+  ms.addEventListener("scroll", () => { clearTimeout(t); t = setTimeout(() => { const k = Math.round(ms.scrollLeft / ms.clientWidth); if (k !== CALIDX) monthChanged(k); }, 70); }, { passive: true });
+  renderDay(byDay);
+}
+function monthHtml(m, byDay, n) {
+  const start = new Date(m); start.setDate(1 - ((m.getDay() + 6) % 7));
+  let g = ["M", "T", "W", "T", "F", "S", "S"].map(x => `<div class="dn">${x}</div>`).join("");
+  for (let k = 0; k < 42; k++) {
+    const d = new Date(start); d.setDate(start.getDate() + k);
+    if (k >= 35 && d.getMonth() !== m.getMonth()) break;
+    const s = iso(d), its = byDay[s] || [], oth = d.getMonth() !== m.getMonth();
+    g += oth ? `<span></span>` : `<button data-d="${s}" class="${s === iso(n) ? "td" : ""}${s === CALSEL ? " sel" : ""}" onclick="pickDay('${s}')">${d.getDate()}${its.length ? `<span class="dots">${its.slice(0, 3).map(i => `<i class="${i.tag === "personal" ? "p" : ""}"></i>`).join("")}</span>` : ""}</button>`;
+  }
+  return `<div class="mon"><div class="card"><h2>${MON[m.getMonth()]} <span>${m.getFullYear()}</span></h2><div class="grid">${g}</div></div></div>`;
+}
+function centerChip(smooth) {
+  const st = $("mstrip"); if (!st) return;
+  st.querySelectorAll("button").forEach(b => b.classList.toggle("on", +b.dataset.k === CALIDX));
+  const b = st.querySelector(`button[data-k="${CALIDX}"]`);
+  if (b) { const x = st.scrollLeft + (b.getBoundingClientRect().left - st.getBoundingClientRect().left) - st.clientWidth / 2 + b.offsetWidth / 2;
+    st.scrollTo({ left: x, behavior: smooth ? "smooth" : "auto" }); }
+}
+function monthChanged(k) {
+  CALIDX = k; centerChip(true);
+  const m = MLIST[k], n = dubaiNow();
+  if (CALSEL.slice(0, 7) !== iso(m).slice(0, 7)) pickDay(m.getMonth() === n.getMonth() && m.getFullYear() === n.getFullYear() ? iso(n) : iso(m));
+}
+function goMonth(k, smooth) { const ms = $("months"); ms.scrollTo({ left: k * ms.clientWidth, behavior: smooth ? "smooth" : "auto" }); if (!smooth) monthChanged(k); }
+function goToday() { const n = dubaiNow(); CALSEL = iso(n); goMonth(6, true); pickDay(CALSEL); }
+function pickDay(s) {
+  CALSEL = s;
+  document.querySelectorAll("#months .grid button").forEach(b => b.classList.toggle("sel", b.dataset.d === s));
+  const byDay = {}; ITEMS.filter(i => i.due_on && i.kind !== "note" && keep(i)).forEach(i => (byDay[i.due_on] = byDay[i.due_on] || []).push(i));
+  renderDay(byDay);
+}
+function renderDay(byDay) {
+  const day = (byDay[CALSEL] || []).sort((a, b) => (a.due_time || "99") < (b.due_time || "99") ? -1 : 1);
+  const d = new Date(CALSEL + "T12:00");
+  $("dayt").textContent = `${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d.getDay()]} ${dmy(CALSEL)}`;
+  $("daylist").innerHTML = day.map(i => rowHtml(i, i.done_at ? "" : bucket(i) === "overdue" ? "overdue" : "")).join("") +
+    `<div style="padding:4px 16px"><button class="btn" style="width:100%" onclick="edit(null,'${CALSEL}')">+ Add on this day</button></div>`;
+}
+function renderNotes() {
+  const ns = ITEMS.filter(i => i.kind === "note" && keep(i)).sort((a, b) => (b.pinned - a.pinned) || (a.updated_at < b.updated_at ? 1 : -1));
+  $("pg-notes").innerHTML = `<div class="notes"><button class="note addnote" onclick="edit(null,null,'note')">+ New note</button>${ns.map(n => `<button class="note ${n.tag}" onclick="edit(${n.id})">${n.pinned ? '<span class="pin">📌</span>' : ""}<b>${esc(n.title || "Note")}</b><span>${esc(n.body)}</span></button>`).join("")}</div>`;
+}
+function renderDone() {
+  const ds = ITEMS.filter(i => i.done_at && keep(i)).sort((a, b) => a.done_at < b.done_at ? 1 : -1);
+  $("pg-done").innerHTML = ds.length ? `<div class="sec">Last 30 days</div>` + ds.map(i => rowHtml(i, "")).join("") : `<div class="empty">Ticked-off things show here for 30 days.</div>`;
+}
+// ----- swiping between the four pages; the tab bar's highlight slides with your finger -----
+function pagerSetup() {
+  const pg = $("pager"); let raf = null;
+  pg.addEventListener("scroll", () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = null;
+      const f = pg.scrollLeft / pg.clientWidth, k = Math.round(f);
+      $("ind").style.transform = `translateX(${f * 100}%)`;
+      if (VIEWS[k] && VIEWS[k] !== VIEW) { VIEW = VIEWS[k]; navOn(); }
+    });
+  }, { passive: true });
+  window.addEventListener("resize", () => { pg.scrollLeft = VIEWS.indexOf(VIEW) * pg.clientWidth; });
+  navOn();
+}
+function navOn() {
+  document.querySelectorAll(".nav button").forEach(b => b.style.color = b.dataset.v === VIEW ? "var(--redtx)" : "var(--mute)");
+  $("h1").textContent = TITLES[VIEW];
+}
+function show(v) { const pg = $("pager"); pg.scrollTo({ left: VIEWS.indexOf(v) * pg.clientWidth, behavior: "smooth" }); }
 
 // ---------------- add, tick, later ----------------
 $("q").addEventListener("input", () => { const has = !!$("q").value.trim(); $("gobtn").style.display = has ? "" : "none"; $("mic").style.display = has ? "none" : ""; });
@@ -307,17 +435,19 @@ async function quickAdd() {
     const i = await api("/users/personal/quick", { method: "POST", body: JSON.stringify({ text: t }) });
     $("q").value = ""; $("q").dispatchEvent(new Event("input"));
     ITEMS.push(i);
-    if (i.kind === "note" && VIEW !== "notes") VIEW = "notes"; else if (i.kind !== "note" && VIEW === "notes") VIEW = "next";
     render();
+    if (i.kind === "note" && VIEW !== "notes") show("notes"); else if (i.kind !== "note" && VIEW === "notes") show("next");
     const w = i.kind === "note" ? "Note saved" : (i.due_on ? `${DAY[new Date(i.due_on + "T12:00").getDay()]} ${dmy(i.due_on).slice(0, 5)}${i.due_time ? " " + i.due_time : ""}${i.remind_at ? " 🔔" : ""}` : "Added");
     toast(`${esc(i.title)} - ${w}`, "Change", () => edit(i.id));
   } catch (e) { toast(esc(e.message)); }
 }
 async function tick(id, el) {
+  if (el.dataset.busy) return; el.dataset.busy = 1;
   el.classList.add("done"); el.textContent = "✓";
   try {
     const r = await api(`/users/personal/items/${id}/done`, { method: "POST" });
-    setTimeout(load, 350);
+    const row = el.closest(".it"); if (row) setTimeout(() => row.classList.add("gone"), 250);
+    setTimeout(load, 550);
     toast(r.done_at ? "Done" : `Next: ${dmy(r.due_on)}`, r.done_at ? "Undo" : "", r.done_at ? () => undo(id) : null);
   } catch (e) { toast(esc(e.message)); }
 }
@@ -377,15 +507,29 @@ function toast(msg, act, fn) {
 }
 
 // ---------------- voice ----------------
+// Safari on the iPhone keeps listening until told to stop: the mic stops by itself 1.5 s after you stop talking
+// (or after 12 s), and a second tap stops it at once. What was heard stays in the box to check, then ↑ to add.
+let REC = null, RECT = null, RECMAX = null;
+function stopRec() { clearTimeout(RECT); clearTimeout(RECMAX); if (REC) { try { REC.stop(); } catch (e) {} } }
 function speak() {
+  if (REC) { stopRec(); return; }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { $("q").focus(); $("hint").textContent = "Tap the 🎤 on your keyboard and speak."; return; }
-  const r = new SR(); r.lang = "en-GB"; r.interimResults = true; r.maxAlternatives = 1;
-  $("mic").classList.add("rec"); $("hint").textContent = "Listening… say it like “remind me tomorrow 9am to sign the payroll”";
-  r.onresult = e => { $("q").value = Array.from(e.results).map(x => x[0].transcript).join(" "); $("q").dispatchEvent(new Event("input")); };
-  r.onend = () => { $("mic").classList.remove("rec"); $("hint").textContent = $("q").value ? "Check it, then press ↑" : "Didn't catch that - try again, or tap the 🎤 on your keyboard."; };
-  r.onerror = () => { $("mic").classList.remove("rec"); $("q").focus(); $("hint").textContent = "Tap the 🎤 on your keyboard and speak."; };
-  try { r.start(); } catch (e) { $("mic").classList.remove("rec"); $("q").focus(); }
+  const r = new SR(); REC = r; r.lang = "en-GB"; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
+  let heard = "";
+  $("mic").classList.add("rec"); $("hint").textContent = "Listening… e.g. “remind me tomorrow 9am to sign the payroll”";
+  RECMAX = setTimeout(stopRec, 12000);
+  r.onresult = e => {
+    heard = Array.from(e.results).map(x => x[0].transcript).join(" ").trim();
+    $("q").value = heard; $("q").dispatchEvent(new Event("input"));
+    clearTimeout(RECT); RECT = setTimeout(stopRec, e.results[e.results.length - 1].isFinal ? 300 : 1500);
+  };
+  r.onspeechend = () => { clearTimeout(RECT); RECT = setTimeout(stopRec, 300); };
+  r.onend = () => { REC = null; clearTimeout(RECT); clearTimeout(RECMAX); $("mic").classList.remove("rec");
+    $("hint").textContent = heard ? "Check it, then press ↑ to add" : "Didn't catch that - tap 🎤 and try again."; };
+  r.onerror = e => { REC = null; clearTimeout(RECT); clearTimeout(RECMAX); $("mic").classList.remove("rec");
+    $("hint").textContent = e && e.error === "not-allowed" ? "Allow the microphone for this page in Settings, or tap the 🎤 on your keyboard." : "Tap the 🎤 on your keyboard and speak."; };
+  try { r.start(); } catch (e) { REC = null; $("mic").classList.remove("rec"); $("q").focus(); }
 }
 
 // ---------------- reminders while the page is open: banner + sound ----------------
@@ -404,28 +548,49 @@ function checkRing() {
     const r = new Date(i.remind_at + ":00");
     if (r <= n && n - r < 10 * 60000 && !document.hidden) {
       RUNG[i.id + i.remind_at] = 1; chime();
-      const g = $("ring"); g.innerHTML = `<div class="ic">🔔</div><div style="flex:1"><b>${esc(i.title)}</b><div style="font-size:13px;color:#8A8178">${i.due_time || "Now"}</div></div><button class="btn" style="flex:0 0 auto;padding:9px 12px" onclick="$('ring').style.display='none'">OK</button>`;
+      const g = $("ring"); g.innerHTML = `<div class="ic">🔔</div><div style="flex:1"><b>${esc(i.title)}</b><div style="font-size:13px;color:var(--mute)">${i.due_time || "Now"}</div></div><button class="btn" style="flex:0 0 auto;padding:9px 12px" onclick="$('ring').style.display='none'">OK</button>`;
       g.style.display = "flex"; setTimeout(() => g.style.display = "none", 15000);
     }
   }
 }
 
 // ---------------- settings: notifications, this device ----------------
+function theme() { try { return localStorage.getItem("me_theme") || "auto"; } catch (e) { return "auto"; } }
+function applyTheme() {
+  const t = theme(), dark = t === "dark" || (t === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  $("theme-color").setAttribute("content", dark ? "#0F0D0E" : "#F7F3F1");
+}
+function setTheme(t) { try { localStorage.setItem("me_theme", t); } catch (e) {} applyTheme(); document.querySelectorAll("#themeSeg button").forEach((b, k) => b.classList.toggle("on", ["auto", "light", "dark"][k] === t)); }
+try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme); } catch (e) {}
+applyTheme();
+// iPhone keyboard: the type box rides on top of it, and a sheet never hides behind it
+function fitKeyboard() {
+  const vv = window.visualViewport; if (!vv) return;
+  const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+  document.querySelector(".bar").style.transform = kb > 60 ? `translateY(${-kb}px)` : "";
+  document.querySelector(".bar").style.paddingBottom = kb > 60 ? "8px" : "";
+  $("sheet").style.maxHeight = (vv.height - 20) + "px";
+  $("sheet").style.bottom = kb > 60 ? kb + "px" : "0";
+}
+if (window.visualViewport) { visualViewport.addEventListener("resize", fitKeyboard); visualViewport.addEventListener("scroll", fitKeyboard); }
 function standalone() { return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone; }
 async function openSettings() {
   const ios = /iPhone|iPad/.test(navigator.userAgent);
   const perm = ("Notification" in window) ? Notification.permission : "unsupported";
   sheet(`<h3>Reminders on this phone</h3>
-    ${ios && !standalone() ? `<p style="line-height:1.5">First put this page on your Home Screen: tap <b>Share</b> <span style="font-size:18px">⎋</span> → <b>Add to Home Screen</b> → <b>Add</b>. Then open it from the new icon and come back here.</p>` :
-      `<p style="line-height:1.5;color:#5d544c">Reminders pop up with sound at their time, even when this page is closed. ${perm === "granted" ? "✅ Allowed on this device." : ""}</p>
+    ${ios && !standalone() ? `<p style="line-height:1.5">First put this page on your Home Screen: tap <b>Share</b> (the square with the arrow ↑ at the bottom of Safari) → <b>Add to Home Screen</b> → <b>Add</b>. Then open it from the new icon and come back here.</p>` :
+      `<p style="line-height:1.5;color:var(--noteInk)">Reminders pop up with sound at their time, even when this page is closed. ${perm === "granted" ? "✅ Allowed on this device." : ""}</p>
        <div class="acts" style="margin-top:4px"><button class="btn pri" onclick="pushOn()">Turn on reminders</button><button class="btn" onclick="pushTest()">Send a test</button></div>`}
-    <p style="font-size:13px;color:#8A8178;line-height:1.5;margin-top:16px">Sound follows the phone: Silent mode or a Focus keeps it quiet.</p>
-    <h3 style="margin-top:18px">Signed-in devices</h3><div id="devs" style="font-size:14px;color:#5d544c">…</div>
+    <p style="font-size:13px;color:var(--mute);line-height:1.5;margin-top:16px">Sound follows the phone: Silent mode or a Focus keeps it quiet.</p>
+    <h3 style="margin-top:18px">Look</h3>
+    <div class="seg" id="themeSeg">${[["auto", "As the phone"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => `<button class="${theme() === k ? "on" : ""}" onclick="setTheme('${k}')">${l}</button>`).join("")}</div>
+    <h3 style="margin-top:18px">Signed-in devices</h3><div id="devs" style="font-size:14px;color:var(--noteInk)">…</div>
     <div class="menu" style="margin-top:10px">
       <button onclick="changePin()">Change my PIN</button>
       <button onclick="signOutOthers()">Sign out all other devices (a lost phone)</button>
-      <button onclick="signOut()" style="color:#C0392B">Sign out this device</button></div>`);
-  try { const d = await api("/users/personal/devices"); $("devs").innerHTML = d.devices.map(x => `<div style="padding:6px 0">${esc(x.label)}${x.this ? " <b>(this one)</b>" : ""} <span style="color:#8A8178">· since ${dmy(x.since)}</span></div>`).join(""); } catch (e) {}
+      <button onclick="signOut()" style="color:var(--redtx)">Sign out this device</button></div>`);
+  try { const d = await api("/users/personal/devices"); $("devs").innerHTML = d.devices.map(x => `<div style="padding:6px 0">${esc(x.label)}${x.this ? " <b>(this one)</b>" : ""} <span style="color:var(--mute)">· since ${dmy(x.since)}</span></div>`).join(""); } catch (e) {}
 }
 async function signOutOthers() {
   if (!confirm("Sign out every other phone and computer? They need the login and PIN again, and their reminders stop.")) return;
