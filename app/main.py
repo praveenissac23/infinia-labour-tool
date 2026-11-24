@@ -9037,10 +9037,12 @@ def next_lpo_revision(oid: int, db: Session = Depends(get_db), user: models.User
     if (o.status or "") == "cancelled":
         raise HTTPException(400, f"{o.ref} is cancelled" + (f" - replaced by {o.superseded_by}; revise that one instead." if o.superseded_by else " - it can't be revised."))
     m = re.match(r"^(.*?\d)\s*R(\d+)$", (o.ref or "").strip(), re.I)
-    base = (m.group(1) if m else (o.ref or "")).strip()
+    base = re.sub(r"\s+", "", (m.group(1) if m else (o.ref or "")))
+    if not base or not base[-1].isdigit():
+        raise HTTPException(400, f"{o.ref} does not end in a number, so a revision can't replace it - cancel it and raise a new LPO instead.")
     top = 0
     for (ref,) in db.query(models.PurchaseOrder.ref).filter(models.PurchaseOrder.ref.ilike(base + "%")).all():
-        mm = re.fullmatch(re.escape(base) + r"\s*R(\d+)", (ref or "").strip(), re.I)
+        mm = re.fullmatch(re.escape(base) + r"R(\d+)", re.sub(r"\s+", "", ref or ""), re.I)
         if mm:
             top = max(top, int(mm.group(1)))
     return {"ref": f"{base}R{top + 1}", "replaces": o.ref, "base": base}

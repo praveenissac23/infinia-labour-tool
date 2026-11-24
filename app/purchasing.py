@@ -841,10 +841,11 @@ def earlier_versions(db, o):
     m = _REV.match((o.ref or "").strip())
     if not m or not m.group(1).rstrip().endswith(tuple("0123456789")):
         return []
-    base, n = m.group(1).strip(), int(m.group(2))
-    names = {base.upper()} | {f"{base}R{k}".upper() for k in range(0, n)}
+    sq = lambda t: re.sub(r"\s+", "", t or "").upper()          # "IC/LPO/123 R1" typed before spaces were taken out
+    base, n = sq(m.group(1)), int(m.group(2))
+    names = {base} | {f"{base}R{k}" for k in range(0, n)}
     return [x for x in db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id != o.id).all()
-            if (x.ref or "").strip().upper() in names and (x.status or "") != "cancelled"]
+            if sq(x.ref) in names and (x.status or "") != "cancelled"]
 
 
 def apply_revision(db, o, user, call_zoho=True):
@@ -862,13 +863,20 @@ def apply_revision(db, o, user, call_zoho=True):
             r.order_id = o.id
         old.request_line_ids = ""
         old.request_id = None
-        # 24/11/2026: the purchaser's check of the supplier's bill goes with the order - it is the same bill
+        in_zoho = (old.zoho_status or "") in ("sent", "changed")
+        zoho, _ = M._cancel_lpo_core(db, old, f"Replaced by {o.ref}", not_needed=False, user=user, release=False,
+                                     superseded_by=o.ref, call_zoho=call_zoho)
+        zoho_ok = not in_zoho or str(zoho or "").startswith("Cancelled in Zoho")
+        # 24/11/2026: the purchaser's check of the supplier's bill goes with the order - it is the same bill. The tick
+        # only when the bill still agrees with the revision's total and the old PO is out of Zoho; otherwise it is
+        # checked again (an old PO still in Zoho may already carry this bill - sending R1 would book it twice).
         if (old.bill_no or old.bill_amount) and not (o.bill_no or o.bill_amount):
             for k in ("bill_no", "bill_date", "bill_amount", "bill_checked", "bill_checked_by", "bill_checked_at", "bill_note"):
                 setattr(o, k, getattr(old, k))
                 setattr(old, k, None)
-        M._cancel_lpo_core(db, old, f"Replaced by {o.ref}", not_needed=False, user=user, release=False,
-                           superseded_by=o.ref, call_zoho=call_zoho)
+            agrees = o.bill_amount is not None and abs(float(o.bill_amount) - M.lpo_total(o)) < 0.01
+            if not (agrees and zoho_ok):
+                o.bill_checked, o.bill_checked_by, o.bill_checked_at = False, None, None
         # What accounts read on the bell: only the revision counts from now - the two totals and the difference
         try:
             import json as _j, pozoho as _pz
@@ -877,7 +885,10 @@ def apply_revision(db, o, user, call_zoho=True):
             if d.get("items"):
                 d["items"][-1]["changes"] = (d["items"][-1].get("changes") or []) + [
                     f"Revision {o.ref}: AED {now:,.2f} (difference {now - was:+,.2f})",
-                    f"Only {o.ref} counts from now - {old.ref} is out of site costs, the LPO register totals and Zoho"]
+                    f"Only {o.ref} counts from now - {old.ref} is out of site costs and the LPO register totals"
+                    + (" and Zoho" if zoho_ok else "")] + ([] if zoho_ok else [
+                    f"{old.ref} is STILL in Zoho (it could not be cancelled - billed already?). Cancel or adjust it in Zoho; "
+                    f"do not bill {o.ref} again for the same supplier bill"])
                 old.acc_note = _j.dumps(d)
         except Exception as e:
             print("revision note:", e)

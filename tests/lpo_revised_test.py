@@ -55,7 +55,44 @@ ck("an LPO that is not there: 404", r.status_code == 404)
 r = c.post("/store/purchase/orders", json=body("IC/LPO/9103374", 10), headers=H)
 r = c.get(f"/store/purchase/orders/{r.json()['id']}/next-revision", headers=H)
 ck("any LPO number takes R1 the same way", r.json().get("ref") == "IC/LPO/9103374R1", r.text)
+# review 24/11/2026 --------------------------------------------------------------------------------------------
+# a number that does not end in a digit can't be replaced by a revision: refused, not offered
+r = c.post("/store/purchase/orders", json=body("LPO-ABC", 10), headers=H)
+r = c.get(f"/store/purchase/orders/{r.json()['id']}/next-revision", headers=H)
+ck("'LPO-ABC' can't take a revision - a clear message instead of a number that would leave both live", r.status_code == 400 and "does not end in a number" in r.json()["detail"], r.text)
+# an old number typed with a space (before spaces were taken out) is still replaced
+db = database.SessionLocal()
+sp = models.PurchaseOrder(po_no=99000123, ref="IC/LPO/777 R1", order_date=main._dubai_today(), supplier_name="Old Trader", status="issued")
+db.add(sp); db.commit(); spid = sp.id; db.close()
+r = c.get(f"/store/purchase/orders/{spid}/next-revision", headers=H)
+ck("'IC/LPO/777 R1' -> IC/LPO/777R2", r.json().get("ref") == "IC/LPO/777R2", r.text)
+r = c.post("/store/purchase/orders", json=body("IC/LPO/777R2", 5), headers=H)
+db = database.SessionLocal()
+ck("saving R2 cancels 'IC/LPO/777 R1' (space ignored)", db.get(models.PurchaseOrder, spid).status == "cancelled", db.get(models.PurchaseOrder, spid).status)
+db.close()
+# the old PO still in Zoho (could not be cancelled - billed already): R1's bill tick is taken off, the bell says so
+r = c.post("/store/purchase/orders", json=body("IC/LPO/20260300", 2840), headers=H); z1 = r.json()["id"]
+c.post(f"/store/purchase/orders/{z1}/bill", json={"bill_no": "INV-9", "bill_amount": round(9.091 * 2840 * 1.05, 2), "checked": True}, headers=H)
+db = database.SessionLocal(); zz = db.get(models.PurchaseOrder, z1); zz.zoho_status = "sent"; zz.zoho_id = "4800000000123"; db.commit(); db.close()
+r = c.post("/store/purchase/orders", json=body("IC/LPO/20260300R1", 2840), headers=H); z2 = r.json()["id"]
+db = database.SessionLocal()
+ck("old PO still in Zoho: R1 keeps the bill number but not the tick (check it again)", db.get(models.PurchaseOrder, z2).bill_no == "INV-9" and not db.get(models.PurchaseOrder, z2).bill_checked)
+bl = [x for x in PZ.bell(db) if x["lpo_id"] == z1]
+ck("old PO still in Zoho: the bell warns not to bill R1 again, and doesn't claim it is out of Zoho",
+   bl and any("STILL in Zoho" in x for x in bl[0]["changes"]) and not any("register totals and Zoho" in x for x in bl[0]["changes"]), bl and bl[0]["changes"])
+db.close()
+# the bill amount no longer agrees with the revision's total: the tick is taken off
+r = c.post("/store/purchase/orders", json=body("IC/LPO/20260301", 2840), headers=H); q1 = r.json()["id"]
+c.post(f"/store/purchase/orders/{q1}/bill", json={"bill_no": "INV-10", "bill_amount": round(9.091 * 2840 * 1.05, 2), "checked": True}, headers=H)
+r = c.post("/store/purchase/orders", json=body("IC/LPO/20260301R1", 2700), headers=H)
+db = database.SessionLocal(); q2 = db.get(models.PurchaseOrder, r.json()["id"])
+ck("bill no longer agrees with R1's total: moved, but to be checked again", q2.bill_no == "INV-10" and not q2.bill_checked); db.close()
+import agent as AG
+ck("INFI is told to leave cancelled / replaced LPOs out of spend", "skip status 'cancelled' (also revised ones)" in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "agent.py")).read())
 js = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app-classic.html"), encoding="utf-8").read()
 ck("the form and the register have the REVISED button", 'id="lpo-revise-btn"' in js and "lprRevise(${row.id})" in js and "async function lpoRevise()" in js)
+ck("REVISED keeps the original LPO date (cost stays in its month; a pre-Zoho LPO stays out of Zoho)",
+   "isoLocal(new Date())" not in js[js.index("async function lpoRevise()"):js.index("function closeLpoForm()")])
+ck("REVISED is hidden on a cancelled LPO", '["superseded", "cancelled"].includes(o.status)' in js)
 print("\n" + ("ALL PASS" if not fails else f"{len(fails)} FAILED"))
 sys.exit(1 if fails else 0)

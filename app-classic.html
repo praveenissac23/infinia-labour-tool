@@ -14669,7 +14669,7 @@ async function lpoRevise() {
   document.getElementById("lpo-copy-btn").style.display = "none";
   document.getElementById("lpo-revise-btn").style.display = "none";
   document.getElementById("lpo-ref").value = r.ref;
-  document.getElementById("lpo-date").value = isoLocal(new Date());
+  // The date stays the original's: the cost stays in its month, and an LPO from before Zoho stays out of Zoho
   window.scrollTo(0, 0);
   showStatus("lpo-status", "ok", `Revision of ${from}: change what you need, then Save & Generate. ${r.replaces} is then cancelled as "Replaced by ${r.ref}" - its requests and deliveries move to ${r.ref}.`);
 }
@@ -14701,7 +14701,7 @@ async function editLpo(id) {
     // Not "Generate" - this order already exists and keeps its number.
     document.getElementById("lpo-save-btn").textContent = "Save changes";
     { const cb = document.getElementById("lpo-copy-btn"); if (cb) cb.style.display = ""; }
-    { const rb = document.getElementById("lpo-revise-btn"); if (rb) rb.style.display = o.status === "superseded" ? "none" : ""; }
+    { const rb = document.getElementById("lpo-revise-btn"); if (rb) rb.style.display = ["superseded", "cancelled"].includes(o.status) ? "none" : ""; }
     document.getElementById("lpo-ref").value = o.ref;
     document.getElementById("lpo-date").value = o.order_date || isoLocal(new Date());
     document.getElementById("lpo-terms").value = o.terms || "Due on Receipt";
