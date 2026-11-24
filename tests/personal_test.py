@@ -277,8 +277,8 @@ v = c.get("/users/personal/version")
 ck("the server tells the page its newest version, never cached", v.json()["v"] == P.page_stamp(page) and "no-store" in v.headers.get("cache-control", ""))
 ck("the app checks for a new version on every open and reloads itself; a Refresh button in settings",
    "checkVersion();" in page and "if (!document.hidden) { checkVersion();" in page and 'onclick="hardRefresh()"' in page and '"&r=" + Date.now()' in page and 'sessionStorage.setItem("me_reload", v)' in page)
-ck("every section can show as List, Compact, Grid or Tiles (button on each page, all four in settings), kept on the phone",
-   all(f'["{k}",' in page for k in ("list", "compact", "grid", "tiles")) and "function pickLay" in page and "layRows()" in page and
+ck("every section can show as List, Compact, Grid or Tiles - a small icon on its page and its dashboard card (not in settings), kept on the phone",
+   all(f'["{k}",' in page for k in ("list", "compact", "grid", "tiles")) and "function nextLay" in page and '<div id="layRows">' not in page and 'class="slay" onclick="nextLay(' in page and
    'wrapLay("notes"' in page and 'wrapLay("rem"' in page and 'wrapLay("cal"' in page and 'wrapLay("done"' in page and 'localStorage.setItem("me_lay_" + sec, v)' in page)
 ck("remind me: a Custom choice for any amount before (minutes / hours / days / weeks)", '["custom", "Custom…"]' in page and 'id="e-cn"' in page and "n * +$(\"e-cu\").value" in page)
 r = c.post(f"/users/personal/items?k={K}", headers=D, json={"kind": "event", "title": "Site handover", "due_on": "2026-12-10", "due_time": "15:00", "remind_before": "300"}).json()
@@ -288,6 +288,8 @@ ck("no space wasted: ＋, 🎤 and layout are small buttons in the header (no ad
 ck("calendar: a small + by the day (no big Add-on-this-day button)", "+ Add on this day" not in page and 'class="dplus"' in page)
 ck("Done: group by day / section / work-personal / none, sort newest / oldest / A-Z, kept on the phone",
    "function pickDone()" in page and all(x in page for x in ('["day", "Day"]', '["kind", "Section"]', '["tag", "Work / Personal"]', '["az", "A to Z"]', '"me_done_group"', '"me_done_sort"')))
+ck("no hint lines on the dashboard cards", "No meetings coming up" not in page and "Nothing due. Tap" not in page and "No notes. Tap" not in page)
+ck("every panel (settings too) closes with ✕ or a swipe down", 'class="shx" onclick="closeSheet()"' in page and "if (drag && dy > 90) closeSheet()" in page)
 ck("Dashboard: reminders, calendar and notes together, each with its own mic", "function renderDash()" in page and 'dhead("Reminders", "task"' in page and 'dhead("Calendar", "event"' in page and 'dhead("Notes", "note"' in page and "TITLES = { dash: \"Dashboard\"" in page)
 ck("five tabs: Dashboard, Reminders, Calendar, Notes, Done", all(f'data-v="{v}"' in page for v in ("dash", "rem", "cal", "notes", "done")) and 'data-v="next"' not in page)
 ck("swipe a row: left for its actions, right to tick it off", "function swipeWrap" in page and '"touchmove"' in page and "{ passive: false }" in page and "x > 80" in page)

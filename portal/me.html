@@ -6,7 +6,7 @@
      Only at its own secret address (?k=...), only with the owner's login + PIN once per device. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="me-build" content="96c2fe205b87">
+<meta name="me-build" content="836d3bc1301c">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -273,6 +273,12 @@
   .dplus svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
   .sec .cnt { font-size: 11px; color: var(--mute); background: var(--soft); padding: 1px 7px; border-radius: 999px; margin-left: 4px; letter-spacing: 0; }
   .seg.wrap { flex-wrap: wrap; } .seg.wrap button { flex: 1 1 45%; }
+  .sheet .shx { position: absolute; top: 12px; right: 14px; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--soft); z-index: 2; }
+  .sheet .shx svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+  .sheet h3 { padding-right: 44px; } .sheet { position: fixed; }
+  .slay { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--mute); margin-left: auto; margin-right: 4px; }
+  .slay svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+  .seg.icons button { display: grid; place-items: center; } .seg.icons svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
   /* layouts */
   .lbtn { flex: none; width: 44px; justify-content: center; padding: 10px 0; } .lbtn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
   .lays { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -521,7 +527,7 @@ const LAYSEC = { rem: "Reminders", cal: "Calendar", notes: "Notes", done: "Done"
 function lay(sec) { let v = ""; try { v = localStorage.getItem("me_lay_" + sec) || ""; } catch (e) {} return LAYI[v] ? v : "list"; }
 function setLay(sec, v) { try { localStorage.setItem("me_lay_" + sec, v); } catch (e) {} render(); headActs(); }
 const wrapLay = (sec, html) => html ? `<div class="lay lay-${lay(sec)}">${html}</div>` : "";
-function layBtn(sec) { return `<button class="pill lbtn" onclick="pickLay('${sec}')" aria-label="Layout">${LAYI[lay(sec)]}</button>`; }
+function nextLay(sec) { const k = LAYS.findIndex(x => x[0] === lay(sec)); const v = LAYS[(k + 1) % LAYS.length]; setLay(sec, v[0]); toast(v[1]); }
 function pickLay(sec) {
   sheet(`<h3>Show ${LAYSEC[sec]} as</h3><div class="lays">${LAYS.map(([k, l]) => `<button class="${lay(sec) === k ? "on" : ""}" onclick="setLay('${sec}','${k}');closeSheet()">${LAYI[k]}<span>${l}</span></button>`).join("")}</div>
     <p style="font-size:13px;color:var(--mute);margin-top:12px">All four sections can be set in ⚙ too.</p>`);
@@ -535,24 +541,24 @@ const PLUSI = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
 function headActs() {
   const k = { rem: "task", cal: "event", notes: "note" }[VIEW];
   $("hacts").innerHTML = VIEW === "done" ? `<button class="hb" onclick="pickDone()" aria-label="Group and sort">${SORTI}</button>` :
-    (LAYSEC[VIEW] ? `<button class="hb" onclick="pickLay('${VIEW}')" aria-label="Layout">${LAYI[lay(VIEW)]}</button>` : "") +
+    (LAYSEC[VIEW] ? `<button class="hb" onclick="nextLay('${VIEW}')" aria-label="Change layout">${LAYI[lay(VIEW)]}</button>` : "") +
     (k ? `<button class="hb" onclick="speak('${k}')" aria-label="Speak a ${K1[k]}">${MICI}</button><button class="hb pri" onclick="edit(null,${VIEW === "cal" ? "CALSEL" : "null"},'${k}')" aria-label="New ${K1[k]}">${PLUSI}</button>` : "");
 }
 function dhead(title, kind, n) {
-  return `<div class="dhead"><button class="dt" onclick="show('${KV[kind]}')">${title}${n ? `<span class="n">${n}</span>` : ""}<i>›</i></button><button class="smic" onclick="speak('${kind}')" aria-label="Speak a ${K1[kind]}">${MICI}</button></div>`;
+  return `<div class="dhead"><button class="dt" onclick="show('${KV[kind]}')">${title}${n ? `<span class="n">${n}</span>` : ""}<i>›</i></button><button class="slay" onclick="nextLay('${KV[kind]}')" aria-label="Change layout">${LAYI[lay(KV[kind])]}</button><button class="smic" onclick="speak('${kind}')" aria-label="Speak a ${K1[kind]}">${MICI}</button></div>`;
 }
 function renderDash() {
   const n = dubaiNow(), today = iso(n);
   const ts = openTasks(), soon = ts.filter(i => ["overdue", "today", "tomorrow"].includes(bucket(i)));
   const shown = (soon.length ? soon : ts).slice(0, 5);
-  let h = `<div class="dcard">${dhead("Reminders", "task", ts.length)}${wrapLay("rem", shown.map(i => rowHtml(i, bucket(i))).join("")) || `<div class="dempty">Nothing due. Tap 🎤 and say “remind me tomorrow 9am to…”</div>`}${ts.length > shown.length ? `<button class="more" onclick="show('rem')">All ${ts.length} reminders ›</button>` : ""}</div>`;
+  let h = `<div class="dcard">${dhead("Reminders", "task", ts.length)}${wrapLay("rem", shown.map(i => rowHtml(i, bucket(i))).join(""))}${ts.length > shown.length ? `<button class="more" onclick="show('rem')">All ${ts.length} reminders ›</button>` : ""}</div>`;
   const byDay = {}; ITEMS.filter(i => i.due_on && i.kind !== "note" && !i.done_at && keep(i)).forEach(i => (byDay[i.due_on] = byDay[i.due_on] || []).push(i));
   let wk = ""; for (let k = 0; k < 7; k++) { const d = new Date(n); d.setDate(n.getDate() + k); const sd = iso(d), its = byDay[sd] || [];
     wk += `<button class="${k === 0 ? "td" : ""}" onclick="openDay('${sd}')"><small>${DAY[d.getDay()]}</small><b>${d.getDate()}</b><span class="dots">${its.slice(0, 3).map(i => `<i class="${i.kind === "event" ? "e" : i.tag === "personal" ? "p" : ""}"></i>`).join("")}</span></button>`; }
   const ev = comingEvents(), evs = ev.slice(0, 4);
-  h += `<div class="dcard">${dhead("Calendar", "event", ev.length)}<div class="wk">${wk}</div>${wrapLay("cal", evs.map(i => rowHtml(i, i.due_on === today ? "" : "ev")).join("")) || `<div class="dempty">No meetings coming up. Tap 🎤 and say “meeting with the client Thursday 3pm”.</div>`}${ev.length > evs.length ? `<button class="more" onclick="show('cal')">All ${ev.length} coming up ›</button>` : ""}</div>`;
+  h += `<div class="dcard">${dhead("Calendar", "event", ev.length)}<div class="wk">${wk}</div>${wrapLay("cal", evs.map(i => rowHtml(i, i.due_on === today ? "" : "ev")).join(""))}${ev.length > evs.length ? `<button class="more" onclick="show('cal')">All ${ev.length} coming up ›</button>` : ""}</div>`;
   const ns = openNotes(), nsh = ns.slice(0, 6);
-  h += `<div class="dcard">${dhead("Notes", "note", ns.length)}${wrapLay("notes", nsh.map(i => rowHtml(i, "")).join("")) || `<div class="dempty">No notes. Tap 🎤 and say “add a note to follow up…”</div>`}${ns.length > nsh.length ? `<button class="more" onclick="show('notes')">All ${ns.length} notes ›</button>` : ""}</div>`;
+  h += `<div class="dcard">${dhead("Notes", "note", ns.length)}${wrapLay("notes", nsh.map(i => rowHtml(i, "")).join(""))}${ns.length > nsh.length ? `<button class="more" onclick="show('notes')">All ${ns.length} notes ›</button>` : ""}</div>`;
   $("pg-dash").innerHTML = h;
 }
 function openDay(d) { CALSEL = d; const n = dubaiNow(), m = new Date(d + "T12:00"); show("cal"); setTimeout(() => goMonth(6 + (m.getFullYear() - n.getFullYear()) * 12 + m.getMonth() - n.getMonth(), false), 350); setTimeout(() => pickDay(d), 400); }
@@ -631,7 +637,7 @@ function pickDone() {
   const g = pref("me_done_group", "day", DGROUP), so = pref("me_done_sort", "new", DSORT);
   sheet(`<h3>Done</h3><div class="f"><label>Group by</label><div class="seg wrap">${DGROUP.map(([k, l]) => `<button class="${g === k ? "on" : ""}" onclick="segOn(this);setPref('me_done_group','${k}')">${l}</button>`).join("")}</div></div>
     <div class="f"><label>Sort</label><div class="seg">${DSORT.map(([k, l]) => `<button class="${so === k ? "on" : ""}" onclick="segOn(this);setPref('me_done_sort','${k}')">${l}</button>`).join("")}</div></div>
-    <div class="f"><label>Show as</label><div class="seg">${LAYS.map(([k, l]) => `<button class="${lay("done") === k ? "on" : ""}" onclick="segOn(this);setLay('done','${k}')">${l}</button>`).join("")}</div></div>
+    <div class="f"><div class="seg icons">${LAYS.map(([k, l]) => `<button class="${lay("done") === k ? "on" : ""}" onclick="segOn(this);setLay('done','${k}')" aria-label="${l}">${LAYI[k]}</button>`).join("")}</div></div>
     <div class="acts"><button class="btn pri" onclick="closeSheet()">Done</button></div>`);
 }
 function renderDone() {
@@ -810,8 +816,22 @@ async function del(id) {
 }
 
 // ---------------- sheet, toast ----------------
-function sheet(h) { $("sheet").innerHTML = `<div class="grab"></div>` + h; $("sheet").classList.add("open"); $("shade").classList.add("open"); }
-function closeSheet() { $("sheet").classList.remove("open"); $("shade").classList.remove("open"); }
+function sheet(h) {
+  const el = $("sheet"); el.style.transform = ""; el.scrollTop = 0;
+  el.innerHTML = `<div class="grab"></div><button class="shx" onclick="closeSheet()" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` + h;
+  el.classList.add("open"); $("shade").classList.add("open");
+}
+// swipe a panel down to close it (from its top, or anywhere once it is scrolled to the top)
+(function () {
+  const el = $("sheet"); let y0 = null, dy = 0, drag = false;
+  el.addEventListener("touchstart", e => { y0 = e.touches[0].clientY; dy = 0; drag = el.scrollTop <= 0 && !e.target.closest("textarea, select, input"); }, { passive: true });
+  el.addEventListener("touchmove", e => {
+    if (!drag || y0 == null) return; dy = e.touches[0].clientY - y0;
+    if (dy > 0) { e.preventDefault(); el.style.transition = "none"; el.style.transform = `translateY(${dy}px)`; } else if (dy < -4) drag = false;
+  }, { passive: false });
+  el.addEventListener("touchend", () => { el.style.transition = ""; if (drag && dy > 90) closeSheet(); else el.style.transform = ""; y0 = null; drag = false; }, { passive: true });
+})();
+function closeSheet() { const el = $("sheet"); el.style.transform = ""; el.classList.remove("open"); $("shade").classList.remove("open"); }
 let TT = null;
 function toast(msg, act, fn) {
   const t = $("toast"); t.innerHTML = `<span>${msg}</span>${act ? `<button id="t-act">${act}</button>` : ""}`; t.style.display = "flex";
@@ -977,7 +997,6 @@ async function openSettings() {
     <p style="font-size:13px;color:var(--mute);line-height:1.5;margin-top:8px">Tap one to hear it. It plays when a reminder comes up while this app is open. When the app is closed, the iPhone plays its own notification sound - Apple does not let web apps choose it. Silent mode or a Focus keeps both quiet.</p>
     <h3 style="margin-top:18px">Look</h3>
     <div class="seg" id="themeSeg">${[["auto", "As the phone"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => `<button class="${theme() === k ? "on" : ""}" onclick="setTheme('${k}')">${l}</button>`).join("")}</div>
-    <h3 style="margin-top:18px">Layout</h3><div id="layRows">${layRows()}</div>
     <h3 style="margin-top:18px">App version</h3>
     <div class="acts" style="margin-top:0"><button class="btn" onclick="hardRefresh()">↻ Refresh to the latest version</button></div>
     <p style="font-size:13px;color:var(--mute);line-height:1.5;margin-top:8px">It also updates by itself each time you open it. Version ${esc(MY_BUILD || "-")}</p>
