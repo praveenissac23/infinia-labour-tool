@@ -16218,6 +16218,9 @@ app.include_router(projexpense.router)
 import credentials  # noqa: E402  - Accounts > Credentials: the company's logins
 app.include_router(credentials.router)
 credentials.Credential.__table__.create(bind=engine, checkfirst=True)
+import personal  # noqa: E402  (24/11/2026: an admin's own never-forget list, at their own address)
+app.include_router(personal.router)
+personal.create_tables(engine)
 try:   # a column added after the table was first made
     from sqlalchemy import inspect as _insp, text as _text
     if "admin_only" not in {c["name"] for c in _insp(engine).get_columns("credentials")}:
@@ -16284,6 +16287,12 @@ except Exception as _e:
 def _boards_rules_start():
     if not os.environ.get("INFINIA_NO_SCHED"):      # tests switch it off
         boards.start_scheduler()
+
+
+@app.on_event("startup")
+def _personal_reminders_start():
+    if os.environ.get("INFINIA_NO_PUSH") != "1" and not os.environ.get("INFINIA_NO_SCHED"):
+        personal.start(SessionLocal)
 
 
 @app.on_event("startup")

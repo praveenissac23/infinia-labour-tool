@@ -182,7 +182,7 @@ PAGES = {
                         tab("docs", "docsoffice", "Docs to office", ["docs_send", "docs_verify"], go="dtLoad()")]),
     "settings": ("Settings", [
         tab("general", "settings", "General", "settings",
-            ["#pg-mysig-card", "#pg-notif-card", "#pg-push-card", "#pg-agent-card", "#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"]),
+            ["#pg-mysig-card", "#pg-notif-card", "#pg-me-card", "#pg-push-card", "#pg-agent-card", "#pg-password-card", "#company-card", "#signature-card", "#pg-backup-card"]),
         tab("companies", "settings", "Companies & sites", "settings_companies", ["#companies-card", "#pg-sites-block"]),
         tab("ctypes", "settings", "Contract types", "settings_companies", ["#ctypes-card"], go="ctLoad()"),
         tab("wtypes", "settings", "Work types", "settings_companies", ["#wtypes-card"], go="wtLoad()"),
