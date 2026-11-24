@@ -9027,6 +9027,25 @@ def next_lpo_number(db: Session = Depends(get_db),
             **_lpo_people(db)}
 
 
+@app.get("/store/purchase/orders/{oid}/next-revision")
+def next_lpo_revision(oid: int, db: Session = Depends(get_db), user: models.User = Depends(require_screen("approvals"))):
+    """Revise an LPO (24/11/2026, purchaser): the number its revision takes - IC/LPO/20260219 -> IC/LPO/20260219R1,
+    ...R1 -> ...R2, always one above the highest revision already raised. Saving it replaces the order before it."""
+    o = db.get(models.PurchaseOrder, oid)
+    if not o:
+        raise HTTPException(404, "That LPO is not there any more.")
+    if (o.status or "") == "cancelled":
+        raise HTTPException(400, f"{o.ref} is cancelled" + (f" - replaced by {o.superseded_by}; revise that one instead." if o.superseded_by else " - it can't be revised."))
+    m = re.match(r"^(.*?\d)\s*R(\d+)$", (o.ref or "").strip(), re.I)
+    base = (m.group(1) if m else (o.ref or "")).strip()
+    top = 0
+    for (ref,) in db.query(models.PurchaseOrder.ref).filter(models.PurchaseOrder.ref.ilike(base + "%")).all():
+        mm = re.fullmatch(re.escape(base) + r"\s*R(\d+)", (ref or "").strip(), re.I)
+        if mm:
+            top = max(top, int(mm.group(1)))
+    return {"ref": f"{base}R{top + 1}", "replaces": o.ref, "base": base}
+
+
 def _lpo_people(db):
     """Everyone an order can name as our contact, each with his number, and
     every site with its plot and its man - sent with the form so it fills

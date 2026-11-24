@@ -3289,7 +3289,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
           <!-- Raise / view one order -->
           <div class="card" id="lpo-form-card" style="display:none;">
             <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;"><h2 id="lpo-form-title" style="margin:0;">New Purchase Order</h2>
-              <button type="button" class="btn btn-sm" id="lpo-copy-btn" style="display:none; background:#FBEFED; color:#A93226; border:1px solid #E6B8B1;" onclick="lpoCopyAsNew()" title="A new LPO with everything on this one - supplier, lines, rates, terms. Only the project location and plot no are left for you to fill in. This LPO stays as it is.">Copy as new LPO</button></div>
+              <button type="button" class="btn btn-sm" id="lpo-copy-btn" style="display:none; background:#FBEFED; color:#A93226; border:1px solid #E6B8B1;" onclick="lpoCopyAsNew()" title="A new LPO with everything on this one - supplier, lines, rates, terms. Only the project location and plot no are left for you to fill in. This LPO stays as it is.">Copy as new LPO</button>
+              <button type="button" class="btn btn-sm" id="lpo-revise-btn" style="display:none; background:#FFF4D6; color:#8A5A00; border:1px solid #E8C877; font-weight:700;" onclick="lpoRevise()" title="REVISED LPO: the same LPO - supplier, lines, rates, site, plot - under the next number (IC/LPO/20260219 -> IC/LPO/20260219R1). Change what you need and save: the earlier one is cancelled as 'Replaced by' and its requests and deliveries move to the revision.">REVISED</button></div>
 
             <div class="form-row" style="gap:10px; flex-wrap:wrap;">
               <div class="field"><label>LPO No</label><input type="text" id="lpo-ref" style="width:150px;" title="Filled in with the next number - type over it if this order needs a different one"></div>
@@ -14349,6 +14350,9 @@ function lprEdit(id) {
 function lprCopy(id) {
   xlGo("store", "purchasing", "purchase", () => xlOn("purchase") && typeof editLpo === "function" && (lpoRegister || []).length, async () => { await editLpo(id); if (lpoEditingId === id) lpoCopyAsNew(); });
 }
+function lprRevise(id) {
+  xlGo("store", "purchasing", "purchase", () => xlOn("purchase") && typeof editLpo === "function" && (lpoRegister || []).length, async () => { await editLpo(id); if (lpoEditingId === id) lpoRevise(); });
+}
 function lprDrill(group, label) {
   const box = document.getElementById({ supplier: "lpr-supplier", site: "lpr-site", material: "lpr-material" }[group]);
   if (!box) return;
@@ -14418,7 +14422,7 @@ async function loadLpoReport() {
       if (r.group_by === "order") {
         cells.push(`<td style="text-align:right; white-space:nowrap;">${row.status === "cancelled" ? "" :
           `<button class="btn btn-gray btn-sm lpr-dlv" title="What came against it - booking, bill and cancel are on the Order tracker" onclick="event.stopPropagation(); lpoDlvOpen(${row.id}, null, true)">Deliveries</button>${
-            otCanDo("purchaser") ? ` <button class="btn btn-gray btn-sm lpr-edit" title="Change the LPO - quantities, rates, lines. It keeps its number; Accounts are told what changed." onclick="event.stopPropagation(); lprEdit(${row.id})">Edit</button> <button class="btn btn-sm" style="background:#FBEFED; color:#A93226; border:1px solid #E6B8B1;" title="A new LPO with the same supplier, lines and rates - fill in the other plot" onclick="event.stopPropagation(); lprCopy(${row.id})">Copy</button>` : ""}`}</td>`);
+            otCanDo("purchaser") ? ` <button class="btn btn-gray btn-sm lpr-edit" title="Change the LPO - quantities, rates, lines. It keeps its number; Accounts are told what changed." onclick="event.stopPropagation(); lprEdit(${row.id})">Edit</button> <button class="btn btn-sm" style="background:#FBEFED; color:#A93226; border:1px solid #E6B8B1;" title="A new LPO with the same supplier, lines and rates - fill in the other plot" onclick="event.stopPropagation(); lprCopy(${row.id})">Copy</button> <button class="btn btn-sm" style="background:#FFF4D6; color:#8A5A00; border:1px solid #E8C877; font-weight:700;" title="REVISED LPO: the same LPO under the next number (R1, R2 ...) - saving it replaces this one" onclick="event.stopPropagation(); lprRevise(${row.id})">Revised</button>` : ""}`}</td>`);
       }
       // The tab is claimed in the click itself - asking for it after the
       // token fetch makes it a pop-up, which the browser blocks.
@@ -14607,6 +14611,7 @@ async function newLpo() {
   document.getElementById("lpo-form-title").textContent = "New Purchase Order";
   document.getElementById("lpo-save-btn").textContent = "Save & Generate";
   { const cb = document.getElementById("lpo-copy-btn"); if (cb) cb.style.display = "none"; }
+  { const rb = document.getElementById("lpo-revise-btn"); if (rb) rb.style.display = "none"; }
   document.getElementById("lpo-ref").value = n.ref;
   document.getElementById("lpo-date").value = isoLocal(new Date());
   document.getElementById("lpo-delivery").value = isoLocal(new Date());
@@ -14641,12 +14646,32 @@ async function lpoCopyAsNew() {
   document.getElementById("lpo-form-title").textContent = `New Purchase Order - copy of ${from}`;
   document.getElementById("lpo-save-btn").textContent = "Save & Generate";
   document.getElementById("lpo-copy-btn").style.display = "none";
+  document.getElementById("lpo-revise-btn").style.display = "none";
   document.getElementById("lpo-ref").value = n.ref;
   document.getElementById("lpo-date").value = isoLocal(new Date());
   ["lpo-location", "lpo-plot"].forEach(id => { const x = document.getElementById(id); x.value = ""; x.style.borderColor = "#C0392B"; x.addEventListener("input", () => x.style.borderColor = "", { once: true }); });
   window.scrollTo(0, 0);
   showStatus("lpo-status", "ok", `Copied from ${from} - fill in the project location and plot no, then Save & Generate. ${from} is unchanged.`);
   setTimeout(() => document.getElementById("lpo-location").focus(), 200);
+}
+
+// REVISED LPO (24/11/2026, purchaser): the same LPO under its next revision number (IC/LPO/20260219R1, R2 ...).
+// Everything stays - supplier, lines, rates, site, plot. Saving cancels the earlier one ("Replaced by ...") and moves
+// its requests and deliveries to the revision (purchasing.apply_revision).
+async function lpoRevise() {
+  const id = lpoEditingId, from = document.getElementById("lpo-ref").value;
+  if (!id) return;
+  let r; try { r = await apiCall(`/store/purchase/orders/${id}/next-revision`); } catch (e) { showStatus("lpo-status", "err", errText(e)); return; }
+  lpoEditingId = null;
+  lpoRequestLineIds = [];
+  document.getElementById("lpo-form-title").textContent = `REVISED LPO ${r.ref} - replaces ${r.replaces}`;
+  document.getElementById("lpo-save-btn").textContent = "Save & Generate revision";
+  document.getElementById("lpo-copy-btn").style.display = "none";
+  document.getElementById("lpo-revise-btn").style.display = "none";
+  document.getElementById("lpo-ref").value = r.ref;
+  document.getElementById("lpo-date").value = isoLocal(new Date());
+  window.scrollTo(0, 0);
+  showStatus("lpo-status", "ok", `Revision of ${from}: change what you need, then Save & Generate. ${r.replaces} is then cancelled as "Replaced by ${r.ref}" - its requests and deliveries move to ${r.ref}.`);
 }
 
 function closeLpoForm() {
@@ -14676,6 +14701,7 @@ async function editLpo(id) {
     // Not "Generate" - this order already exists and keeps its number.
     document.getElementById("lpo-save-btn").textContent = "Save changes";
     { const cb = document.getElementById("lpo-copy-btn"); if (cb) cb.style.display = ""; }
+    { const rb = document.getElementById("lpo-revise-btn"); if (rb) rb.style.display = o.status === "superseded" ? "none" : ""; }
     document.getElementById("lpo-ref").value = o.ref;
     document.getElementById("lpo-date").value = o.order_date || isoLocal(new Date());
     document.getElementById("lpo-terms").value = o.terms || "Due on Receipt";
