@@ -114,6 +114,7 @@
   .btn.pri { background: var(--red); color: #fff; } .btn.del { flex: 0 0 auto; color: var(--redtx); background: var(--redbg); }
   .menu button { display: block; width: 100%; text-align: left; padding: 15px 4px; border-bottom: 1px solid var(--line); font-size: 16px; }
   .bar { transition: transform .15s ease; }
+  .hint:empty { display: none; }
   html, body { overscroll-behavior-y: none; }
   .mic.rec::after { content: "Tap to stop"; position: absolute; bottom: 58px; right: 0; white-space: nowrap; font-size: 12px; font-weight: 700; color: #fff;
                     background: var(--red); padding: 4px 9px; border-radius: 8px; }
@@ -201,7 +202,7 @@
       <button class="mic" id="mic" onclick="speak()" aria-label="Speak"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
       <button class="go" id="gobtn" onclick="quickAdd()" aria-label="Add" style="display:none"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
     </div>
-    <div class="hint" id="hint">“call the bank Thursday 10am” · “pay DEWA every month 28/11” · “note: gift ideas”</div>
+    <div class="hint" id="hint"></div>
     <nav class="nav" id="nav"><span class="ind" id="ind"></span>
       <button data-v="next" onclick="show('next')"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.3"/><circle cx="4.5" cy="12" r="1.3"/><circle cx="4.5" cy="18" r="1.3"/></svg>Next</button>
       <button data-v="cal" onclick="show('cal')"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Calendar</button>
@@ -433,7 +434,7 @@ async function quickAdd() {
   const t = $("q").value.trim(); if (!t) return;
   try {
     const i = await api("/users/personal/quick", { method: "POST", body: JSON.stringify({ text: t }) });
-    $("q").value = ""; $("q").dispatchEvent(new Event("input"));
+    $("q").value = ""; $("q").dispatchEvent(new Event("input")); $("hint").textContent = "";
     ITEMS.push(i);
     render();
     if (i.kind === "note" && VIEW !== "notes") show("notes"); else if (i.kind !== "note" && VIEW === "notes") show("next");
