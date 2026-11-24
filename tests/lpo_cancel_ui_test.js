@@ -30,7 +30,8 @@ let bad = 0; const ck = (n, ok, i) => { if (!ok) bad++; console.log(`${ok ? 'PAS
   await p.click('#lpo-cx-modal .chips button'); await p.screenshot({ path: OUT + '/lpo-cancel-ask.png' });
   await p.click('#lpo-cx-modal [data-go]'); await sleep(2500);
   const row = await p.evaluate(ref => { const tr = [...document.querySelectorAll('#lpr-body tr')].find(t => t.textContent.includes(ref)); return tr ? { cls: tr.className, txt: tr.textContent, deco: getComputedStyle(tr.querySelector('.lpr-no')).textDecorationLine } : null; }, x.label);
-  ck('the LPO stays on the register, struck through, with the reason', row && /lpr-cxrow/.test(row.cls) && /CANCELLED/.test(row.txt) && /no longer needed/.test(row.txt) && row.deco === 'line-through', row);
+  // 24/11/2026 (owner): greyed with a Cancelled tag - no strike-through
+  ck('the LPO stays on the register, greyed with a Cancelled tag and the reason (no strike-through)', row && /lpr-cxrow/.test(row.cls) && /Cancelled/.test(row.txt) && /no longer needed/.test(row.txt) && row.deco !== 'line-through', row);
   const tot1 = await p.evaluate(() => document.getElementById('lpr-total').textContent);
   ck('and its amount is out of the total', tot1 !== tot0, [tot0, tot1]);
   ck('no Edit or Cancel on a cancelled LPO', await p.evaluate(ref => !([...document.querySelectorAll('#lpr-body tr')].find(t => t.textContent.includes(ref)).querySelector('button')), x.label));

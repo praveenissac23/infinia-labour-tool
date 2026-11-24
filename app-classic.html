@@ -365,9 +365,12 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .cmb .sum { display:flex; gap:10px; padding:12px 16px; flex-wrap:wrap; align-items:center; }
   .cmb .chip { border-radius:10px; padding:7px 12px; background:#fff; border:1px solid #EAD9D5; font-size:12.5px; } .cmb .chip b { display:block; font-size:15px; }
   .cmb .src { font-size:11px; color:#999; }
-  /* a cancelled LPO stays on the register, struck through, never in the totals */
-  tr.lpr-cxrow td { color: #9A9A9A; background: #FBF7F6; } tr.lpr-cxrow td .lpr-no, tr.lpr-cxrow td:not(:first-child) { text-decoration: line-through; text-decoration-color: #C0392B; }
-  tr.lpr-cxrow td .lpr-cx, tr.lpr-cxrow td .lpr-why { text-decoration: none; display: inline-block; }
+  /* a cancelled LPO stays on the register, quietly greyed, never in the totals (24/11/2026: no strike-through) */
+  tr.lpr-cxrow td { color: #9AA0A6; background: #FAFAF8; } tr.lpr-cxrow td .lpr-no { color: #7D838A; font-weight: 600; }
+  .lpr-cx { display: inline-block; margin-left: 6px; padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
+            background: #F6E9E7; color: #A5463B; border: 1px solid #EBCFCA; vertical-align: 1px; }
+  .lpr-cx.rep { background: #F1EBFA; color: #5B2C9F; border-color: #DCCEF2; }
+  .lpr-why { display: block; font-size: 11.5px; color: #8A8F96; margin-top: 3px; }
   #lpo-cx-modal { position: fixed; inset: 0; background: rgba(20,24,28,.45); z-index: 5000; display: none; align-items: center; justify-content: center; }
   #lpo-cx-modal.on { display: flex; } #lpo-cx-modal .box { background: #fff; border-radius: 12px; padding: 22px 24px; width: min(460px, 92vw); box-shadow: 0 20px 50px rgba(0,0,0,.3); }
   #lpo-cx-modal .lpo-cx-opt { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; font-size: 13px; line-height: 1.4; cursor: pointer; } #lpo-cx-modal .lpo-cx-opt input { margin-top: 3px; }
@@ -4420,7 +4423,7 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
               <div class="field"><label>From</label><input type="date" id="lpr-from" onchange="loadLpoReport()" style="width:140px;"></div>
               <div class="field"><label>To</label><input type="date" id="lpr-to" onchange="loadLpoReport()" style="width:140px;"></div>
               <div class="field"><label>LPOs</label><select id="lpr-show" onchange="loadLpoReport()" style="width:200px;">
-                <option value="all">All (cancelled struck through)</option>
+                <option value="all">All (cancelled shown greyed)</option>
                 <option value="issued">Issued only</option>
                 <option value="cancelled">Cancelled only</option>
               </select></div>
@@ -14409,10 +14412,12 @@ async function loadLpoReport() {
       if (r.group_by === "order") {
         cells.push(`<td style="text-align:left;"><strong class="lpr-no">${row.label}</strong>${
           row.revision ? ` <span class="pill lpr-revtag" title="Revision ${row.revision} of ${escapeAttr(row.base_ref || "")}">REVISED R${row.revision}</span>` : ""}${
-          row.status === "cancelled" ? ` <span class="pill lpr-cx" style="background:#FBE0DE; color:#C0392B; font-weight:700;">CANCELLED</span>${row.cancel_reason ? `<div class="lpr-why" style="font-size:11.5px;color:#B03A2E;margin-top:2px;">${row.cancelled_on ? escapeHtml(dmy(row.cancelled_on)) + " - " : ""}${escapeHtml(row.cancel_reason)}</div>` : ""}` : ""}${
+          row.status === "cancelled" ? (row.superseded_by
+            ? `<span class="lpr-cx rep">Replaced</span><div class="lpr-why">by ${escapeHtml(row.superseded_by)}${row.cancelled_on ? " · " + escapeHtml(dmy(row.cancelled_on)) : ""}</div>`
+            : `<span class="lpr-cx">Cancelled</span>${row.cancel_reason ? `<div class="lpr-why">${row.cancelled_on ? escapeHtml(dmy(row.cancelled_on)) + " · " : ""}${escapeHtml(row.cancel_reason)}</div>` : ""}`) : ""}${
           row.edited && row.status !== "cancelled"
             ? ` <span class="pill" style="background:#FDF0D5; color:#8A6100;" title="Corrected on ${dmy(row.edited_on)}">edited</span>` : ""}${
-          row.superseded_by && !(row.cancel_reason || "").includes(row.superseded_by) ? `<div class="lpr-why" style="font-size:11.5px;color:#B03A2E;">replaced by ${escapeHtml(row.superseded_by)}</div>` : ""}${
+
           row.status !== "cancelled" && row.delivery ? `<div style="margin-top:2px;">${puTag(row.delivery)}${row.bill_checked
             ? ` <span class="pu-tag pu-st-delivered" title="Supplier's bill ${escapeAttr(row.bill_no || "")} checked against the LPO and DN">bill checked</span>`
             : (row.bill_no ? ` <span class="pu-tag pu-st-part" title="Bill ${escapeAttr(row.bill_no)} entered, not ticked checked yet">bill not checked</span>` : "")}</div>` : ""}</td>`);
