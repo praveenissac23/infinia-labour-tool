@@ -183,6 +183,7 @@
   .snd button.on { border-color: var(--red); background: var(--redbg); color: var(--redtx); } .snd button.on i { color: var(--redtx); }
   .mic.rec { box-shadow: 0 0 0 calc(var(--lvl, 0) * 10px) #C0392B40; animation: none; transition: box-shadow .1s; }
   .mic.rec::after { content: "Tap to stop"; }
+  .mic, .go, .gear, .nav button, .chips button { touch-action: manipulation; }
   .mic.busy { background: var(--soft); color: var(--mute); }
   .mic.busy svg { animation: blink 1s infinite; } @keyframes blink { 50% { opacity: .3; } }
   /* ===== Calm glass (24/11/2026, option 5): today's warm look; soft colour glows top and bottom; the header and the
@@ -319,6 +320,7 @@ async function ready() {
   $("app").style.display = ""; $("gate").style.display = "none";
   try { if ("serviceWorker" in navigator) navigator.serviceWorker.register("/portal/me-sw.js", { scope: "/portal/me" }).catch(() => {}); } catch (e) {}
   pagerSetup();
+  voiceReady();
   await load();
   const open = new URLSearchParams(location.search).get("open");
   if (open) { const it = ITEMS.find(x => String(x.id) === open); if (it) edit(it.id); history.replaceState(null, "", "?k=" + encodeURIComponent(K)); }
@@ -547,15 +549,23 @@ async function voiceReady() {
   return VOICE;
 }
 function stopRec() { clearTimeout(RECMAX); if (REC && REC.state !== "inactive") { try { REC.stop(); } catch (e) {} } }
-async function speak() {
+// Everything here starts in the same moment as the tap: on the iPhone, a keyboard, a microphone or sound started
+// after waiting for the server does not count as the tap and silently does nothing (the bug of 24/11/2026).
+function speak() {
+  const m = $("mic");
   if (REC) { stopRec(); return; }
-  if ($("mic").classList.contains("busy")) return;
-  if (!navigator.mediaDevices || !window.MediaRecorder || !(await voiceReady())) return keyboardMic();
-  let st;
-  try { st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
-  catch (e) { return keyboardMic("Allow the microphone for this app (iPhone Settings), or tap the 🎤 on your keyboard."); }
+  if (m.classList.contains("busy") || m.classList.contains("rec")) return;
+  try { ac(); } catch (e) {}                                     // wake the sound now, inside the tap
+  if (VOICE === false || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) return keyboardMic();
+  m.classList.add("rec"); $("hint").textContent = "Starting the mic…";
+  navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+    .then(st => record(st))
+    .catch(() => { m.classList.remove("rec"); keyboardMic("Allow the microphone: iPhone Settings → Safari → Microphone → Allow. Or tap the 🎤 on your keyboard."); });
+}
+function record(st) {
   const mt = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
-  const r = new MediaRecorder(st, mt ? { mimeType: mt } : {}), parts = []; REC = r;
+  let r; try { r = new MediaRecorder(st, mt ? { mimeType: mt } : {}); } catch (e) { st.getTracks().forEach(t => t.stop()); $("mic").classList.remove("rec"); return keyboardMic(); }
+  const parts = []; REC = r;
   let spoke = false, loud = 0, floor = 0, n = 0; const t0 = Date.now();
   // listen to the level: tells when you have finished, and makes the mic glow as you talk
   try {
@@ -580,7 +590,7 @@ async function speak() {
     try {
       const res = await fetch("/users/personal/voice?k=" + encodeURIComponent(K), { method: "POST", body: blob, headers: { "Content-Type": blob.type, "X-Personal-Device": DEV } });
       const d = await res.json().catch(() => ({}));
-      if (res.status === 503) { VOICE = false; return keyboardMic(); }
+      if (res.status === 503) { VOICE = false; $("hint").textContent = "Voice is not set up on the server yet - tap the box, then the 🎤 on your keyboard."; return; }
       if (!res.ok) throw new Error(d.detail || "Could not write that out.");
       if (!d.text) { $("hint").textContent = "Didn't catch that - tap the mic and try again."; return; }
       const q = $("q"); q.value = (q.value.trim() ? q.value.trim() + " " : "") + d.text.replace(/\.$/, "");
@@ -588,7 +598,7 @@ async function speak() {
     } catch (e) { $("hint").textContent = e.message + " Or tap the 🎤 on your keyboard."; }
     finally { m.classList.remove("busy"); }
   };
-  r.start(250); $("mic").classList.add("rec"); $("hint").textContent = "Listening…";
+  r.start(250); $("mic").classList.add("rec"); $("hint").textContent = "Listening… tap the mic when done";
   RECMAX = setTimeout(stopRec, 20000);
 }
 

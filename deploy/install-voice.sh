@@ -14,7 +14,7 @@ VENV_BIN="$(dirname "$(echo "$EXEC" | awk '{print $1}')")"
 DEST="$(dirname "$LIVE_DIR")/infinia-voice/base.en"
 
 echo "Installing faster-whisper into $VENV_BIN ..."
-"$VENV_BIN/pip" install -q "faster-whisper==1.1.1"
+"$VENV_BIN/pip" install -q "faster-whisper==1.1.1" "requests>=2.31"   # faster-whisper needs requests but does not install it
 echo "Downloading the speech model to $DEST ..."
 mkdir -p "$DEST"
 "$VENV_BIN/python" -c "from faster_whisper import download_model; download_model('base.en', output_dir='$DEST')"
@@ -22,3 +22,7 @@ chmod -R a+rX "$(dirname "$DEST")"
 [ -f "$DEST/model.bin" ] || { echo "The model did not download - check the internet on the server and run again."; exit 1; }
 echo "Checking it works ..."
 cd "$LIVE_DIR/app" && "$VENV_BIN/python" -c "import voice_stt; print('Voice ready:', voice_stt.ready())"
+T="$(mktemp --suffix=.wav)"
+"$VENV_BIN/python" -c "import wave; w=wave.open('$T','wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(b'\\0\\0'*16000); w.close()"
+if "$VENV_BIN/python" "$LIVE_DIR/app/voice_stt.py" "$DEST" "$T" >/dev/null; then echo "Test clip written out OK - the mic in the personal space works now."; else echo "The model did not run - send this screen to Claude."; fi
+rm -f "$T"

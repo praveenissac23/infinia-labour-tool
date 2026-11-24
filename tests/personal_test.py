@@ -233,7 +233,9 @@ ck("the page has its own notification worker (not the work app's)", 'register("/
 ck("swipe between Next / Calendar / Notes / Done, months slide with a strip that lights up", 'class="pager" id="pager"' in page and "scroll-snap-type: x mandatory" in page and 'id="mstrip"' in page and "function monthChanged" in page)
 ck("voice: records (Safari's own recognition is not used), stops by itself after a pause, on a second tap, or at 20 s",
    "new MediaRecorder(" in page and "webkitSpeechRecognition" not in page and "now - loud > 1400" in page and "if (REC) { stopRec(); return; }" in page and "setTimeout(stopRec, 20000)" in page)
-ck("voice not set up / no mic: falls back to the keyboard's own mic", "if (res.status === 503) { VOICE = false; return keyboardMic(); }" in page)
+ck("voice not set up / no mic: falls back to the keyboard's own mic", "if (VOICE === false ||" in page and "VOICE = false; $(\"hint\").textContent = \"Voice is not set up" in page)
+ck("the mic tap starts at once (no waiting first - the iPhone ignores a mic, keyboard or sound started after a wait)",
+   "\nfunction speak() {" in page and "async function speak" not in page and "voiceReady();\n  await load();" in page and "touch-action: manipulation" in page)
 ck("5 reminder sounds to pick in settings, each plays when tapped, kept on this phone",
    page.count('notes: [[') == 5 and 'id="soundList"' in page and "localStorage.setItem(\"me_sound\", k)" in page and "play(k);" in page)
 ck("the sound is woken by the first touch (the iPhone stays quiet otherwise)", '["touchend", "pointerdown", "keydown"].forEach' in page)
