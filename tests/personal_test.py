@@ -298,6 +298,8 @@ ck("tapping a swipe action (Delete) does not close the row first", 'if (e.target
 ck("the box follows the page: on Reminders it adds a reminder", "here: HERE()" in page)
 ck("no hint lines on the dashboard cards", "No meetings coming up" not in page and "Nothing due. Tap" not in page and "No notes. Tap" not in page)
 ck("every panel (settings too) closes with ✕ or a swipe down", 'class="shx" onclick="closeSheet()"' in page and "if (drag && dy > 90) closeSheet()" in page)
+ck("laptop: dashboard in three columns with a full month calendar (pick a day, move months); phone keeps the week strip",
+   "@media (min-width: 1024px)" in page and "function dashMonth(byDay)" in page and "dMove(1)" in page and "dPick(" in page and 'class="dgrid"' in page and "<div class=\"wk\">" in page)
 ck("Dashboard: reminders, calendar and notes together, each with its own mic", "function renderDash()" in page and 'dhead("Reminders", "task"' in page and 'dhead("Calendar", "event"' in page and 'dhead("Notes", "note"' in page and "TITLES = { dash: \"Dashboard\"" in page)
 ck("five tabs: Dashboard, Reminders, Calendar, Notes, Done", all(f'data-v="{v}"' in page for v in ("dash", "rem", "cal", "notes", "done")) and 'data-v="next"' not in page)
 ck("swipe a row: left for its actions, right to tick it off", "function swipeWrap" in page and '"touchmove"' in page and "{ passive: false }" in page and "x > 80" in page)

@@ -6,7 +6,7 @@
      Only at its own secret address (?k=...), only with the owner's login + PIN once per device. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="me-build" content="fb06ac9d3c1d">
+<meta name="me-build" content="4dec9424ae79">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -306,6 +306,31 @@
   :root { --tA: #FFF3C4; --tB: #FDE3DE; --tC: #ECE3FB; --tD: #DDF2EC; }
   html[data-theme=dark] { --tA: #3A3420; --tB: #3A221F; --tC: #2A2338; --tD: #1B3330; }
   html[data-theme=dark] .lay-tiles .tick { border-color: #ffffff40; background: #ffffff14; }
+  /* ===== laptop (25/11/2026): one wide frame; the dashboard in three columns with a full month calendar ===== */
+  @media (min-width: 1024px) {
+    .toprow, .subrow, .chips { max-width: 1680px; padding-left: 32px; padding-right: 32px; }
+    .pg > * { max-width: 1680px; } .pg > .dgrid { padding: 6px 32px 0; }
+    .dgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; align-items: start; margin: 0 auto; }
+    .dgrid .dcard { margin: 0; max-height: calc(100vh - 300px); overflow-y: auto; overscroll-behavior: contain; padding-bottom: 12px; }
+    .dgrid .dcard .dhead { position: sticky; top: -10px; z-index: 3; background: var(--card); padding-top: 10px; margin-top: -10px; border-radius: 24px 24px 0 0; }
+    .dsec { margin: 12px 18px 8px; display: flex; align-items: center; justify-content: space-between; }
+    .dsec .dplus { width: 28px; height: 28px; } .dsec .dplus svg { width: 15px; height: 15px; }
+    .dmon { padding: 0 14px; } .dmon .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .dmon .dn { text-align: center; font-size: 11px; font-weight: 800; color: var(--mute); padding: 4px 0 6px; letter-spacing: .08em; }
+    .dmon .grid button { aspect-ratio: auto; height: 46px; border-radius: 14px; font-size: 15px; font-weight: 600; position: relative; display: grid; place-items: center; }
+    .dmon .grid button:hover { background: var(--soft); } .dmon .grid button.oth { opacity: .35; }
+    .dmon .grid button.td { color: var(--redtx); box-shadow: inset 0 0 0 1.5px var(--red); } .dmon .grid button.sel { background: var(--red); color: #fff; box-shadow: none; }
+    .dmon .grid button .dots { position: absolute; bottom: 6px; left: 0; right: 0; display: flex; gap: 3px; justify-content: center; }
+    .dmon .grid button .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--red); } .dmon .grid button .dots i.p { background: #8E5BD6; } .dmon .grid button .dots i.e { background: #2F7FD8; }
+    .dmon .grid button.sel .dots i { background: #fff; }
+    .dmh { display: flex; align-items: center; gap: 6px; padding: 0 4px 8px; } .dmh b { font-size: 18px; font-weight: 800; } .dmh b span { color: var(--mute); font-weight: 600; }
+    .dmh button { min-width: 34px; height: 34px; border-radius: 17px; background: var(--soft); font-size: 18px; font-weight: 700; padding: 0 10px; } .dmh .tdb { font-size: 13px; }
+    .bar { left: max(10px, calc(50% - 440px)); right: max(10px, calc(50% - 440px)); }
+    .pg { padding-bottom: 170px; }
+    .lay-grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); } .lay-tiles { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+    .dgrid .lay-grid, .dgrid .lay-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sw .it:hover { filter: brightness(1.04); } .it { cursor: default; } .tx, .rt { cursor: pointer; }
+  }
   @media (min-width: 900px) {
     .two { display: grid; grid-template-columns: 1fr 380px; gap: 10px; align-items: start; }
     .two .side { position: sticky; top: 10px; }
@@ -547,20 +572,56 @@ function headActs() {
 function dhead(title, kind, n) {
   return `<div class="dhead"><button class="dt" onclick="show('${KV[kind]}')">${title}${n ? `<span class="n">${n}</span>` : ""}<i>›</i></button><button class="slay" onclick="nextLay('${KV[kind]}')" aria-label="Change layout">${LAYI[lay(KV[kind])]}</button><button class="smic" onclick="speak('${kind}')" aria-label="Speak a ${K1[kind]}">${MICI}</button></div>`;
 }
-function renderDash() {
-  const n = dubaiNow(), today = iso(n);
-  const ts = openTasks(), soon = ts.filter(i => ["overdue", "today", "tomorrow"].includes(bucket(i)));
-  const shown = (soon.length ? soon : ts).slice(0, 5);
-  let h = `<div class="dcard">${dhead("Reminders", "task", ts.length)}${wrapLay("rem", shown.map(i => rowHtml(i, bucket(i))).join(""))}${ts.length > shown.length ? `<button class="more" onclick="show('rem')">All ${ts.length} reminders ›</button>` : ""}</div>`;
-  const byDay = {}; ITEMS.filter(i => i.due_on && i.kind !== "note" && !i.done_at && keep(i)).forEach(i => (byDay[i.due_on] = byDay[i.due_on] || []).push(i));
-  let wk = ""; for (let k = 0; k < 7; k++) { const d = new Date(n); d.setDate(n.getDate() + k); const sd = iso(d), its = byDay[sd] || [];
-    wk += `<button class="${k === 0 ? "td" : ""}" onclick="openDay('${sd}')"><small>${DAY[d.getDay()]}</small><b>${d.getDate()}</b><span class="dots">${its.slice(0, 3).map(i => `<i class="${i.kind === "event" ? "e" : i.tag === "personal" ? "p" : ""}"></i>`).join("")}</span></button>`; }
-  const ev = comingEvents(), evs = ev.slice(0, 4);
-  h += `<div class="dcard">${dhead("Calendar", "event", ev.length)}<div class="wk">${wk}</div>${wrapLay("cal", evs.map(i => rowHtml(i, i.due_on === today ? "" : "ev")).join(""))}${ev.length > evs.length ? `<button class="more" onclick="show('cal')">All ${ev.length} coming up ›</button>` : ""}</div>`;
-  const ns = openNotes(), nsh = ns.slice(0, 6);
-  h += `<div class="dcard">${dhead("Notes", "note", ns.length)}${wrapLay("notes", nsh.map(i => rowHtml(i, "")).join(""))}${ns.length > nsh.length ? `<button class="more" onclick="show('notes')">All ${ns.length} notes ›</button>` : ""}</div>`;
-  $("pg-dash").innerHTML = h;
+// Laptop (25/11/2026): the dashboard is three columns - Reminders | a full month calendar | Notes - and shows everything.
+const WIDE = () => window.matchMedia("(min-width: 1024px)").matches;
+let DMON = null, DSEL = null;                          // the dashboard's own month and picked day (laptop)
+function dMove(k) { const m = DMON || new Date(dubaiNow().getFullYear(), dubaiNow().getMonth(), 1); DMON = new Date(m.getFullYear(), m.getMonth() + k, 1); renderDash(); }
+function dToday() { const n = dubaiNow(); DMON = new Date(n.getFullYear(), n.getMonth(), 1); DSEL = iso(n); renderDash(); }
+function dPick(s) { DSEL = s; renderDash(); }
+function dashMonth(byDay) {
+  const n = dubaiNow(), m = DMON || new Date(n.getFullYear(), n.getMonth(), 1), sel = DSEL || iso(n);
+  const start = new Date(m); start.setDate(1 - ((m.getDay() + 6) % 7));
+  let g = ["M", "T", "W", "T", "F", "S", "S"].map(x => `<div class="dn">${x}</div>`).join("");
+  for (let k = 0; k < 42; k++) {
+    const d = new Date(start); d.setDate(start.getDate() + k);
+    if (k >= 35 && d.getMonth() !== m.getMonth()) break;
+    const s = iso(d), its = byDay[s] || [], oth = d.getMonth() !== m.getMonth();
+    g += `<button class="${s === iso(n) ? "td" : ""}${s === sel ? " sel" : ""}${oth ? " oth" : ""}" onclick="dPick('${s}')">${d.getDate()}${its.length ? `<span class="dots">${its.slice(0, 3).map(i => `<i class="${i.kind === "event" ? "e" : i.tag === "personal" ? "p" : ""}"></i>`).join("")}</span>` : ""}</button>`;
+  }
+  const day = (byDay[sel] || []).slice().sort(byWhen), sd = new Date(sel + "T12:00");
+  const next = comingEvents().filter(i => i.due_on > sel).slice(0, 5);
+  return `<div class="mon dmon"><div class="dmh"><b>${MON[m.getMonth()]} <span>${m.getFullYear()}</span></b><span style="flex:1"></span>
+      <button onclick="dMove(-1)" aria-label="Previous month">‹</button><button class="tdb" onclick="dToday()">Today</button><button onclick="dMove(1)" aria-label="Next month">›</button></div>
+    <div class="grid">${g}</div></div>
+    <div class="sec dsec">${DAY[sd.getDay()]} ${dmy(sel)}<button class="dplus" onclick="edit(null,'${sel}','event')" aria-label="Add on this day">${PLUSI}</button></div>
+    ${wrapLay("cal", day.map(i => rowHtml(i, i.kind === "task" && bucket(i) === "overdue" ? "overdue" : "")).join("")) || `<div class="dempty">Nothing on this day.</div>`}
+    ${next.length ? `<div class="sec dsec">Coming up</div>` + wrapLay("cal", next.map(i => rowHtml(i, "ev")).join("")) : ""}`;
 }
+function renderDash() {
+  const n = dubaiNow(), today = iso(n), wide = WIDE();
+  const ts = openTasks(), soon = ts.filter(i => ["overdue", "today", "tomorrow"].includes(bucket(i)));
+  const shown = wide ? ts : (soon.length ? soon : ts).slice(0, 5);
+  const byDay = {}; ITEMS.filter(i => i.due_on && i.kind !== "note" && !i.done_at && keep(i)).forEach(i => (byDay[i.due_on] = byDay[i.due_on] || []).push(i));
+  let rem;
+  if (wide) {                                          // all of them, grouped like the Reminders page
+    rem = [["overdue", "● Overdue", "red"], ["today", "Today"], ["tomorrow", "Tomorrow"], ["week", "This week"], ["later", "Later"], ["nodate", "Any time"]]
+      .map(([k, l, c]) => { const rs = ts.filter(i => bucket(i) === k); return rs.length ? `<div class="sec dsec ${c || ""}">${l}</div>` + wrapLay("rem", rs.map(i => rowHtml(i, k)).join("")) : ""; }).join("");
+  } else rem = wrapLay("rem", shown.map(i => rowHtml(i, bucket(i))).join(""));
+  let h = `<div class="dcard">${dhead("Reminders", "task", ts.length)}${rem}${ts.length > shown.length ? `<button class="more" onclick="show('rem')">All ${ts.length} reminders ›</button>` : ""}</div>`;
+  const ev = comingEvents();
+  if (wide) h += `<div class="dcard">${dhead("Calendar", "event", ev.length)}${dashMonth(byDay)}</div>`;
+  else {
+    let wk = ""; for (let k = 0; k < 7; k++) { const d = new Date(n); d.setDate(n.getDate() + k); const sd = iso(d), its = byDay[sd] || [];
+      wk += `<button class="${k === 0 ? "td" : ""}" onclick="openDay('${sd}')"><small>${DAY[d.getDay()]}</small><b>${d.getDate()}</b><span class="dots">${its.slice(0, 3).map(i => `<i class="${i.kind === "event" ? "e" : i.tag === "personal" ? "p" : ""}"></i>`).join("")}</span></button>`; }
+    const evs = ev.slice(0, 4);
+    h += `<div class="dcard">${dhead("Calendar", "event", ev.length)}<div class="wk">${wk}</div>${wrapLay("cal", evs.map(i => rowHtml(i, i.due_on === today ? "" : "ev")).join(""))}${ev.length > evs.length ? `<button class="more" onclick="show('cal')">All ${ev.length} coming up ›</button>` : ""}</div>`;
+  }
+  const ns = openNotes(), nsh = wide ? ns : ns.slice(0, 6);
+  h += `<div class="dcard">${dhead("Notes", "note", ns.length)}${wrapLay("notes", nsh.map(i => rowHtml(i, "")).join(""))}${ns.length > nsh.length ? `<button class="more" onclick="show('notes')">All ${ns.length} notes ›</button>` : ""}</div>`;
+  $("pg-dash").innerHTML = `<div class="dgrid">${h}</div>`;
+}
+let WASWIDE = null;
+window.addEventListener("resize", () => { const w = WIDE(); if (WASWIDE !== null && w !== WASWIDE && ITEMS.length) render(); WASWIDE = w; });
 function openDay(d) { CALSEL = d; const n = dubaiNow(), m = new Date(d + "T12:00"); show("cal"); setTimeout(() => goMonth(6 + (m.getFullYear() - n.getFullYear()) * 12 + m.getMonth() - n.getMonth(), false), 350); setTimeout(() => pickDay(d), 400); }
 function renderRem() {
   const open = openTasks();
