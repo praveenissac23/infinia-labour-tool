@@ -313,14 +313,11 @@ def parse(text: str, now: datetime = None, kind: str = None, here: str = None) -
             m = re.search(_REM_CMD, raw, re.I)
             if m and m.group(0).strip():
                 said, raw, out["remind"] = "task", raw[m.end():], True
-    kind = kind if kind in KINDS else None
-    here = here if here in KINDS else None
-    if (kind or said or here) == "note":
-        out["kind"] = "note"                     # a note is kept as written - no dates read out of it
-        body = re.sub(r"\s+", " ", re.sub(r"#(work|office|personal|home|me)\b", "", raw, flags=re.I)).strip(" ,.-")
-        out["title"] = body[:1].upper() + body[1:]
-        out["tag"] = "work" if re.search(r"#(work|office)\b", raw, re.I) or re.search(WORK_WORDS, raw, re.I) else "personal"
-        return out
+    # Only two sections now (25/11/2026): Notes and Calendar. A reminder is a note with a time - so "task" (the old
+    # Reminders) is read as a note, and a note that says a day or a time rings then.
+    kind = "note" if kind == "task" else kind if kind in KINDS else None
+    here = "note" if here == "task" else here if here in KINDS else None
+    said = "note" if said == "task" else said
     t = " " + raw + " "
 
     def cut(pat, fn=None, flags=re.I):
@@ -343,7 +340,8 @@ def parse(text: str, now: datetime = None, kind: str = None, here: str = None) -
     cut(r"#(personal|home|me)\b", lambda m: out.update(tag="personal"))
     if cut(r"^\s*remind\s+me\s*(to\b|about\b|that\b)?"):
         out["remind"] = True
-    cut(r"\bevery\s+(day|week|month|year)\b|\b(daily|weekly|monthly|yearly)\b",
+    # a repeat: "every week" anywhere, or "weekly" as the last word ("pay rent monthly") - never "weekly review"
+    cut(r"\bevery\s+(day|week|month|year)\b|\b(daily|weekly|monthly|yearly)\b(?=[\s.!]*$)",
         lambda m: out.update(repeat={"day": "daily", "week": "weekly", "month": "monthly", "year": "yearly"}.get(m.group(1) or "", m.group(2) or "")))
 
     # relative: in 2 hours / in 30 min / in 3 days
@@ -433,17 +431,12 @@ def parse(text: str, now: datetime = None, kind: str = None, here: str = None) -
         out["tag"] = "work" if re.search(WORK_WORDS, text or "", re.I) else "personal"
     k = kind or said or here
     if not k:
-        if re.match(_EVENT_WORD, raw, re.I) and out["due_on"]:
-            k = "event"                          # "meeting with the client Thursday 3pm"
-        elif out["due_on"] or out["due_time"] or out["repeat"] or out["remind"]:
-            k = "task"
-        else:
-            return parse(text, now, "note")      # nothing timed: it goes on the follow-up list
+        k = "event" if re.match(_EVENT_WORD, raw, re.I) and out["due_on"] else "note"   # "meeting with the client Thursday 3pm"
     out["kind"] = k
     if k == "event" and not out["due_on"]:
         out["due_on"] = today
-    if out["due_time"] and k == "task":
-        out["remind"] = True                     # a time given = ring at that time (the point of the page)
+    if out["due_time"] and k == "note":
+        out["remind"] = True                     # a time given = ring at that time
     return out
 
 
@@ -548,8 +541,8 @@ def quick(payload: dict = Body(...), s: PersonalSettings = Depends(me), db: Sess
     _apply(i, {"kind": p["kind"], "title": title, "body": body,
                "tag": p["tag"], "repeat": p["repeat"],
                "due_on": p["due_on"].isoformat() if p["due_on"] else "", "due_time": p["due_time"]})
-    if p["due_on"] and p["kind"] == "task":
-        _apply(i, {"remind_before": 0})          # a date without a time still rings - at 9:00 that morning
+    if p["due_on"] and p["kind"] in ("task", "note"):
+        _apply(i, {"remind_before": 0})          # a note with a date rings then - at 9:00 that morning without a time
     elif p["due_on"] and p["kind"] == "event":
         _apply(i, {"remind_before": 15 if p["due_time"] else 0})   # a meeting rings 15 min before; all day at 9:00
     db.add(i); db.commit()

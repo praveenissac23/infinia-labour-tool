@@ -73,7 +73,7 @@ x = pp("dentist 4 Dec 4pm"); ck("'4 Dec 4pm'", (x["due_on"], x["due_time"]) == (
 x = pp("renew visa 10/11"); ck("a date already gone this year -> next year", x["due_on"] == date(2027, 11, 10), x)
 x = pp("meeting with client next monday 9:30am"); ck("'next monday 9:30am'", (x["due_on"], x["due_time"], x["tag"]) == (date(2026, 11, 30), "09:30", "work"), x)
 x = pp("Send proposal fri #personal"); ck("#personal wins over work words", (x["tag"], x["due_on"]) == ("personal", date(2026, 11, 27)), x)
-x = pp("note: weekly review ideas tomorrow"); ck("a note keeps every word (no date read from it)", (x["kind"], x["title"], x["due_on"], x["repeat"]) == ("note", "Weekly review ideas tomorrow", None, ""), x)
+x = pp("note: weekly review ideas tomorrow"); ck("a note keeps every word (no date read from it)", (x["kind"], x["title"], x["due_on"], x["repeat"]) == ("note", "Weekly review ideas", date(2026, 11, 25), ""), x)
 for t, want in [("add a new note to follow up with Anoop on the BOQ", ("note", "Follow up with Anoop on the BOQ", None, "")),
                 ("Add a note. Check the scaffolding permit.", ("note", "Check the scaffolding permit", None, "")),
                 ("put this in my notes call Shafiq about PDC", ("note", "Call Shafiq about PDC", None, "")),
@@ -83,15 +83,17 @@ for t, want in [("add a new note to follow up with Anoop on the BOQ", ("note", "
                 ("Put it in my calendar, site visit at villa 920 on Friday 8am.", ("event", "Site visit at villa 920", date(2026, 11, 27), "08:00")),
                 ("dentist 4 Dec 4pm to my calendar", ("event", "Dentist", date(2026, 12, 4), "16:00")),
                 ("calendar: Diwali party 28/11", ("event", "Diwali party", date(2026, 11, 28), "")),
-                ("Remind me, tomorrow at 9am, to sign the payroll.", ("task", "Sign the payroll", date(2026, 11, 25), "09:00")),
-                ("set a reminder to pay DEWA tomorrow", ("task", "Pay DEWA", date(2026, 11, 25), ""))]:
+                ("Remind me, tomorrow at 9am, to sign the payroll.", ("note", "Sign the payroll", date(2026, 11, 25), "09:00")),
+                ("set a reminder to pay DEWA tomorrow", ("note", "Pay DEWA", date(2026, 11, 25), ""))]:
     x = pp(t); ck(f"said '{t}' -> {want[0]}", (x["kind"], x["title"], x["due_on"], x["due_time"]) == want, x)
-x = P.parse("call the bank tomorrow 10am", now, "note"); ck("the Notes mic keeps it a note, words and all", (x["kind"], x["title"], x["due_on"]) == ("note", "Call the bank tomorrow 10am", None), x)
+x = P.parse("call the bank tomorrow 10am", now, "note"); ck("the Notes mic: a note that rings at the time it says", (x["kind"], x["title"], x["due_on"], x["due_time"], x["remind"]) == ("note", "Call the bank", date(2026, 11, 25), "10:00", True), x)
+x = P.parse("note: Ideas - voice notes, weekly review", now); ck("'weekly' inside a note is just a word, not a repeat", (x["title"], x["repeat"]) == ("Ideas - voice notes, weekly review", ""), x)
+x = P.parse("pay rent monthly", now); ck("...but 'monthly' at the end is a repeat", (x["title"], x["repeat"]) == ("Pay rent", "monthly"), x)
 x = P.parse("check villa 909 snags", now, "event"); ck("the Calendar mic makes a calendar entry (today when no day said)", (x["kind"], x["due_on"]) == ("event", date(2026, 11, 24)), x)
-x = P.parse("chase the LPO", now, None, "task"); ck("typed on the Reminders page with no time: a reminder, not a note", (x["kind"], x["title"], x["due_on"]) == ("task", "Chase the LPO", None), x)
+x = P.parse("chase the LPO", now, None, "task"); ck("an old Reminders page / mic (cached app) now makes a note", (x["kind"], x["title"], x["due_on"]) == ("note", "Chase the LPO", None), x)
 x = P.parse("add a note check permits", now, None, "task"); ck("...but words that say note still make a note there", x["kind"] == "note", x)
 x = P.parse("review drawings", now, None, "event"); ck("typed on the Calendar page: a calendar entry today", (x["kind"], x["due_on"]) == ("event", date(2026, 11, 24)), x)
-x = P.parse("chase the LPO", now, "task"); ck("the Reminders mic makes a reminder even without a time", x["kind"] == "task", x)
+
 x = pp("renew car registration yesterday"); ck("'yesterday' -> overdue at once", (x["title"], x["due_on"]) == ("Renew car registration", date(2026, 11, 23)), x)
 for t, want in [("send 3 amendments to client", ("Send 3 amendments to client", None, "")),
                 ("order 2 amps for villa 909", ("Order 2 amps for villa 909", None, "")),
@@ -104,7 +106,8 @@ for t, want in [("send 3 amendments to client", ("Send 3 amendments to client", 
     x = pp(t); ck(f"'{t}' read right", (x["title"], x["due_on"], x["due_time"]) == want, x)
 x = pp("buy milk"); ck("no date: any time, no reminder", (x["title"], x["due_on"], x["remind"]) == ("Buy milk", None, False), x)
 
-# ---- items through the API ----
+# ---- items through the API ---- (the clock is pinned to 24/11/2026 19:00 so the dates below never go stale)
+_clock = mock.patch.object(P, "dubai_now", lambda: datetime(2026, 11, 24, 19, 0)); _clock.start()
 with mock.patch.object(P, "dubai_now", lambda: datetime(2026, 11, 24, 8, 0)):
     a = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "renew car registration tomorrow"}).json()
 ck("a date without a time still rings - 09:00 that day", a["due_on"] == "2026-11-25" and a["remind_at"] == "2026-11-25T09:00", a)
@@ -221,8 +224,8 @@ ck("a reminder 5 days old (server was off) is not rung late, just marked", n3 ==
 
 r = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "meeting with the client 30/11 3pm"}).json()
 ck("a calendar entry with a time rings 15 min before", r["kind"] == "event" and r["remind_at"] == "2026-11-30T14:45", r)
-r = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "call the bank tomorrow 10am", "kind": "note"}).json()
-ck("quick add into the Notes section stays a note", r["kind"] == "note" and not r["remind_at"], r)
+r = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "call the bank 26/11 10am", "kind": "note"}).json()
+ck("quick add into Notes with a time: a note that rings then", r["kind"] == "note" and r["remind_at"] == "2026-11-26T10:00", r)
 r = c.put(f"/users/personal/items/{r['id']}?k={K}", headers=D, json={"kind": "task", "due_on": "2026-12-01", "due_time": "09:00", "remind_before": 0}).json()
 ck("a note moved to Reminders gets its date and ring", r["kind"] == "task" and r["remind_at"] == "2026-12-01T09:00", r)
 c.delete(f"/users/personal/items/{r['id']}?k={K}", headers=D)
@@ -282,7 +285,7 @@ ck("the app checks for a new version on every open and reloads itself; a Refresh
    "checkVersion();" in page and "if (!document.hidden) { checkVersion();" in page and 'onclick="hardRefresh()"' in page and '"&r=" + Date.now()' in page and 'sessionStorage.setItem("me_reload", v)' in page)
 ck("every section can show as List, Compact, Grid or Tiles - a small icon on its page and its dashboard card (not in settings), kept on the phone",
    all(f'["{k}",' in page for k in ("list", "compact", "grid", "tiles")) and "function nextLay" in page and '<div id="layRows">' not in page and 'class="slay" onclick="nextLay(' in page and
-   'wrapLay("notes"' in page and 'wrapLay("rem"' in page and 'wrapLay("cal"' in page and 'wrapLay("done"' in page and 'localStorage.setItem("me_lay_" + sec, v)' in page)
+   'wrapLay("notes"' in page and 'wrapLay("cal"' in page and 'wrapLay("done"' in page and 'localStorage.setItem("me_lay_" + sec, v)' in page)
 ck("remind me: a Custom choice for any amount before (minutes / hours / days / weeks)", '["custom", "Custom…"]' in page and 'id="e-cn"' in page and "n * +$(\"e-cu\").value" in page)
 r = c.post(f"/users/personal/items?k={K}", headers=D, json={"kind": "event", "title": "Site handover", "due_on": "2026-12-10", "due_time": "15:00", "remind_before": "300"}).json()
 ck("a custom 5 hours before rings at 10:00 for a 15:00 meeting", r["remind_at"] == "2026-12-10T10:00" and r["remind_before"] == 300, r)
@@ -291,8 +294,8 @@ ck("no space wasted: ＋, 🎤 and layout are small buttons in the header (no ad
 ck("calendar: a small + by the day (no big Add-on-this-day button)", "+ Add on this day" not in page and 'class="dplus"' in page)
 ck("Done: group by day / section / work-personal / none, sort newest / oldest / A-Z, kept on the phone",
    "function pickDone()" in page and all(x in page for x in ('["day", "Day"]', '["kind", "Section"]', '["tag", "Work / Personal"]', '["az", "A to Z"]', '"me_done_group"', '"me_done_sort"')))
-r = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "chase the LPO", "here": "task"}).json()
-ck("quick add from the Reminders page lands in Reminders", r["kind"] == "task", r)
+r = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "chase the LPO", "here": "note"}).json()
+ck("quick add on the Notes page: a note", r["kind"] == "note", r)
 ck("deleting it removes it from the list", c.delete(f"/users/personal/items/{r['id']}?k={K}", headers=D).json() == {"ok": True} and all(i["id"] != r["id"] for i in c.get(f"/users/personal/items?k={K}", headers=D).json()["items"]))
 ck("tapping a swipe action (Delete) does not close the row first", 'if (e.target.closest && e.target.closest(".sact")) { SW = null; return; }' in page)
 ck("the box follows the page: on Reminders it adds a reminder", "here: HERE()" in page)
@@ -300,8 +303,10 @@ ck("no hint lines on the dashboard cards", "No meetings coming up" not in page a
 ck("every panel (settings too) closes with ✕ or a swipe down", 'class="shx" onclick="closeSheet()"' in page and "if (drag && dy > 90) closeSheet()" in page)
 ck("laptop: dashboard in three columns with a full month calendar (pick a day, move months); phone keeps the week strip",
    "@media (min-width: 1024px)" in page and "function dashMonth(byDay)" in page and "dMove(1)" in page and "dPick(" in page and 'class="dgrid"' in page and "<div class=\"wk\">" in page)
-ck("Dashboard: reminders, calendar and notes together, each with its own mic", "function renderDash()" in page and 'dhead("Reminders", "task"' in page and 'dhead("Calendar", "event"' in page and 'dhead("Notes", "note"' in page and "TITLES = { dash: \"Dashboard\"" in page)
-ck("five tabs: Dashboard, Reminders, Calendar, Notes, Done", all(f'data-v="{v}"' in page for v in ("dash", "rem", "cal", "notes", "done")) and 'data-v="next"' not in page)
+ck("Dashboard: notes (with their reminders) and calendar together, each with its own mic", "function renderDash()" in page and 'dhead("Reminders"' not in page and 'dhead("Calendar", "event"' in page and 'dhead("Notes", "note"' in page and "TITLES = { dash: \"Dashboard\"" in page)
+ck("four tabs: Dashboard, Calendar, Notes, Done (no separate Reminders)", all(f'data-v="{v}"' in page for v in ("dash", "cal", "notes", "done")) and 'data-v="rem"' not in page and 'data-v="next"' not in page)
+ck("notes with a time come first (Overdue, Today, Tomorrow...), then the rest; old reminders show as notes", "function notesGrouped" in page and '["nodate", "Anytime"]' in page and 'const isNote = i => i.kind === "note" || i.kind === "task"' in page)
+ck("the edit panel: Note (any note can get a date, time and ring) or Calendar", '["note", "event"].map' in page and "Remind me on" in page)
 ck("swipe a row: left for its actions, right to tick it off", "function swipeWrap" in page and '"touchmove"' in page and "{ passive: false }" in page and "x > 80" in page)
 ck("a section's mic sends its kind; the box shows where the line will go", "kind: TARGET" in page and "setTarget(L.kind)" in page and 'id="tgt"' in page)
 ck("light / dark / as the phone", "html[data-theme=dark]" in page and "function setTheme" in page)
