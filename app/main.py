@@ -16220,7 +16220,10 @@ app.include_router(credentials.router)
 credentials.Credential.__table__.create(bind=engine, checkfirst=True)
 import personal  # noqa: E402  (24/11/2026: an admin's own never-forget list, at their own address)
 app.include_router(personal.router)
-personal.create_tables(engine)
+try:                                                     # never let the personal space stop the app starting
+    personal.create_tables(engine)
+except Exception as _e:
+    print("personal tables:", _e)
 try:   # a column added after the table was first made
     from sqlalchemy import inspect as _insp, text as _text
     if "admin_only" not in {c["name"] for c in _insp(engine).get_columns("credentials")}:

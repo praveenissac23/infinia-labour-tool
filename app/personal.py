@@ -90,6 +90,7 @@ class PersonalItem(Base):
     reminded_at = Column(DateTime, nullable=True)
     repeat = Column(String, default="")            # daily / weekly / monthly / yearly
     pinned = Column(Boolean, default=False)
+    pos = Column(Integer, nullable=True)            # the place it was dragged to (25/11/2026); empty = in time order
     done_at = Column(DateTime, nullable=True)
     deleted = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -111,6 +112,15 @@ class PersonalPush(Base):
 def create_tables(engine):
     for t in (PersonalSettings, PersonalDevice, PersonalItem, PersonalPush):
         t.__table__.create(bind=engine, checkfirst=True)
+    # columns added after the tables were first made (personal_items.pos, 25/11/2026) - empty for every old row
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    for t in (PersonalItem,):
+        have = {c["name"] for c in insp.get_columns(t.__tablename__)}
+        for col in t.__table__.columns:
+            if col.name not in have:
+                with engine.begin() as cx:
+                    cx.execute(text(f'ALTER TABLE {t.__tablename__} ADD COLUMN {col.name} {col.type.compile(engine.dialect)}'))
 
 
 # ---- who is asking ---------------------------------------------------------------------------------------------------
@@ -473,7 +483,7 @@ def _dict(i: PersonalItem) -> dict:
             "due_on": i.due_on.isoformat() if i.due_on else "", "due_time": i.due_time or "",
             "remind_at": i.remind_at.isoformat(timespec="minutes") if i.remind_at else "",
             "remind_before": i.remind_before if i.remind_before is not None else "",
-            "reminded": bool(i.reminded_at), "repeat": i.repeat or "", "pinned": bool(i.pinned),
+            "reminded": bool(i.reminded_at), "repeat": i.repeat or "", "pinned": bool(i.pinned), "pos": i.pos,
             "done_at": i.done_at.isoformat(timespec="minutes") if i.done_at else "",
             "updated_at": i.updated_at.isoformat(timespec="seconds") if i.updated_at else ""}
 
@@ -645,6 +655,38 @@ def delete_item(iid: int, s: PersonalSettings = Depends(me), db: Session = Depen
     i.deleted, i.updated_at = True, datetime.utcnow()
     db.commit()
     return {"ok": True}
+
+
+# ---- move cards like Trello (25/11/2026): the new order of a group, and the day group it was dropped into ---------
+
+@router.post("/users/personal/order")
+def reorder(payload: dict = Body(...), s: PersonalSettings = Depends(me), db: Session = Depends(get_db)):
+    """ids = the cards of one group in their new order. moved + to = a card dropped into another group:
+    'today' / 'tomorrow' gives it that day (its time kept), 'anytime' takes its date and ring away."""
+    ids = [int(x) for x in (payload.get("ids") or []) if str(x).isdigit()][:500]
+    mine = {i.id: i for i in db.query(PersonalItem).filter(PersonalItem.user_id == s.user_id, PersonalItem.id.in_(ids or [0]),
+                                                           PersonalItem.deleted == False).all()}  # noqa: E712
+    for k, iid in enumerate(ids):
+        if iid in mine:
+            mine[iid].pos = k
+    moved, to = payload.get("moved"), payload.get("to") or ""
+    if moved is not None and to:
+        i = mine.get(int(moved)) if str(moved).isdigit() else None
+        if not i:
+            raise HTTPException(404, "Not there any more.")
+        today = dubai_now().date()
+        if to == "anytime":
+            _apply(i, {"due_on": "", "due_time": "", "repeat": "", "remind_before": ""})
+        elif to in ("today", "tomorrow"):
+            d = today if to == "today" else today + timedelta(days=1)
+            p = {"due_on": d.isoformat(), "remind_before": i.remind_before if i.remind_before is not None else 0}
+            if to == "today" and i.due_time and i.due_time <= dubai_now().strftime("%H:%M"):
+                p["due_time"] = ""                   # its time has gone today - keep it today, not overdue again
+            _apply(i, p)
+        else:
+            raise HTTPException(400, "Open it to pick a date.")
+    db.commit()
+    return {"items": [_dict(i) for i in mine.values()]}
 
 
 # ---- the page's version: a Home Screen app keeps the old page; it asks this and reloads itself when newer ----------

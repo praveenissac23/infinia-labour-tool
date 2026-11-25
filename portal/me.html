@@ -6,7 +6,7 @@
      Only at its own secret address (?k=...), only with the owner's login + PIN once per device. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="me-build" content="8ac602c0fc5f">
+<meta name="me-build" content="ae564e6725ec">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -279,6 +279,16 @@
   .slay { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--mute); margin-left: auto; margin-right: 4px; }
   .slay svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
   .seg.icons button { display: grid; place-items: center; } .seg.icons svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+  /* moving notes */
+  [data-g] > .sw > .it { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  @media (hover: hover) { [data-g] > .sw > .it { cursor: grab; } }
+  body.dragging, body.dragging * { cursor: grabbing !important; }
+  .sw.ph { opacity: .3; } .sw.ph > .it { box-shadow: none; }
+  .sw.ghost { position: fixed; z-index: 300; margin: 0; pointer-events: none; transform: rotate(1.2deg) scale(1.03); transition: none; }
+  .sw.ghost > .it { box-shadow: 0 18px 44px rgba(0,0,0,.30); } .sw.ghost .sact { display: none; }
+  .dz, .dzl { display: none; }
+  body.dragging .dz { display: block; } body.dragging .dzl { display: block; min-height: 64px; margin: 0 16px 9px; border: 2px dashed var(--line); border-radius: 18px; }
+  body.dragging [data-g]:empty::after { content: "Drop here"; display: grid; place-items: center; height: 60px; color: var(--mute); font-size: 13px; font-weight: 600; }
   /* layouts */
   .lbtn { flex: none; width: 44px; justify-content: center; padding: 10px 0; } .lbtn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
   .lays { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -486,7 +496,7 @@ async function ready() {
   window.addEventListener("pageshow", e => { if (e.persisted) checkVersion(); });
 }
 async function load() {
-  try { const d = await api("/users/personal/items"); ITEMS = d.items; render(); checkRing(); } catch (e) {}
+  try { const d = await api("/users/personal/items"); if (DR) return; ITEMS = d.items; render(); checkRing(); } catch (e) {}   // not in the middle of moving a card
 }
 const when = i => i.due_on ? new Date(i.due_on + "T" + (i.due_time || "23:59") + ":00") : null;
 function bucket(i) {
@@ -543,9 +553,14 @@ const openNotes = () => ITEMS.filter(i => isNote(i) && !i.done_at && keep(i)).so
 const NGROUPS = [["overdue", "● Overdue", "red"], ["today", "Today"], ["tomorrow", "Tomorrow"], ["week", "This week"], ["later", "Later"], ["nodate", "Anytime"]];
 function notesGrouped(ns, cls, max) {
   let left = max || 1e9;
-  return NGROUPS.map(([k, l, c]) => { let rs = ns.filter(i => (i.due_on ? bucket(i) : "nodate") === k); if (!rs.length || left <= 0) return "";
+  const byPos = (a, b) => (b.pinned - a.pinned) || (a.pos == null ? 1e9 : a.pos) - (b.pos == null ? 1e9 : b.pos);    // pinned, dragged order, then time
+  return NGROUPS.map(([k, l, c]) => {
+    let rs = ns.filter(i => (i.due_on ? bucket(i) : "nodate") === k).sort(byPos);
+    if (!rs.length || left <= 0)                               // an empty Today / Tomorrow / Anytime shows only while dragging
+      return ["today", "tomorrow", "nodate"].includes(k) ? `<div class="sec dz ${cls || ""}">${l}</div><div class="lay lay-${lay("notes")} dzl" data-g="${k}"></div>` : "";
     rs = rs.slice(0, left); left -= rs.length;
-    return `<div class="sec ${cls || ""} ${c || ""}">${l}</div>` + wrapLay("notes", rs.map(i => rowHtml(i, k === "nodate" ? "" : k)).join("")); }).join("");
+    return `<div class="sec ${cls || ""} ${c || ""}">${l}</div><div class="lay lay-${lay("notes")}" data-g="${k}">${rs.map(i => rowHtml(i, k === "nodate" ? "" : k)).join("")}</div>`;
+  }).join("");
 }
 const comingEvents = () => { const t = iso(dubaiNow()); return ITEMS.filter(i => i.kind === "event" && !i.done_at && i.due_on >= t && keep(i)).sort(byWhen); };
 // ----- layouts (24/11/2026): each section shows as List, Compact, Grid or Tiles - kept on this phone -----
@@ -678,9 +693,8 @@ function renderDay(byDay) {
   $("daylist").innerHTML = wrapLay("cal", day.map(i => rowHtml(i, i.done_at ? "" : isNote(i) && bucket(i) === "overdue" ? "overdue" : "")).join("")) || `<div class="dempty" style="padding:2px 20px 10px">Nothing on this day.</div>`;
 }
 function renderNotes() {
-  const ns = openNotes(), fin = ITEMS.filter(i => isNote(i) && i.done_at && keep(i)).sort((a, b) => a.done_at < b.done_at ? 1 : -1);
-  $("pg-notes").innerHTML = (ns.length ? notesGrouped(ns) : `<div class="empty">No notes yet.</div>`) +
-    (fin.length ? `<div class="sec">Finished</div>` + wrapLay("notes", fin.slice(0, 15).map(i => rowHtml(i, "")).join("")) : "");
+  const ns = openNotes();                                       // ticked-off notes are under Done, not here
+  $("pg-notes").innerHTML = (ns.length ? notesGrouped(ns) : `<div class="empty">No notes yet.</div>`);
 }
 // Done: grouped and sorted the way you choose (kept on this phone)
 const DGROUP = [["day", "Day"], ["kind", "Section"], ["tag", "Work / Personal"], ["none", "No groups"]], DSORT = [["new", "Newest first"], ["old", "Oldest first"], ["az", "A to Z"]];
@@ -708,13 +722,79 @@ function renderDone() {
 let SW = null;
 function closeSwipes(except) { document.querySelectorAll(".sw.open, .sw.sw-on").forEach(w => { if (w === except) return; w.classList.remove("open", "sw-on"); const it = w.querySelector(".it"); if (it) it.style.transform = ""; }); }
 function actW(w) { return [...w.querySelector(".sact").children].reduce((a, x) => a + x.offsetWidth + 6, 8); }
+// ----- move notes like Trello (25/11/2026): hold a note (phone) or drag it (laptop); drop it anywhere in the list.
+// Into Today / Tomorrow / Anytime also changes its day. The order is kept on the server - same on every device.
+let DR = null, LP = null, LP0 = null, MD = null, NOCLICK = false;
+function scrollerOf(el) {
+  for (let p = el.parentNode; p && p !== document.body; p = p.parentNode) { const o = getComputedStyle(p).overflowY; if ((o === "auto" || o === "scroll") && p.scrollHeight > p.clientHeight) return p; }
+  return document.scrollingElement;
+}
+function dragStart(it, x, y) {
+  const w = it.parentNode, list = w.parentNode; if (!list || !list.dataset.g || w.querySelector(".tick.done")) return false;
+  if (w.closest("#pg-dash") && !WIDE()) return false;          // the phone dashboard shows only some - move them on Notes
+  if (FILTER !== "all") { toast("Choose All to move notes"); return false; }   // every note of the group is in view
+  closeSwipes(); SW = null;
+  const r = w.getBoundingClientRect(), ghost = w.cloneNode(true);
+  ghost.className = "sw ghost"; Object.assign(ghost.style, { width: r.width + "px", left: r.left + "px", top: r.top + "px" });
+  document.body.appendChild(ghost); w.classList.add("ph"); document.body.classList.add("dragging");
+  DR = { w, ghost, dx: x - r.left, dy: y - r.top, from: list.dataset.g, page: w.closest(".pg"), sc: scrollerOf(w) };
+  try { navigator.vibrate && navigator.vibrate(12); } catch (e) {}
+  return true;
+}
+function dragMove(x, y) {
+  const D = DR; D.ghost.style.left = (x - D.dx) + "px"; D.ghost.style.top = (y - D.dy) + "px";
+  D.ghost.style.display = "none"; const el = document.elementFromPoint(x, y); D.ghost.style.display = "";
+  const list = el && el.closest && el.closest("[data-g]");
+  if (list && list.closest(".pg") === D.page) {
+    const over = el.closest(".sw");
+    if (over && over !== D.w && over.parentNode === list) {
+      const r = over.getBoundingClientRect(), across = list.classList.contains("lay-grid") || list.classList.contains("lay-tiles");
+      list.insertBefore(D.w, (across ? x > r.left + r.width / 2 : y > r.top + r.height / 2) ? over.nextSibling : over);
+    } else if (!over && list !== D.w.parentNode) list.appendChild(D.w);
+  }
+  const sr = D.sc === document.scrollingElement ? { top: 0, bottom: innerHeight } : D.sc.getBoundingClientRect();
+  if (y < sr.top + 70) D.sc.scrollTop -= 14; else if (y > Math.min(sr.bottom, innerHeight - 170) - 50) D.sc.scrollTop += 14;   // keep moving past the edge
+}
+async function dragEnd() {
+  const D = DR; DR = null; if (!D) return;
+  D.ghost.remove(); D.w.classList.remove("ph"); document.body.classList.remove("dragging");
+  NOCLICK = true; setTimeout(() => NOCLICK = false, 350);
+  const list = D.w.parentNode, to = list.dataset.g, id = +D.w.dataset.id, moved = to !== D.from;
+  if (moved && !["today", "tomorrow", "nodate"].includes(to)) { toast("Open it to pick a date"); render(); return; }
+  const ids = [...list.children].filter(w => w.classList.contains("sw")).map(w => +w.dataset.id);
+  ids.forEach((x, k) => { const i = ITEMS.find(y => y.id === x); if (i) i.pos = k; });
+  try {
+    await api("/users/personal/order", { method: "POST", body: JSON.stringify({ ids, moved: moved ? id : null, to: moved ? (to === "nodate" ? "anytime" : to) : "" }) });
+    if (moved) toast(to === "nodate" ? "No date now" : `Moved to ${to}`);
+    await load();
+  } catch (e) { toast(esc(e.message)); render(); }
+}
+document.addEventListener("click", e => { if (NOCLICK) { e.stopPropagation(); e.preventDefault(); } }, true);
+document.addEventListener("mousedown", e => {
+  if (e.button !== 0 || !e.target.closest) return;
+  const it = e.target.closest("[data-g] > .sw > .it");
+  if (!it || e.target.closest(".tick, .later, button, a")) return;
+  MD = { it, x: e.clientX, y: e.clientY };
+});
+document.addEventListener("mousemove", e => {
+  if (DR) { e.preventDefault(); dragMove(e.clientX, e.clientY); return; }
+  if (MD && Math.hypot(e.clientX - MD.x, e.clientY - MD.y) > 6) { const m = MD; MD = null; if (dragStart(m.it, m.x, m.y)) dragMove(e.clientX, e.clientY); }
+});
+document.addEventListener("mouseup", () => { MD = null; if (DR) dragEnd(); });
 document.addEventListener("touchstart", e => {
   if (e.target.closest && e.target.closest(".sact")) { SW = null; return; }   // tapping Delete / Edit / Later: leave the row open
   const it = e.target.closest && e.target.closest(".sw > .it"); closeSwipes(it && it.parentNode);
+  clearTimeout(LP); LP = null;
+  if (it && it.closest("[data-g]") && !e.target.closest(".tick, .later")) {                 // hold still for a moment = pick it up
+    const t0 = e.touches[0]; LP0 = { x: t0.clientX, y: t0.clientY };
+    LP = setTimeout(() => { LP = null; dragStart(it, LP0.x, LP0.y); }, 380);   // a move of over 8 px cancels it (touchmove)
+  }
   if (!it || it.closest(".lay-grid, .lay-tiles")) { SW = null; return; }
   const t = e.touches[0], w = it.parentNode; SW = { it, w, x: t.clientX, y: t.clientY, dx: 0, mode: null, base: w.classList.contains("open") ? -actW(w) : 0 };
 }, { passive: true });
 document.addEventListener("touchmove", e => {
+  if (DR) { e.preventDefault(); const t = e.touches[0]; dragMove(t.clientX, t.clientY); return; }
+  if (LP && LP0) { const t = e.touches[0]; if (Math.hypot(t.clientX - LP0.x, t.clientY - LP0.y) > 8) { clearTimeout(LP); LP = null; } }
   if (!SW) return; const t = e.touches[0], dx = t.clientX - SW.x, dy = t.clientY - SW.y;
   if (!SW.mode) { SW.mode = Math.abs(dx) > Math.abs(dy) ? "h" : "v"; if (SW.mode === "h") SW.w.classList.add("sw-on"); }
   if (SW.mode !== "h") return;
@@ -724,6 +804,8 @@ document.addEventListener("touchmove", e => {
   SW.w.classList.toggle("right", x > 0);
 }, { passive: false });
 document.addEventListener("touchend", () => {
+  clearTimeout(LP); LP = null;
+  if (DR) { SW = null; dragEnd(); return; }
   const S = SW; SW = null; if (!S || S.mode !== "h") return;
   const x = S.base + S.dx, W = actW(S.w); S.it.style.transition = "";
   if (x > 80 && !S.it.querySelector(".tick.done")) { S.it.style.transform = ""; S.w.classList.remove("sw-on", "right"); tick(+S.w.dataset.id, S.it.querySelector(".tick")); }

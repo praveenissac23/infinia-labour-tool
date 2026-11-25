@@ -230,6 +230,35 @@ r = c.put(f"/users/personal/items/{r['id']}?k={K}", headers=D, json={"kind": "ta
 ck("a note moved to Reminders gets its date and ring", r["kind"] == "task" and r["remind_at"] == "2026-12-01T09:00", r)
 c.delete(f"/users/personal/items/{r['id']}?k={K}", headers=D)
 
+# ---- move cards like Trello ----
+a1 = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "first anytime note", "kind": "note"}).json()
+a2 = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "second anytime note", "kind": "note"}).json()
+a3 = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "third note 26/11 10am", "kind": "note"}).json()
+r = c.post(f"/users/personal/order?k={K}", headers=D, json={"ids": [a2["id"], a1["id"]]}).json()
+pos = {i["id"]: i["pos"] for i in r["items"]}
+ck("a new order is kept (second now first)", pos == {a2["id"]: 0, a1["id"]: 1}, r)
+lst = {i["id"]: i for i in c.get(f"/users/personal/items?k={K}", headers=D).json()["items"]}
+ck("...and every device sees it", lst[a2["id"]]["pos"] == 0 and lst[a1["id"]]["pos"] == 1 and lst[a3["id"]]["pos"] is None)
+r = c.post(f"/users/personal/order?k={K}", headers=D, json={"ids": [a3["id"], a2["id"], a1["id"]], "moved": a3["id"], "to": "anytime"}).json()
+x = [i for i in r["items"] if i["id"] == a3["id"]][0]
+ck("dropped into Anytime: its date and ring are taken away", x["due_on"] == "" and x["remind_at"] == "" and x["pos"] == 0, x)
+r = c.post(f"/users/personal/order?k={K}", headers=D, json={"ids": [a1["id"]], "moved": a1["id"], "to": "tomorrow"}).json()
+x = r["items"][0]
+ck("dropped into Tomorrow: dated tomorrow and rings at 09:00", x["due_on"] == "2026-11-25" and x["remind_at"] == "2026-11-25T09:00", x)
+with mock.patch.object(P, "dubai_now", lambda: datetime(2026, 11, 24, 15, 0)):
+    o = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "old one 23/11 10am", "kind": "note"}).json()
+    r = c.post(f"/users/personal/order?k={K}", headers=D, json={"ids": [o["id"]], "moved": o["id"], "to": "today"}).json()["items"][0]
+ck("an overdue 10:00 note dropped into Today at 15:00 stays today (its gone time taken off), not overdue again", r["due_on"] == "2026-11-24" and r["due_time"] == "", r)
+c.delete(f"/users/personal/items/{o['id']}?k={K}", headers=D)
+ck("dropped into This week / Later: refused (pick the date in the note)", c.post(f"/users/personal/order?k={K}", headers=D, json={"ids": [a2["id"]], "moved": a2["id"], "to": "later"}).status_code == 400)
+rB2 = c.post(f"/users/personal/unlock?k={KB}", headers=BB, json={"pin": "1357"}).json().get("device", rB)
+r = c.post(f"/users/personal/order?k={KB}", headers={"X-Personal-Device": rB2}, json={"ids": [a2["id"]]})
+ck("another admin's device can't reorder these", r.status_code != 200 or r.json()["items"] == [], r.text)
+lst = {i["id"]: i for i in c.get(f"/users/personal/items?k={K}", headers=D).json()["items"]}
+ck("...and nothing of theirs changed", lst[a2["id"]]["pos"] == 1)
+for z in (a1, a2, a3):
+    c.delete(f"/users/personal/items/{z['id']}?k={K}", headers=D)
+
 # ---- voice: written out on the server, in its own short process ----
 fake = tempfile.mkdtemp(); os.makedirs(os.path.join(fake, "faster_whisper"))
 open(os.path.join(fake, "faster_whisper", "__init__.py"), "w").write(
@@ -285,7 +314,7 @@ ck("the app checks for a new version on every open and reloads itself; a Refresh
    "checkVersion();" in page and "if (!document.hidden) { checkVersion();" in page and 'onclick="hardRefresh()"' in page and '"&r=" + Date.now()' in page and 'sessionStorage.setItem("me_reload", v)' in page)
 ck("every section can show as List, Compact, Grid or Tiles - a small icon on its page and its dashboard card (not in settings), kept on the phone",
    all(f'["{k}",' in page for k in ("list", "compact", "grid", "tiles")) and "function nextLay" in page and '<div id="layRows">' not in page and 'class="slay" onclick="nextLay(' in page and
-   'wrapLay("notes"' in page and 'wrapLay("cal"' in page and 'wrapLay("done"' in page and 'localStorage.setItem("me_lay_" + sec, v)' in page)
+   'lay-${lay("notes")}' in page and 'wrapLay("cal"' in page and 'wrapLay("done"' in page and 'localStorage.setItem("me_lay_" + sec, v)' in page)
 ck("remind me: a Custom choice for any amount before (minutes / hours / days / weeks)", '["custom", "Custom…"]' in page and 'id="e-cn"' in page and "n * +$(\"e-cu\").value" in page)
 r = c.post(f"/users/personal/items?k={K}", headers=D, json={"kind": "event", "title": "Site handover", "due_on": "2026-12-10", "due_time": "15:00", "remind_before": "300"}).json()
 ck("a custom 5 hours before rings at 10:00 for a 15:00 meeting", r["remind_at"] == "2026-12-10T10:00" and r["remind_before"] == 300, r)
@@ -303,6 +332,13 @@ ck("no hint lines on the dashboard cards", "No meetings coming up" not in page a
 ck("every panel (settings too) closes with ✕ or a swipe down", 'class="shx" onclick="closeSheet()"' in page and "if (drag && dy > 90) closeSheet()" in page)
 ck("laptop: dashboard in three columns with a full month calendar (pick a day, move months); phone keeps the week strip",
    "@media (min-width: 1024px)" in page and "function dashMonth(byDay)" in page and "dMove(1)" in page and "dPick(" in page and 'class="dgrid"' in page and "<div class=\"wk\">" in page)
+ck("moving cards: a hold picks it up even with a tiny wobble; the minute refresh never rebuilds mid-drag; pinned stay first; only with All showing",
+   "LP = setTimeout(() => { LP = null; dragStart(it, LP0.x, LP0.y); }, 380);" in page and "if (DR) return; ITEMS = d.items" in page and "(b.pinned - a.pinned) || (a.pos" in page and 'FILTER !== "all") { toast("Choose All to move notes")' in page)
+main = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "main.py")).read()
+ck("the app still starts if the personal tables can't be changed", "try:                                                     # never let the personal space stop the app starting\n    personal.create_tables(engine)" in main)
+ck("Notes page: no Finished list (ticked notes are under Done)", "<div class=\"sec\">Finished</div>" not in page)
+ck("move notes like Trello: hold (phone) or drag (laptop); empty Today / Tomorrow / Anytime appear as drop places while dragging",
+   "function dragStart" in page and "function dragEnd" in page and "}, 380);" in page and '"/users/personal/order"' in page and 'class="sec dz' in page and 'document.addEventListener("mousedown"' in page)
 ck("Dashboard: notes (with their reminders) and calendar together, each with its own mic", "function renderDash()" in page and 'dhead("Reminders"' not in page and 'dhead("Calendar", "event"' in page and 'dhead("Notes", "note"' in page and "TITLES = { dash: \"Dashboard\"" in page)
 ck("four tabs: Dashboard, Calendar, Notes, Done (no separate Reminders)", all(f'data-v="{v}"' in page for v in ("dash", "cal", "notes", "done")) and 'data-v="rem"' not in page and 'data-v="next"' not in page)
 ck("notes with a time come first (Overdue, Today, Tomorrow...), then the rest; old reminders show as notes", "function notesGrouped" in page and '["nodate", "Anytime"]' in page and 'const isNote = i => i.kind === "note" || i.kind === "task"' in page)
