@@ -6,7 +6,7 @@
      Only at its own secret address (?k=...), only with the owner's login + PIN once per device. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="me-build" content="836d3bc1301c">
+<meta name="me-build" content="fb06ac9d3c1d">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -656,6 +656,7 @@ let SW = null;
 function closeSwipes(except) { document.querySelectorAll(".sw.open, .sw.sw-on").forEach(w => { if (w === except) return; w.classList.remove("open", "sw-on"); const it = w.querySelector(".it"); if (it) it.style.transform = ""; }); }
 function actW(w) { return [...w.querySelector(".sact").children].reduce((a, x) => a + x.offsetWidth + 6, 8); }
 document.addEventListener("touchstart", e => {
+  if (e.target.closest && e.target.closest(".sact")) { SW = null; return; }   // tapping Delete / Edit / Later: leave the row open
   const it = e.target.closest && e.target.closest(".sw > .it"); closeSwipes(it && it.parentNode);
   if (!it || it.closest(".lay-grid, .lay-tiles")) { SW = null; return; }
   const t = e.touches[0], w = it.parentNode; SW = { it, w, x: t.clientX, y: t.clientY, dx: 0, mode: null, base: w.classList.contains("open") ? -actW(w) : 0 };
@@ -693,7 +694,7 @@ function pagerSetup() {
   navOn();
 }
 function navOn() {
-  closeSwipes(); headActs();
+  closeSwipes(); headActs(); setTarget(TARGET);
   document.querySelectorAll(".nav button").forEach(b => b.style.color = b.dataset.v === VIEW ? "var(--redtx)" : "var(--mute)");
   $("h1").textContent = TITLES[VIEW];
 }
@@ -703,14 +704,16 @@ function show(v) { const pg = $("pager"); pg.scrollTo({ left: VIEWS.indexOf(v) *
 $("q").addEventListener("input", () => { const q = $("q"); q.style.height = "auto"; q.style.height = q.scrollHeight + "px"; });
 $("q").addEventListener("input", () => { const has = !!$("q").value.trim(); $("gobtn").style.display = has ? "" : "none"; $("mic").style.display = has ? "none" : ""; });
 let TARGET = null;                     // the section the next line goes to (its own mic / + Type); none = the words decide
+const HERE = () => ({ rem: "task", cal: "event", notes: "note" })[VIEW] || "";   // on a section's page, the box adds there
 function setTarget(k) {
   TARGET = k || null;
-  $("tgt").innerHTML = TARGET ? `Adding to <b>${KL[TARGET]}</b><button onclick="setTarget(null)" aria-label="Let the words decide">✕</button>` : "";
+  $("tgt").innerHTML = TARGET ? `Adding to <b>${KL[TARGET]}</b><button onclick="setTarget(null)" aria-label="Let the words decide">✕</button>`
+    : HERE() ? `Adding to <b>${KL[HERE()]}</b>` : "";
 }
 async function quickAdd() {
   const t = $("q").value.trim(); if (!t) return;
   try {
-    const i = await api("/users/personal/quick", { method: "POST", body: JSON.stringify({ text: t, kind: TARGET || "" }) });
+    const i = await api("/users/personal/quick", { method: "POST", body: JSON.stringify({ text: t, kind: TARGET || "", here: HERE() }) });
     $("q").value = ""; $("q").dispatchEvent(new Event("input")); $("hint").textContent = ""; setTarget(null);
     ITEMS.push(i);
     render();

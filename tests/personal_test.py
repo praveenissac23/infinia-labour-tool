@@ -88,6 +88,9 @@ for t, want in [("add a new note to follow up with Anoop on the BOQ", ("note", "
     x = pp(t); ck(f"said '{t}' -> {want[0]}", (x["kind"], x["title"], x["due_on"], x["due_time"]) == want, x)
 x = P.parse("call the bank tomorrow 10am", now, "note"); ck("the Notes mic keeps it a note, words and all", (x["kind"], x["title"], x["due_on"]) == ("note", "Call the bank tomorrow 10am", None), x)
 x = P.parse("check villa 909 snags", now, "event"); ck("the Calendar mic makes a calendar entry (today when no day said)", (x["kind"], x["due_on"]) == ("event", date(2026, 11, 24)), x)
+x = P.parse("chase the LPO", now, None, "task"); ck("typed on the Reminders page with no time: a reminder, not a note", (x["kind"], x["title"], x["due_on"]) == ("task", "Chase the LPO", None), x)
+x = P.parse("add a note check permits", now, None, "task"); ck("...but words that say note still make a note there", x["kind"] == "note", x)
+x = P.parse("review drawings", now, None, "event"); ck("typed on the Calendar page: a calendar entry today", (x["kind"], x["due_on"]) == ("event", date(2026, 11, 24)), x)
 x = P.parse("chase the LPO", now, "task"); ck("the Reminders mic makes a reminder even without a time", x["kind"] == "task", x)
 x = pp("renew car registration yesterday"); ck("'yesterday' -> overdue at once", (x["title"], x["due_on"]) == ("Renew car registration", date(2026, 11, 23)), x)
 for t, want in [("send 3 amendments to client", ("Send 3 amendments to client", None, "")),
@@ -288,6 +291,11 @@ ck("no space wasted: ＋, 🎤 and layout are small buttons in the header (no ad
 ck("calendar: a small + by the day (no big Add-on-this-day button)", "+ Add on this day" not in page and 'class="dplus"' in page)
 ck("Done: group by day / section / work-personal / none, sort newest / oldest / A-Z, kept on the phone",
    "function pickDone()" in page and all(x in page for x in ('["day", "Day"]', '["kind", "Section"]', '["tag", "Work / Personal"]', '["az", "A to Z"]', '"me_done_group"', '"me_done_sort"')))
+r = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "chase the LPO", "here": "task"}).json()
+ck("quick add from the Reminders page lands in Reminders", r["kind"] == "task", r)
+ck("deleting it removes it from the list", c.delete(f"/users/personal/items/{r['id']}?k={K}", headers=D).json() == {"ok": True} and all(i["id"] != r["id"] for i in c.get(f"/users/personal/items?k={K}", headers=D).json()["items"]))
+ck("tapping a swipe action (Delete) does not close the row first", 'if (e.target.closest && e.target.closest(".sact")) { SW = null; return; }' in page)
+ck("the box follows the page: on Reminders it adds a reminder", "here: HERE()" in page)
 ck("no hint lines on the dashboard cards", "No meetings coming up" not in page and "Nothing due. Tap" not in page and "No notes. Tap" not in page)
 ck("every panel (settings too) closes with ✕ or a swipe down", 'class="shx" onclick="closeSheet()"' in page and "if (drag && dy > 90) closeSheet()" in page)
 ck("Dashboard: reminders, calendar and notes together, each with its own mic", "function renderDash()" in page and 'dhead("Reminders", "task"' in page and 'dhead("Calendar", "event"' in page and 'dhead("Notes", "note"' in page and "TITLES = { dash: \"Dashboard\"" in page)
