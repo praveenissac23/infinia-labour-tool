@@ -336,6 +336,12 @@ ck("moving cards: a hold picks it up even with a tiny wobble; the minute refresh
    "LP = setTimeout(() => { LP = null; dragStart(it, LP0.x, LP0.y); }, 380);" in page and "if (DR) return; ITEMS = d.items" in page and "(b.pinned - a.pinned) || (a.pos" in page and 'FILTER !== "all") { toast("Choose All to move notes")' in page)
 main = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "main.py")).read()
 ck("the app still starts if the personal tables can't be changed", "try:                                                     # never let the personal space stop the app starting\n    personal.create_tables(engine)" in main)
+ck("it is called Planner (tab, Home Screen icon, Settings card)", "<title>Planner</title>" in page and 'apple-mobile-web-app-title" content="Planner"' in page
+   and c.get(f"/users/personal/manifest?k={K}").json()["short_name"] == "Planner" and "Open my Planner" in open("../app-classic.html", encoding="utf-8").read())
+ck("a note added without a day gets a one-tap Remind me? line that goes away by itself (nothing to answer)",
+   "if (isNote(i) && !i.due_on) {" in page and "askRemind(i.id); }" in page and "✓ Saved · " in page and "RASK = setTimeout(hideAsk, 12000)" in page and 'id="rask"' in page)
+ck("the same one-tap choices are in the note panel; ring / repeat / pin are folded under More (simple first)", "function setWhen(how)" in page and 'class="qw"' in page and '<details class="more"' in page)
+ck("anything with a date - note or calendar entry - is on the calendar", "ITEMS.filter(i => i.due_on && keep(i))" in page and 'ITEMS.filter(i => i.due_on && !i.done_at && keep(i))' in page)
 ck("Notes page: no Finished list (ticked notes are under Done)", "<div class=\"sec\">Finished</div>" not in page)
 ck("move notes like Trello: hold (phone) or drag (laptop); empty Today / Tomorrow / Anytime appear as drop places while dragging",
    "function dragStart" in page and "function dragEnd" in page and "}, 380);" in page and '"/users/personal/order"' in page and 'class="sec dz' in page and 'document.addEventListener("mousedown"' in page)

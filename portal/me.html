@@ -6,17 +6,17 @@
      Only at its own secret address (?k=...), only with the owner's login + PIN once per device. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="me-build" content="ae564e6725ec">
+<meta name="me-build" content="89affd237a62">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Next">
+<meta name="apple-mobile-web-app-title" content="Planner">
 <meta name="theme-color" content="#F7F3F1" id="theme-color">
 <meta name="color-scheme" content="light dark">
 <link rel="apple-touch-icon" sizes="180x180" href="/portal/me-icon-180.png">
 <link rel="icon" type="image/png" href="/portal/me-icon-192.png">
-<title>Next</title>
+<title>Planner</title>
 <script>
   // light / dark / as the phone (24/11/2026) - set before the page draws, so it never flashes white
   (function () {
@@ -279,6 +279,18 @@
   .slay { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--mute); margin-left: auto; margin-right: 4px; }
   .slay svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
   .seg.icons button { display: grid; place-items: center; } .seg.icons svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+  details.more { margin: 0 0 6px; } details.more summary { font-size: 13px; font-weight: 700; color: var(--mute); padding: 6px 2px 10px; cursor: pointer; list-style: none; }
+  details.more summary::-webkit-details-marker { display: none; } details.more summary::before { content: "＋ "; } details.more[open] summary::before { content: "－ "; }
+  /* Remind me? - right after a note is added, and the same choices in the note panel */
+  .rask { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .rask::-webkit-scrollbar { display: none; }
+  .rask span { display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; color: var(--redtx); white-space: nowrap; padding: 0 4px 0 6px; }
+  .rask span .bell { width: 15px; height: 15px; }
+  .rask button, .qw button { flex: none; padding: 8px 12px; border-radius: 999px; background: var(--redbg); color: var(--redtx); font-size: 13.5px; font-weight: 700; white-space: nowrap; touch-action: manipulation; }
+  .rask button.x { background: var(--soft); color: var(--mute); padding: 8px 11px; }
+  .qw { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; } .qw span { font-size: 12px; color: var(--mute); font-weight: 700; width: 100%; }
+  .qw button:last-child { background: var(--soft); color: var(--mute); }
+  .bar.listening .rask { display: none !important; }
   /* moving notes */
   [data-g] > .sw > .it { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   @media (hover: hover) { [data-g] > .sw > .it { cursor: grab; } }
@@ -370,6 +382,7 @@
         <div class="wave" id="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
         <button class="lok" id="lok" onclick="finishRec()" aria-label="Done"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button></div>
     </div>
+    <div class="rask" id="rask" style="display:none"></div>
     <div class="tgt" id="tgt"></div>
     <div class="cap">
       <textarea id="q" rows="1" placeholder="Say or type anything…" enterkeyhint="done" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();quickAdd();}"></textarea>
@@ -854,7 +867,8 @@ async function quickAdd() {
     render();
     if (VIEW !== "dash" && VIEW !== KV[i.kind]) show(KV[i.kind]);
     const w = (i.due_on ? ` - ${DAY[new Date(i.due_on + "T12:00").getDay()]} ${dmy(i.due_on).slice(0, 5)}${i.due_time ? " " + i.due_time : ""}${i.remind_at ? " 🔔" : ""}` : "");
-    toast(`Saved to ${KL[i.kind]}${w}`, "Change", () => edit(i.id));
+    if (isNote(i) && !i.due_on) { $("toast").style.display = "none"; askRemind(i.id); }   // no day said: offer one, in one tap
+    else { hideAsk(); toast(`Saved to ${KL[i.kind]}${w}`, "Change", () => edit(i.id)); }
   } catch (e) { toast(esc(e.message)); }
 }
 async function tick(id, el) {
@@ -871,15 +885,33 @@ async function undo(id) { try { await api(`/users/personal/items/${id}/undone`, 
 function later(id) {
   sheet(`<h3>Later</h3><div class="menu">${[["1h", "In 1 hour"], ["evening", "This evening (19:00)"], ["tomorrow", "Tomorrow morning (09:00)"], ["week", "Next week (Monday 09:00)"]].map(([k, l]) => `<button onclick="snooze(${id},'${k}')">${l}</button>`).join("")}</div>`);
 }
-function noteRemind(id) {
-  sheet(`<h3>Remind me about this</h3><div class="menu">${[["1h", "In 1 hour"], ["evening", "This evening (19:00)"], ["tomorrow", "Tomorrow morning (09:00)"], ["week", "Next week (Monday 09:00)"]].map(([k, l]) => `<button onclick="toReminder(${id},'${k}')">${l}</button>`).join("")}<button onclick="edit(${id})">Pick a date and time…</button></div>`);
-}
-async function toReminder(id, how) {
+// "Remind me?" right after a note is added (26/11/2026): one tap sets it; left alone it goes away in 12 s and the
+// note stays a plain note. Nothing to open, nothing to answer.
+const WHENS = () => [["1h", "In 1 hour"], ["evening", dubaiNow().getHours() >= 19 ? "Tomorrow evening" : "This evening"], ["tomorrow", "Tomorrow 9:00"], ["week", "Monday 9:00"]];
+function whenOf(how) {
   const n = dubaiNow(), d = new Date(n); let t = "09:00";
   if (how === "1h") { d.setTime(n.getTime() + 3600000); t = pad(d.getHours()) + ":" + pad(d.getMinutes()); }
   else if (how === "evening") { t = "19:00"; if (n.getHours() >= 19) d.setDate(d.getDate() + 1); }
   else if (how === "tomorrow") d.setDate(d.getDate() + 1);
   else if (how === "week") d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7));
+  return [iso(d), t];
+}
+let RASK = null;
+function askRemind(id) {
+  clearTimeout(RASK); const el = $("rask");
+  el.innerHTML = `<span>✓ Saved · ${BELL}Remind?</span>${[["tomorrow", "Tomorrow"], ["evening", dubaiNow().getHours() >= 19 ? "Tmrw evening" : "Evening"], ["1h", "1 hour"]].map(([k, l]) => `<button onclick="hideAsk();toReminder(${id},'${k}')">${l}</button>`).join("")}<button onclick="hideAsk();edit(${id})">Pick…</button><button class="x" onclick="hideAsk()" aria-label="No reminder">✕</button>`;
+  el.style.display = "flex"; RASK = setTimeout(hideAsk, 12000);
+}
+function hideAsk() { clearTimeout(RASK); const el = $("rask"); if (el) el.style.display = "none"; }
+function setWhen(how) {                               // the same one-tap choices inside the note panel
+  const [d, t] = how ? whenOf(how) : ["", ""]; $("e-date").value = d; $("e-time").value = t;
+  if (how && !$("e-rem").value) $("e-rem").value = "0";
+}
+function noteRemind(id) {
+  sheet(`<h3>Remind me about this</h3><div class="menu">${WHENS().map(([k, l]) => `<button onclick="toReminder(${id},'${k}')">${l}</button>`).join("")}<button onclick="edit(${id})">Pick a date and time…</button></div>`);
+}
+async function toReminder(id, how) {
+  const [dd, t] = whenOf(how), d = new Date(dd + "T12:00");
   closeSheet();
   try { await api(`/users/personal/items/${id}`, { method: "PUT", body: JSON.stringify({ kind: "note", due_on: iso(d), due_time: t, remind_before: 0 }) });
     toast(`I'll remind you ${dmy(iso(d)).slice(0, 5)} ${t} 🔔`); load(); } catch (e) { toast(esc(e.message)); }
@@ -917,12 +949,15 @@ function edit(id, day, kind) {
     <div class="f"><div class="seg">${["note", "event"].map(x => `<button class="${x === k ? "on" : ""}" onclick="edit(${id || 0}, '${i.due_on || day || ""}', '${x}')">${{ event: "Calendar", note: "Note" }[x]}</button>`).join("")}</div></div>
     <div class="f"><textarea id="e-text" style="min-height:${ev ? "12vh" : "20vh"}" placeholder="${ev ? "What is it? (meeting with…)" : "Write it…"}">${esc(i.title + (i.body ? "\n" + i.body : ""))}</textarea></div>
     <div class="f"><div class="seg" id="e-tag">${["personal", "work"].map(t => `<button class="${i.tag === t ? "on" : ""}" data-t="${t}" onclick="segOn(this)">${t === "work" ? "Work" : "Personal"}</button>`).join("")}</div></div>
+    ${ev ? "" : `<div class="qw"><span>Remind me</span>${WHENS().map(([k, l]) => `<button type="button" onclick="setWhen('${k}')">${l}</button>`).join("")}<button type="button" onclick="setWhen('')">No date</button></div>`}
     <div class="row2"><div class="f"><label>${ev ? "Date" : "Remind me on"}</label><input id="e-date" type="date" value="${i.due_on}"></div><div class="f"><label>Time</label><input id="e-time" type="time" value="${i.due_time}"></div></div>
+    <details class="more" ${ev || i.repeat || i.pinned || !["", "0"].includes(rb) ? "open" : ""}><summary>More - ring earlier, repeat${ev ? "" : ", pin"}</summary>
     <div class="row2"><div class="f"><label>Ring</label><select id="e-rem" onchange="remSel()">${[...REMS, ["custom", "Custom…"]].map(([v, l]) => `<option value="${v}" ${rb === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
     <div class="f"><label>Repeat</label><select id="e-rep">${[["", "Never"], ["daily", "Every day"], ["weekly", "Every week"], ["monthly", "Every month"], ["yearly", "Every year"]].map(([v, l]) => `<option value="${v}" ${i.repeat === v ? "selected" : ""}>${l}</option>`).join("")}</select></div></div>
     <div class="cust" id="e-cust" style="display:${rb === "custom" ? "flex" : "none"}"><input id="e-cn" type="number" inputmode="numeric" min="1" max="999" value="${custParts(i.remind_before)[0]}">
       <select id="e-cu">${UNITS.map(([v, l]) => `<option value="${v}" ${custParts(i.remind_before)[1] === v ? "selected" : ""}>${l}</option>`).join("")}</select><span>before</span></div>
     ${ev ? "" : `<div class="f"><label><input type="checkbox" id="e-pin" ${i.pinned ? "checked" : ""} style="width:auto;margin-right:8px">Pin to the top</label></div>`}
+    </details>
     <div class="acts">${id ? `<button class="btn del" onclick="del(${id})">Delete</button>` : ""}<button class="btn" onclick="closeSheet()">Cancel</button><button class="btn pri" onclick="saveEdit(${id || 0}, '${k}')">Save</button></div>`);
   if (!id) setTimeout(() => $("e-text").focus(), 250);
 }

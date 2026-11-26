@@ -267,7 +267,7 @@ def manifest(k: str = Query(""), db: Session = Depends(get_db)):
     s = _settings_for_slug(db, k)
     u = db.get(models.User, s.user_id)
     first = ((u.full_name or u.username or "Me").split(" ")[0]) if u else "Me"
-    m = {"name": f"{first} - Next", "short_name": "Next", "id": f"/portal/me.html?k={s.slug}",
+    m = {"name": "Planner", "short_name": "Planner", "id": f"/portal/me.html?k={s.slug}",
          "start_url": f"/portal/me.html?k={s.slug}", "scope": "/portal/", "display": "standalone",
          "background_color": "#F7F3F1", "theme_color": "#F7F3F1",
          "icons": [{"src": "/portal/me-icon-192.png", "sizes": "192x192", "type": "image/png"},
