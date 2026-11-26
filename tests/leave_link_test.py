@@ -37,6 +37,7 @@ def spells():
 
 T = main._dubai_today()
 d0 = T + timedelta(days=40)
+d0 += timedelta(days=(7 - d0.weekday()) % 7)   # a Monday: back on a Saturday - a return on Sunday runs on a day (26/11/2026)
 
 # 1. Leave register -> absence register
 r = c.post("/employees/people/leave-register", headers=H, json={"emp_no": "S-101", "leave_type": "annual", "status": "pending",

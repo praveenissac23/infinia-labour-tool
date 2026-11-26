@@ -452,7 +452,7 @@ window.HELP_GUIDES = [
     words: "lpo purchase order po buy order supplier generate local purchase order unit quantity as typed",
     go: { page: "store", tab: "purchasing", sub: "purchase" },
     steps: [
-      { say: "Approved requests wait here. Tick the lines going to one supplier (or press Raise LPO on the Order tracker).", el: "#lpo-pending-card" },
+      { say: "Approved requests wait here. Tick the lines going to one supplier (or press Raise LPO on the Order tracker). A material not needed any more: press × at the end of its line - it is turned down on its request, with your reason.", el: "#lpo-pending-card" },
       { say: "Press 'Generate LPO from ticked'. The order is filled in.", el: "button[onclick='lpoFromTicked()']" },
       { say: "No request? Press 'New Purchase Order' to start an empty one.", el: "button[onclick='newLpo()']" },
       { say: "Pick the supplier, check prices, and press Save & Generate.", el: "#lpo-save-btn", run: "newLpo()" }] },

@@ -864,6 +864,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   #screen-cashfc .cf-ib:hover{border-color:#E6B8B1;color:#A93226;background:#FBEFED} #screen-cashfc .cf-ib.ok:hover{border-color:#2ECC71;color:#1E8449;background:#E8F6EE}
   #screen-cashfc .status-msg{margin-top:10px}
   .cf-ov{position:fixed;inset:0;background:rgba(40,30,25,.5);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px}
+  .lpo-drop{border:0;background:none;color:#B7322A;font-size:18px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:6px;opacity:.55}
+  .lpo-drop:hover{opacity:1;background:#FBEAE8}
   .cf-mod{background:#fff;border-radius:16px;width:min(560px,100%);max-height:92vh;overflow:auto;padding:20px 22px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
   .cf-mod h3{margin:0 0 4px} .cf-mod label{display:block;font-size:11px;color:#8A8079;text-transform:uppercase;letter-spacing:.06em;margin:11px 0 4px}
   .cf-mod input,.cf-mod select{width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:9px;padding:9px 11px;font:inherit;font-size:14px}
@@ -3284,7 +3286,8 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
                   <th style="width:10%;">Qty</th>
                   <th style="width:17%; text-align:left;">What for</th>
                   <th style="width:12%;">Needed by</th>
-                  <th style="width:12%;">Asked by</th>
+                  <th style="width:9%;">Asked by</th>
+                  <th style="width:3%;"></th>
                 </tr></thead>
                 <tbody id="lpo-pending"></tbody>
               </table>
@@ -14122,7 +14125,7 @@ async function importSuppliers() {
 function renderLpoPending() {
   const body = document.getElementById("lpo-pending");
   if (!lpoPending.length) {
-    body.innerHTML = `<tr><td colspan="8" class="empty-note">Nothing waiting - every approved material has been ordered.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" class="empty-note">Nothing waiting - every approved material has been ordered.</td></tr>`;
     document.getElementById("lpo-pending-note").textContent = "";
     return;
   }
@@ -14135,8 +14138,32 @@ function renderLpoPending() {
       <td style="text-align:left;">${p.purpose || "-"}</td>
       <td>${p.needed_by ? dmy(p.needed_by) : "-"}${p.urgency === "urgent" ? ' <span class="pill" style="background:#FFE0B2; color:#B26A00;">urgent</span>' : ""}</td>
       <td>${p.requested_by || "-"}</td>
+      <td><button type="button" class="lpo-drop" title="Not needed any more - take it off this list" onclick="lpoDropLine(${p.line_id})">&times;</button></td>
     </tr>`).join("");
   notePendingPick();
+}
+
+// Not needed any more (26/11/2026): an approved material taken off the list right here - it is turned down on its
+// request, with the reason, exactly as "Reject this" on the Requests page (an approved request cannot be edited).
+function lpoDropLine(lineId) {
+  const p = lpoPending.find(x => x.line_id === lineId); if (!p) return;
+  const o = cfModal(`<h3>Take this off the list?</h3>
+    <div class="sub" style="margin-bottom:6px;"><b>${escapeHtml(p.description)}</b> · ${num(p.qty)} ${escapeHtml(p.unit || "")} · ${escapeHtml(p.ref)}${p.site ? " · site " + escapeHtml(p.site) : ""}</div>
+    <div class="sub">It is turned down on ${escapeHtml(p.ref)} and will not be ordered. ${escapeHtml(p.requested_by || "The site")} sees the reason on the request.</div>
+    <label>Why (optional)</label><input type="text" id="lpo-drop-why" maxlength="200" placeholder="e.g. not needed any more / already bought on petty cash">
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+      <button type="button" class="btn btn-gray" onclick="this.closest('.cf-ov').remove()">Keep it</button>
+      <button type="button" class="btn btn-danger" id="lpo-drop-go">Take it off</button></div>`);
+  setTimeout(() => o.querySelector("#lpo-drop-why").focus(), 50);
+  o.querySelector("#lpo-drop-go").onclick = async () => {
+    try {
+      await apiCall(`/store/request-lines/${lineId}/decision`, { method: "POST",
+        body: JSON.stringify({ decision: "rejected", reason: o.querySelector("#lpo-drop-why").value.trim() }) });
+      o.remove();
+      lpoPending = lpoPending.filter(x => x.line_id !== lineId); renderLpoPending();
+      showStatus("lpo-status", "ok", `${p.description} taken off - turned down on ${p.ref}.`);
+    } catch (e) { o.remove(); showStatus("lpo-status", "err", errText(e)); }
+  };
 }
 
 function tickAllPending(on) {
