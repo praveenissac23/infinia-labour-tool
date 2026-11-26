@@ -11,6 +11,7 @@ menu entry changes and a redirect is left behind.
 Every path is under a prefix nginx already forwards: /employees/,
 /export/, /permissions/, /users.
 """
+import re
 from datetime import date, timedelta
 from urllib.parse import quote
 
@@ -881,6 +882,54 @@ def add_person(payload: dict = Body(...), db: Session = Depends(get_db), user: m
     db.commit()
     M.log_action(db, user.id, "person_added", f"{e.emp_no} {e.name} ({GROUPS[g]}) joined {joined}")
     return person_file(emp_no, db=db, user=user)
+
+
+# ---- changing a person's code (26/11/2026) ------------------------------------------------------------------
+# The code is written into four tables as text (attendance days, payroll cycles, visa file, PPE issues); each of
+# those rows also carries employee_id, so all of them move with him in one go. A code already used by someone
+# else, or with attendance of its own, is refused - two men's days must never mix.
+CODE_TABLES = (models.DailyRow, models.EmployeeSummary, models.VisaFile, models.PpeIssue)
+
+
+def _code_rows(db, Model, e, old):
+    from sqlalchemy import or_, and_
+    return db.query(Model).filter(or_(Model.employee_id == e.id, and_(Model.employee_id.is_(None), Model.emp_no == old)))
+
+
+@router.post("/employees/people/{emp_no}/code")
+def change_code(emp_no: str, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = PEOPLE):
+    """{new_code, check}: check=true only says what would move. Needs the register right and Master Data (or admin)."""
+    e = _by_code(db, emp_no)
+    _may(user, group_of(e, _profile(db, e)), "register")
+    if not (user.role == "admin" or "masterdata" in M.effective_permissions(user)):
+        raise HTTPException(status_code=403, detail="Changing an employee code needs the Master Data right.")
+    old, new = e.emp_no, M.norm_emp_no(payload.get("new_code"))
+    if not new:
+        raise HTTPException(status_code=400, detail="Type the new code.")
+    if len(new) > 20 or not re.fullmatch(r"[A-Z0-9][A-Z0-9\-/.]*", new):
+        raise HTTPException(status_code=400, detail="A code is letters and numbers (a - or / is fine), up to 20.")
+    if new == old:
+        return {"ok": True, "same": True, "emp_no": old}
+    other = M.find_by_code(db, new)
+    if other and other.id != e.id:
+        raise HTTPException(status_code=400, detail=f"{other.emp_no} is already {other.name}'s code.")
+    clash = sum(db.query(Model).filter(Model.emp_no == new, (Model.employee_id != e.id) | Model.employee_id.is_(None)).count()
+                for Model in (models.DailyRow, models.EmployeeSummary))
+    if clash:
+        raise HTTPException(status_code=400, detail=f"There is attendance or payroll under {new} already ({clash} rows) - "
+                                                    "pick another code, or ask Claude to look at it first.")
+    moves = {Model.__tablename__: _code_rows(db, Model, e, old).count() for Model in CODE_TABLES}
+    if payload.get("check"):
+        return {"ok": True, "from": old, "to": new, "days": moves["daily_rows"], "cycles": moves["employee_summaries"],
+                "visa": moves["visa_files"], "ppe": moves["ppe_issues"]}
+    for Model in CODE_TABLES:
+        _code_rows(db, Model, e, old).update({Model.emp_no: new}, synchronize_session=False)
+    e.emp_no = new
+    db.commit()
+    M.log_action(db, user.id, "employee_code_changed",
+                 f"{old} -> {new} {e.name} (moved: {moves['daily_rows']} days, {moves['employee_summaries']} cycles, "
+                 f"{moves['visa_files']} visa, {moves['ppe_issues']} PPE)")
+    return {"ok": True, "from": old, "to": new, "emp_no": new}
 
 
 EMPLOYEE_TEXT = ("designation", "pay_route", "iban", "scheme")

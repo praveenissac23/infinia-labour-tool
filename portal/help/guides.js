@@ -1414,6 +1414,7 @@ window.HELP_TIPS = {
   "#it-type": "Consumable: used up (cement, paint). Asset: a tool or machine that comes back to the store.",
   "#it-reorder": "The app warns you when stock goes under this number.",
   "#e-name": "As on the passport - printed on documents and statements.",
+  "#e-emp_no": "His code in the app (e.g. F804). Change it here if it was given wrongly: his attendance days, payroll cycles, visa file and PPE issues move with him in one go, and the change is logged. A code someone else already has is refused. Needs the Master Data right. Payslips already printed keep the old code.",
   "#e-mobile": "UAE mobile. Also used as the contact number wherever he is picked.",
   "#e-home_phone": "The home-country number - shown on the leave form too; one number, kept in one place.",
   "#e-designation": "His job title or trade, as on the labour contract.",
