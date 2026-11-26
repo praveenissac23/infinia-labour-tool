@@ -57,7 +57,10 @@ db.add(models.DailyRow(employee_id=jos.id, emp_no='F805', month_year='November 2
 db.add(models.EmployeeSummary(employee_id=ian.id, emp_no='F804', month_year='November 2026'))
 db.add(models.VisaFile(employee_id=ian.id, emp_no='F804', person='IAN KIPLAGAT KEMBOY', started_on=start))
 db.add(models.PpeIssue(employee_id=ian.id, emp_no='F804', name='IAN KIPLAGAT KEMBOY', issued_on=start, item='Safety Shoes'))
-db.add(models.PpeIssue(employee_id=None, emp_no='F804', name='IAN K', issued_on=start, item='Helmet'))   # an old entry typed by code only
+db.add(models.PpeIssue(employee_id=None, emp_no='f 804', name='IAN K', issued_on=start, item='Helmet'))   # an old entry typed by hand
+db.add(models.Setting(key='labour_full_cycle:November 2026:F804', value='2026-11-20'))       # paid the whole cycle early
+db.add(models.PpeIssue(employee_id=None, emp_no='F777', name='OLD WORKER', issued_on=start, item='Coverall'))  # someone not on the list
+db.add(models.Setting(key='labour_full_cycle:October 2026:F888', value='2026-10-20'))        # another man's early pay
 db.commit(); db.close()
 
 URL = '/employees/people/F804/code'
@@ -74,6 +77,12 @@ r = c.post(URL, json={'new_code': '', 'check': True}, headers=H)
 ck('an empty code is refused', r.status_code == 400, r.text)
 r = c.post(URL, json={'new_code': 'F 9#4', 'check': True}, headers=H)
 ck('odd characters are refused', r.status_code == 400, r.text)
+r = c.post(URL, json={'new_code': 'F/904', 'check': True}, headers=H)
+ck('a "/" is refused (his file could not be opened again)', r.status_code == 400, r.text)
+r = c.post(URL, json={'new_code': 'F777', 'check': True}, headers=H)
+ck("a code with someone else's PPE issues is refused (their PPE would become his)", r.status_code == 400, r.text)
+r = c.post(URL, json={'new_code': 'F888', 'check': True}, headers=H)
+ck("a code with someone's early full-cycle pay is refused (he would be paid for days not worked)", r.status_code == 400, r.text)
 db = database.SessionLocal()
 db.add(models.DailyRow(employee_id=jos.id, emp_no='F999', month_year='November 2026', full_date=start))   # stray days under F999
 db.commit(); db.close()
@@ -98,7 +107,10 @@ ck('his record has the new code', db.query(models.Employee).get(ian.id).emp_no =
 ck('all 12 attendance days moved', db.query(models.DailyRow).filter_by(employee_id=ian.id, emp_no='F904').count() == 12)
 ck('his payroll cycle moved', db.query(models.EmployeeSummary).filter_by(employee_id=ian.id).one().emp_no == 'F904')
 ck('his visa file moved', db.query(models.VisaFile).filter_by(employee_id=ian.id).one().emp_no == 'F904')
-ck('both PPE issues moved (also the old one kept by code only)', db.query(models.PpeIssue).filter_by(emp_no='F904').count() == 2)
+ck('both PPE issues moved (also the old one typed "f 804" by hand)', db.query(models.PpeIssue).filter_by(emp_no='F904').count() == 2)
+ck('his early full-cycle pay moved with him (his card stays paid in full)', db.query(models.Setting).get('labour_full_cycle:November 2026:F904').value == '2026-11-20'
+   and db.query(models.Setting).get('labour_full_cycle:November 2026:F804') is None)
+ck("other men's settings untouched", db.query(models.Setting).get('labour_full_cycle:October 2026:F888').value == '2026-10-20')
 ck('nothing is left under F804', sum(db.query(M).filter(M.emp_no == 'F804').count()
                                       for M in (models.DailyRow, models.EmployeeSummary, models.VisaFile, models.PpeIssue)) == 0)
 ck("the other man's days are untouched", db.query(models.DailyRow).filter_by(employee_id=jos.id, emp_no='F805').count() == 1)
@@ -115,8 +127,9 @@ ck('the rest of his file still saves under the new code', r.status_code == 200, 
 # ---- the page ----
 page = open('../portal/people.html', encoding='utf-8').read()
 ck('the edit form has an Employee code box', 'id="e-emp_no"' in page and 'setVal("e-emp_no", p.emp_no)' in page)
-ck('a new code is checked, shown with what moves, confirmed, then saved before the rest',
-   'check: true' in page and 'move with him' in page and 'Yes, make it' in page)
+ck('a new code is checked, shown with what moves, confirmed, then saved before the rest; the list refreshes at once',
+   'check: true' in page and 'move with him' in page and 'Yes, make it' in page and 'F.person.emp_no = code; loadPeople();' in page)
+ck('a code stored with a stray space does not ask to change on every save', 'want !== code.replace(/\\s+/g, "").toUpperCase()' in page)
 tips = open('../portal/help/guides.js', encoding='utf-8').read()
 ck('the (i) explains it', '"#e-emp_no"' in tips)
 

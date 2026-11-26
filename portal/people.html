@@ -925,13 +925,13 @@ async function saveEdit() {
   // A new employee code (26/11/2026): checked first, then shown with what moves with it, then changed - before the rest is saved.
   let code = F.person.emp_no;
   const want = (getVal("e-emp_no") || "").replace(/\s+/g, "").toUpperCase();
-  if (want && want !== code) {
+  if (want && want !== code.replace(/\s+/g, "").toUpperCase()) {
     try {
       const c = await apiCall(`/employees/people/${encodeURIComponent(code)}/code`, { method: "POST", body: JSON.stringify({ new_code: want, check: true }) });
       const what = [[c.days, "attendance day"], [c.cycles, "payroll cycle"], [c.visa, "visa file"], [c.ppe, "PPE issue"]].filter(x => x[0]).map(([n, w]) => `${n} ${w}${n > 1 ? "s" : ""}`).join(", ");
       if (!(await ask(`Change ${F.person.name}'s code from ${c.from} to ${c.to}?${what ? ` His ${what} move with him.` : ""} Payslips already printed keep the old code.`, `Yes, make it ${c.to}`))) return;
       code = (await apiCall(`/employees/people/${encodeURIComponent(code)}/code`, { method: "POST", body: JSON.stringify({ new_code: want }) })).emp_no;
-      P.current = code; F.person.emp_no = code;
+      P.current = code; F.person.emp_no = code; loadPeople();     // the list shows the new code even if the rest fails
     } catch (e) { document.getElementById("edit-msg").textContent = errText(e); return; }
   }
   try {

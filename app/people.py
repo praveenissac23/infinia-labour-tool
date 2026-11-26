@@ -891,9 +891,24 @@ def add_person(payload: dict = Body(...), db: Session = Depends(get_db), user: m
 CODE_TABLES = (models.DailyRow, models.EmployeeSummary, models.VisaFile, models.PpeIssue)
 
 
+def _norm_col(Model):
+    """The code as kept (capitals, no spaces) - old PPE / visa rows were typed by hand, "f 804" is F804."""
+    from sqlalchemy import func
+    return func.upper(func.replace(Model.emp_no, " ", ""))
+
+
 def _code_rows(db, Model, e, old):
     from sqlalchemy import or_, and_
-    return db.query(Model).filter(or_(Model.employee_id == e.id, and_(Model.employee_id.is_(None), Model.emp_no == old)))
+    return db.query(Model).filter(or_(Model.employee_id == e.id,
+                                      and_(Model.employee_id.is_(None), _norm_col(Model) == M.norm_emp_no(old))))
+
+
+FULL_CYCLE = "labour_full_cycle:"   # "pay the whole cycle now" for one man: labour_full_cycle:<month>:<code> (services.py)
+
+
+def _code_settings(db, code):
+    return [x for x in db.query(models.Setting).filter(models.Setting.key.like(FULL_CYCLE + "%")).all()
+            if x.key.endswith(":" + code) and x.key.count(":") >= 2]
 
 
 @router.post("/employees/people/{emp_no}/code")
@@ -906,17 +921,18 @@ def change_code(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
     old, new = e.emp_no, M.norm_emp_no(payload.get("new_code"))
     if not new:
         raise HTTPException(status_code=400, detail="Type the new code.")
-    if len(new) > 20 or not re.fullmatch(r"[A-Z0-9][A-Z0-9\-/.]*", new):
-        raise HTTPException(status_code=400, detail="A code is letters and numbers (a - or / is fine), up to 20.")
+    if len(new) > 20 or not re.fullmatch(r"[A-Z0-9][A-Z0-9\-.]*", new):     # no "/": it would break his file's address
+        raise HTTPException(status_code=400, detail="A code is letters and numbers (a - is fine), up to 20.")
     if new == old:
         return {"ok": True, "same": True, "emp_no": old}
     other = M.find_by_code(db, new)
     if other and other.id != e.id:
         raise HTTPException(status_code=400, detail=f"{other.emp_no} is already {other.name}'s code.")
-    clash = sum(db.query(Model).filter(Model.emp_no == new, (Model.employee_id != e.id) | Model.employee_id.is_(None)).count()
-                for Model in (models.DailyRow, models.EmployeeSummary))
+    clash = sum(db.query(Model).filter(_norm_col(Model) == new, (Model.employee_id != e.id) | Model.employee_id.is_(None)).count()
+                for Model in CODE_TABLES)
+    clash += sum(1 for x in _code_settings(db, new) if (x.value or "").strip())    # someone's early full-cycle pay
     if clash:
-        raise HTTPException(status_code=400, detail=f"There is attendance or payroll under {new} already ({clash} rows) - "
+        raise HTTPException(status_code=400, detail=f"There is attendance, payroll, PPE or a visa file under {new} already ({clash}) - "
                                                     "pick another code, or ask Claude to look at it first.")
     moves = {Model.__tablename__: _code_rows(db, Model, e, old).count() for Model in CODE_TABLES}
     if payload.get("check"):
@@ -924,6 +940,10 @@ def change_code(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
                 "visa": moves["visa_files"], "ppe": moves["ppe_issues"]}
     for Model in CODE_TABLES:
         _code_rows(db, Model, e, old).update({Model.emp_no: new}, synchronize_session=False)
+    for x in _code_settings(db, old):        # a cycle he was paid in full early stays paid in full under the new code
+        k = x.key[: -len(old)] + new
+        db.query(models.Setting).filter(models.Setting.key == k).delete(synchronize_session=False)   # an empty leftover only
+        db.add(models.Setting(key=k, value=x.value)); db.delete(x)
     e.emp_no = new
     db.commit()
     M.log_action(db, user.id, "employee_code_changed",
