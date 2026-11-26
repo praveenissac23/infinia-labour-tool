@@ -6,7 +6,7 @@
      Only at its own secret address (?k=...), only with the owner's login + PIN once per device. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="me-build" content="c06cb90962e6">
+<meta name="me-build" content="2c68b214b72f">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -120,7 +120,7 @@
   .mic.rec::after { content: "Tap to stop"; position: absolute; bottom: 58px; right: 0; white-space: nowrap; font-size: 12px; font-weight: 700; color: #fff;
                     background: var(--red); padding: 4px 9px; border-radius: 8px; }
   .mic { position: relative; }
-  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(150px + var(--safe-b)); background: #2E3238; color: #fff; padding: 12px 16px;
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); top: calc(10px + var(--safe-t, env(safe-area-inset-top, 0px))); background: #2E3238; color: #fff; padding: 12px 16px;
            border-radius: 14px; font-size: 14.5px; z-index: 60; display: none; gap: 14px; align-items: center; box-shadow: 0 8px 24px #0004; max-width: 92vw; }
   .toast button { color: #F5B7AE; font-weight: 800; }
   .ring { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 10px; right: 10px; max-width: 520px; margin: 0 auto; background: var(--card); color: var(--ink); border-radius: 18px;
@@ -281,6 +281,12 @@
   .seg.icons button { display: grid; place-items: center; } .seg.icons svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
   details.more { margin: 0 0 6px; } details.more summary { font-size: 13px; font-weight: 700; color: var(--mute); padding: 6px 2px 10px; cursor: pointer; list-style: none; }
   details.more summary::-webkit-details-marker { display: none; } details.more summary::before { content: "＋ "; } details.more[open] summary::before { content: "－ "; }
+  @media (max-width: 1023px) {
+    .mon .card { padding: 10px 10px 8px; } .mon h2 { font-size: 17px; margin: 0 6px 4px; }
+    .mon .grid button { height: 40px; width: 40px; } .mon .grid { row-gap: 2px; }
+    .mstrip { padding: 4px 16px 8px; } .dayhead { margin: 12px 20px 8px; }
+  }
+  .dweek { padding: 8px 0 0; margin-bottom: 10px; } .dweek .wk { padding-bottom: 8px; }
   /* Remind me? - right after a note is added, and the same choices in the note panel */
   .rask { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .rask::-webkit-scrollbar { display: none; }
@@ -552,8 +558,9 @@ function rowHtml(i, b) {
     <div class="rt" onclick="edit(${i.id})">${esc(tm)}${i.remind_at && !i.reminded ? BELL : ""}${i.pinned ? "📌" : ""}${!i.done_at && isNote(i) && (b === "overdue" || b === "today") ? `<span class="later" onclick="event.stopPropagation(); later(${i.id})">Later ›</span>` : ""}</div></div>`);
 }
 function counts() {
-  const open = ITEMS.filter(i => isNote(i) && i.due_on && !i.done_at);
-  const o = open.filter(i => bucket(i) === "overdue").length, t = open.filter(i => bucket(i) === "today").length;
+  const open = ITEMS.filter(i => isNote(i) && i.due_on && !i.done_at), today = iso(dubaiNow());
+  const o = open.filter(i => bucket(i) === "overdue").length;
+  const t = ITEMS.filter(i => i.due_on === today && !i.done_at && !(isNote(i) && bucket(i) === "overdue")).length;   // notes and meetings
   const nn = ITEMS.filter(i => isNote(i) && !i.done_at).length, n = dubaiNow();
   $("sub").textContent = `${DAY[n.getDay()]} ${pad(n.getDate())}/${pad(n.getMonth() + 1)}` + (o ? ` · ${o} overdue` : "") + ` · ${t} today · ${nn} note${nn === 1 ? "" : "s"}`;
 }
@@ -640,14 +647,16 @@ function renderDash() {
   const n = dubaiNow(), today = iso(n), wide = WIDE();
   const byDay = {}; ITEMS.filter(i => i.due_on && !i.done_at && keep(i)).forEach(i => (byDay[i.due_on] = byDay[i.due_on] || []).push(i));
   const ns = openNotes(), max = wide ? 0 : 8;
-  let h = `<div class="dcard">${dhead("Notes", "note", ns.length)}${notesGrouped(ns, "dsec", max)}${!wide && ns.length > max ? `<button class="more" onclick="show('notes')">All ${ns.length} notes ›</button>` : ""}</div>`;
+  const notesCard = `<div class="dcard">${dhead("Notes", "note", ns.length)}${notesGrouped(ns, "dsec", max)}${!wide && ns.length > max ? `<button class="more" onclick="show('notes')">All ${ns.length} notes ›</button>` : ""}</div>`;
   const ev = comingEvents();
-  if (wide) h += `<div class="dcard">${dhead("Calendar", "event", ev.length)}${dashMonth(byDay)}</div>`;
-  else {
+  let h;
+  if (wide) h = notesCard + `<div class="dcard">${dhead("Calendar", "event", ev.length)}${dashMonth(byDay)}</div>`;
+  else {                                             // phone: the week first (a glance), then notes, then meetings coming up
     let wk = ""; for (let k = 0; k < 7; k++) { const d = new Date(n); d.setDate(n.getDate() + k); const sd = iso(d), its = byDay[sd] || [];
       wk += `<button class="${k === 0 ? "td" : ""}" onclick="openDay('${sd}')"><small>${DAY[d.getDay()]}</small><b>${d.getDate()}</b><span class="dots">${its.slice(0, 3).map(i => `<i class="${i.kind === "event" ? "e" : i.tag === "personal" ? "p" : ""}"></i>`).join("")}</span></button>`; }
     const evs = ev.slice(0, 4);
-    h += `<div class="dcard">${dhead("Calendar", "event", ev.length)}<div class="wk">${wk}</div>${wrapLay("cal", evs.map(i => rowHtml(i, i.due_on === today ? "" : "ev")).join(""))}${ev.length > evs.length ? `<button class="more" onclick="show('cal')">All ${ev.length} coming up ›</button>` : ""}</div>`;
+    h = `<div class="dcard dweek"><div class="wk">${wk}</div></div>` + notesCard +
+      (evs.length ? `<div class="dcard">${dhead("Coming up", "event", ev.length)}${wrapLay("cal", evs.map(i => rowHtml(i, i.due_on === today ? "" : "ev")).join(""))}${ev.length > evs.length ? `<button class="more" onclick="show('cal')">All ${ev.length} coming up ›</button>` : ""}</div>` : "");
   }
   $("pg-dash").innerHTML = `<div class="dgrid">${h}</div>`;
 }
@@ -698,7 +707,7 @@ function monthChanged(k) {
 function goMonth(k, smooth) { const ms = $("months"); ms.scrollTo({ left: k * ms.clientWidth, behavior: smooth ? "smooth" : "auto" }); if (!smooth) monthChanged(k); }
 function goToday() { const n = dubaiNow(); CALSEL = iso(n); goMonth(6, true); pickDay(CALSEL); }
 function pickDay(s) {
-  CALSEL = s;
+  CALSEL = s; setTarget(TARGET); if ($("q").value.trim()) qNow(true);
   document.querySelectorAll("#months .grid button").forEach(b => b.classList.toggle("sel", b.dataset.d === s));
   const byDay = {}; ITEMS.filter(i => i.due_on && keep(i)).forEach(i => (byDay[i.due_on] = byDay[i.due_on] || []).push(i));
   renderDay(byDay);
@@ -862,25 +871,33 @@ function qNow(has) {
   const el = $("qnow"); if (!has) { QPICK = false; el.style.display = "none"; return; }
   hideAsk();
   if (QPICK) { if (!el.querySelector("#qn-d")) qPick(); el.style.display = "flex"; return; }
+  if (VIEW === "cal" && CALSEL) {
+    const d = new Date(CALSEL + "T12:00");
+    el.innerHTML = `<span>${DAY[d.getDay()]} ${dmy(CALSEL).slice(0, 5)} at</span>${["09:00", "12:00", "15:00", "18:00"].map(t => `<button onclick="quickAdd('at:${t}')">${t}</button>`).join("")}<button onclick="qPick()">Pick…</button>`;
+    el.style.display = "flex"; return;
+  }
   el.innerHTML = `<span>${BELL}Remind</span>${[["tomorrow", "Tomorrow 9:00"], ["evening", dubaiNow().getHours() >= 19 ? "Tmrw evening" : "This evening"], ["1h", "In 1 hour"], ["week", "Monday 9:00"]].map(([k, l]) => `<button onclick="quickAdd('${k}')">${l}</button>`).join("")}<button onclick="qPick()">Pick…</button>`;
   el.style.display = "flex";
 }
 function qPick() {
-  QPICK = true; const [d, t] = whenOf("tomorrow");
+  QPICK = true; const [d, t] = VIEW === "cal" && CALSEL ? [CALSEL, "09:00"] : whenOf("tomorrow");
   $("qnow").innerHTML = `<input type="date" id="qn-d" value="${d}" min="${iso(dubaiNow())}"><input type="time" id="qn-t" value="${t}"><button class="sv" onclick="quickAdd('pick')">Save</button><button class="x" onclick="QPICK=false;qNow(true)" aria-label="Back">✕</button>`;
 }
 let TARGET = null;                     // the section the next line goes to (its own mic / + Type); none = the words decide
 const HERE = () => ({ cal: "event", notes: "note" })[VIEW] || "";   // on a section's page, the box adds there
 function setTarget(k) {
   TARGET = k || null;
-  $("tgt").innerHTML = TARGET ? `Adding to <b>${KL[TARGET]}</b><button onclick="setTarget(null)" aria-label="Let the words decide">✕</button>`
-    : HERE() ? `Adding to <b>${KL[HERE()]}</b>` : "";
+  $("tgt").innerHTML = TARGET && TARGET !== HERE() ? `Adding to <b>${KL[TARGET]}</b><button onclick="setTarget(null)" aria-label="Let the words decide">✕</button>` : "";
+  const d = CALSEL ? new Date(CALSEL + "T12:00") : null;
+  $("q").placeholder = VIEW === "cal" && d ? `Add on ${DAY[d.getDay()]} ${dmy(CALSEL).slice(0, 5)}…` : VIEW === "notes" ? "Add a note…" : "Say or type anything…";
 }
 async function quickAdd(how) {
   const t = $("q").value.trim(); if (!t) return;
   let when = {};
   if (how === "pick") { if (!$("qn-d").value) { $("qn-d").focus(); return; } when = { due_on: $("qn-d").value, due_time: $("qn-t").value }; }
+  else if (typeof how === "string" && how.startsWith("at:")) when = { due_on: CALSEL, due_time: how.slice(3) };
   else if (typeof how === "string" && how) { const [d, tm] = whenOf(how); when = { due_on: d, due_time: tm }; }
+  else if (VIEW === "cal" && CALSEL && !TARGET) when = { day: CALSEL };          // the picked day, unless the words say another
   try {
     const i = await api("/users/personal/quick", { method: "POST", body: JSON.stringify({ text: t, kind: TARGET || "", here: HERE(), ...when }) });
     QPICK = false;

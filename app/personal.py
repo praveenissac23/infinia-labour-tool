@@ -296,10 +296,11 @@ _EVENT_WORD = r"^\s*(meeting|appointment|site\s+visit|lunch\s+with|dinner\s+with
 _REM_CMD = _P + r"(?:(?:add|set|create|make)\s+(?:a\s+|an\s+)?(?:new\s+)?reminder|reminder)\b\s*(?:(?:to|for|that|about|on)\b|[:\-])?\s*"
 
 
-def parse(text: str, now: datetime = None, kind: str = None, here: str = None) -> dict:
+def parse(text: str, now: datetime = None, kind: str = None, here: str = None, day: date = None) -> dict:
     """Read a quick-add line into an item: note, calendar event or reminder; when, what time, repeat, personal or
     work. kind = the section it was said into (its own mic) - then it goes there whatever the words.
-    here = the page it was typed or said on (Reminders / Calendar / Notes) - used when the words do not say (25/11/2026)."""
+    here = the page it was typed or said on (Reminders / Calendar / Notes) - used when the words do not say (25/11/2026).
+    day = the day picked on the Calendar when it was typed there - used when the words name no day (26/11/2026)."""
     now = now or dubai_now()
     today = now.date()
     raw = (text or "").strip()
@@ -428,6 +429,8 @@ def parse(text: str, now: datetime = None, kind: str = None, here: str = None) -
             cut(r"(?<![\d.,])\b(?:on\s+)?(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b(?![.,]\d)", dmy) or \
                 cut(r"(?<![\d.,])\b(?:on\s+)?(\d{1,2})-(\d{1,2})-(\d{4})\b", dmy) or \
                 cut(r"\b(?:on\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(jan\w*|feb\w*|mar\w*|apr\w*|may|jun\w*|jul\w*|aug\w*|sep\w*|oct\w*|nov\w*|dec\w*)(?:\s+(\d{4}))?\b", dmy)
+    if day and not out["due_on"]:
+        out["due_on"] = day                      # "site walk 3pm" typed with Sunday picked = Sunday 15:00
     if out["due_time"] and not out["due_on"]:
         hh, mm = map(int, out["due_time"].split(":"))
         out["due_on"] = today if (hh, mm) > (now.hour, now.minute) else today + timedelta(days=1)
@@ -541,7 +544,11 @@ def items(s: PersonalSettings = Depends(me), db: Session = Depends(get_db)):
 @router.post("/users/personal/quick")
 def quick(payload: dict = Body(...), s: PersonalSettings = Depends(me), db: Session = Depends(get_db)):
     """The type-or-speak box: read the line and save it."""
-    p = parse(str(payload.get("text") or ""), kind=payload.get("kind") or None, here=payload.get("here") or None)
+    try:
+        day = date.fromisoformat(str(payload.get("day") or "")[:10]) if payload.get("day") else None
+    except ValueError:
+        day = None
+    p = parse(str(payload.get("text") or ""), kind=payload.get("kind") or None, here=payload.get("here") or None, day=day)
     if not p["title"]:
         raise HTTPException(400, "Say or type what it is.")
     i = PersonalItem(user_id=s.user_id)
