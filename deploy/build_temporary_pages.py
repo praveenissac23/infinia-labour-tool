@@ -508,6 +508,12 @@ CSS = """
 MOTION = r"""
 <style>
   :root { --mo-red: #C0392B; }
+  /* a page held out of sight while it gets ready (start, sign-in): a small ring after 0.4 s; a tab getting ready: a thin line on top */
+  html.pg-wait::after { content: ""; position: fixed; left: calc(50vw - 15px); top: 42vh; width: 30px; height: 30px; box-sizing: border-box; border: 3px solid #C0392B22; border-top-color: #C0392B; border-radius: 50%; z-index: 99999; animation: pgspin .8s linear infinite, pgspinin .25s .4s both; }
+  @keyframes pgspin { to { transform: rotate(360deg); } } @keyframes pgspinin { from { opacity: 0; } }
+  #pg-busy { position: fixed; left: 0; top: 0; height: 3px; width: 100vw; z-index: 99999; pointer-events: none; opacity: 0; transition: opacity .2s; background: linear-gradient(90deg, transparent, #C0392B, transparent) no-repeat; background-size: 40vw 3px; animation: pgbusy 1.1s linear infinite; }
+  #pg-busy.on { opacity: 1; }
+  @keyframes pgbusy { from { background-position: -40vw 0; } to { background-position: 100vw 0; } }
   .pg-tabs { position: relative; gap: 4px !important; margin: 12px 24px 0; padding: 4px !important; background: #FDF6F5 !important; border: 1px solid #F0DEDA !important; border-radius: 14px; width: fit-content; max-width: calc(100% - 48px); box-sizing: border-box; }
   .pg-tab { position: relative; z-index: 1; background: transparent !important; border: 0 !important; border-radius: 10px !important; color: #8A6560 !important; padding: 8px 16px !important; transition: color .2s; -webkit-tap-highlight-color: transparent; }
   .pg-tab:hover { color: var(--mo-red) !important; }
@@ -693,10 +699,11 @@ EARLY = """
     var st = document.createElement("style"); st.id = "pg-early"; st.textContent = css;
     document.head.appendChild(st);
     // the page is drawn out of sight and shown once, when it has settled - not header, tabs and menu
-    // each moving into place in front of the user (pgUnhold; never held more than 1.6 s)
+    // each moving into place in front of the user (pgUnhold; held 4 s at most after the first screen is chosen; 15 s is only the safety net)
     var hold = document.createElement("style"); hold.id = "pg-hold"; hold.textContent = "#app-screen{visibility:hidden}";
     document.head.appendChild(hold);
-    setTimeout(function () { var h = document.getElementById("pg-hold"); if (h) h.remove(); }, 1600);
+    document.documentElement.classList.add("pg-wait");          // a small ring after 0.4 s, so a slow start is not a blank page
+    setTimeout(function () { var h = document.getElementById("pg-hold"); if (h) h.remove(); document.documentElement.classList.remove("pg-wait"); }, 15000);
     // The tab strip as this login last saw it on this page, drawn before
     // the app's script runs, so the strip never appears empty and fills.
     var tabs = null;
@@ -1014,24 +1021,36 @@ document.addEventListener("keydown", e => {
 });
 // No flicker: a screen (or a tab of it) is kept out of sight while its first reads come in and it draws
 // itself, then shown in one go - instead of rows, totals and boxes arriving one after another and
-// pushing everything down. Never held longer than 0.9 s.
+// pushing everything down. Held 2.5 s at most; a thin red line runs along the top when it takes over a quarter second.
 function pgSettle(el) {
   if (!el) return;
   clearTimeout(el.__pgst); if (el.__pgmo) el.__pgmo.disconnect();
   el.style.visibility = "hidden";
+  let bar = document.getElementById("pg-busy");
+  if (!bar) { bar = document.createElement("div"); bar.id = "pg-busy"; document.body.appendChild(bar); }
+  clearTimeout(bar.__t); bar.__t = setTimeout(() => { if (el.style.visibility === "hidden") bar.classList.add("on"); }, 250);
   const start = performance.now(); let last = start;
   const mo = new MutationObserver(() => { last = performance.now(); });
   mo.observe(el, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["style", "class", "hidden"] });
   el.__pgmo = mo;
   const tick = () => {
     const now = performance.now();
-    if ((now - start > 80 && now - last > 100 && !window.__apiBusy) || now - start > 900) {
-      mo.disconnect(); el.__pgmo = null; el.style.visibility = ""; return;
+    if ((now - start > 80 && now - last > 100 && !window.__apiBusy) || now - start > 2500) {
+      mo.disconnect(); el.__pgmo = null; el.style.visibility = ""; clearTimeout(bar.__t); bar.classList.remove("on"); return;
     }
     el.__pgst = setTimeout(tick, 25);
   };
   el.__pgst = setTimeout(tick, 25);
 }
+// Sign-in is held the same way as a reload (26/11/2026): the staff dashboard and the full menu were showing for a
+// moment before this login's own dashboard, page and menu took their place.
+function pgHoldStart() {
+  if (document.getElementById("pg-hold")) return;
+  const h = document.createElement("style"); h.id = "pg-hold"; h.textContent = "#app-screen{visibility:hidden}"; document.head.appendChild(h);
+  document.documentElement.classList.add("pg-wait");
+  setTimeout(pgHoldEnd, 15000);
+}
+function pgHoldEnd() { const h = document.getElementById("pg-hold"); if (h) h.remove(); document.documentElement.classList.remove("pg-wait"); }
 function pgUnhold() {
   const hold = document.getElementById("pg-hold"); if (!hold) return;
   const app = document.getElementById("app-screen");
@@ -1040,7 +1059,7 @@ function pgUnhold() {
   if (app) mo.observe(app, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class", "hidden"] });
   const tick = () => {
     const now = performance.now();
-    if ((now - start > 120 && now - last > 120 && !window.__apiBusy) || now - start > 1200) { mo.disconnect(); hold.remove(); return; }
+    if ((now - start > 120 && now - last > 120 && !window.__apiBusy) || now - start > 4000) { mo.disconnect(); pgHoldEnd(); return; }
     setTimeout(tick, 30);
   };
   setTimeout(tick, 30);
@@ -1060,7 +1079,7 @@ function pgTab(id) {
 }
 // A sign-in that does not resume shows the sign-in box after all.
 if (sessionStorage.getItem("infinia_token"))
-  apiCall("/auth/me").catch(e => { if (e && e.status === 401) { const el = document.getElementById("pg-early"); if (el) el.remove(); } });
+  apiCall("/auth/me").catch(e => { if (e && e.status === 401) { const el = document.getElementById("pg-early"); if (el) el.remove(); pgHoldEnd(); } });
 // A tab that shows part of a screen hides the rest of it.
 function pgApplyTab() {
   const t = PG_TAB; if (!t) return;

@@ -4351,11 +4351,11 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
             <p style="font-size:12px; color:#888; margin:0 0 10px;">Everything a purchase order prints, filled in once. Anything missing shows in red below.</p>
             <div class="form-row" style="gap:8px; flex-wrap:wrap;">
               <input type="text" id="sup-name" placeholder="Supplier name *" style="flex:2; min-width:200px;">
-              <input type="text" id="sup-contact" placeholder="Contact person *" style="flex:1.2; min-width:140px;">
+              <input type="text" id="sup-contact" placeholder="Contact person *" style="flex:1.2; min-width:170px;">
               <input type="text" id="sup-phone" placeholder="Phone *" style="flex:1; min-width:120px;">
               <input type="text" id="sup-trn" placeholder="TRN *" style="flex:1.1; min-width:140px;">
               <input type="text" id="sup-email" placeholder="Email *" style="flex:1.4; min-width:160px;">
-              <input type="text" id="sup-terms" list="terms-list" placeholder="Payment terms *" style="flex:1.1; min-width:140px;">
+              <input type="text" id="sup-terms" list="terms-list" placeholder="Payment terms *" style="flex:1.1; min-width:170px;">
               <datalist id="terms-list">
                 <option>Due on Receipt</option><option>Net 30</option><option>Net 45</option>
                 <option>Net 60</option><option>Net 90</option><option>Advance payment</option>
@@ -5932,11 +5932,14 @@ async function doLogin() {
     // A fresh sign-in starts on this login's own first page (Estimation for an estimation login,
     // Dashboard for one that has it) - never on the page the last person was on (e.g. Settings).
     if (!window.__ARRIVAL && (/[?&]p=/.test(location.search) || location.hash)) { location.replace(location.pathname); return; }
+    if (typeof pgHoldStart === "function") pgHoldStart();     // drawn out of sight, shown once this login's own page and menu are in place
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("app-screen").style.display = "block";
     await initApp();
+    if (typeof pgUnhold === "function") pgUnhold();
     done();
   } catch (e) {
+    if (typeof pgHoldEnd === "function") pgHoldEnd();
     done();
     errEl.textContent = e.message || "Login failed.";
   }
@@ -6269,7 +6272,16 @@ async function refreshDownloadToken() {
   downloadTokenTimer = setTimeout(refreshDownloadToken, 45000);
 }
 
+// Everything the start needs is asked for in one go (26/11/2026), not wave after wave: who I am, my rights, the lists,
+// and today's attendance. The code below asks again in its own order and is answered from these same trips
+// (apiCall shares a read that is under way or just in) - on a slow line the first screen comes about two trips sooner.
+function startWarm() {
+  const d = isoLocal(new Date());
+  ["/permissions/me", "/employees?active_only=true", "/sites", "/engineers", `/attendance/${d}`, `/attendance/last-sites/${d}`, `/employees?active_only=true&as_of=${d}`]
+    .forEach(u => { try { apiCall(u).catch(() => {}); } catch (e) {} });
+}
 async function initApp() {
+  startWarm();
   // The key every Preview / Export button needs, fetched at sign-in for
   // every page (and kept fresh), so the first press always works.
   refreshDownloadToken();
@@ -11813,7 +11825,7 @@ let mrCache = [];
 let fuDl = null;
 async function loadFollowUp() {
   const box = document.getElementById("fu-list");
-  box.innerHTML = '<div class="empty-note">Loading...</div>';
+  if (!box.children.length || box.querySelector(":scope > .empty-note")) box.innerHTML = '<div class="empty-note">Loading...</div>';   // coming back: the list stays while it refreshes
   try {
     const [reqs, sups, dl] = await Promise.all([apiCall("/store/requests"), apiCall("/store/suppliers").catch(() => []),
                                                 apiCall("/store/purchase/deliveries").catch(() => null)]);
@@ -16285,7 +16297,8 @@ async function applyScreenPermissions(prefetched) {
     try { dashQuick(); } catch (e) { console.error(e); }
     try { dashSky(); } catch (e) {}
     try { ownDash(me.role); } catch (e) {}
-    setTimeout(() => { try { pushAfterLogin(); } catch (e) {} }, 1200);
+    // opening straight on Settings: its cards fill before the page is shown, not 1.2 s after (they were pushing the rest down)
+    setTimeout(() => { try { pushAfterLogin(); } catch (e) {} }, /settings/.test(location.search + location.pathname) ? 0 : 1200);
     // Recording stock in and out is its own right. Done here, where the
     // permissions have actually arrived - reading MY_SCREENS before this
     // call returns found it empty and hid the buttons from everybody,
@@ -16701,6 +16714,7 @@ try { const t = localStorage.getItem("infinia_keep_tick"); const b = document.ge
   const saved = sessionStorage.getItem("infinia_token");
   if (saved) {
     TOKEN = saved;
+    startWarm();
     apiCall("/auth/me").then(me => {
       CURRENT_ROLE = me.role;
       CURRENT_USERNAME = me.username || "";
