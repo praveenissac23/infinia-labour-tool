@@ -6,7 +6,7 @@
      Only at its own secret address (?k=...), only with the owner's login + PIN once per device. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="me-build" content="89affd237a62">
+<meta name="me-build" content="c06cb90962e6">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -291,6 +291,9 @@
   .qw { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; } .qw span { font-size: 12px; color: var(--mute); font-weight: 700; width: 100%; }
   .qw button:last-child { background: var(--soft); color: var(--mute); }
   .bar.listening .rask { display: none !important; }
+  .qnow { flex-wrap: wrap; overflow: visible; row-gap: 6px; } .qnow span { width: auto; }
+  .qnow input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; font-size: 15px; background: var(--field); color: var(--ink); font-family: inherit; }
+  .qnow button.sv { background: var(--red); color: #fff; }
   /* moving notes */
   [data-g] > .sw > .it { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   @media (hover: hover) { [data-g] > .sw > .it { cursor: grab; } }
@@ -383,6 +386,7 @@
         <button class="lok" id="lok" onclick="finishRec()" aria-label="Done"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button></div>
     </div>
     <div class="rask" id="rask" style="display:none"></div>
+    <div class="rask qnow" id="qnow" style="display:none"></div>
     <div class="tgt" id="tgt"></div>
     <div class="cap">
       <textarea id="q" rows="1" placeholder="Say or type anything…" enterkeyhint="done" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();quickAdd();}"></textarea>
@@ -850,7 +854,21 @@ function show(v) { const pg = $("pager"); pg.scrollTo({ left: VIEWS.indexOf(v) *
 
 // ---------------- add, tick, later ----------------
 $("q").addEventListener("input", () => { const q = $("q"); q.style.height = "auto"; q.style.height = q.scrollHeight + "px"; });
-$("q").addEventListener("input", () => { const has = !!$("q").value.trim(); $("gobtn").style.display = has ? "" : "none"; $("mic").style.display = has ? "none" : ""; });
+$("q").addEventListener("input", () => { const has = !!$("q").value.trim(); $("gobtn").style.display = has ? "" : "none"; $("mic").style.display = has ? "none" : ""; qNow(has); });
+// While there is something in the box, the times sit right above it (26/11/2026): one tap on a time saves the note
+// with that reminder; the arrow saves it without one. "Pick" turns the same line into a date and a time.
+let QPICK = false;
+function qNow(has) {
+  const el = $("qnow"); if (!has) { QPICK = false; el.style.display = "none"; return; }
+  hideAsk();
+  if (QPICK) { if (!el.querySelector("#qn-d")) qPick(); el.style.display = "flex"; return; }
+  el.innerHTML = `<span>${BELL}Remind</span>${[["tomorrow", "Tomorrow 9:00"], ["evening", dubaiNow().getHours() >= 19 ? "Tmrw evening" : "This evening"], ["1h", "In 1 hour"], ["week", "Monday 9:00"]].map(([k, l]) => `<button onclick="quickAdd('${k}')">${l}</button>`).join("")}<button onclick="qPick()">Pick…</button>`;
+  el.style.display = "flex";
+}
+function qPick() {
+  QPICK = true; const [d, t] = whenOf("tomorrow");
+  $("qnow").innerHTML = `<input type="date" id="qn-d" value="${d}" min="${iso(dubaiNow())}"><input type="time" id="qn-t" value="${t}"><button class="sv" onclick="quickAdd('pick')">Save</button><button class="x" onclick="QPICK=false;qNow(true)" aria-label="Back">✕</button>`;
+}
 let TARGET = null;                     // the section the next line goes to (its own mic / + Type); none = the words decide
 const HERE = () => ({ cal: "event", notes: "note" })[VIEW] || "";   // on a section's page, the box adds there
 function setTarget(k) {
@@ -858,10 +876,14 @@ function setTarget(k) {
   $("tgt").innerHTML = TARGET ? `Adding to <b>${KL[TARGET]}</b><button onclick="setTarget(null)" aria-label="Let the words decide">✕</button>`
     : HERE() ? `Adding to <b>${KL[HERE()]}</b>` : "";
 }
-async function quickAdd() {
+async function quickAdd(how) {
   const t = $("q").value.trim(); if (!t) return;
+  let when = {};
+  if (how === "pick") { if (!$("qn-d").value) { $("qn-d").focus(); return; } when = { due_on: $("qn-d").value, due_time: $("qn-t").value }; }
+  else if (typeof how === "string" && how) { const [d, tm] = whenOf(how); when = { due_on: d, due_time: tm }; }
   try {
-    const i = await api("/users/personal/quick", { method: "POST", body: JSON.stringify({ text: t, kind: TARGET || "", here: HERE() }) });
+    const i = await api("/users/personal/quick", { method: "POST", body: JSON.stringify({ text: t, kind: TARGET || "", here: HERE(), ...when }) });
+    QPICK = false;
     $("q").value = ""; $("q").dispatchEvent(new Event("input")); $("hint").textContent = ""; setTarget(null);
     ITEMS.push(i);
     render();

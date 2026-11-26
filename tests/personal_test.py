@@ -340,6 +340,16 @@ ck("it is called Planner (tab, Home Screen icon, Settings card)", "<title>Planne
    and c.get(f"/users/personal/manifest?k={K}").json()["short_name"] == "Planner" and "Open my Planner" in open("../app-classic.html", encoding="utf-8").read())
 ck("a note added without a day gets a one-tap Remind me? line that goes away by itself (nothing to answer)",
    "if (isNote(i) && !i.due_on) {" in page and "askRemind(i.id); }" in page and "✓ Saved · " in page and "RASK = setTimeout(hideAsk, 12000)" in page and 'id="rask"' in page)
+ck("while there is text in the box the times sit above it: one tap saves the note with that reminder (no reopening)",
+   'id="qnow"' in page and "function qNow(has)" in page and '''<button onclick="quickAdd('${k}')">''' in page and "...when })" in page and "function qPick()" in page)
+r = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "Follow up with Sayed regarding 909 drawings", "here": "note", "due_on": "2026-11-27", "due_time": "09:00"}).json()
+ck("typed + a time tapped: saved once as a note that rings then (and so shows on the calendar)", (r["kind"], r["title"], r["due_on"], r["due_time"], r["remind_at"]) ==
+   ("note", "Follow up with Sayed regarding 909 drawings", "2026-11-27", "09:00", "2026-11-27T09:00"), r)
+c.delete(f"/users/personal/items/{r['id']}?k={K}", headers=D)
+r = c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "call the bank tomorrow 10am", "here": "note", "due_on": "2026-11-30", "due_time": "19:00"}).json()
+ck("the tapped time wins over a time in the words", (r["title"], r["due_on"], r["due_time"]) == ("Call the bank", "2026-11-30", "19:00"), r)
+c.delete(f"/users/personal/items/{r['id']}?k={K}", headers=D)
+ck("a bad date from the page is refused, nothing saved", c.post(f"/users/personal/quick?k={K}", headers=D, json={"text": "x y z", "due_on": "tomorrow"}).status_code == 400)
 ck("the same one-tap choices are in the note panel; ring / repeat / pin are folded under More (simple first)", "function setWhen(how)" in page and 'class="qw"' in page and '<details class="more"' in page)
 ck("anything with a date - note or calendar entry - is on the calendar", "ITEMS.filter(i => i.due_on && keep(i))" in page and 'ITEMS.filter(i => i.due_on && !i.done_at && keep(i))' in page)
 ck("Notes page: no Finished list (ticked notes are under Done)", "<div class=\"sec\">Finished</div>" not in page)

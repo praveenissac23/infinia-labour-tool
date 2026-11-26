@@ -551,6 +551,15 @@ def quick(payload: dict = Body(...), s: PersonalSettings = Depends(me), db: Sess
     _apply(i, {"kind": p["kind"], "title": title, "body": body,
                "tag": p["tag"], "repeat": p["repeat"],
                "due_on": p["due_on"].isoformat() if p["due_on"] else "", "due_time": p["due_time"]})
+    when = str(payload.get("due_on") or "")[:10]           # a time picked with one tap beside the box (26/11/2026):
+    if when:                                              # it wins over anything the words said
+        try:
+            date.fromisoformat(when)
+        except ValueError:
+            raise HTTPException(400, "That date is not a date.")
+        p["due_on"] = date.fromisoformat(when)
+        p["due_time"] = str(payload.get("due_time") or "")[:5]
+        _apply(i, {"due_on": when, "due_time": p["due_time"]})
     if p["due_on"] and p["kind"] in ("task", "note"):
         _apply(i, {"remind_before": 0})          # a note with a date rings then - at 9:00 that morning without a time
     elif p["due_on"] and p["kind"] == "event":
