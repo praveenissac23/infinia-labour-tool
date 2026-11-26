@@ -928,8 +928,8 @@ async function saveEdit() {
   if (want && want !== code.replace(/\s+/g, "").toUpperCase()) {
     try {
       const c = await apiCall(`/employees/people/${encodeURIComponent(code)}/code`, { method: "POST", body: JSON.stringify({ new_code: want, check: true }) });
-      const what = [[c.days, "attendance day"], [c.cycles, "payroll cycle"], [c.visa, "visa file"], [c.ppe, "PPE issue"]].filter(x => x[0]).map(([n, w]) => `${n} ${w}${n > 1 ? "s" : ""}`).join(", ");
-      if (!(await ask(`Change ${F.person.name}'s code from ${c.from} to ${c.to}?${what ? ` His ${what} move with him.` : ""} Payslips already printed keep the old code.`, `Yes, make it ${c.to}`))) return;
+      const what = [[c.days, "attendance day"], [c.cycles, "payroll cycle"], [c.visa, "visa file"], [c.ppe, "PPE issue"], [c.payslips, "saved payslip"]].filter(x => x[0]).map(([n, w]) => `${n} ${w}${n > 1 ? "s" : ""}`).join(", ");
+      if (!(await ask(`Change ${F.person.name}'s code from ${c.from} to ${c.to}?${what ? ` His ${what} move with him.` : ""} Paper copies already handed out keep the old code.`, `Yes, make it ${c.to}`))) return;
       code = (await apiCall(`/employees/people/${encodeURIComponent(code)}/code`, { method: "POST", body: JSON.stringify({ new_code: want }) })).emp_no;
       P.current = code; F.person.emp_no = code; loadPeople();     // the list shows the new code even if the rest fails
     } catch (e) { document.getElementById("edit-msg").textContent = errText(e); return; }
@@ -1494,6 +1494,6 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) chec
 window.pgRefresh = async () => { if (!ME) return start(); try { await loadPeople(); } catch (e) {} };
 if (TOKEN) start(); else signInBox();
 </script>
-<!--help-tips--><link rel="stylesheet" href="/portal/help/help.css?v=33b64c6efd"><script src="/portal/help/guides.js?v=a1c986a1e7"></script><script src="/portal/help/heads.js?v=146e26afec"></script><script src="/portal/help/tips.js?v=587fad1174"></script><script src="/portal/help/freeze.js?v=dd5b36f696" defer></script><script src="/portal/help/tablesort.js?v=84a7b5be7d" defer></script><script src="/portal/help/polish.js?v=a5e4f61ba5" defer></script><script>window.SPELL_WORDS_SRC = "/portal/help/words.js?v=ff86ea776f";</script><script src="/portal/help/spell.js?v=4775d9f55b" defer></script><script>window.DOCREAD_V = "611505c1a9";</script><script src="/portal/help/docread.js?v=9bb1650f2b" defer></script><script src="/portal/help/fab.js?v=0afaf27fa7" defer></script><script src="/portal/help/offline.js?v=037b9b67e6" defer></script><script src="/portal/help/savepick.js?v=c7789153fb"></script><!--/help-tips-->
+<!--help-tips--><link rel="stylesheet" href="/portal/help/help.css?v=33b64c6efd"><script src="/portal/help/guides.js?v=c1a6007e86"></script><script src="/portal/help/heads.js?v=146e26afec"></script><script src="/portal/help/tips.js?v=587fad1174"></script><script src="/portal/help/freeze.js?v=dd5b36f696" defer></script><script src="/portal/help/tablesort.js?v=84a7b5be7d" defer></script><script src="/portal/help/polish.js?v=a5e4f61ba5" defer></script><script>window.SPELL_WORDS_SRC = "/portal/help/words.js?v=ff86ea776f";</script><script src="/portal/help/spell.js?v=4775d9f55b" defer></script><script>window.DOCREAD_V = "611505c1a9";</script><script src="/portal/help/docread.js?v=9bb1650f2b" defer></script><script src="/portal/help/fab.js?v=0afaf27fa7" defer></script><script src="/portal/help/offline.js?v=037b9b67e6" defer></script><script src="/portal/help/savepick.js?v=c7789153fb"></script><!--/help-tips-->
 </body>
 </html>

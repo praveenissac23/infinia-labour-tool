@@ -61,6 +61,26 @@ db.add(models.PpeIssue(employee_id=None, emp_no='f 804', name='IAN K', issued_on
 db.add(models.Setting(key='labour_full_cycle:November 2026:F804', value='2026-11-20'))       # paid the whole cycle early
 db.add(models.PpeIssue(employee_id=None, emp_no='F777', name='OLD WORKER', issued_on=start, item='Coverall'))  # someone not on the list
 db.add(models.Setting(key='labour_full_cycle:October 2026:F888', value='2026-10-20'))        # another man's early pay
+import json
+emp_ian = {"emp_no": "F804", "name": "IAN KIPLAGAT KEMBOY", "designation": "BUILDING LABOUR"}
+pay = models.PayPayment(kind='labour', employee_id=ian.id, month_year='November 2026', pay_type='regular', amount=650, due=650,
+                        paid_on=date(2026, 11, 25), figures=json.dumps({"employee": emp_ian, "worked": 12}))
+db.add(pay); db.flush()
+for v in (1, 2):                                       # a payslip and its reprint, as on the live register
+    db.add(models.Payslip(kind='labour', employee_id=ian.id, payment_id=pay.id, month_year='November 2026', version=v,
+                          slip_no=f"PS-F804-2026-11-{pay.id}-v{v}",
+                          data=json.dumps({"employee": emp_ian, "remarks": "Balance 0.00; F804 paid in full", "due": 650})))
+settle = {"emp": {"emp_no": "F804", "name": "IAN KIPLAGAT KEMBOY"}, "gratuity": 0, "net": 300}   # his final settlement
+fin = models.PayPayment(kind='labour', employee_id=ian.id, month_year='November 2026', pay_type='final', amount=300, due=300,
+                        paid_on=date(2026, 11, 26), figures=json.dumps({"period": "November 2026", "settlement": settle, "net": 300}))
+db.add(fin); db.flush()
+db.add(models.Payslip(kind='labour', employee_id=ian.id, payment_id=fin.id, month_year='November 2026', version=1, slip_type='settlement',
+                      slip_no=f"PS-F804-2026-11-{fin.id}-v1", data=json.dumps({"period": "November 2026", "settlement": settle, "net": 300})))
+pj = models.PayPayment(kind='labour', employee_id=jos.id, month_year='November 2026', amount=100, due=100, paid_on=date(2026, 11, 25),
+                       figures=json.dumps({"employee": {"emp_no": "F805", "name": "JOSEPH"}}))
+db.add(pj); db.flush()
+db.add(models.Payslip(kind='labour', employee_id=jos.id, payment_id=pj.id, month_year='November 2026', version=1,
+                      slip_no=f"PS-F805-2026-11-{pj.id}-v1", data=json.dumps({"employee": {"emp_no": "F805"}})))
 db.commit(); db.close()
 
 URL = '/employees/people/F804/code'
@@ -110,6 +130,18 @@ ck('his visa file moved', db.query(models.VisaFile).filter_by(employee_id=ian.id
 ck('both PPE issues moved (also the old one typed "f 804" by hand)', db.query(models.PpeIssue).filter_by(emp_no='F904').count() == 2)
 ck('his early full-cycle pay moved with him (his card stays paid in full)', db.query(models.Setting).get('labour_full_cycle:November 2026:F904').value == '2026-11-20'
    and db.query(models.Setting).get('labour_full_cycle:November 2026:F804') is None)
+slips = db.query(models.Payslip).filter_by(employee_id=ian.id).order_by(models.Payslip.version).all()
+ck('his saved payslips print the new code', all(json.loads(x.data)["employee"]["emp_no"] == 'F904' for x in slips if x.slip_type != 'settlement') and len(slips) == 3)
+ck('...and their slip numbers carry it (PS-F904-...)', all(x.slip_no.startswith('PS-F904-') for x in slips) and any(x.slip_no.endswith('-v2') for x in slips))
+st = [x for x in slips if x.slip_type == 'settlement'][0]
+ck('his final settlement slip prints the new code (the code settlement.py prints)', json.loads(st.data)["settlement"]["emp"]["emp_no"] == 'F904'
+   and json.loads(st.data)["settlement"]["net"] == 300)
+ck('...and so does the settlement payment a reprint is made from', json.loads(db.query(models.PayPayment).get(st.payment_id).figures)["settlement"]["emp"]["emp_no"] == 'F904')
+ck('...only the code changed in them (the rest of what was printed is as it was)', json.loads(slips[0].data)["due"] == 650 and
+   json.loads(slips[0].data)["remarks"] == "Balance 0.00; F804 paid in full")
+ck("the payment a reprint is made from has the new code too", json.loads(db.query(models.PayPayment).get(slips[0].payment_id).figures)["employee"]["emp_no"] == 'F904')
+ck("the other man's payslip and payment are untouched", db.query(models.Payslip).filter_by(employee_id=jos.id).one().slip_no.startswith('PS-F805-')
+   and json.loads(db.query(models.PayPayment).filter_by(employee_id=jos.id).one().figures)["employee"]["emp_no"] == 'F805')
 ck("other men's settings untouched", db.query(models.Setting).get('labour_full_cycle:October 2026:F888').value == '2026-10-20')
 ck('nothing is left under F804', sum(db.query(M).filter(M.emp_no == 'F804').count()
                                       for M in (models.DailyRow, models.EmployeeSummary, models.VisaFile, models.PpeIssue)) == 0)

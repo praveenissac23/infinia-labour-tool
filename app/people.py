@@ -11,6 +11,7 @@ menu entry changes and a redirect is left behind.
 Every path is under a prefix nginx already forwards: /employees/,
 /export/, /permissions/, /users.
 """
+import json
 import re
 from datetime import date, timedelta
 from urllib.parse import quote
@@ -903,6 +904,26 @@ def _code_rows(db, Model, e, old):
                                       and_(Model.employee_id.is_(None), _norm_col(Model) == M.norm_emp_no(old))))
 
 
+def _recode_json(text, old, new, po, pn):
+    """The JSON a payslip / payment keeps, with the code changed where it is printed: employee.emp_no, slip_no and,
+    for a final settlement, settlement.emp.emp_no (settlement.py prints that one). None when nothing in it changes."""
+    try:
+        d = json.loads(text or "{}")
+    except ValueError:
+        return None
+    if not isinstance(d, dict):
+        return None
+    hit = False
+    if isinstance(d.get("employee"), dict) and d["employee"].get("emp_no") == old:
+        d["employee"]["emp_no"] = new; hit = True
+    st = d.get("settlement")
+    if isinstance(st, dict) and isinstance(st.get("emp"), dict) and st["emp"].get("emp_no") == old:
+        st["emp"]["emp_no"] = new; hit = True
+    if isinstance(d.get("slip_no"), str) and d["slip_no"].startswith(po):
+        d["slip_no"] = pn + d["slip_no"][len(po):]; hit = True
+    return json.dumps(d, default=str) if hit else None
+
+
 FULL_CYCLE = "labour_full_cycle:"   # "pay the whole cycle now" for one man: labour_full_cycle:<month>:<code> (services.py)
 
 
@@ -935,20 +956,32 @@ def change_code(emp_no: str, payload: dict = Body(...), db: Session = Depends(ge
         raise HTTPException(status_code=400, detail=f"There is attendance, payroll, PPE or a visa file under {new} already ({clash}) - "
                                                     "pick another code, or ask Claude to look at it first.")
     moves = {Model.__tablename__: _code_rows(db, Model, e, old).count() for Model in CODE_TABLES}
+    po, pn = f"PS-{old.replace('/', '').replace(' ', '')}-", f"PS-{new}-"
+    slips = [x for x in db.query(models.Payslip).filter(models.Payslip.employee_id == e.id).all()   # only the ones that change
+             if (x.slip_no or "").startswith(po) or _recode_json(x.data, old, new, po, pn) is not None]
+    pays = db.query(models.PayPayment).filter(models.PayPayment.employee_id == e.id).all()
     if payload.get("check"):
         return {"ok": True, "from": old, "to": new, "days": moves["daily_rows"], "cycles": moves["employee_summaries"],
-                "visa": moves["visa_files"], "ppe": moves["ppe_issues"]}
+                "visa": moves["visa_files"], "ppe": moves["ppe_issues"], "payslips": len(slips)}
     for Model in CODE_TABLES:
         _code_rows(db, Model, e, old).update({Model.emp_no: new}, synchronize_session=False)
     for x in _code_settings(db, old):        # a cycle he was paid in full early stays paid in full under the new code
         k = x.key[: -len(old)] + new
         db.query(models.Setting).filter(models.Setting.key == k).delete(synchronize_session=False)   # an empty leftover only
         db.add(models.Setting(key=k, value=x.value)); db.delete(x)
+    # Saved payslips, and the payments they are printed from, show the new code too (26/11/2026) - only the code
+    # changes in them. Slip numbers are PS-<code without / or spaces>-<month>-<payment>-v<n> (paystatus.make_payslip).
+    for row, col in [(x, "data") for x in slips] + [(x, "figures") for x in pays]:
+        if col == "data" and (row.slip_no or "").startswith(po):
+            row.slip_no = pn + row.slip_no[len(po):]
+        t = _recode_json(getattr(row, col), old, new, po, pn)
+        if t is not None:
+            setattr(row, col, t)
     e.emp_no = new
     db.commit()
     M.log_action(db, user.id, "employee_code_changed",
                  f"{old} -> {new} {e.name} (moved: {moves['daily_rows']} days, {moves['employee_summaries']} cycles, "
-                 f"{moves['visa_files']} visa, {moves['ppe_issues']} PPE)")
+                 f"{moves['visa_files']} visa, {moves['ppe_issues']} PPE, {len(slips)} payslips)")
     return {"ok": True, "from": old, "to": new, "emp_no": new}
 
 
