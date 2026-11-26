@@ -365,6 +365,41 @@ class _SlowLog:
             dt = _t.monotonic() - t0
             if dt > 4 and not scope["path"].startswith(("/store/chat/stream", "/export/")):
                 print(f"SLOW {dt:.1f}s {scope['method']} {scope['path']} -> {st[0]}", flush=True)
+            _req_time(scope["method"], scope["path"], dt)
+
+
+# Where the time goes (26/11/2026): every request's time is added up by kind of request, in memory only (a few hundred
+# small numbers), and once an hour the 25 that took the most time in total are written to the server log as one line
+# (journalctl -u infinia | grep TIMES). deploy/speed_report.sh reads them - a slow screen is then known by its numbers.
+_REQ_T, _REQ_T_AT = {}, [0.0]
+
+
+def _req_shape(method, path):
+    return method + " " + re.sub(r"/[^/]*\d[^/]*", "/#", path)[:70]     # /store/requests/158 and /159 count as one
+
+
+def _req_time(method, path, dt, now=None, out=print):
+    try:
+        if path.startswith(("/store/chat/stream", "/health")):
+            return
+        import time as _t
+        now = _t.time() if now is None else now
+        k = _req_shape(method, path)
+        r = _REQ_T.get(k)
+        if r is None:
+            if len(_REQ_T) >= 400:
+                return
+            r = _REQ_T[k] = [0, 0.0, 0.0, 0]              # how many, seconds in total, the longest, how many over 1 s
+        r[0] += 1; r[1] += dt; r[2] = max(r[2], dt); r[3] += dt >= 1
+        if not _REQ_T_AT[0]:
+            _REQ_T_AT[0] = now
+        elif now - _REQ_T_AT[0] >= 3600:
+            top = sorted(_REQ_T.items(), key=lambda x: -x[1][1])[:25]
+            out("TIMES " + json.dumps({"calls": sum(v[0] for v in _REQ_T.values()), "over1s": sum(v[3] for v in _REQ_T.values()),
+                                       "top": [[k2, v[0], round(v[1] / v[0] * 1000), round(v[2] * 1000), v[3]] for k2, v in top]}), flush=True)
+            _REQ_T.clear(); _REQ_T_AT[0] = now
+    except Exception:
+        pass
 
 
 app.add_middleware(GZipMiddleware, minimum_size=1024)
