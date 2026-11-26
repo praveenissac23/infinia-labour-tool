@@ -377,5 +377,14 @@ ck("its own Home Screen icon", 'href="/portal/me-icon-180.png"' in page and m.js
 ck("the page: not indexed, no referrer, iPhone app look", 'name="robots" content="noindex' in page and 'name="referrer" content="no-referrer"' in page and "apple-mobile-web-app-capable" in page)
 app = open(os.path.join(root, "app-classic.html"), encoding="utf-8").read()
 ck("Settings card for admins only", 'id="pg-me-card"' in app and 'show("pg-me-card", CURRENT_ROLE === "admin")' in app)
+# slow movement (26/11/2026): each page arrives in its own way, only on arriving; can be slowed or switched off
+_pg = open('../portal/me.html', encoding='utf-8').read()
+ck('each page has its own arrival', all(x in _pg for x in ('dash: [".dcard|aRise', '#months|aBloom', '|aDot|', 'notes: [".sw|aSlide', '|aDrop|'))
+   and all('@keyframes ' + k in _pg for k in ('aRise', 'aBloom', 'aDot', 'aSlide', 'aDrop', 'aDrift', 'aFade')))
+ck('...a redraw never replays it, and it starts once the first data is in', 'arriveEnd(); counts();' in _pg and 'if (first) arrive(true);' in _pg)
+ck('...Settings has Movement: Gentle, Very slow, Off; the phone\'s Reduce Motion starts it Off',
+   'id="moSeg"' in _pg and '["slow", "Gentle"], ["slower", "Very slow"], ["off", "Off"]' in _pg and 'prefers-reduced-motion: reduce' in _pg)
+ck('...with it Off nothing is hidden (the hiding needs html.mo)', 'html.mo .pg:not(.on) > * { opacity: 0; }' in _pg and '.pg:not(.on) > * { opacity: 0; }' not in _pg.replace('html.mo .pg:not(.on) > * { opacity: 0; }', ''))
+
 print("\n" + ("ALL PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)

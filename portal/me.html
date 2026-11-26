@@ -6,7 +6,7 @@
      Only at its own secret address (?k=...), only with the owner's login + PIN once per device. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="me-build" content="2c68b214b72f">
+<meta name="me-build" content="babeb1cb02c7">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -366,6 +366,19 @@
     .two { display: grid; grid-template-columns: 1fr 380px; gap: 10px; align-items: start; }
     .two .side { position: sticky; top: 10px; }
   }
+  /* ----- slow movement (26/11/2026): every page arrives in its own way; the glow behind drifts. Settings > Movement ----- */
+  html.mo .pg:not(.on) > * { opacity: 0; }
+  html.mo .pg.in > * { animation: aFade calc(var(--mo, 1) * .9s) ease both; }
+  html.mo #app::before { animation: aDrift 26s ease-in-out infinite alternate; }
+  html.mo #app::after { animation: aDrift 34s ease-in-out infinite alternate-reverse; }
+  html.mo #h1.in { animation: aFade calc(var(--mo, 1) * .8s) ease both; }
+  @keyframes aFade { from { opacity: 0; } }
+  @keyframes aRise { from { opacity: 0; transform: translateY(30px) scale(.975); filter: blur(6px); } }
+  @keyframes aBloom { from { opacity: 0; transform: scale(.92); } }
+  @keyframes aDot { from { opacity: 0; transform: scale(.4); } }
+  @keyframes aSlide { from { opacity: 0; transform: translateX(48px); } }
+  @keyframes aDrop { from { opacity: 0; transform: translateY(-20px); } }
+  @keyframes aDrift { to { transform: translate3d(34px, 22px, 0) scale(1.14); } }
 </style>
 </head>
 <body>
@@ -417,7 +430,7 @@
 const K = new URLSearchParams(location.search).get("k") || "";
 const DEVKEY = "me_dev_" + K;
 let DEV = ""; try { DEV = localStorage.getItem(DEVKEY) || ""; } catch (e) {}
-let ITEMS = [], NOW = new Date(), VIEW = "dash", FILTER = "all", CALM = null, CALSEL = null, RUNG = {};
+let LOADED = false, ITEMS = [], NOW = new Date(), VIEW = "dash", FILTER = "all", CALM = null, CALSEL = null, RUNG = {};
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -519,7 +532,7 @@ async function ready() {
   window.addEventListener("pageshow", e => { if (e.persisted) checkVersion(); });
 }
 async function load() {
-  try { const d = await api("/users/personal/items"); if (DR) return; ITEMS = d.items; render(); checkRing(); } catch (e) {}   // not in the middle of moving a card
+  try { const d = await api("/users/personal/items"); if (DR) return; ITEMS = d.items; const first = !LOADED; LOADED = true; render(); if (first) arrive(true); checkRing(); } catch (e) {}   // not in the middle of moving a card
 }
 const when = i => i.due_on ? new Date(i.due_on + "T" + (i.due_time || "23:59") + ":00") : null;
 function bucket(i) {
@@ -567,7 +580,7 @@ function counts() {
 const VIEWS = ["dash", "cal", "notes", "done"], TITLES = { dash: "Dashboard", cal: "Calendar", notes: "Notes", done: "Done" };
 const keep = i => FILTER === "all" || i.tag === FILTER;
 function render() {
-  counts();
+  arriveEnd(); counts();
   $("chips").innerHTML = [["all", "All"], ["personal", "Personal"], ["work", "Work"]].map(([k, l]) => `<button class="${FILTER === k ? "on" : ""}" onclick="FILTER='${k}';render()">${l}</button>`).join("");
   renderDash(); renderCal(); renderNotes(); renderDone();
 }
@@ -856,8 +869,43 @@ function pagerSetup() {
 }
 function navOn() {
   closeSwipes(); headActs(); setTarget(TARGET);
+  arrive();
   document.querySelectorAll(".nav button").forEach(b => b.style.color = b.dataset.v === VIEW ? "var(--redtx)" : "var(--mute)");
   $("h1").textContent = TITLES[VIEW];
+}
+// ----- slow movement (26/11/2026): each page arrives in its own way - Dashboard cards rise out of a blur, the Calendar
+// month blooms and its days appear one after another, Notes glide in from the side, Done settles from above.
+// Only on arriving at a page, never on a redraw. Settings > Movement: Gentle, Very slow or Off (kept on this phone).
+const MOTIONS = [["slow", "Gentle"], ["slower", "Very slow"], ["off", "Off"]];
+function motion() { let v = ""; try { v = localStorage.getItem("me_motion") || ""; } catch (e) {} return MOTIONS.some(x => x[0] === v) ? v : (matchMedia("(prefers-reduced-motion: reduce)").matches ? "off" : "slow"); }
+function applyMotion() { const m = motion(), h = document.documentElement; h.classList.toggle("mo", m !== "off"); h.style.setProperty("--mo", m === "slower" ? 1.7 : 1); }
+function setMotion(v) { try { localStorage.setItem("me_motion", v); } catch (e) {} applyMotion(); document.querySelectorAll("#moSeg button").forEach((b, k) => b.classList.toggle("on", MOTIONS[k][0] === v)); arrive(true); }
+const ARRIVE = {                                                // [what, how, seconds, gap between one and the next in ms]
+  dash: [".dcard|aRise|1.5|220"],
+  cal: ["#months|aBloom|1.5|0", "#months .mon.cur .grid button|aDot|.8|16", ".dayhead, #daylist .sw|aRise|1.3|140"],
+  notes: [".sw|aSlide|1.3|95"],
+  done: [".sec, .sw|aDrop|1.3|85"] };
+let ARRV = null, ARRT = null;
+function arriveEnd() { clearTimeout(ARRT); document.querySelectorAll(".pg.in").forEach(p => { p.classList.remove("in"); p.querySelectorAll("[data-arr]").forEach(e => { e.style.animation = ""; e.removeAttribute("data-arr"); }); }); }
+function arrive(force) {
+  document.querySelectorAll(".pg").forEach(p => p.classList.toggle("on", p.id === "pg-" + VIEW));
+  if (ARRV === VIEW && !force) return;
+  ARRV = VIEW; arriveEnd();
+  if (motion() === "off") return;
+  const pg = $("pg-" + VIEW), M = motion() === "slower" ? 1.7 : 1; let end = 900;
+  if (VIEW === "cal") document.querySelectorAll("#months .mon").forEach((m, k) => m.classList.toggle("cur", k === CALIDX));
+  for (const a of ARRIVE[VIEW] || []) {
+    const [sel, how] = a.split("|"), sec = +a.split("|")[2], gap = +a.split("|")[3]; let first = 0;
+    pg.querySelectorAll(sel).forEach((e, k) => {
+      if (how === "aDot" && !k) first = 500;                      // the days start once the month is nearly there
+      const wait = (first + Math.min(k, how === "aDot" ? 40 : 12) * gap) * M;
+      e.style.animation = `${how} ${sec * M}s cubic-bezier(.45,.05,.25,1) ${Math.round(wait)}ms both`; e.setAttribute("data-arr", "1");
+      end = Math.max(end, wait + sec * M * 1000);
+    });
+  }
+  void pg.offsetWidth; pg.classList.add("in");
+  const h = $("h1"); h.classList.remove("in"); void h.offsetWidth; h.classList.add("in");
+  ARRT = setTimeout(arriveEnd, end + 150);
 }
 function show(v) { const pg = $("pager"); pg.scrollTo({ left: VIEWS.indexOf(v) * pg.clientWidth, behavior: "smooth" }); }
 
@@ -1183,7 +1231,7 @@ function applyTheme() {
 }
 function setTheme(t) { try { localStorage.setItem("me_theme", t); } catch (e) {} applyTheme(); document.querySelectorAll("#themeSeg button").forEach((b, k) => b.classList.toggle("on", ["auto", "light", "dark"][k] === t)); }
 try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme); } catch (e) {}
-applyTheme();
+applyTheme(); applyMotion();
 // iPhone keyboard: the type box rides on top of it, and a sheet never hides behind it
 function fitKeyboard() {
   const vv = window.visualViewport; if (!vv) return;
@@ -1207,6 +1255,8 @@ async function openSettings() {
     <p style="font-size:13px;color:var(--mute);line-height:1.5;margin-top:8px">Tap one to hear it. It plays when a reminder comes up while this app is open. When the app is closed, the iPhone plays its own notification sound - Apple does not let web apps choose it. Silent mode or a Focus keeps both quiet.</p>
     <h3 style="margin-top:18px">Look</h3>
     <div class="seg" id="themeSeg">${[["auto", "As the phone"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => `<button class="${theme() === k ? "on" : ""}" onclick="setTheme('${k}')">${l}</button>`).join("")}</div>
+    <h3 style="margin-top:18px">Movement</h3>
+    <div class="seg" id="moSeg">${MOTIONS.map(([k, l]) => `<button class="${motion() === k ? "on" : ""}" onclick="setMotion('${k}')">${l}</button>`).join("")}</div>
     <h3 style="margin-top:18px">App version</h3>
     <div class="acts" style="margin-top:0"><button class="btn" onclick="hardRefresh()">↻ Refresh to the latest version</button></div>
     <p style="font-size:13px;color:var(--mute);line-height:1.5;margin-top:8px">It also updates by itself each time you open it. Version ${esc(MY_BUILD || "-")}</p>
