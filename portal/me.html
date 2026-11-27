@@ -6,7 +6,7 @@
      Only at its own secret address (?k=...), only with the owner's login + PIN once per device. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="me-build" content="babeb1cb02c7">
+<meta name="me-build" content="5c0d19425ffc">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -366,24 +366,57 @@
     .two { display: grid; grid-template-columns: 1fr 380px; gap: 10px; align-items: start; }
     .two .side { position: sticky; top: 10px; }
   }
-  /* ----- slow movement (26/11/2026): every page arrives in its own way; the glow behind drifts. Settings > Movement ----- */
-  html.mo .pg:not(.on) > * { opacity: 0; }
-  html.mo .pg.in > * { animation: aFade calc(var(--mo, 1) * .9s) ease both; }
-  html.mo #app::before { animation: aDrift 26s ease-in-out infinite alternate; }
-  html.mo #app::after { animation: aDrift 34s ease-in-out infinite alternate-reverse; }
-  html.mo #h1.in { animation: aFade calc(var(--mo, 1) * .8s) ease both; }
-  @keyframes aFade { from { opacity: 0; } }
-  @keyframes aRise { from { opacity: 0; transform: translateY(30px) scale(.975); filter: blur(6px); } }
-  @keyframes aBloom { from { opacity: 0; transform: scale(.92); } }
-  @keyframes aDot { from { opacity: 0; transform: scale(.4); } }
-  @keyframes aSlide { from { opacity: 0; transform: translateX(48px); } }
-  @keyframes aDrop { from { opacity: 0; transform: translateY(-20px); } }
-  @keyframes aDrift { to { transform: translate3d(34px, 22px, 0) scale(1.14); } }
+  /* ----- slow moving background (27/11/2026), a different one behind each page; the pages themselves change at once.
+     Dashboard: three glows drift across. Calendar: bands of light slide like a slow tide. Notes: soft bubbles rise.
+     Done: one glow breathes. Only the page on screen moves. Settings > Background movement: Gentle, Very slow, Off. ----- */
+  #bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; display: none; }
+  html.mo #bg { display: block; } html.mo #app::before, html.mo #app::after { display: none; }
+  #bg .sc { position: absolute; inset: 0; opacity: 0; transition: opacity 1.4s ease; }
+  #bg .sc.on { opacity: 1; }
+  #bg .sc:not(.on) i, #bg .sc:not(.on) b { animation-play-state: paused !important; }
+  #bg i, #bg b { position: absolute; display: block; border-radius: 50%; will-change: transform; }
+  #bg [data-v=dash] i { width: 92vmax; height: 92vmax; }
+  #bg [data-v=dash] i:nth-child(1) { left: -44vmax; top: -40vmax; background: radial-gradient(closest-side, var(--glowA), transparent); animation: bgA1 calc(44s * var(--mo, 1)) ease-in-out infinite alternate; }
+  #bg [data-v=dash] i:nth-child(2) { right: -50vmax; top: 2vh; background: radial-gradient(closest-side, var(--glowB), transparent); animation: bgA2 calc(56s * var(--mo, 1)) ease-in-out infinite alternate; }
+  #bg [data-v=dash] i:nth-child(3) { left: -26vmax; bottom: -52vmax; background: radial-gradient(closest-side, var(--glowC), transparent); animation: bgA3 calc(50s * var(--mo, 1)) ease-in-out infinite alternate; }
+  @keyframes bgA1 { to { transform: translate3d(30vw, 16vh, 0) scale(1.18); } }
+  @keyframes bgA2 { to { transform: translate3d(-34vw, 24vh, 0) scale(.84); } }
+  @keyframes bgA3 { to { transform: translate3d(26vw, -22vh, 0) scale(1.22); } }
+  #bg [data-v=cal] i { left: -60vw; width: 220vw; height: 48vh; }
+  #bg [data-v=cal] i:nth-child(1) { top: -16vh; background: radial-gradient(closest-side, var(--glowB), transparent); animation: bgT1 calc(38s * var(--mo, 1)) ease-in-out infinite alternate; }
+  #bg [data-v=cal] i:nth-child(2) { top: 28vh; background: radial-gradient(closest-side, var(--glowA), transparent); animation: bgT2 calc(50s * var(--mo, 1)) ease-in-out infinite alternate; }
+  #bg [data-v=cal] i:nth-child(3) { bottom: -18vh; background: radial-gradient(closest-side, var(--glowC), transparent); animation: bgT1 calc(62s * var(--mo, 1)) ease-in-out infinite alternate-reverse; }
+  @keyframes bgT1 { from { transform: translate3d(-24vw, 0, 0) scaleY(.88); } to { transform: translate3d(24vw, 5vh, 0) scaleY(1.16); } }
+  @keyframes bgT2 { from { transform: translate3d(28vw, 3vh, 0) scaleY(1.12); } to { transform: translate3d(-28vw, -4vh, 0) scaleY(.84); } }
+  #bg [data-v=notes] i { left: var(--x); bottom: -34vh; width: var(--s); height: var(--s); animation: bgRise calc(var(--d) * var(--mo, 1)) linear infinite; animation-delay: calc(var(--w) * var(--mo, 1)); }
+  #bg [data-v=notes] b { inset: 0; background: radial-gradient(closest-side, var(--c), transparent); animation: bgSway calc(11s * var(--mo, 1)) ease-in-out infinite alternate; }
+  @keyframes bgRise { from { transform: translate3d(0, 0, 0); opacity: 0; } 14% { opacity: 1; } 82% { opacity: 1; } to { transform: translate3d(0, -175vh, 0); opacity: 0; } }
+  @keyframes bgSway { from { transform: translate3d(-22px, 0, 0) scale(.9); } to { transform: translate3d(22px, 0, 0) scale(1.1); } }
+  #bg [data-v=done] i { left: 50%; top: 44%; }
+  #bg [data-v=done] i:nth-child(1) { width: 130vmin; height: 130vmin; margin: -65vmin 0 0 -65vmin; background: radial-gradient(closest-side, var(--glowA), transparent); animation: bgBreath calc(11s * var(--mo, 1)) ease-in-out infinite alternate; }
+  #bg [data-v=done] i:nth-child(2) { width: 190vmin; height: 190vmin; margin: -95vmin 0 0 -95vmin; background: radial-gradient(closest-side, var(--glowB), transparent); animation: bgBreath calc(15s * var(--mo, 1)) ease-in-out infinite alternate-reverse; }
+  #bg [data-v=done] i:nth-child(3) { width: 150vmax; height: 56vmax; margin: -28vmax 0 0 -75vmax; background: radial-gradient(closest-side, var(--glowC), transparent); animation: bgTurn calc(90s * var(--mo, 1)) linear infinite; }
+  @keyframes bgBreath { from { transform: scale(.7); opacity: .4; } to { transform: scale(1.12); opacity: 1; } }
+  @keyframes bgTurn { to { transform: rotate(360deg); } }
+  /* a page changes at once, with one quick spring; the tab's highlight springs across with it */
+  .nav .ind.spring { transition: transform .34s cubic-bezier(.2, 1.4, .4, 1); }
+  .nav button svg { transition: transform .3s cubic-bezier(.2, 1.6, .4, 1); } .nav button:active svg { transform: scale(.82); transition-duration: .06s; }
 </style>
 </head>
 <body>
 <div id="gate" class="gate" style="display:none"></div>
 <div id="app" style="display:none">
+  <div id="bg" aria-hidden="true">
+    <div class="sc" data-v="dash"><i></i><i></i><i></i></div>
+    <div class="sc" data-v="cal"><i></i><i></i><i></i></div>
+    <div class="sc" data-v="notes">
+      <i style="--x:4vw;--s:210px;--d:52s;--w:-6s;--c:var(--glowA)"><b></b></i><i style="--x:58vw;--s:150px;--d:44s;--w:-21s;--c:var(--glowB)"><b></b></i>
+      <i style="--x:30vw;--s:260px;--d:60s;--w:-38s;--c:var(--glowC)"><b></b></i><i style="--x:76vw;--s:230px;--d:56s;--w:-47s;--c:var(--glowA)"><b></b></i>
+      <i style="--x:16vw;--s:130px;--d:40s;--w:-30s;--c:var(--glowB)"><b></b></i><i style="--x:46vw;--s:190px;--d:48s;--w:-12s;--c:var(--glowA)"><b></b></i>
+      <i style="--x:84vw;--s:120px;--d:46s;--w:-3s;--c:var(--glowC)"><b></b></i>
+    </div>
+    <div class="sc" data-v="done"><i></i><i></i><i></i></div>
+  </div>
   <header class="top">
     <div class="toprow"><h1 id="h1">Dashboard</h1>
       <div class="hacts" id="hacts"></div><button class="gear" onclick="openSettings()" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></div>
@@ -430,7 +463,7 @@
 const K = new URLSearchParams(location.search).get("k") || "";
 const DEVKEY = "me_dev_" + K;
 let DEV = ""; try { DEV = localStorage.getItem(DEVKEY) || ""; } catch (e) {}
-let LOADED = false, ITEMS = [], NOW = new Date(), VIEW = "dash", FILTER = "all", CALM = null, CALSEL = null, RUNG = {};
+let ITEMS = [], NOW = new Date(), VIEW = "dash", FILTER = "all", CALM = null, CALSEL = null, RUNG = {};
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -532,7 +565,7 @@ async function ready() {
   window.addEventListener("pageshow", e => { if (e.persisted) checkVersion(); });
 }
 async function load() {
-  try { const d = await api("/users/personal/items"); if (DR) return; ITEMS = d.items; const first = !LOADED; LOADED = true; render(); if (first) arrive(true); checkRing(); } catch (e) {}   // not in the middle of moving a card
+  try { const d = await api("/users/personal/items"); if (DR) return; ITEMS = d.items; render(); checkRing(); } catch (e) {}   // not in the middle of moving a card
 }
 const when = i => i.due_on ? new Date(i.due_on + "T" + (i.due_time || "23:59") + ":00") : null;
 function bucket(i) {
@@ -580,7 +613,7 @@ function counts() {
 const VIEWS = ["dash", "cal", "notes", "done"], TITLES = { dash: "Dashboard", cal: "Calendar", notes: "Notes", done: "Done" };
 const keep = i => FILTER === "all" || i.tag === FILTER;
 function render() {
-  arriveEnd(); counts();
+  counts();
   $("chips").innerHTML = [["all", "All"], ["personal", "Personal"], ["work", "Work"]].map(([k, l]) => `<button class="${FILTER === k ? "on" : ""}" onclick="FILTER='${k}';render()">${l}</button>`).join("");
   renderDash(); renderCal(); renderNotes(); renderDone();
 }
@@ -869,45 +902,31 @@ function pagerSetup() {
 }
 function navOn() {
   closeSwipes(); headActs(); setTarget(TARGET);
-  arrive();
+  bgScene();
   document.querySelectorAll(".nav button").forEach(b => b.style.color = b.dataset.v === VIEW ? "var(--redtx)" : "var(--mute)");
   $("h1").textContent = TITLES[VIEW];
 }
-// ----- slow movement (26/11/2026): each page arrives in its own way - Dashboard cards rise out of a blur, the Calendar
-// month blooms and its days appear one after another, Notes glide in from the side, Done settles from above.
-// Only on arriving at a page, never on a redraw. Settings > Movement: Gentle, Very slow or Off (kept on this phone).
+// ----- slow moving background (27/11/2026): a different one behind each page (Dashboard drifting glows, Calendar a
+// slow tide, Notes rising bubbles, Done a breathing glow). The pages themselves change at once - nothing on a page
+// fades or slides in. Settings > Background movement: Gentle, Very slow or Off (kept on this phone).
 const MOTIONS = [["slow", "Gentle"], ["slower", "Very slow"], ["off", "Off"]];
-function motion() { let v = ""; try { v = localStorage.getItem("me_motion") || ""; } catch (e) {} return MOTIONS.some(x => x[0] === v) ? v : (matchMedia("(prefers-reduced-motion: reduce)").matches ? "off" : "slow"); }
+const CALM_OS = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function motion() { let v = ""; try { v = localStorage.getItem("me_motion") || ""; } catch (e) {} return MOTIONS.some(x => x[0] === v) ? v : (CALM_OS() ? "off" : "slow"); }
 function applyMotion() { const m = motion(), h = document.documentElement; h.classList.toggle("mo", m !== "off"); h.style.setProperty("--mo", m === "slower" ? 1.7 : 1); }
-function setMotion(v) { try { localStorage.setItem("me_motion", v); } catch (e) {} applyMotion(); document.querySelectorAll("#moSeg button").forEach((b, k) => b.classList.toggle("on", MOTIONS[k][0] === v)); arrive(true); }
-const ARRIVE = {                                                // [what, how, seconds, gap between one and the next in ms]
-  dash: [".dcard|aRise|1.5|220"],
-  cal: ["#months|aBloom|1.5|0", "#months .mon.cur .grid button|aDot|.8|16", ".dayhead, #daylist .sw|aRise|1.3|140"],
-  notes: [".sw|aSlide|1.3|95"],
-  done: [".sec, .sw|aDrop|1.3|85"] };
-let ARRV = null, ARRT = null;
-function arriveEnd() { clearTimeout(ARRT); document.querySelectorAll(".pg.in").forEach(p => { p.classList.remove("in"); p.querySelectorAll("[data-arr]").forEach(e => { e.style.animation = ""; e.removeAttribute("data-arr"); }); }); }
-function arrive(force) {
-  document.querySelectorAll(".pg").forEach(p => p.classList.toggle("on", p.id === "pg-" + VIEW));
-  if (ARRV === VIEW && !force) return;
-  ARRV = VIEW; arriveEnd();
-  if (motion() === "off") return;
-  const pg = $("pg-" + VIEW), M = motion() === "slower" ? 1.7 : 1; let end = 900;
-  if (VIEW === "cal") document.querySelectorAll("#months .mon").forEach((m, k) => m.classList.toggle("cur", k === CALIDX));
-  for (const a of ARRIVE[VIEW] || []) {
-    const [sel, how] = a.split("|"), sec = +a.split("|")[2], gap = +a.split("|")[3]; let first = 0;
-    pg.querySelectorAll(sel).forEach((e, k) => {
-      if (how === "aDot" && !k) first = 500;                      // the days start once the month is nearly there
-      const wait = (first + Math.min(k, how === "aDot" ? 40 : 12) * gap) * M;
-      e.style.animation = `${how} ${sec * M}s cubic-bezier(.45,.05,.25,1) ${Math.round(wait)}ms both`; e.setAttribute("data-arr", "1");
-      end = Math.max(end, wait + sec * M * 1000);
-    });
-  }
-  void pg.offsetWidth; pg.classList.add("in");
-  const h = $("h1"); h.classList.remove("in"); void h.offsetWidth; h.classList.add("in");
-  ARRT = setTimeout(arriveEnd, end + 150);
+function setMotion(v) { try { localStorage.setItem("me_motion", v); } catch (e) {} applyMotion(); document.querySelectorAll("#moSeg button").forEach((b, k) => b.classList.toggle("on", MOTIONS[k][0] === v)); bgScene(); }
+function bgScene() { document.querySelectorAll("#bg .sc").forEach(x => x.classList.toggle("on", x.dataset.v === VIEW)); }
+// A tab tapped: the page is there at once and settles with one quick spring (a third of a second); a swipe with the
+// finger follows the finger as before.
+function show(v) {
+  const pg = $("pager"), k = VIEWS.indexOf(v), was = VIEWS.indexOf(VIEW), ind = $("ind");
+  if (k < 0) return;
+  pg.scrollLeft = k * pg.clientWidth;
+  if (k === was) return;
+  VIEW = v; navOn();
+  ind.classList.add("spring"); ind.style.transform = `translateX(${k * 100}%)`;
+  clearTimeout(show.t); show.t = setTimeout(() => ind.classList.remove("spring"), 400);
+  if (pg.animate && !CALM_OS()) pg.animate([{ transform: `translateX(${(k > was ? 1 : -1) * 54}px)`, opacity: .35 }, { transform: "translateX(0)", opacity: 1 }], { duration: 330, easing: "cubic-bezier(.2, 1.45, .4, 1)" });
 }
-function show(v) { const pg = $("pager"); pg.scrollTo({ left: VIEWS.indexOf(v) * pg.clientWidth, behavior: "smooth" }); }
 
 // ---------------- add, tick, later ----------------
 $("q").addEventListener("input", () => { const q = $("q"); q.style.height = "auto"; q.style.height = q.scrollHeight + "px"; });
@@ -1255,7 +1274,7 @@ async function openSettings() {
     <p style="font-size:13px;color:var(--mute);line-height:1.5;margin-top:8px">Tap one to hear it. It plays when a reminder comes up while this app is open. When the app is closed, the iPhone plays its own notification sound - Apple does not let web apps choose it. Silent mode or a Focus keeps both quiet.</p>
     <h3 style="margin-top:18px">Look</h3>
     <div class="seg" id="themeSeg">${[["auto", "As the phone"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => `<button class="${theme() === k ? "on" : ""}" onclick="setTheme('${k}')">${l}</button>`).join("")}</div>
-    <h3 style="margin-top:18px">Movement</h3>
+    <h3 style="margin-top:18px">Background movement</h3>
     <div class="seg" id="moSeg">${MOTIONS.map(([k, l]) => `<button class="${motion() === k ? "on" : ""}" onclick="setMotion('${k}')">${l}</button>`).join("")}</div>
     <h3 style="margin-top:18px">App version</h3>
     <div class="acts" style="margin-top:0"><button class="btn" onclick="hardRefresh()">↻ Refresh to the latest version</button></div>

@@ -377,14 +377,23 @@ ck("its own Home Screen icon", 'href="/portal/me-icon-180.png"' in page and m.js
 ck("the page: not indexed, no referrer, iPhone app look", 'name="robots" content="noindex' in page and 'name="referrer" content="no-referrer"' in page and "apple-mobile-web-app-capable" in page)
 app = open(os.path.join(root, "app-classic.html"), encoding="utf-8").read()
 ck("Settings card for admins only", 'id="pg-me-card"' in app and 'show("pg-me-card", CURRENT_ROLE === "admin")' in app)
-# slow movement (26/11/2026): each page arrives in its own way, only on arriving; can be slowed or switched off
+# slow moving background (27/11/2026): "i told you about background animations, not page navigation; page navigation
+# i need instant and fast elastic" - a different slow background behind each page; nothing on a page fades or slides in
 _pg = open('../portal/me.html', encoding='utf-8').read()
-ck('each page has its own arrival', all(x in _pg for x in ('dash: [".dcard|aRise', '#months|aBloom', '|aDot|', 'notes: [".sw|aSlide', '|aDrop|'))
-   and all('@keyframes ' + k in _pg for k in ('aRise', 'aBloom', 'aDot', 'aSlide', 'aDrop', 'aDrift', 'aFade')))
-ck('...a redraw never replays it, and it starts once the first data is in', 'arriveEnd(); counts();' in _pg and 'if (first) arrive(true);' in _pg)
-ck('...Settings has Movement: Gentle, Very slow, Off; the phone\'s Reduce Motion starts it Off',
-   'id="moSeg"' in _pg and '["slow", "Gentle"], ["slower", "Very slow"], ["off", "Off"]' in _pg and 'prefers-reduced-motion: reduce' in _pg)
-ck('...with it Off nothing is hidden (the hiding needs html.mo)', 'html.mo .pg:not(.on) > * { opacity: 0; }' in _pg and '.pg:not(.on) > * { opacity: 0; }' not in _pg.replace('html.mo .pg:not(.on) > * { opacity: 0; }', ''))
+ck('each page has its own moving background', all(f'<div class="sc" data-v="{v}">' in _pg for v in ('dash', 'cal', 'notes', 'done'))
+   and all('@keyframes ' + k in _pg for k in ('bgA1', 'bgA2', 'bgA3', 'bgT1', 'bgT2', 'bgRise', 'bgSway', 'bgBreath', 'bgTurn')))
+import re as _re
+_secs = [float(x) for x in _re.findall(r'animation: bg\w+ calc\((\d+)s \* var\(--mo, 1\)\)', _pg)] + [float(x) for x in _re.findall(r'--d:(\d+)s', _pg)]
+ck('...all of it slow: nothing moves faster than an 11 second sweep', len(_secs) >= 15 and min(_secs) >= 11, sorted(_secs)[:3])
+ck('...only the page on screen moves (the others are stopped)', '#bg .sc:not(.on) i, #bg .sc:not(.on) b { animation-play-state: paused !important; }' in _pg)
+ck('...it sits behind everything and never takes a tap', '#bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; display: none; }' in _pg)
+ck('a page shows at once: nothing on it is hidden, faded or slid in', 'arrive(' not in _pg and '.pg:not(.on)' not in _pg and 'aRise' not in _pg and 'aSlide' not in _pg)
+_show = _pg[_pg.index('function show(v) {'):_pg.index('// ---------------- add, tick, later')]
+ck('a tapped tab changes the page straight away, not by a slow glide', 'pg.scrollLeft = k * pg.clientWidth;' in _show and 'VIEW = v; navOn();' in _show and 'smooth' not in _show)
+ck('...with one quick spring (a third of a second)', 'duration: 330, easing: "cubic-bezier(.2, 1.45, .4, 1)"' in _show and '.nav .ind.spring' in _pg)
+ck('Settings has Background movement: Gentle, Very slow, Off; the phone\'s Reduce Motion starts it Off',
+   'Background movement</h3>' in _pg and 'id="moSeg"' in _pg and '["slow", "Gentle"], ["slower", "Very slow"], ["off", "Off"]' in _pg and 'prefers-reduced-motion: reduce' in _pg)
+ck('...with it Off the still glow is back and nothing moves', 'html.mo #bg { display: block; } html.mo #app::before, html.mo #app::after { display: none; }' in _pg)
 
 print("\n" + ("ALL PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)
