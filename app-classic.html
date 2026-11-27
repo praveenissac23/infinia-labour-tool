@@ -6269,8 +6269,14 @@ async function refreshDownloadToken() {
   })();
   await downloadTokenBusy; downloadTokenBusy = null;
   clearTimeout(downloadTokenTimer);
-  downloadTokenTimer = setTimeout(refreshDownloadToken, 45000);
+  // only while the app is on screen (27/11/2026): a tab left open in the background was asking every 45 s, day and night
+  downloadTokenTimer = setTimeout(() => { if (!document.hidden) refreshDownloadToken(); }, 45000);
 }
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || !TOKEN) return;
+  if (Date.now() - downloadTokenAt > 50000) cachedDownloadToken = null;   // too old to use (keys last 60 s): asked for afresh
+  refreshDownloadToken();
+});
 
 // Everything the start needs is asked for in one go (26/11/2026), not wave after wave: who I am, my rights, the lists,
 // and today's attendance. The code below asks again in its own order and is answered from these same trips

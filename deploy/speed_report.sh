@@ -12,7 +12,7 @@ V="$(grep -o '/portal/help/guides.js?v=[0-9a-f]*' "$LIVE_DIR/app.html" | head -1
 LOGO="$(grep -o '/portal/logo-[0-9a-f]*\.png' "$LIVE_DIR/app.html" | head -1)"
 for U in "/" "/app-version.json" "${V:-/portal/help/guides.js}" "/portal/help/heads.js" "${LOGO:-/portal/icon-192.png}" "/portal/me.html" "/sw.js" "/health"; do
   curl -s -o /dev/null -D /tmp/sr.h -H 'Accept-Encoding: gzip, br' \
-    -w "$U\n    HTTP %{http_version}  status %{http_code}  sent %{size_download} bytes  first byte %{time_starttransfer}s  total %{time_total}s\n" "$HOST$U"
+    -w "$U\n    HTTP %{http_version}  status %{http_code}  sent %{size_download} bytes  name lookup %{time_namelookup}s  connect %{time_connect}s  secure %{time_appconnect}s  first byte %{time_starttransfer}s  total %{time_total}s\n" "$HOST$U"
   tr -d '\r' < /tmp/sr.h | grep -iE '^(content-encoding|cache-control|etag|last-modified|expires|content-type):' | sed 's/^/    /'
 done
 echo "  app.html on disk: $(stat -c %s "$LIVE_DIR/app.html") bytes"

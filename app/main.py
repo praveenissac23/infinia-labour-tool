@@ -16255,6 +16255,10 @@ app.include_router(credentials.router)
 credentials.Credential.__table__.create(bind=engine, checkfirst=True)
 import personal  # noqa: E402  (24/11/2026: an admin's own never-forget list, at their own address)
 app.include_router(personal.router)
+try:   # kept answers older than 7 days go, and the download keys that should never have been kept (27/11/2026:
+    offline_once.create_tables(engine)   # this was never called - the table only ever grew, to 251,656 rows / 166 MB)
+except Exception as _e:
+    print("offline_requests tidy:", _e)
 try:                                                     # never let the personal space stop the app starting
     personal.create_tables(engine)
 except Exception as _e:

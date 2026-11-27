@@ -23,11 +23,18 @@ class OfflineReq(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
+# Asked for again and again and change nothing, so never kept (27/11/2026): every open app asks for a new download key
+# every 45 s - 235,415 of the 251,656 kept answers were that (166 MB). A key kept and handed back again would be an
+# old one that no longer works, so keeping them was wrong as well as heavy.
+NOT_KEPT = ("/auth/download-token", "/auth/renew")
+
+
 def create_tables(engine):
     OfflineReq.__table__.create(bind=engine, checkfirst=True)
     db = SessionLocal()
     try:
         db.query(OfflineReq).filter(OfflineReq.created_at < datetime.utcnow() - timedelta(days=7)).delete(synchronize_session=False)
+        db.query(OfflineReq).filter(OfflineReq.path.in_(NOT_KEPT)).delete(synchronize_session=False)
         db.commit()
     except Exception:
         db.rollback()
@@ -37,7 +44,7 @@ def create_tables(engine):
 
 async def once(request, call_next):
     rid = request.headers.get("x-req-id")
-    if not rid or request.method in ("GET", "HEAD", "OPTIONS") or len(rid) > 80:
+    if not rid or request.method in ("GET", "HEAD", "OPTIONS") or len(rid) > 80 or request.url.path in NOT_KEPT:
         return await call_next(request)
     db = SessionLocal()
     try:
