@@ -609,6 +609,26 @@ def lpo_status_map(db):
 # ---------------------------------------------------------------------------------------------------------------
 # request lines whose only LPOs are cancelled read 'To order' again
 # ---------------------------------------------------------------------------------------------------------------
+def review_lines(db):
+    """{request line id: the LPO's ref} for every request line on an LPO still under review (27/11/2026): raised,
+    not yet marked approved by the purchaser. The store is not told 'ordered' or from whom until then. Covers the
+    lines the LPO was raised from and the requests an LPO makes for itself."""
+    orders = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.under_review.is_(True),
+                                                   models.PurchaseOrder.status != "cancelled").all()
+    if not orders:
+        return {}
+    out = {}
+    for o in orders:
+        for i in _ids(o.request_line_ids):
+            out[i] = o.ref
+    by = {o.id: o.ref for o in orders}
+    for lid, oid in (db.query(models.MaterialRequestLine.id, models.MaterialRequest.lpo_id)
+                       .join(models.MaterialRequest, models.MaterialRequest.id == models.MaterialRequestLine.request_id)
+                       .filter(models.MaterialRequest.lpo_id.in_(list(by))).all()):
+        out.setdefault(lid, by[oid])
+    return out
+
+
 def freed_lines(db):
     """{request line id: the cancelled LPO's ref} for every line still marked ordered from a supplier when every
     LPO behind it is cancelled - shown 'To order' (and back on the purchaser's list) when read."""
@@ -939,6 +959,7 @@ def deliveries(show: str = "open", db: Session = Depends(get_db),
     or straight away - line by line. show=all: delivered ones too."""
     b = Book(db)
     names = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    office = user.role == "admin" or "approvals" in M.effective_permissions(user)    # the store is not shown who an LPO under review is with
     out, covered, line_lpo = [], set(), {}
     for o in sorted(b.orders, key=lambda o: (o.order_date or date.min, o.id), reverse=True):
         p = b.of(o)
@@ -949,10 +970,12 @@ def deliveries(show: str = "open", db: Session = Depends(get_db),
             line_lpo.setdefault(i, o.id)
         if show != "all" and p["status"] in ("delivered", "closed"):
             continue
+        _rev = bool(getattr(o, "under_review", None)) and p["status"] == "ordered"
         out.append({"id": o.id, "ref": o.ref, "date": o.order_date.isoformat() if o.order_date else "",
-                    "supplier": o.supplier_name or "", "site": o.project_location or "",
+                    "supplier": "" if (_rev and not office) else (o.supplier_name or ""), "site": o.project_location or "",
                     "deliver_to": b.sites.key(o), "status": p["status"], "status_word": STATUS_WORDS[p["status"]],
                     "from_request": bool(p["related"]), "direct": p["direct"], "rental": p["rental"], "by": names.get(o.created_by, ""),
+                    "review": bool(getattr(o, "under_review", None)) and p["status"] == "ordered",
                     "lines": p["lines"]})
     return {"orders": out, "covered_request_lines": sorted(covered), "request_line_lpo": line_lpo,
             "service_words": SERVICE_WORDS}
@@ -967,12 +990,16 @@ def order_deliveries(order_id: int, db: Session = Depends(get_db),
     b = Book(db)
     p = b.of(o)
     names = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    # under review: the store may book what came, but is not shown who the LPO is with until it is approved
+    office = user.role == "admin" or "approvals" in M.effective_permissions(user)
+    hide = bool(getattr(o, "under_review", None)) and p["status"] == "ordered" and not office
     desc = {l.id: l.description for l in o.lines}
     hist = [{"date": r.dn_date.isoformat() if r.dn_date else "", "dn": r.dn_no or "", "kind": r.kind,
              "line": desc.get(b._rec_line(o, r), ""), "qty": r.qty, "to": r.location or "",
              "by": names.get(r.created_by, ""), "notes": r.notes or "", "tag": r.tag or ""}
             for r in db.query(models.LpoReceipt).filter(models.LpoReceipt.order_id == o.id).order_by(models.LpoReceipt.id).all()]
-    return {"id": o.id, "ref": o.ref, "supplier": o.supplier_name or "", "site": o.project_location or "",
+    return {"id": o.id, "ref": o.ref, "supplier": "" if hide else (o.supplier_name or ""), "site": o.project_location or "",
+            "review": bool(getattr(o, "under_review", None)) and p["status"] == "ordered",
             "deliver_to": b.sites.key(o), "status": p["status"], "status_word": STATUS_WORDS[p["status"]], "rental": p["rental"],
             "lines": p["lines"], "history": hist, "superseded_by": o.superseded_by or "",
             "part_why": o.part_why or "", "part_note": o.part_note or "", **bill_of(o)}

@@ -358,6 +358,13 @@ try { if (!sessionStorage.getItem("infinia_token") && localStorage.getItem("infi
   .cmb-h .note { margin-left:auto; font-size:11.5px; color:#8A6100; background:#FFF4D6; border:1px solid #F0D99A; padding:3px 9px; border-radius:12px; font-weight:600; }
   .cmb:not(.on) .cmb-h .note { display:none; }
   .cmb-sub.hot { color:#B26A00; font-weight:600; }
+  /* the same material for several sites, shown as one row (27/11/2026) */
+  .lpo-grp { margin-top:3px; font-size:11.5px; color:#8A5A00; background:#FFF8E6; border:1px solid #F0DDA8; border-radius:6px; padding:2px 7px; display:inline-block; }
+  .lpo-grp a { color:#8C2F26; margin-left:6px; white-space:nowrap; }
+  #lpo-lines input.lpo-tot { background:#F4F2EE; color:#444; font-weight:700; cursor:default; }
+  #lpo-cmb-body input.cmb-qty { width:84px; text-align:right; }
+  /* an LPO under review: raised, not yet marked approved */
+  .lpr-rev { display:inline-block; margin-left:6px; padding:2px 9px; border-radius:999px; font-size:10.5px; font-weight:700; letter-spacing:.04em; background:#FFF4D6; color:#8A5A00; border:1px solid #E8C877; }
   .cmb table { width:100%; border-collapse:collapse; font-size:13px; } .cmb td, .cmb th { padding:7px 12px; border-bottom:1px solid #F3E7E4; text-align:left; }
   .cmb th { font-size:11px; color:#8b7f7a; text-transform:uppercase; letter-spacing:.4px; background:#fff; }
   .cmb td.n, .cmb th.n { text-align:right; } .cmb select { padding:5px 8px; border:1px solid #D9C4BF; border-radius:6px; font:inherit; font-weight:600; min-width:150px; }
@@ -9879,7 +9886,7 @@ async function loadArrivePanel() {
                   flex-wrap:wrap; padding:12px 2px; border-bottom:1px solid #EFEFEF;">
         <div style="min-width:220px;">
           <strong>${requestLink(r.ref)}</strong> &middot; site ${r.site || "-"} &middot;
-          <span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span>
+          <span style="color:${mrColour(r)}; font-weight:600;">${mrLabel(r)}</span>
           ${noLpo ? '<span class="pu-tag pu-svc">no LPO</span>' : ""}
           <div style="font-size:12px; color:#777; margin-top:3px;">${preview}</div>
         </div>
@@ -11463,6 +11470,9 @@ const MR_LABEL = {
   // retired, kept so old requests still read sensibly
   arranging: "Ordered from supplier", lpo_sent: "Ordered from supplier", received: "Delivered to store",
 };
+// A request whose LPO is raised but not approved yet (27/11/2026) reads "LPO under review", not "Ordered"
+function mrLabel(r) { return r && r.lpo_review && ["ordered", "arranging", "lpo_sent"].includes(r.status) ? "LPO under review" : (MR_LABEL[r.status] || r.status); }
+function mrColour(r) { return r && r.lpo_review && ["ordered", "arranging", "lpo_sent"].includes(r.status) ? "#8A5A00" : (MR_COLOUR[r.status] || "#777"); }
 const MR_COLOUR = {
   pending: "#C0392B", approved: "#2E7D32", ordered: "#1565C0",
   partial: "#B26A00", delivered: "#2E7D32", closed: "#777", rejected: "#C0392B",
@@ -11607,7 +11617,7 @@ async function lpoDlvOpen(id, after, view) {
           <td style="text-align:center;">${h.to ? escapeHtml(h.to) : "Central store"}</td><td style="text-align:center;">${escapeHtml(h.by || (h.tag ? "data correction" : ""))}</td></tr>`).join("")}</tbody></table>` : "";
     m.innerHTML = `<div class="box">
       <h3>${escapeHtml(d.ref)} ${puTag(d.status)}</h3>
-      <div class="sub">${escapeHtml(d.supplier || "")}${d.site ? " &middot; for " + escapeHtml(d.site) : ""}${d.superseded_by ? " &middot; replaced by " + escapeHtml(d.superseded_by) : ""}${
+      <div class="sub">${d.review ? `<b style="color:#8A5A00;">LPO under review - not approved yet</b>${d.supplier ? " &middot; " : ""}` : ""}${escapeHtml(d.supplier || "")}${d.site ? " &middot; for " + escapeHtml(d.site) : ""}${d.superseded_by ? " &middot; replaced by " + escapeHtml(d.superseded_by) : ""}${
         d.rental ? ` &middot; <b>Rental LPO</b> - what comes goes into Rentals as ${escapeHtml(d.supplier || "the supplier")}'s, not our stock` : ""}</div>
       ${open ? `<div class="form-row" style="gap:10px; flex-wrap:wrap; align-items:flex-end;">
         <div class="field"><label title="The supplier's delivery note number - every delivery has one">DN number *</label><input type="text" id="pu-dn" style="width:170px;" placeholder="From the delivery note"></div>
@@ -11888,27 +11898,30 @@ function renderFollowUp() {
       status: r.status, sup: contact, purpose: l.purpose || "", canEdit: !!(r.can_edit && r.mine),
       lpoId: fuDl && fuDl.request_line_lpo ? (fuDl.request_line_lpo[String(l.id)] || 0) : 0,
       lpoCancelled: l.lpo_cancelled || "", approved: (l.status || "pending") === "approved",
+      lpo_review: l.lpo_review || "",        // on an LPO not approved yet: no supplier to ring (27/11/2026)
     });
   }));
   // An LPO raised straight away, with no request behind it: its lines are chased and booked in here too.
   ((fuDl && fuDl.orders) || []).filter(o => !o.from_request).forEach(o => o.lines.forEach(l => {
     if (!(l.remaining > 0)) return;
-    const sup = (suppliers || []).find(s => (s.name || "").toLowerCase() === (o.supplier || "").toLowerCase()) || { id: 0, name: o.supplier };
-    rows.push({ rid: 0, supId: sup.id || 0, lid: 0, ref: o.ref, site: o.deliver_to === "STORE" ? "" : o.deliver_to, needed: "", expected: "",
+    const sup = !o.supplier ? null : (suppliers || []).find(s => (s.name || "").toLowerCase() === (o.supplier || "").toLowerCase()) || { id: 0, name: o.supplier };
+    rows.push({ rid: 0, supId: sup ? sup.id || 0 : 0, lid: 0, ref: o.ref, site: o.deliver_to === "STORE" ? "" : o.deliver_to, needed: "", expected: "",
       raised: "", by: o.by || "", late: false, name: l.description, code: "", due: l.remaining, unit: l.unit || "",
       received: l.delivered, asked: l.ordered, status: o.status === "part" ? "partial" : "ordered", sup, purpose: l.service ? "service - no stock" : "",
-      canEdit: false, lpoId: o.id, lpoOnly: true, lpoCancelled: "", approved: true });
+      canEdit: false, lpoId: o.id, lpoOnly: true, lpoCancelled: "", approved: true, lpo_review: o.review ? o.ref : "" });
   }));
 
   // Pills before filtering, so the picture is the whole store's
   const pills = document.getElementById("fu-pills");
   const late = rows.filter(x => x.late).length;
-  const unordered = rows.filter(x => !x.sup).length;
-  const ordered = rows.length - unordered;
+  const inReview = rows.filter(x => x.lpo_review).length;
+  const unordered = rows.filter(x => !x.sup && !x.lpo_review).length;
+  const ordered = rows.length - unordered - inReview;
   pills.innerHTML = [
     [`${num(rows.length)} material(s) to arrive`, "#5B6167"],
     late ? [`${num(late)} late`, "#C0392B"] : null,
     unordered ? [`${num(unordered)} not ordered yet`, "#B26A00"] : null,
+    inReview ? [`${num(inReview)} LPO under review`, "#8A5A00"] : null,
     ordered ? [`${num(ordered)} on order`, "#1565C0"] : null,
   ].filter(Boolean).map(([t, c]) =>
     `<span class="stat-chip" style="border-color:${c}; color:${c}; background:${c}12;">${t}</span>`).join("");
@@ -11946,13 +11959,14 @@ function renderFollowUp() {
           <td>${x.site || '<span style="color:#999;">store</span>'}</td>
           <td><strong>${x.lpoOnly ? escapeHtml(x.ref) + '<div style="font-size:11px; color:#999; font-weight:400;">direct LPO</div>' : requestLink(x.ref)}</strong>${x.raised ? `<div style="font-size:11px; color:#999; white-space:nowrap;">${fuWhen(x.raised)}</div>` : ""}</td>
           <td>${x.needed ? dmy(x.needed) : "-"}${x.late ? '<div style="color:#C0392B; font-size:11px; font-weight:700;">LATE</div>' : ""}</td>
-          <td>${x.sup ? supplierLink(x.sup.name) : '<span style="color:#B26A00; font-weight:600;">not ordered yet</span>'}${
+          <td>${x.sup ? supplierLink(x.sup.name) : x.lpo_review ? "" : '<span style="color:#B26A00; font-weight:600;">not ordered yet</span>'}${
+            x.lpo_review ? `<div style="font-size:12px; color:#8A5A00; font-weight:600;" title="${escapeAttr(x.lpo_review)} is raised but not approved yet">LPO under review</div>` : ""}${
             x.lpoCancelled ? `<div style="font-size:11px; color:#C0392B;" title="Its LPO was cancelled - waiting to be ordered again">${escapeHtml(x.lpoCancelled)} cancelled</div>` : ""}</td>
           <td>${x.sup && (x.sup.phone || x.sup.contact_person)
             ? `${x.sup.contact_person ? x.sup.contact_person : ""}${x.sup.phone ? `<div><a href="tel:${x.sup.phone}" style="color:#1565C0; font-weight:600;">${x.sup.phone}</a></div>` : ""}`
-            : (x.sup ? '<span style="color:#999;">no number on file</span>' : '<span style="color:#999;">ask the office</span>')}</td>
+            : (x.lpo_review && !x.sup ? '<span style="color:#8A5A00;">not approved yet - do not call</span>' : x.sup ? '<span style="color:#999;">no number on file</span>' : '<span style="color:#999;">ask the office</span>')}</td>
           <td>${x.expected ? dmy(x.expected) : "-"}</td>
-          <td><span style="color:${MR_COLOUR[x.status] || "#777"}; font-weight:600; font-size:12px;">${MR_LABEL[x.status] || x.status}</span>
+          <td><span style="color:${mrColour(x)}; font-weight:600; font-size:12px;">${mrLabel(x)}</span>
             ${x.lpoId && puCanBook()
               ? `<div><button class="btn btn-dark" style="margin-top:4px;" title="Book it in against its LPO - DN number, all or part" onclick="lpoDlvOpen(${x.lpoId}, (m) => { showStatus('fu-status', 'ok', m); loadFollowUp(); })">It arrived</button></div>`
               : x.sup && MY_SCREENS.includes("store")
@@ -11960,7 +11974,7 @@ function renderFollowUp() {
             ${x.sup && x.rid && MY_SCREENS.includes("store")
               ? `<div><a href="#" class="fu-booked" style="font-size:11px; color:#1565C0;" title="It came and is already booked in (on Rentals, or at the site) - take it off this list without moving stock again"
                     onclick="event.preventDefault(); fuBooked(${x.rid}, ${x.lid}, ${escapeAttr(jsq(x.name))})">Already booked in</a></div>` : ""}
-            ${!x.sup && x.rid && x.approved && puCanBook()
+            ${!x.sup && !x.lpo_review && x.rid && x.approved && puCanBook()
               ? `<div><button class="btn btn-gray" style="margin-top:4px;" title="No LPO - bought with petty cash and arrived" onclick="pettyArriveOpen(${x.rid}, (m) => { showStatus('fu-status', 'ok', m); loadFollowUp(); })">Bought with petty cash</button></div>` : ""}
             ${x.canEdit && MY_SCREENS.includes("requests") ? `<div style="margin-top:4px; white-space:nowrap;"><button class="btn btn-gray btn-sm" title="Not yet taken up by the office - correct it" onclick="fuEditReq(${x.rid})">Edit</button> <button class="btn btn-gray btn-sm" onclick="mrDelete(${x.rid}).then(loadFollowUp)">Delete</button></div>` : ""}</td>
         </tr>`).join("")}</tbody>
@@ -11987,6 +12001,8 @@ function lineDecisionHtml(l, r) {
   if ((l.qty_received || 0) > 0)
     return due > 0 ? '<span style="color:#B26A00; font-size:11.5px; font-weight:600;">Part arrived</span>'
                    : '<span style="color:#2E7D32; font-size:11.5px; font-weight:600;">Arrived</span>';
+  if (l.lpo_review)
+    return '<span style="color:#8A5A00; font-size:11.5px; font-weight:600;">LPO under review</span>';
   if (l.supplier)
     return '<span style="color:#1565C0; font-size:11.5px; font-weight:600;">On order</span>';
   if (st === "approved") {
@@ -12176,7 +12192,7 @@ async function loadRequests() {
                 return `<div style="font-size:11px; color:#777; margin-top:3px;">From ${sups.length} suppliers: ${
                   sups.map(s => s.name).join(", ")}</div>`;
               })()}</td>
-              <td><span style="color:${MR_COLOUR[r.status] || "#777"}; font-weight:600;">${MR_LABEL[r.status] || r.status}</span>${aging}</td>
+              <td><span style="color:${mrColour(r)}; font-weight:600;">${mrLabel(r)}</span>${aging}</td>
               <td>
                 ${["delivered", "closed", "rejected"].includes(r.status)
                   ? '<span style="color:#B5B9BE; font-size:12px;">Finished &middot; click the row for details</span>'
@@ -14237,11 +14253,15 @@ async function lpoFromTicked() {
   picked.forEach(p => lpoLines.push({ item_id: p.item_id, description: p.description, description2: "",
                                       qty: String(p.qty), unit: p.unit || "", rate: "", tax_pct: 5,
                                       last: null, times: 0, req_ref: p.ref || "", req_site: p.site || "" }));
-  renderLpoLines();
+  // the same material asked for by two or more sites: Combined LPO switches on by itself and it shows as one row
+  const sameForSites = (() => { const by = {}; lpoLines.forEach(l => { const k = lpoGrpKey(l); (by[k] = by[k] || new Set()).add(l.req_site || ""); }); return Object.values(by).some(x => x.size > 1); })();
+  if (sameForSites && !lpoCmbOn()) { const c = document.getElementById("lpo-combined"); if (c) { c.checked = true; onLpoCombined(); } }
+  else { lpoRegroup(); renderLpoLines(); }
   lpoCmbHint();
   lpoLines.forEach((l, i) => lookupLpoRate(i));
   showStatus("lpo-status", "ok",
-    `${picked.length} material(s) brought in from ${[...new Set(picked.map(p => p.ref))].join(", ")} - choose the supplier and enter the rates.`);
+    `${picked.length} material(s) brought in from ${[...new Set(picked.map(p => p.ref))].join(", ")} - choose the supplier and enter the rates.`
+    + (lpoLines.some(l => l.grp) ? " The same material for several sites is one line on the LPO - each site's quantity is in Combined LPO below." : ""));
 }
 
 // Materials ordered on an LPO that was raised by hand (often under the supplier's own name): the ticked request
@@ -14468,6 +14488,7 @@ async function loadLpoReport() {
           row.status === "cancelled" ? (row.superseded_by
             ? `<span class="lpr-cx rep">Replaced</span><div class="lpr-why">by ${escapeHtml(row.superseded_by)}${row.cancelled_on ? " · " + escapeHtml(dmy(row.cancelled_on)) : ""}</div>`
             : `<span class="lpr-cx">Cancelled</span>${row.cancel_reason ? `<div class="lpr-why">${row.cancelled_on ? escapeHtml(dmy(row.cancelled_on)) + " · " : ""}${escapeHtml(row.cancel_reason)}</div>` : ""}`) : ""}${
+          row.under_review && row.status !== "cancelled" ? `<span class="lpr-rev" title="Raised, not approved yet - the store is not told until it is marked approved">UNDER REVIEW</span>` : ""}${
           row.edited && row.status !== "cancelled"
             ? ` <span class="pill" style="background:#FDF0D5; color:#8A6100;" title="Corrected on ${dmy(row.edited_on)}">edited</span>` : ""}${
 
@@ -14491,7 +14512,9 @@ async function loadLpoReport() {
         const acts = (`${row.status === "cancelled" ? "" :
           `<div class="lpr-btns"><button class="btn btn-gray btn-sm lpr-dlv" title="What came against it - booking, bill and cancel are on the Order tracker" onclick="event.stopPropagation(); lpoDlvOpen(${row.id}, null, true)">Deliveries</button>${
             otCanDo("purchaser") ? ` <button class="btn btn-gray btn-sm lpr-edit" title="Change the LPO - quantities, rates, lines. It keeps its number; Accounts are told what changed." onclick="event.stopPropagation(); lprEdit(${row.id})">Edit</button> <button class="btn btn-sm" style="background:#FBEFED; color:#A93226; border:1px solid #E6B8B1;" title="A new LPO with the same supplier, lines and rates - fill in the other plot" onclick="event.stopPropagation(); lprCopy(${row.id})">Copy</button> <button class="btn btn-sm" style="background:#FFF4D6; color:#8A5A00; border:1px solid #E8C877; font-weight:700;" title="REVISED LPO: the same LPO under the next number (R1, R2 ...) - saving it replaces this one" onclick="event.stopPropagation(); lprRevise(${row.id})">Revised</button>` : ""}</div>`}`);
-        if (acts) cells[0] = cells[0].replace(/<\/td>$/, `<div class="lpr-act">${acts}</div></td>`);
+        const appr = row.under_review && row.status !== "cancelled" && otCanDo("purchaser")
+          ? `<div class="lpr-apprw" style="margin-bottom:4px;"><button class="btn btn-primary btn-sm lpr-appr" title="It is approved (on WhatsApp): the store is told it is ordered and from whom" onclick="event.stopPropagation(); lpoMarkApproved(${row.id}, ${escapeAttr(jsq(row.label))})">Mark approved</button></div>` : "";
+        if (acts || appr) cells[0] = cells[0].replace(/<\/td>$/, `<div class="lpr-act">${appr}${acts}</div></td>`);
       }
       // The tab is claimed in the click itself - asking for it after the
       // token fetch makes it a pop-up, which the browser blocks.
@@ -14605,6 +14628,15 @@ async function exportLpoReport(fmt) {
 // Opening an order shows it in a new tab, with the downloads on it.
 // Cancel an LPO: never deleted - struck through on the register with the reason, stamped CANCELLED,
 // cancelled in Zoho too, and accounts told.
+// Under review -> approved (27/11/2026). The approval is given on WhatsApp; the purchaser records it here and only
+// then is the store told it is ordered and from whom. undo = pressed by mistake, back under review.
+async function lpoMarkApproved(id, ref, after, undo) {
+  if (undo && !confirm(`${ref}: put it back UNDER REVIEW?\n\nThe store will no longer see it as ordered.`)) return;
+  try {
+    const r = await apiCall(`/store/purchase/orders/${id}/approve`, { method: "POST", body: JSON.stringify(undo ? { undo: true } : {}) });
+    if (typeof after === "function") after(r.detail || ""); else if (document.getElementById("lpr-status")) { lprFlash = r.detail || ""; loadLpoReport(); }
+  } catch (e) { alert(errText(e)); }
+}
 function cancelLpo(id, ref) {
   let m = document.getElementById("lpo-cx-modal");
   if (!m) { m = document.createElement("div"); m.id = "lpo-cx-modal"; document.body.appendChild(m); }
@@ -14804,7 +14836,7 @@ async function editLpo(id) {
       description_fmt: l.description_fmt || "",
     }));
     if (!lpoLines.length) addLpoLine();
-    lpoCmbReset(!!o.combined); if (o.combined) renderLpoCombined();
+    lpoCmbReset(!!o.combined); lpoRegroup(); renderLpoLines(); if (o.combined) renderLpoCombined();
     lpoRentalSet = (o.rental_set === true || o.rental_set === false) ? o.rental_set : null; lpoRentalDraw();
     { const oc = document.getElementById("lpo-open"); if (oc) { oc.checked = !!o.open_lpo; renderLpoTotals(); lpoAmtsDraw(); } }
     window.scrollTo(0, 0);
@@ -15050,7 +15082,46 @@ function addLpoLine(line) {
   renderLpoLines();
 }
 
-function removeLpoLine(i) { lpoLines.splice(i, 1); renderLpoLines(); }
+function removeLpoLine(i) {            // the one row of a material for several sites takes all its sites with it
+  (lpoLines[i] && lpoLines[i].grp && !lpoGrpHidden(i) ? lpoGrpOf(i) : [i]).slice().reverse().forEach(k => lpoLines.splice(k, 1));
+  renderLpoLines();
+}
+
+// ---- The same material for several sites: ONE row (27/11/2026) ---------------------------------------------
+// On a combined LPO each site's share is a line of its own - that is what tells accounts and the store whose it
+// is - but three rows of "Cement 50KG" read badly and the rate was typed three times. Lines alike in what the
+// supplier sees (material, description, unit, tax, rate, look) are shown as one row: the total, one rate box.
+// Each site's own quantity is in the Combined LPO box below. Nothing about what is saved changes: every site
+// still has its line. "show separately" puts them back as rows (a site with its own rate).
+let lpoGrpSeq = 0;
+function lpoGrpKey(l) {
+  const n = t => String(t == null ? "" : t).replace(/\s+/g, " ").trim().toLowerCase();
+  return [l.item_id || 0, n(l.description), n(l.description2), n(l.unit), parseFloat(l.tax_pct) || 0, parseFloat(l.rate) || 0,
+          n([...lpoStyleSet(l)].sort().join(" ")), n(l.description_fmt), l.service === true ? 1 : l.service === false ? 0 : ""].join("|");
+}
+function lpoRegroup() {
+  lpoLines.forEach(l => { delete l.grp; });
+  if (!lpoCmbOn()) return;
+  const by = {};
+  lpoLines.forEach((l, i) => { if (l.solo || !(l.description || "").trim()) return; const k = lpoGrpKey(l); (by[k] = by[k] || []).push(i); });
+  Object.values(by).forEach(ix => { if (ix.length > 1) { const g = "g" + (++lpoGrpSeq); ix.forEach(i => { lpoLines[i].grp = g; }); } });
+}
+function lpoGrpOf(i) { const g = lpoLines[i] && lpoLines[i].grp; return g ? lpoLines.map((l, k) => l.grp === g ? k : -1).filter(k => k >= 0) : [i]; }
+function lpoGrpHidden(i) { return !!(lpoLines[i] && lpoLines[i].grp) && lpoGrpOf(i)[0] !== i; }
+// what the one row says goes for every site's line behind it (all but the quantity and who pays)
+function lpoGrpSync() {
+  const done = {};
+  lpoLines.forEach((l, i) => {
+    if (!l.grp || done[l.grp]) return; done[l.grp] = 1;
+    lpoGrpOf(i).slice(1).forEach(k => { const f = lpoLines[k];
+      ["item_id", "description", "description2", "unit", "rate", "tax_pct", "service", "bold", "style", "description_fmt", "last", "times"].forEach(p => { f[p] = l[p]; }); });
+  });
+}
+function lpoRowQty(i) { return lpoGrpOf(i).reduce((s, k) => s + (parseFloat(lpoLines[k].qty) || 0), 0); }
+function lpoRowAmt(i) { const l = lpoLines[i]; return l && l.grp && !lpoGrpHidden(i) ? lpoRowQty(i) * (parseFloat(l.rate) || 0) : (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0); }
+function lpoUngroup(i) { lpoGrpOf(i).forEach(k => { lpoLines[k].solo = true; delete lpoLines[k].grp; }); renderLpoLines(); }
+function lpoCmbQty(i, v) { if (!lpoLines[i]) return; lpoLines[i].qty = v; renderLpoLines(); }
+function lpoSiteWord(l) { const c = l.cost_to || l.req_site || ""; return /store/i.test(c) ? "Store" : c; }
 
 // A name typed (not picked) that is close to a material already on the list: offer the existing one, so the
 // same material does not end up under several names (questionnaire Q16 - names are sometimes typed).
@@ -15160,7 +15231,7 @@ function paintLpoLine(i) {
       </div>`;
   }
   const amt = row.querySelector(".lpo-amt"), last = row.querySelector(".lpo-last");
-  if (amt) amt.textContent = money(lpoOpenOn() ? 0 : qty * rate);
+  if (amt) amt.textContent = money(lpoOpenOn() ? 0 : lpoRowAmt(i));
   if (last) last.innerHTML = lastCell;
 }
 
@@ -15318,11 +15389,15 @@ function lpoGrow(t) { t.style.height = "auto"; const h = t.scrollHeight + 2; t.s
 function renderLpoLines() {
   const body = document.getElementById("lpo-lines");
   closeMatchList();
+  lpoGrpSync();
+  let shown = 0;
   body.innerHTML = lpoLines.map((l, i) => {
     const qty = parseFloat(l.qty) || 0, rate = parseFloat(l.rate) || 0;
     const esc = v => String(v == null ? "" : v).replace(/"/g, "&quot;");
-    return `<tr>
-      <td>${i + 1}</td>
+    const hid = lpoGrpHidden(i);                       // a site's line behind the one row: kept, not shown
+    if (!hid) shown++;
+    return `<tr${hid ? ' class="lpo-dup" style="display:none;"' : ""}>
+      <td>${hid ? "" : shown}</td>
       <td><div class="lpo-matw"><input type="text" placeholder="e.g. cement"
             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
             value="${esc(l.description)}" class="lpo-mat" style="${lpoNameCss(l)}"
@@ -15345,6 +15420,16 @@ function renderLpoLines() {
       <td><button class="btn btn-gray" onclick="removeLpoLine(${i})">&times;</button></td>
     </tr>`;
   }).join("");
+  // the one row of a material for several sites: the total (not typed here), and which sites
+  const trs = body.querySelectorAll("tr");
+  lpoLines.forEach((l, i) => {
+    if (!l.grp || lpoGrpHidden(i) || !trs[i]) return;
+    const ix = lpoGrpOf(i), tds = trs[i].children, q = tds[3] && tds[3].querySelector("input");
+    if (q) { q.value = String(Math.round(lpoRowQty(i) * 1e6) / 1e6); q.readOnly = true; q.classList.add("lpo-tot"); q.removeAttribute("oninput");
+             q.title = "The total for " + ix.length + " sites - each site's quantity is in Combined LPO below"; }
+    const w = tds[1] && tds[1].querySelector(".lpo-matw");
+    if (w) w.insertAdjacentHTML("afterend", `<div class="lpo-grp" title="One line on the LPO. Each site keeps its own quantity and cost - see Combined LPO below.">${ix.length} sites: ${ix.map(k => escapeHtml((lpoSiteWord(lpoLines[k]) || "?") + " " + (parseFloat(lpoLines[k].qty) || 0))).join(" + ")}<a href="#" onclick="event.preventDefault(); lpoUngroup(${i})" title="Each site as its own row on this form - to give one site a different rate. With the same rate the LPO still prints one line.">show separately</a></div>`);
+  });
   body.querySelectorAll("textarea.lpo-d2").forEach(lpoGrow);
   lpoLines.forEach((l, i) => paintLpoLine(i));
   renderLpoTotals();
@@ -15554,8 +15639,9 @@ function onLpoCombined() {
     // one location on the printed LPO: the store when it is one of them, else the first site
     const loc = document.getElementById("lpo-location"), parts = (loc.value || "").split(",").map(x => x.trim()).filter(Boolean);
     if (parts.length > 1) loc.value = parts.find(x => /store/i.test(x)) || parts[0];
-    renderLpoCombined();
   }
+  lpoRegroup(); renderLpoLines();          // the same material for several sites: one row (and back to rows when off)
+  if (on) renderLpoCombined();
   lpoCmbHint();
 }
 function lpoCmbHint() {
@@ -15569,6 +15655,7 @@ function renderLpoCombined() {
   const body = document.getElementById("lpo-cmb-body"); if (!body || !lpoCmbOn()) return;
   const disc = parseFloat(document.getElementById("lpo-discount").value) || 0;
   const amt = l => (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0) * (1 - disc / 100) * (1 + (parseFloat(l.tax_pct) || 0) / 100);
+  lpoGrpSync();
   const rows = lpoLines.map((l, i) => ({ l, i })).filter(x => (x.l.description || "").trim());
   const tot = {};
   rows.forEach(({ l }) => { const k = l.cost_to || ""; tot[k] = (tot[k] || 0) + amt(l); });
@@ -15579,8 +15666,9 @@ function renderLpoCombined() {
     lpoSplitRoundOff(ro.v, ks.map(k => Math.round(tot[k] * 100) / 100)).forEach((p, i) => { tot[ks[i]] += p; });
   }
   const word = k => k === "STORE" ? "Store stock" : k ? "Site " + k : "Not chosen yet";
-  body.innerHTML = rows.length ? `<table><thead><tr><th style="width:4%;">#</th><th>Material</th><th>From request</th><th style="width:190px;">Cost to</th><th class="n" style="width:150px;">Amount incl. VAT</th></tr></thead><tbody>
-    ${rows.map(({ l, i }) => `<tr><td>${i + 1}</td><td>${escapeHtml(l.description)}</td><td class="src">${l.req_ref ? escapeHtml(l.req_ref + (l.req_site ? " · " + (/store/i.test(l.req_site) ? "Store" : l.req_site) : "")) : "-"}</td>
+  body.innerHTML = rows.length ? `<table><thead><tr><th style="width:4%;">#</th><th>Material</th><th>From request</th><th class="n" style="width:160px;">Qty</th><th style="width:190px;">Cost to</th><th class="n" style="width:150px;">Amount incl. VAT</th></tr></thead><tbody>
+    ${rows.map(({ l, i }, n) => `<tr><td>${n + 1}</td><td>${escapeHtml(l.description)}</td><td class="src">${l.req_ref ? escapeHtml(l.req_ref + (l.req_site ? " · " + (/store/i.test(l.req_site) ? "Store" : l.req_site) : "")) : "-"}</td>
+      <td class="n" style="white-space:nowrap;">${l.grp ? `<input type="text" inputmode="decimal" class="cmb-qty" value="${escapeAttr(String(l.qty == null ? "" : l.qty))}" onchange="lpoCmbQty(${i}, this.value)" title="This site's quantity - the row above shows the total">` : escapeHtml(String(parseFloat(l.qty) || 0))} <span style="color:#888;">${escapeHtml(l.unit || "")}</span></td>
       <td><select class="${l.cost_to ? "" : "miss"}" onchange="lpoLines[${i}].cost_to = this.value; renderLpoCombined()">${lpoCostOptions(l.cost_to)}</select></td><td class="n">${money(amt(l))}</td></tr>`).join("")}</tbody></table>
     <div class="sum"><span style="font-size:12.5px;color:#666;margin-right:4px;">Accounts book it as:</span>${Object.entries(tot).sort((a, b) => (a[0] === "STORE" ? -1 : b[0] === "STORE" ? 1 : a[0].localeCompare(b[0])))
       .map(([k, v]) => `<span class="chip"${k ? "" : ' style="border-color:#C0392B;color:#C0392B;"'}>${word(k)}<b>AED ${money(v)}</b></span>`).join("")}</div>`
@@ -15648,8 +15736,9 @@ function lpoOpenOn() { const c = document.getElementById("lpo-open"), on = !!(c 
   const b = document.getElementById("lpo-open-box"); if (b) b.classList.toggle("on", on); return on; }
 // an open LPO: the rates stay, every amount on the lines shows 0
 function lpoAmtsDraw() {
-  document.querySelectorAll(".lpo-amt").forEach((td, i) => { const l = lpoLines[i]; if (l) td.textContent = money(lpoOpenOn() ? 0 : (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0)); }); }
+  document.querySelectorAll(".lpo-amt").forEach((td, i) => { const l = lpoLines[i]; if (l) td.textContent = money(lpoOpenOn() ? 0 : lpoRowAmt(i)); }); }
 function renderLpoTotals() {
+  lpoGrpSync();
   const open = lpoOpenOn();
   const sub = open ? 0 : lpoLines.reduce((s, l) => s + (parseFloat(l.qty) || 0) * (parseFloat(l.rate) || 0), 0);
   const disc = parseFloat(document.getElementById("lpo-discount").value) || 0;
@@ -15679,6 +15768,7 @@ async function saveLpo() {
   // order that already exists, so nothing is generated and no tab is
   // taken - it just saves back onto the same order.
   const tab = lpoEditingId ? null : window.open("", "_blank");
+  lpoGrpSync();
   const lines = lpoLines
     .filter(l => (l.description || "").trim() && (parseFloat(l.qty) || 0) > 0)
     .map(l => ({ item_id: l.item_id, description: l.description.trim(), description2: (l.description2 || "").trim(),
@@ -15748,7 +15838,7 @@ async function saveLpo() {
       return;
     }
     showStatus("lpo-status", "ok",
-      `${r.ref} raised${lpoRequestLineIds.length ? " and marked ordered - it is on Order Follow-up now" : ""}${r.rental ? " - a Rental LPO: deliveries go into Rentals" : ""}. Opening it in a new tab.` + lpoSupNote(r));
+      `${r.ref} raised - UNDER REVIEW. Once it is approved, press Mark approved (LPO register or Order tracker): the store is told only then${r.rental ? ". A Rental LPO: deliveries go into Rentals" : ""}. Opening it in a new tab.` + lpoSupNote(r));
     await openLpo(r.id, tab);
   } catch (e) {
     showStatus("lpo-status", "err", errText(e));
@@ -24134,14 +24224,15 @@ function otRender() {
     const steps = OT_STEPS.map((s, i) => {
       if (r.cancelled) return i === 5 ? `<span class="x">Closed</span>` : `<span>&nbsp;</span>`;
       if (i < r.stage) return `<span class="d">&#10003;</span>`;
+      if (i === r.stage && r.review) return `<span class="h" title="Under review: the LPO is raised, not approved yet - the store is told once it is marked approved">Review</span>`;
       if (i === r.stage && !r.part && r.part_why === "site") return `<span class="h" title="The site asked to hold it">On hold</span>`;
       if (i === r.stage) return r.part ? `<span class="h" title="${r.part_why === "site" ? "Site asked to hold the rest" : r.part_why === "supplier" ? "Supplier sent less" : "Part came"}">${r.part_why === "site" ? "On hold" : r.part_why === "supplier" ? "Short" : "Part"}</span>` : `<span class="${r.late > 0 ? "l" : "c"}">${s}</span>`;
       return `<span>&nbsp;</span>`;
     }).join("");
     const refs = r.kind === "lpo" ? [r.ref, ...(r.requests || [])] : [r.ref + (r.requested_by ? " · " + r.requested_by : "")];
     const sup = r.supplier
-      ? `<div class="t1">${hl(r.supplier)}</div>${r.contact ? `<div class="t2">${hl(r.contact)}</div>` : ""}${r.phone ? `<div class="t2"><a href="tel:${escapeAttr(r.phone.replace(/[^\d+]/g, ""))}" onclick="event.stopPropagation()" title="Call">${hl(r.phone)}</a></div>` : ""}${!r.contact && !r.phone ? `<div class="t2">no contact on file</div>` : ""}`
-      : `<div class="t2">${r.stage === 0 ? "Waiting for approval" : r.stage === 5 ? "-" : "Approved - no LPO yet"}</div>`;
+      ? `<div class="t1">${hl(r.supplier)}</div>${r.contact ? `<div class="t2">${hl(r.contact)}</div>` : ""}${r.phone ? `<div class="t2"><a href="tel:${escapeAttr(r.phone.replace(/[^\d+]/g, ""))}" onclick="event.stopPropagation()" title="Call">${hl(r.phone)}</a></div>` : ""}${r.review ? `<div class="t2" style="color:#8A5A00;">under review - not approved yet</div>` : !r.contact && !r.phone ? `<div class="t2">no contact on file</div>` : ""}`
+      : `<div class="t2"${r.review ? ' style="color:#8A5A00; font-weight:600;"' : ""}>${r.review ? "LPO under review - not approved yet" : r.stage === 0 ? "Waiting for approval" : r.stage === 5 ? "-" : "Approved - no LPO yet"}</div>`;
     const note = (r.late > 0 ? `<div class="ot-late">${r.late} day${r.late === 1 ? "" : "s"} late</div>` : "") + (r.to_come ? `<div class="ot-come">${escapeHtml(r.to_come)} to come</div>` : "") + (r.part_why ? `<div class="ot-res">${r.part_why === "site" ? (r.part ? "Site asked to hold the rest" : "Site asked to hold it") : "Supplier sent less"}${r.part_note ? " - " + escapeHtml(r.part_note) : ""}</div>` : r.part_note ? `<div class="ot-res">${escapeHtml(r.part_note)}</div>` : (r.part ? `<div class="ot-res">why? - not said yet</div>` : "")) + (r.result ? `<div class="ot-res">${escapeHtml(r.result)}</div>` : "");
     const can = r.stage < 5 && r.action && otCanDo(r.role);
     return `<tr class="ot-r" data-k="${r.key}" onclick="otSheet('${r.key}')" title="Tap for everything that can be done">
@@ -24191,6 +24282,7 @@ function otWhenClosed(test) {
 function otDo(k) {
   const r = otRow(k); if (!r) return;
   if (r.action === "Approve") return otApprove(k);
+  if (r.action === "Mark approved") return lpoMarkApproved(r.id, r.ref, otAfter);
   if (r.action === "Raise LPO") return otRaise(k);
   if (r.action === "Book delivery") return lpoDlvOpen(r.id, otAfter);
   if (r.action === "Mark arrived") return otRequest(r.id);
@@ -24202,6 +24294,8 @@ function otHint(label) {
   const H = {
     "Approve": "Approve, approve fewer or reject - material by material.",
     "Raise LPO": "Make the LPO from the approved materials - supplier, rates and lines are filled in.",
+    "Mark approved": "The LPO is approved (on WhatsApp). The store is told now that it is ordered, and from whom.",
+    "Back to under review": "Marked approved by mistake - the store no longer sees it as ordered.",
     "Book delivery": "Type the DN number and what came. It goes into stock (or Rentals); if only part came, say why.",
     "Mark arrived": "Open the request and mark what arrived, material by material.",
     "Check bill": "Check the supplier's bill - number, date, amount - against the LPO and the DN.",
@@ -24242,6 +24336,7 @@ function otActions(r) {
     if (r.untouched && P) add("Delete the request", () => otDelete(k));
   } else if (r.stage < 5) {
     if ((r.stage === 2 || r.part) && S) add("Book delivery", () => lpoDlvOpen(r.id, otAfter));
+    if (r.stage === 2 && !r.part && !r.review && P) add("Back to under review", () => lpoMarkApproved(r.id, r.ref, otAfter, true));
     if (r.part && (S || P)) add("Close - rest not needed", () => otCloseRest(k));
     if (r.stage >= 3 && !r.part && P) add(r.bill_checked ? "Bill - look again" : "Check bill", () => lpoBillOpen(r.id, otAfter));
     if (r.part && P) add("Check bill (what came)", () => lpoBillOpen(r.id, otAfter));
@@ -24411,7 +24506,7 @@ async function otRequest(id) {
   const lineRow = l => {
     const left = Math.max(0, (l.qty_requested || 0) - (l.qty_received || 0));
     const st = l.status === "rejected" ? `Rejected${l.reject_reason ? ": " + l.reject_reason : ""}` : l.status === "pending" ? "Waiting for approval"
-      : left <= 0 ? "Arrived" : (l.lpos || []).length ? "On " + l.lpos.map(x => x.ref).join(", ") : l.supplier ? `Ordered from ${l.supplier.name} (no LPO)` : l.lpo_cancelled ? `To order again (${l.lpo_cancelled} cancelled)` : "Approved - to order";
+      : left <= 0 ? "Arrived" : l.lpo_review ? "LPO under review (" + l.lpo_review + ")" : (l.lpos || []).length ? "On " + l.lpos.map(x => x.ref).join(", ") : l.supplier ? `Ordered from ${l.supplier.name} (no LPO)` : l.lpo_cancelled ? `To order again (${l.lpo_cancelled} cancelled)` : "Approved - to order";
     const acts = [];
     const onLpo = (l.lpos || []).filter(x => !/Delivered|Closed/.test(x.status));
     if (P && l.status === "pending") acts.push(`<button type="button" class="btn btn-gray" onclick="otLineDecide(${d.id}, ${l.id}, 'a')">Approve</button>`, `<button type="button" class="btn btn-gray" onclick="otLineDecide(${d.id}, ${l.id}, 'p', ${l.qty_requested})">Approve less</button>`);

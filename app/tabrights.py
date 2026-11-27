@@ -170,6 +170,7 @@ GATES = {
     ("POST", "/store/purchase/orders"): ["store.purchasing.purchase"],
     ("PUT", "/store/purchase/orders/{order_id}"): ["store.purchasing.purchase"],
     ("POST", "/store/purchase/orders/{order_id}/cancel"): ["store.purchasing.purchase"],
+    ("POST", "/store/purchase/orders/{order_id}/approve"): ["store.purchasing.purchase"],
     ("POST", "/store/suppliers"): ["store.purchasing.suppliers", "store.purchasing.purchase", "store.store.arrive",
                                    "store.requests.approvals", "store.requests.requests", "store.store.items"],
     ("PUT", "/store/suppliers/{supplier_id}"): ["store.purchasing.suppliers"],

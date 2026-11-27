@@ -7576,6 +7576,12 @@ def _mr_out(mr: models.MaterialRequest) -> dict:
     return d
 
 
+def _mr_in_review(m, review):
+    """Every ordered line of this request is on an LPO still under review."""
+    live = [l for l in m.lines if (l.status or "pending") != "rejected" and l.supplier_id and not (l.qty_received or 0)]
+    return bool(review) and bool(live) and all(l.id in review for l in live)
+
+
 def _mr_freed_view(d, freed):
     """A line still marked ordered from a supplier whose every LPO is cancelled reads 'To order' - no supplier,
     waiting to be ordered, with the cancelled LPO named - and the request with it ('Office approved', not
@@ -7591,6 +7597,26 @@ def _mr_freed_view(d, freed):
         if not any(l.get("supplier") for l in live):
             d["status"] = "approved"
         d["supplier"] = None
+    return d
+
+
+def _mr_review_view(d, review, office):
+    """A line on an LPO still under review (raised, not yet marked approved - 27/11/2026) says so, and the request
+    with it once every ordered line is. Whoever is not the office (the store, the site) is not shown the supplier
+    or his number until it is approved - so nobody rings a supplier about an order that may still change."""
+    hit = False
+    for l in d.get("lines") or []:
+        ref = review.get(l.get("id"))
+        if ref and (l.get("status") or "pending") != "rejected" and not (l.get("qty_received") or 0):
+            l["lpo_review"] = ref
+            hit = True
+            if not office:
+                l["supplier"], l["supplier_id"] = None, None
+    if hit:
+        live = [l for l in d["lines"] if (l.get("status") or "pending") != "rejected" and (l.get("supplier") or l.get("lpo_review"))]
+        d["lpo_review"] = bool(live) and all(l.get("lpo_review") for l in live)
+        if d["lpo_review"] and not office:
+            d["supplier"] = None
     return d
 
 
@@ -7616,10 +7642,15 @@ def list_material_requests(status: str = None, site: str = None,
         freed = _pu.freed_lines(db)
     except Exception as e:          # never keep the list from showing over this
         print("freed lines:", e); freed = {}
+    try:
+        review = _pu.review_lines(db)
+    except Exception as e:
+        print("review lines:", e); review = {}
     out = []
     for m in rows:
         d = _mr_out(m)
         _mr_freed_view(d, freed)
+        _mr_review_view(d, review, office)
         # may the person looking correct or delete it (his own, or anyone's for the office, while untouched)
         untouched = ((m.status or "pending") == "pending" and m.id not in with_lpo
                      and all((l.status or "pending") == "pending" and not (l.qty_received or 0) and not l.supplier_id for l in m.lines))
@@ -9260,6 +9291,7 @@ def list_purchase_orders(q: str = "", limit: int = 200, db: Session = Depends(ge
                     "date": o.order_date.isoformat(),
                     "supplier": o.supplier_name, "site": o.project_location,
                     "job_scope": o.job_scope, "status": o.status,
+                    "under_review": bool(getattr(o, "under_review", None)) and o.status != "cancelled",
                     "lines": len(o.lines),
                     "total": lpo_total(o), "round_off": lpo_round_off(o),
                     "request_id": o.request_id})
@@ -9424,6 +9456,7 @@ def lpo_report(group_by: str = "order", measures: str = "orders,sub_total,vat,to
                                       # Corrected since it was first raised, so the
                                       # register shows the change on the order itself
                                       # rather than leaving it to look untouched.
+                                      "under_review": bool(getattr(o, "under_review", None)) and o.status != "cancelled",
                                       "edited": bool(o.updated_at),
                                       "edited_on": o.updated_at.strftime("%d/%m/%Y") if o.updated_at else "",
                                       "cancel_reason": o.cancel_reason or "",
@@ -9861,6 +9894,8 @@ def _lpo_dict(o):
         "cancel_reason": getattr(o, "cancel_reason", "") or "",
         "cancelled_on": o.cancelled_at.strftime("%d/%m/%Y") if getattr(o, "cancelled_at", None) else "",
         "combined": bool(getattr(o, "combined", False)),
+        "under_review": bool(getattr(o, "under_review", None)) and o.status != "cancelled",
+        "approved_on": o.approved_at.strftime("%d/%m/%Y") if getattr(o, "approved_at", None) else "",
         "superseded_by": getattr(o, "superseded_by", "") or "",
         # Rental LPO: rental_set = what was ticked by hand (None = by itself); rental = what it is now
         "rental_set": getattr(o, "rental", None), "rental": _lpo_is_rental(o),
@@ -9955,6 +9990,7 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
         combined=bool(payload.combined),
         rental=getattr(payload, "rental", None),
         open_lpo=bool(getattr(payload, "open_lpo", None)) or None,
+        under_review=True,                    # until the purchaser marks it approved (27/11/2026)
         created_by=user.id,
     )
     db.add(o)
@@ -10004,6 +10040,12 @@ def create_purchase_order(payload: schemas.PurchaseOrderIn, db: Session = Depend
     # the older one is cancelled everywhere.
     import purchasing as _pu
     replaced = _pu.apply_revision(db, o, user)
+    if replaced:
+        # a revision of an order that was already approved stays approved (27/11/2026): the store has been chasing
+        # it for days and keeps seeing the supplier; only a revision of one still under review waits with it
+        olds = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.ref.in_(replaced)).order_by(models.PurchaseOrder.id).all()
+        if olds and not any(getattr(x, "under_review", None) for x in olds):
+            o.under_review, o.approved_at, o.approved_by = False, olds[-1].approved_at, olds[-1].approved_by
     _track_lpo(db, o, user, creating=not replaced)
     db.commit()
     db.refresh(o)
@@ -10378,6 +10420,54 @@ def update_purchase_order(order_id: int, payload: schemas.PurchaseOrderIn, db: S
     return {**_lpo_dict(o), "supplier_updated": sup_changed, "materials_added": new_items}
 
 
+@app.post("/store/purchase/orders/{order_id}/approve")
+def approve_purchase_order(order_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
+                            user: models.User = Depends(require_screen("approvals"))):
+    """Under review -> approved (27/11/2026). The approval itself is given outside the portal (WhatsApp); the
+    purchaser records it here, and only now is the store told the material is ordered and from whom.
+    {"undo": true} puts it back under review (pressed by mistake) - not once anything has come on it."""
+    o = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == order_id).first()
+    if not o:
+        raise HTTPException(status_code=404, detail="Purchase order not found.")
+    if o.status == "cancelled":
+        raise HTTPException(status_code=400, detail=f"{o.ref} is cancelled.")
+    undo = bool((payload or {}).get("undo"))
+    was = bool(getattr(o, "under_review", None))
+    if undo:
+        if was:
+            return {**_lpo_dict(o), "detail": f"{o.ref} is under review."}
+        import purchasing as _pu0
+        _ids0 = _pu0._ids(o.request_line_ids)
+        came = (db.query(models.LpoReceipt).filter(models.LpoReceipt.order_id == o.id).first() is not None
+                or (bool(_ids0) and db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id.in_(_ids0),
+                                                                              models.MaterialRequestLine.qty_received > 0).first() is not None))
+        if came:
+            raise HTTPException(status_code=400, detail=f"Material has already come on {o.ref} - it stays approved.")
+        if o.bill_no or (o.zoho_status or "") in ("sent", "changed", "sending"):
+            raise HTTPException(status_code=400, detail=f"{o.ref} already has its bill or is in Zoho - it stays approved.")
+        o.under_review, o.approved_at, o.approved_by = True, None, None
+    else:
+        if not was:
+            return {**_lpo_dict(o), "detail": f"{o.ref} was already approved."}
+        o.under_review, o.approved_at, o.approved_by = False, datetime.now(timezone.utc), user.id
+    # the requests behind it are touched, so the store's notification ("ordered, from ...") is today's
+    import purchasing as _pu
+    ids = _pu._ids(o.request_line_ids)
+    reqs = {l.request for l in db.query(models.MaterialRequestLine).filter(models.MaterialRequestLine.id.in_(ids)).all()} if ids else set()
+    reqs |= set(db.query(models.MaterialRequest).filter(models.MaterialRequest.lpo_id == o.id).all())
+    for mr in reqs:
+        if mr is not None:
+            mr.updated_at = datetime.now(timezone.utc)
+    # marking it approved is not a correction: the register's "edited" mark (any change stamps it) stays as it was
+    from sqlalchemy.orm.attributes import flag_modified as _keep
+    _keep(o, "updated_at")
+    db.commit()
+    db.refresh(o)
+    log_action(db, user.id, "approve_lpo", f"{o.ref} ({o.supplier_name}) - " + ("put back under review" if undo else "marked approved - the store is told"))
+    return {**_lpo_dict(o), "detail": f"{o.ref} is back under review." if undo
+            else f"{o.ref} approved - the store now sees it as ordered from {o.supplier_name}."}
+
+
 @app.post("/store/purchase/orders/{order_id}/cancel")
 def cancel_purchase_order(order_id: int, payload: dict = Body(default={}), db: Session = Depends(get_db),
                            user: models.User = Depends(require_screen("approvals"))):
@@ -10557,8 +10647,37 @@ def db_session_site(code):
         s.close()
 
 
+def lpo_print_lines(o):
+    """The lines as the supplier's copy shows them (27/11/2026). On a combined LPO the same material for several
+    sites is kept as one line per site - that is what tells accounts and the store whose it is - but the supplier
+    is ordering one thing: lines alike in everything he sees (material, description, unit, rate, tax, look) print
+    as ONE line with the quantities added. Nothing stored changes; an ordinary LPO prints line for line as before."""
+    from types import SimpleNamespace as _NS
+    keys = ("id", "item_id", "description", "description2", "qty", "unit", "rate", "tax_pct", "cost_to", "service",
+            "bold", "style", "description_fmt")
+    rows = [_NS(**{k: getattr(l, k, None) for k in keys}) for l in o.lines]
+    if not getattr(o, "combined", False):
+        return rows
+    norm = lambda t: " ".join(str(t or "").split()).lower()
+    out, seen = [], {}
+    for r in rows:
+        k = (r.item_id or 0, norm(r.description), norm(r.description2), norm(r.unit), round(float(r.rate or 0), 6),
+             round(float(r.tax_pct or 0), 4), bool(r.service) if r.service is not None else None,
+             bool(r.bold), norm(r.style), norm(r.description_fmt))
+        if k in seen:
+            seen[k].qty = float(seen[k].qty or 0) + float(r.qty or 0)
+        else:
+            seen[k] = r
+            out.append(r)
+    return out
+
+
 def _lpo_for_print(o):
     d = _lpo_dict(o)
+    d["lines"] = [{"id": l.id, "item_id": l.item_id, "description": l.description, "description2": l.description2,
+                   "qty": l.qty, "unit": l.unit, "rate": l.rate, "tax_pct": l.tax_pct, "cost_to": "",
+                   "service": l.service, "bold": bool(l.bold), "style": l.style or "", "description_fmt": l.description_fmt or "",
+                   "service_now": _is_service_line(l)} for l in lpo_print_lines(o)] if d.get("combined") else d["lines"]
     d["sig_at"] = o.created_at or datetime.utcnow()      # signed with the signature in force when it was made
     # The supplier's own contact details, from his record, so the order
     # says who to chase without anyone typing it again.
@@ -10873,7 +10992,7 @@ def _lpo_html(o):
                 .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
     rows, sub, vat = [], 0.0, 0.0
-    for i, l in enumerate(o.lines, start=1):
+    for i, l in enumerate(lpo_print_lines(o), start=1):       # a combined LPO: one line per material, quantities added
         amount = lpo_amt(o, l)
         tax = amount * (l.tax_pct or 0) / 100.0
         sub += amount
@@ -15868,14 +15987,26 @@ def _work_out_notifications(db, user):
                              "when": (m.updated_at or m.requested_on).isoformat()[:10], "level": "info"})
 
     if "requests" in allowed:
+        try:
+            import purchasing as _pur
+            review_ids = _pur.review_lines(db)
+        except Exception as _e:
+            print("review lines:", _e); review_ids = {}
         for m in reqs:
             upd = m.updated_at.date() if m.updated_at else None
             if not upd or upd < recent_cutoff:
                 continue
             if m.status == "approved":
                 title, detail, lvl = f"{m.ref} approved", "The office has approved it and will order", "ok"
+            elif m.status in ("ordered", "arranging", "lpo_sent") and _mr_in_review(m, review_ids):
+                # the LPO is raised but not approved yet (27/11/2026): no supplier named, nobody rings him yet
+                title, detail, lvl = f"{m.ref}: LPO under review", "Not approved yet - wait before calling the supplier", "info"
+                out.append({"id": f"status-{m.id}-review-{upd}", "kind": "status", "request_id": m.id, "status": m.status,
+                             "title": title, "detail": detail, "screen": "followup", "target": m.ref,
+                             "when": upd.isoformat(), "level": lvl})
+                continue
             elif m.status in ("ordered", "arranging", "lpo_sent"):
-                sups = sorted({l.supplier.name for l in m.lines if l.supplier})
+                sups = sorted({l.supplier.name for l in m.lines if l.supplier and l.id not in review_ids})   # never the supplier of an LPO still under review
                 title = f"{m.ref} ordered"
                 detail = ("From " + ", ".join(sups) if sups else "Ordered by the office") \
                          + (f", expected {m.expected_on:%d/%m/%Y}" if m.expected_on else "")

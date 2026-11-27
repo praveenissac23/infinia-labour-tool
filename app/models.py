@@ -502,6 +502,12 @@ class PurchaseOrder(Base):
     open_lpo = Column(Boolean, nullable=True)
     part_note = Column(String, default="")
     rental = Column(Boolean, nullable=True)
+    # Under review (27/11/2026): a new LPO waits here until the purchaser marks it approved (the approval itself is
+    # given on WhatsApp). Until then the store is not told it is ordered or from whom. Empty = approved (every LPO
+    # from before this was kept).
+    under_review = Column(Boolean, nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    approved_by = Column(Integer, nullable=True)
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

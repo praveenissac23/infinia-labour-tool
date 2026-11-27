@@ -147,6 +147,11 @@ def build(db):
         to_come = "; ".join(f"{_qty(x['remaining'])} {x['unit'] or ''} {x['description']}".replace("  ", " ")
                             for x in missing[:2]) + (f" +{len(missing) - 2} more" if len(missing) > 2 else "")
         role, act = ("store", "Book delivery") if part else NEXT.get(stage, ("", ""))
+        # Under review (27/11/2026): raised, not yet marked approved - the purchaser is next, not the store, and
+        # the supplier's man and number are not shown, so nobody rings before it is approved
+        review = bool(getattr(o, "under_review", None)) and stage == 2 and not part
+        if review:
+            role, act = "purchaser", "Mark approved"
         result = ""
         if stage == 5:
             came = any(x["delivered"] > EPS for x in lines)
@@ -155,10 +160,11 @@ def build(db):
         rows.append({
             "key": f"lpo{o.id}", "kind": "lpo", "id": o.id, "ref": o.ref, "requests": refs,
             "site": book.sites.key(o) if book.sites.key(o) != "STORE" else "Store",
-            "what": _what([x["description"] for x in lines]),
+            "what": _what(list(dict.fromkeys(x["description"] for x in lines))),     # a material for several sites is named once
             "supplier": o.supplier_name or (sup.name if sup else ""),
-            "contact": _clean(o.supplier_contact) or _clean(sup.contact_person if sup else ""),
-            "phone": _clean(o.supplier_phone) or _clean(sup.phone if sup else ""),
+            "contact": "" if review else _clean(o.supplier_contact) or _clean(sup.contact_person if sup else ""),
+            "phone": "" if review else _clean(o.supplier_phone) or _clean(sup.phone if sup else ""),
+            "review": review,
             "stage": stage, "part": part, "to_come": to_come if part else "",
             "due": due.isoformat() if due else "", "late": _late(due, today, stage, part),
             "role": role if stage < 5 else "", "who": who.get(role, "") if stage < 5 else "", "action": act if stage < 5 else "",
@@ -237,6 +243,11 @@ def tracker(db: Session = Depends(get_db), user: models.User = Depends(SEE)):
     perms = set(M.effective_permissions(user)) if job else set()
     can = {"purchaser": "approvals" in perms, "store": bool({"storekeeper", "store"} & perms), "accounts": "accounts_zoho" in perms}
     data["my_roles"] = [k for k, words in DEPT_WORDS.items() if can[k] and any(w in job for w in words)]
+    # an LPO under review: whoever is not the office (the store, a site) is not shown who it is with (27/11/2026)
+    if (user.role or "") != "admin" and "approvals" not in set(M.effective_permissions(user)):
+        for r in data["rows"]:
+            if r.get("review"):
+                r["supplier"] = ""
     return data
 
 
@@ -341,6 +352,10 @@ def request_detail(req_id: int, db: Session = Depends(get_db), user: models.User
     for l in d["lines"]:
         l["lpos"] = lpos.get(l["id"], [])
     office = user.role == "admin" or "approvals" in M.effective_permissions(user)
+    try:                                       # a line on an LPO under review: says so, no supplier for the store
+        M._mr_review_view(d, P.review_lines(db), office)
+    except Exception as e:
+        print("request detail review:", e)
     with_lpo = any(o.request_id == mr.id for o in book.orders)
     untouched = ((mr.status or "pending") == "pending" and not with_lpo
                  and all((l.status or "pending") == "pending" and not (l.qty_received or 0) and not l.supplier_id for l in mr.lines))
