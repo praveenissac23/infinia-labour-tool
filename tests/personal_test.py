@@ -377,15 +377,18 @@ ck("its own Home Screen icon", 'href="/portal/me-icon-180.png"' in page and m.js
 ck("the page: not indexed, no referrer, iPhone app look", 'name="robots" content="noindex' in page and 'name="referrer" content="no-referrer"' in page and "apple-mobile-web-app-capable" in page)
 app = open(os.path.join(root, "app-classic.html"), encoding="utf-8").read()
 ck("Settings card for admins only", 'id="pg-me-card"' in app and 'show("pg-me-card", CURRENT_ROLE === "admin")' in app)
-# slow moving background (27/11/2026): "i told you about background animations, not page navigation; page navigation
-# i need instant and fast elastic" - a different slow background behind each page; nothing on a page fades or slides in
+# moving background (27/11/2026): "i told you about background animations, not page navigation; page navigation i need
+# instant and fast elastic" then "background animations 6 options?" -> "All six in Settings". The first set was too
+# faint and slow to see at all ("i cannot see any animations"), so these are stronger and move visibly.
 _pg = open('../portal/me.html', encoding='utf-8').read()
-ck('each page has its own moving background', all(f'<div class="sc" data-v="{v}">' in _pg for v in ('dash', 'cal', 'notes', 'done'))
-   and all('@keyframes ' + k in _pg for k in ('bgA1', 'bgA2', 'bgA3', 'bgT1', 'bgT2', 'bgRise', 'bgSway', 'bgBreath', 'bgTurn')))
+ck('six backgrounds to choose from', '[["aurora", "Aurora"], ["tide", "Tide"], ["bubbles", "Bubbles"], ["breathe", "Breathe"], ["silk", "Silk"], ["fireflies", "Fireflies"]]' in _pg
+   and all(f'#bg [data-v={v}]' in _pg for v in ('aurora', 'tide', 'bubbles', 'breathe', 'silk', 'fireflies'))
+   and all('@keyframes ' + k in _pg for k in ('bgA1', 'bgA2', 'bgA3', 'bgT1', 'bgT2', 'bgRise', 'bgSway', 'bgBreath', 'bgTurn', 'bgSilk', 'bgWander', 'bgGlow')))
+ck('...picked in Settings > Background, kept on this phone, Aurora to begin with', 'id="bgSeg"' in _pg and 'localStorage.setItem("me_bg", v)' in _pg and ': "aurora"; }' in _pg)
 import re as _re
-_secs = [float(x) for x in _re.findall(r'animation: bg\w+ calc\((\d+)s \* var\(--mo, 1\)\)', _pg)] + [float(x) for x in _re.findall(r'--d:(\d+)s', _pg)]
-ck('...all of it slow: nothing moves faster than an 11 second sweep', len(_secs) >= 15 and min(_secs) >= 11, sorted(_secs)[:3])
-ck('...only the page on screen moves (the others are stopped)', '#bg .sc:not(.on) i, #bg .sc:not(.on) b { animation-play-state: paused !important; }' in _pg)
+_secs = [float(x) for x in _re.findall(r'animation: bg\w+ calc\(([\d.]+)s \* var\(--mo, 1\)\)', _pg)]
+ck('...slow but seen: every sweep takes between 5 and 40 seconds (44 s and more could not be seen moving)', len(_secs) >= 11 and min(_secs) >= 5 and max(_secs) <= 40, sorted(_secs))
+ck('...only the chosen one runs (the others are stopped)', '#bg .sc:not(.on) i, #bg .sc:not(.on) b { animation-play-state: paused !important; }' in _pg)
 ck('...it sits behind everything and never takes a tap', '#bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; display: none; }' in _pg)
 ck('a page shows at once: nothing on it is hidden, faded or slid in', 'arrive(' not in _pg and '.pg:not(.on)' not in _pg and 'aRise' not in _pg and 'aSlide' not in _pg)
 _show = _pg[_pg.index('function show(v) {'):_pg.index('// ---------------- add, tick, later')]

@@ -6,7 +6,7 @@
      Only at its own secret address (?k=...), only with the owner's login + PIN once per device. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="me-build" content="5c0d19425ffc">
+<meta name="me-build" content="94d728d83b20">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -366,38 +366,47 @@
     .two { display: grid; grid-template-columns: 1fr 380px; gap: 10px; align-items: start; }
     .two .side { position: sticky; top: 10px; }
   }
-  /* ----- slow moving background (27/11/2026), a different one behind each page; the pages themselves change at once.
-     Dashboard: three glows drift across. Calendar: bands of light slide like a slow tide. Notes: soft bubbles rise.
-     Done: one glow breathes. Only the page on screen moves. Settings > Background movement: Gentle, Very slow, Off. ----- */
+  /* ----- moving background (27/11/2026): six to choose from in Settings > Background - Aurora (glows drifting), Tide (bands
+     of light), Bubbles (rising), Breathe (one glow), Silk (colour flowing), Fireflies (small lights). The same one behind
+     every page; only the chosen one runs. Settings > Background movement: Gentle, Very slow, Off. Pages change at once. ----- */
+  :root { --bgA: #F6A493; --bgB: #C9AEF7; --bgC: #FFD480; }
+  html[data-theme=dark] { --bgA: rgba(192,57,43,.58); --bgB: rgba(109,59,209,.48); --bgC: rgba(200,120,40,.38); }
   #bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; display: none; }
   html.mo #bg { display: block; } html.mo #app::before, html.mo #app::after { display: none; }
-  #bg .sc { position: absolute; inset: 0; opacity: 0; transition: opacity 1.4s ease; }
+  #bg .sc { position: absolute; inset: 0; opacity: 0; transition: opacity 1.2s ease; }
   #bg .sc.on { opacity: 1; }
   #bg .sc:not(.on) i, #bg .sc:not(.on) b { animation-play-state: paused !important; }
   #bg i, #bg b { position: absolute; display: block; border-radius: 50%; will-change: transform; }
-  #bg [data-v=dash] i { width: 92vmax; height: 92vmax; }
-  #bg [data-v=dash] i:nth-child(1) { left: -44vmax; top: -40vmax; background: radial-gradient(closest-side, var(--glowA), transparent); animation: bgA1 calc(44s * var(--mo, 1)) ease-in-out infinite alternate; }
-  #bg [data-v=dash] i:nth-child(2) { right: -50vmax; top: 2vh; background: radial-gradient(closest-side, var(--glowB), transparent); animation: bgA2 calc(56s * var(--mo, 1)) ease-in-out infinite alternate; }
-  #bg [data-v=dash] i:nth-child(3) { left: -26vmax; bottom: -52vmax; background: radial-gradient(closest-side, var(--glowC), transparent); animation: bgA3 calc(50s * var(--mo, 1)) ease-in-out infinite alternate; }
-  @keyframes bgA1 { to { transform: translate3d(30vw, 16vh, 0) scale(1.18); } }
-  @keyframes bgA2 { to { transform: translate3d(-34vw, 24vh, 0) scale(.84); } }
-  @keyframes bgA3 { to { transform: translate3d(26vw, -22vh, 0) scale(1.22); } }
-  #bg [data-v=cal] i { left: -60vw; width: 220vw; height: 48vh; }
-  #bg [data-v=cal] i:nth-child(1) { top: -16vh; background: radial-gradient(closest-side, var(--glowB), transparent); animation: bgT1 calc(38s * var(--mo, 1)) ease-in-out infinite alternate; }
-  #bg [data-v=cal] i:nth-child(2) { top: 28vh; background: radial-gradient(closest-side, var(--glowA), transparent); animation: bgT2 calc(50s * var(--mo, 1)) ease-in-out infinite alternate; }
-  #bg [data-v=cal] i:nth-child(3) { bottom: -18vh; background: radial-gradient(closest-side, var(--glowC), transparent); animation: bgT1 calc(62s * var(--mo, 1)) ease-in-out infinite alternate-reverse; }
-  @keyframes bgT1 { from { transform: translate3d(-24vw, 0, 0) scaleY(.88); } to { transform: translate3d(24vw, 5vh, 0) scaleY(1.16); } }
-  @keyframes bgT2 { from { transform: translate3d(28vw, 3vh, 0) scaleY(1.12); } to { transform: translate3d(-28vw, -4vh, 0) scaleY(.84); } }
-  #bg [data-v=notes] i { left: var(--x); bottom: -34vh; width: var(--s); height: var(--s); animation: bgRise calc(var(--d) * var(--mo, 1)) linear infinite; animation-delay: calc(var(--w) * var(--mo, 1)); }
-  #bg [data-v=notes] b { inset: 0; background: radial-gradient(closest-side, var(--c), transparent); animation: bgSway calc(11s * var(--mo, 1)) ease-in-out infinite alternate; }
+  #bg [data-v=aurora] i { width: 92vmax; height: 92vmax; }
+  #bg [data-v=aurora] i:nth-child(1) { left: -44vmax; top: -40vmax; background: radial-gradient(closest-side, var(--bgA), transparent); animation: bgA1 calc(15s * var(--mo, 1)) ease-in-out infinite alternate; }
+  #bg [data-v=aurora] i:nth-child(2) { right: -50vmax; top: 2vh; background: radial-gradient(closest-side, var(--bgB), transparent); animation: bgA2 calc(19s * var(--mo, 1)) ease-in-out infinite alternate; }
+  #bg [data-v=aurora] i:nth-child(3) { left: -26vmax; bottom: -52vmax; background: radial-gradient(closest-side, var(--bgC), transparent); animation: bgA3 calc(17s * var(--mo, 1)) ease-in-out infinite alternate; }
+  @keyframes bgA1 { to { transform: translate3d(68vw, 40vh, 0) scale(1.25); } }
+  @keyframes bgA2 { to { transform: translate3d(-70vw, 46vh, 0) scale(.8); } }
+  @keyframes bgA3 { to { transform: translate3d(60vw, -46vh, 0) scale(1.3); } }
+  #bg [data-v=tide] i { left: -60vw; width: 220vw; height: 48vh; }
+  #bg [data-v=tide] i:nth-child(1) { top: -16vh; background: radial-gradient(closest-side, var(--bgB), transparent); animation: bgT1 calc(13s * var(--mo, 1)) ease-in-out infinite alternate; }
+  #bg [data-v=tide] i:nth-child(2) { top: 28vh; background: radial-gradient(closest-side, var(--bgA), transparent); animation: bgT2 calc(17s * var(--mo, 1)) ease-in-out infinite alternate; }
+  #bg [data-v=tide] i:nth-child(3) { bottom: -18vh; background: radial-gradient(closest-side, var(--bgC), transparent); animation: bgT1 calc(21s * var(--mo, 1)) ease-in-out infinite alternate-reverse; }
+  @keyframes bgT1 { from { transform: translate3d(-56vw, -5vh, 0) scaleY(.8); } to { transform: translate3d(56vw, 11vh, 0) scaleY(1.25); } }
+  @keyframes bgT2 { from { transform: translate3d(60vw, 9vh, 0) scaleY(1.2); } to { transform: translate3d(-60vw, -11vh, 0) scaleY(.78); } }
+  #bg [data-v=bubbles] i { left: var(--x); bottom: -34vh; width: var(--s); height: var(--s); animation: bgRise calc(var(--d) * var(--mo, 1)) linear infinite; animation-delay: calc(var(--w) * var(--mo, 1)); }
+  #bg [data-v=bubbles] b { inset: 0; background: radial-gradient(closest-side, var(--c), transparent); animation: bgSway calc(5s * var(--mo, 1)) ease-in-out infinite alternate; }
   @keyframes bgRise { from { transform: translate3d(0, 0, 0); opacity: 0; } 14% { opacity: 1; } 82% { opacity: 1; } to { transform: translate3d(0, -175vh, 0); opacity: 0; } }
   @keyframes bgSway { from { transform: translate3d(-22px, 0, 0) scale(.9); } to { transform: translate3d(22px, 0, 0) scale(1.1); } }
-  #bg [data-v=done] i { left: 50%; top: 44%; }
-  #bg [data-v=done] i:nth-child(1) { width: 130vmin; height: 130vmin; margin: -65vmin 0 0 -65vmin; background: radial-gradient(closest-side, var(--glowA), transparent); animation: bgBreath calc(11s * var(--mo, 1)) ease-in-out infinite alternate; }
-  #bg [data-v=done] i:nth-child(2) { width: 190vmin; height: 190vmin; margin: -95vmin 0 0 -95vmin; background: radial-gradient(closest-side, var(--glowB), transparent); animation: bgBreath calc(15s * var(--mo, 1)) ease-in-out infinite alternate-reverse; }
-  #bg [data-v=done] i:nth-child(3) { width: 150vmax; height: 56vmax; margin: -28vmax 0 0 -75vmax; background: radial-gradient(closest-side, var(--glowC), transparent); animation: bgTurn calc(90s * var(--mo, 1)) linear infinite; }
+  #bg [data-v=breathe] i { left: 50%; top: 44%; }
+  #bg [data-v=breathe] i:nth-child(1) { width: 130vmin; height: 130vmin; margin: -65vmin 0 0 -65vmin; background: radial-gradient(closest-side, var(--bgA), transparent); animation: bgBreath calc(5.5s * var(--mo, 1)) ease-in-out infinite alternate; }
+  #bg [data-v=breathe] i:nth-child(2) { width: 190vmin; height: 190vmin; margin: -95vmin 0 0 -95vmin; background: radial-gradient(closest-side, var(--bgB), transparent); animation: bgBreath calc(7.5s * var(--mo, 1)) ease-in-out infinite alternate-reverse; }
+  #bg [data-v=breathe] i:nth-child(3) { width: 150vmax; height: 56vmax; margin: -28vmax 0 0 -75vmax; background: radial-gradient(closest-side, var(--bgC), transparent); animation: bgTurn calc(36s * var(--mo, 1)) linear infinite; }
   @keyframes bgBreath { from { transform: scale(.7); opacity: .4; } to { transform: scale(1.12); opacity: 1; } }
   @keyframes bgTurn { to { transform: rotate(360deg); } }
+  #bg [data-v=silk] i { left: -100%; top: -100%; width: 300%; height: 300%; border-radius: 0; animation: bgSilk calc(14s * var(--mo, 1)) ease-in-out infinite alternate;
+    background: linear-gradient(125deg, transparent 0%, var(--bgA) 14%, transparent 28%, var(--bgB) 43%, transparent 57%, var(--bgC) 72%, transparent 86%, var(--bgA) 100%); }
+  @keyframes bgSilk { from { transform: translate3d(-16%, -16%, 0); } to { transform: translate3d(16%, 16%, 0); } }
+  #bg [data-v=fireflies] i { left: var(--x); top: var(--y); width: var(--s); height: var(--s); background: radial-gradient(closest-side, var(--c), transparent);
+    animation: bgWander calc(var(--d) * var(--mo, 1)) ease-in-out infinite alternate, bgGlow calc(var(--d) * var(--mo, 1) / 3) ease-in-out infinite alternate; animation-delay: var(--w); }
+  @keyframes bgWander { to { transform: translate3d(var(--tx), var(--ty), 0); } }
+  @keyframes bgGlow { from { opacity: .15; } to { opacity: 1; } }
   /* a page changes at once, with one quick spring; the tab's highlight springs across with it */
   .nav .ind.spring { transition: transform .34s cubic-bezier(.2, 1.4, .4, 1); }
   .nav button svg { transition: transform .3s cubic-bezier(.2, 1.6, .4, 1); } .nav button:active svg { transform: scale(.82); transition-duration: .06s; }
@@ -406,17 +415,7 @@
 <body>
 <div id="gate" class="gate" style="display:none"></div>
 <div id="app" style="display:none">
-  <div id="bg" aria-hidden="true">
-    <div class="sc" data-v="dash"><i></i><i></i><i></i></div>
-    <div class="sc" data-v="cal"><i></i><i></i><i></i></div>
-    <div class="sc" data-v="notes">
-      <i style="--x:4vw;--s:210px;--d:52s;--w:-6s;--c:var(--glowA)"><b></b></i><i style="--x:58vw;--s:150px;--d:44s;--w:-21s;--c:var(--glowB)"><b></b></i>
-      <i style="--x:30vw;--s:260px;--d:60s;--w:-38s;--c:var(--glowC)"><b></b></i><i style="--x:76vw;--s:230px;--d:56s;--w:-47s;--c:var(--glowA)"><b></b></i>
-      <i style="--x:16vw;--s:130px;--d:40s;--w:-30s;--c:var(--glowB)"><b></b></i><i style="--x:46vw;--s:190px;--d:48s;--w:-12s;--c:var(--glowA)"><b></b></i>
-      <i style="--x:84vw;--s:120px;--d:46s;--w:-3s;--c:var(--glowC)"><b></b></i>
-    </div>
-    <div class="sc" data-v="done"><i></i><i></i><i></i></div>
-  </div>
+  <div id="bg" aria-hidden="true"></div>
   <header class="top">
     <div class="toprow"><h1 id="h1">Dashboard</h1>
       <div class="hacts" id="hacts"></div><button class="gear" onclick="openSettings()" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></div>
@@ -902,19 +901,30 @@ function pagerSetup() {
 }
 function navOn() {
   closeSwipes(); headActs(); setTarget(TARGET);
-  bgScene();
   document.querySelectorAll(".nav button").forEach(b => b.style.color = b.dataset.v === VIEW ? "var(--redtx)" : "var(--mute)");
   $("h1").textContent = TITLES[VIEW];
 }
-// ----- slow moving background (27/11/2026): a different one behind each page (Dashboard drifting glows, Calendar a
-// slow tide, Notes rising bubbles, Done a breathing glow). The pages themselves change at once - nothing on a page
-// fades or slides in. Settings > Background movement: Gentle, Very slow or Off (kept on this phone).
+// ----- moving background (27/11/2026): six to choose from in Settings > Background, the same one behind every page;
+// only the chosen one runs. Settings > Background movement: Gentle, Very slow or Off. Both kept on this phone.
+// The pages themselves change at once - nothing on a page fades or slides in.
 const MOTIONS = [["slow", "Gentle"], ["slower", "Very slow"], ["off", "Off"]];
+const BGS = [["aurora", "Aurora"], ["tide", "Tide"], ["bubbles", "Bubbles"], ["breathe", "Breathe"], ["silk", "Silk"], ["fireflies", "Fireflies"]];
 const CALM_OS = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 function motion() { let v = ""; try { v = localStorage.getItem("me_motion") || ""; } catch (e) {} return MOTIONS.some(x => x[0] === v) ? v : (CALM_OS() ? "off" : "slow"); }
-function applyMotion() { const m = motion(), h = document.documentElement; h.classList.toggle("mo", m !== "off"); h.style.setProperty("--mo", m === "slower" ? 1.7 : 1); }
-function setMotion(v) { try { localStorage.setItem("me_motion", v); } catch (e) {} applyMotion(); document.querySelectorAll("#moSeg button").forEach((b, k) => b.classList.toggle("on", MOTIONS[k][0] === v)); bgScene(); }
-function bgScene() { document.querySelectorAll("#bg .sc").forEach(x => x.classList.toggle("on", x.dataset.v === VIEW)); }
+function bgKind() { let v = ""; try { v = localStorage.getItem("me_bg") || ""; } catch (e) {} return BGS.some(x => x[0] === v) ? v : "aurora"; }
+function applyMotion() { const m = motion(), h = document.documentElement; h.classList.toggle("mo", m !== "off"); h.style.setProperty("--mo", m === "slower" ? 1.7 : 1); bgScene(); }
+function setMotion(v) { try { localStorage.setItem("me_motion", v); } catch (e) {} applyMotion(); document.querySelectorAll("#moSeg button").forEach((b, k) => b.classList.toggle("on", MOTIONS[k][0] === v)); }
+function setBg(v) { try { localStorage.setItem("me_bg", v); } catch (e) {} bgScene(); document.querySelectorAll("#bgSeg button").forEach(b => b.classList.toggle("on", b.dataset.bg === v)); }
+function bgBuild() {
+  const bub = [[4, 210, 20, -3, "A"], [58, 150, 16, -8, "B"], [30, 260, 24, -15, "C"], [76, 230, 22, -19, "A"], [16, 130, 15, -11, "B"], [46, 190, 18, -5, "A"], [84, 120, 17, -1, "C"]];
+  const fly = [[8, 12, 70, -100, 150, 11, "A"], [70, 8, 50, -150, 200, 9, "B"], [40, 30, 90, 120, -100, 13, "C"], [14, 52, 60, 180, 100, 10, "B"], [78, 46, 80, -135, -150, 12, "A"], [50, 66, 56, -170, 70, 9, "C"],
+               [24, 80, 84, 150, -120, 13, "A"], [66, 84, 64, -100, -185, 11, "B"], [88, 26, 44, -85, 135, 8, "C"], [4, 36, 48, 135, 170, 10, "A"], [56, 14, 40, 100, 120, 8, "A"], [34, 58, 46, -120, -85, 9, "B"]];
+  const inner = { aurora: "<i></i><i></i><i></i>", tide: "<i></i><i></i><i></i>", breathe: "<i></i><i></i><i></i>", silk: "<i></i>",
+    bubbles: bub.map(b => `<i style="--x:${b[0]}vw;--s:${b[1]}px;--d:${b[2]}s;--w:${b[3]}s;--c:var(--bg${b[4]})"><b></b></i>`).join(""),
+    fireflies: fly.map((f, k) => `<i style="--x:${f[0]}%;--y:${f[1]}%;--s:${f[2]}px;--tx:${f[3]}px;--ty:${f[4]}px;--d:${f[5]}s;--w:${-k}s;--c:var(--bg${f[6]})"></i>`).join("") };
+  $("bg").innerHTML = BGS.map(([k]) => `<div class="sc" data-v="${k}">${inner[k]}</div>`).join("");
+}
+function bgScene() { const bg = $("bg"); if (!bg) return; if (!bg.firstChild) bgBuild(); const k = bgKind(); bg.querySelectorAll(".sc").forEach(x => x.classList.toggle("on", x.dataset.v === k)); }
 // A tab tapped: the page is there at once and settles with one quick spring (a third of a second); a swipe with the
 // finger follows the finger as before.
 function show(v) {
@@ -1274,7 +1284,9 @@ async function openSettings() {
     <p style="font-size:13px;color:var(--mute);line-height:1.5;margin-top:8px">Tap one to hear it. It plays when a reminder comes up while this app is open. When the app is closed, the iPhone plays its own notification sound - Apple does not let web apps choose it. Silent mode or a Focus keeps both quiet.</p>
     <h3 style="margin-top:18px">Look</h3>
     <div class="seg" id="themeSeg">${[["auto", "As the phone"], ["light", "Light"], ["dark", "Dark"]].map(([k, l]) => `<button class="${theme() === k ? "on" : ""}" onclick="setTheme('${k}')">${l}</button>`).join("")}</div>
-    <h3 style="margin-top:18px">Background movement</h3>
+    <h3 style="margin-top:18px">Background</h3>
+    <div id="bgSeg">${[0, 3].map(a => `<div class="seg" style="margin-bottom:6px">${BGS.slice(a, a + 3).map(([k, l]) => `<button data-bg="${k}" class="${bgKind() === k ? "on" : ""}" onclick="setBg('${k}')">${l}</button>`).join("")}</div>`).join("")}</div>
+    <h3 style="margin-top:14px">Background movement</h3>
     <div class="seg" id="moSeg">${MOTIONS.map(([k, l]) => `<button class="${motion() === k ? "on" : ""}" onclick="setMotion('${k}')">${l}</button>`).join("")}</div>
     <h3 style="margin-top:18px">App version</h3>
     <div class="acts" style="margin-top:0"><button class="btn" onclick="hardRefresh()">↻ Refresh to the latest version</button></div>
