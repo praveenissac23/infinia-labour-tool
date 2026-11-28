@@ -4052,10 +4052,9 @@ def with_pay_numbers(model, inputs):
 # "Sub - Total from Current Bill". Now: a line with nothing in it (description, reference, amount - or, on the
 # previous-payments table, every column) is left out of every sheet, the PDF and the Excel file; so is a fee
 # heading ("IPA 10") with no line under it. The SN of the fees is the app's: 1, 2, 3 under each heading.
-# a heading names a bill with its number ("IPA 10", "Bill No 9", "Interim Payment Application 11") or reads "This bill";
-# "Bill of entry - customs" is a line, not a heading
-FEE_HEAD_RE = re.compile(r"^\s*(?:(?:ipa|bill|interim(?:\s+(?:bill|payment(?:\s+(?:application|certificate))?))?|payment\s+(?:application|certificate))"
-                         r"\s*(?:no\.?)?\s*[-#:.]?\s*\d+\b|this\s+bill\b)", re.I)
+# a heading names a bill with a number in it ("IPA 10", "IPA IPA 09" as the roll-over writes it when the bill number
+# cell reads "IPA 09", "Interim Payment Application 11") or reads "This bill"; "Bill of entry - customs" is a line
+FEE_HEAD_RE = re.compile(r"^\s*(?:this\s+bill\b|(?!bill\s+of\b)(?:ipa|bill|interim|payment\s+(?:application|certificate))\b(?=.*\d))", re.I)
 
 
 def _eff(s, inp, r, c):

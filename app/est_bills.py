@@ -1551,8 +1551,9 @@ def _print_ready(model, inputs, status="Draft"):
 
 
 def _this_bill_head(model, inputs, t):
-    """The row of this bill's fee heading (the last heading shown), or None."""
-    return max((r for r, k in BE.fee_rows(model, inputs, t) if k == "head"), default=None)
+    """The row this bill's fee lines start under: its heading (the last one shown), or the table's own head row
+    when the bill has no heading (the first bill made from a format with an empty APP B)."""
+    return max((r for r, k in BE.fee_rows(model, inputs, t) if k == "head"), default=t["head_row"])
 
 
 def _unhide_typed_fees(model, inputs, cells_by_sheet):
@@ -1564,8 +1565,6 @@ def _unhide_typed_fees(model, inputs, cells_by_sheet):
         if not inp or not inp.get("_hide") or not typed:
             continue
         head = _this_bill_head(model, inputs, t)
-        if head is None:
-            continue
         hid = set(int(x) for x in inp["_hide"])
         back = {int(k.split(",")[0]) for k, v in typed.items() if re.match(r"^\d+,\d+$", k) and v not in (None, "")}
         back = {r for r in back if r in hid and head < r < t["total_row"]}
@@ -2529,7 +2528,7 @@ def remove_fee_line(bid: int, payload: dict = Body(...), db: Session = Depends(g
     sx = next(x for x in model["sheets"] if x["name"] == sh)
     kind = dict(BE.fee_rows(model, inputs, t)).get(r)
     head = _this_bill_head(model, inputs, t)
-    if kind is None or kind == "head" or head is None or r < head:
+    if kind is None or kind == "head" or r < head:
         raise HTTPException(400, "That line is not on this bill's authority fees any more - refresh the page.")
     if CARRY_RE.match(str(BE._eff(sx, inputs.get(sh) or {}, r, t["cols"]["desc"]) or "")):
         raise HTTPException(400, "This line is carried from a Pending bill - it goes when that bill is marked Received.")

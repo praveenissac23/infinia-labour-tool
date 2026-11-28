@@ -247,6 +247,29 @@ bl.status = "Draft"; db.commit()
 xr = printed_appb("excel")
 ck("...a Draft bill is numbered by the app again", any(x[0] == 1 and x[1] == fl[0]["desc"]["value"] for x in xr), xr)
 
+# A: the roll-over's own heading when the bill number cell is text ("IPA 10" -> "IPA IPA 11"): still a heading
+fe = fees(); hd = fe["rows"][0]
+fe = c.put(U, headers=H, json={"set": {SH: {hd["desc"]["key"]: "IPA IPA 11"}}}).json()["fees"][0]
+xr = printed_appb("excel")
+ln_ = [x for x in fe["rows"] if not x["head"]]
+ck("review A: 'IPA IPA 11' stays the heading - not numbered, printed as a heading, its lines 1, 2",
+   fe["rows"][0]["head"] and xr[0][0] in (None, "") and xr[0][1] == "IPA IPA 11" and [x["sn"]["value"] for x in ln_][:2] == [1, 2], (xr, [(x["r"], x["sn"]["value"], x["desc"]["value"]) for x in fe["rows"]]))
+r = c.post(f"{U}/fee/remove", headers=H, json={"sheet": SH, "r": ln_[-1]["r"]})
+ck("review A: x works under that heading", r.status_code == 200, r.text[:200])
+# B: a bill with no fee heading at all (first bill from a format with an empty APP B): x works, a stale typed line comes back
+c.put(U, headers=H, json={"set": {SH: {hd["desc"]["key"]: ""}}})
+fe = fees()
+ck("review B set-up: no heading on this bill's fees", not any(x["head"] for x in fe["rows"]), [(x["r"], x["desc"]["value"]) for x in fe["rows"]])
+ln_ = [x for x in fe["rows"] if x["desc"]["value"] and not x.get("carry")]
+r = c.post(f"{U}/fee/remove", headers=H, json={"sheet": SH, "r": ln_[-1]["r"]})
+ck("review B: x works on a bill with no heading", r.status_code == 200, r.text[:200])
+gone = ln_[-1]["r"]
+r = c.put(U, headers=H, json={"set": {SH: {f"{gone},2": "Typed in a stale tab", f"{gone},4": 99}}})
+fe = r.json()["fees"][0]
+xr = printed_appb_any = None
+ck("review B: typing into that taken-off line from a stale tab brings it back (counted and shown)",
+   any(x["desc"]["value"] == "Typed in a stale tab" for x in fe["rows"]), [(x["r"], x["desc"]["value"]) for x in fe["rows"]])
+
 c.__exit__(None, None, None)
 print("\n" + ("ALL PASS" if not FAIL else f"{len(FAIL)} FAILED: " + "; ".join(FAIL)))
 sys.exit(1 if FAIL else 0)
