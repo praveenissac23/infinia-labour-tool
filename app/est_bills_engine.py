@@ -3654,7 +3654,7 @@ def shift_inputs(inp, sheet, at, n):
         if isinstance(v, str) and v.startswith("="):
             v = "=" + shift_formula(v[1:], sheet, sheet, at, n)
         out[f"{r + n if r >= at else r},{c}"] = v
-    for hk in ("_hide", "_heads"):
+    for hk in ("_hide", "_heads", "_blank"):
         if out.get(hk):
             out[hk] = [r + n if r >= at else r for r in out[hk]]
     for k_ in FMT_EXTRA:
@@ -3708,11 +3708,11 @@ def drop_added(inputs, sheet, row):
         if isinstance(v, str) and v.startswith("="):
             v = "=" + shift_formula(v[1:], sheet, sheet, row + 1, -1)
         out[f"{r - 1 if r > row else r},{c}"] = v
-    for hk in ("_hide", "_heads"):
+    for hk in ("_hide", "_heads", "_blank"):
         if inp.get(hk):
             out[hk] = [r - 1 if r > row else r for r in inp[hk] if r != row]
     for k, v in inp.items():
-        if k.startswith("_") and k not in ("_hide", "_heads", "_rows") + FMT_EXTRA:
+        if k.startswith("_") and k not in ("_hide", "_heads", "_blank", "_rows") + FMT_EXTRA:
             out[k] = v
     _fmt_shift(inp, out, lambda r: None if r == row else (r - 1 if r > row else r))
     if rows:
@@ -3734,7 +3734,7 @@ def drop_added(inputs, sheet, row):
 def hidden_extra(inputs, sheet):
     """Rows this bill hides (last month's lines of a table, kept in the file but not printed)."""
     inp = (inputs or {}).get(sheet) or {}
-    return set(int(x) for x in (inp.get("_hide") or []))
+    return set(int(x) for x in (inp.get("_hide") or [])) | set(int(x) for x in (inp.get("_blank") or []))
 
 
 def _xml_shift_attr(xml, r, n):
@@ -3807,7 +3807,7 @@ def _patch_sheet(raw, s, inp, vals, shown=None):
             head = re.sub(r'\shidden="(1|true)"', "", m.group(0)[:head_end])
             return head + m.group(0)[head_end:]
         xml = ROW.sub(unhide, xml)
-    hide = set(int(x) for x in (inp.get("_hide") or []))
+    hide = set(int(x) for x in (inp.get("_hide") or [])) | set(int(x) for x in (inp.get("_blank") or []))   # empty lines too
     if hide:
         def dohide(m):
             if int(m.group(1)) not in hide or 'hidden="1"' in m.group(0)[:m.group(0).index(">")]:
@@ -4044,6 +4044,130 @@ def with_pay_numbers(model, inputs):
                 out = {k: (dict(v) if isinstance(v, dict) else v) for k, v in (inputs or {}).items()}
             out.setdefault(p["sheet"], {})[f"{r},{sn}"] = want if pay else ""
     return inputs if out is None else out
+
+
+# ---- empty lines never printed; authority-fee SN per bill (28/11/2026) ------------------------------------------
+# Reported: the x on an Authority fees line only blanked it, and the blank rows (the format's spare rows above the
+# sub-total, and the empty line the app puts in for each new bill) still printed on APP B between the lines and
+# "Sub - Total from Current Bill". Now: a line with nothing in it (description, reference, amount - or, on the
+# previous-payments table, every column) is left out of every sheet, the PDF and the Excel file; so is a fee
+# heading ("IPA 10") with no line under it. The SN of the fees is the app's: 1, 2, 3 under each heading.
+FEE_HEAD_RE = re.compile(r"^\s*(ipa|bill|interim|payment (application|certificate)|this bill)\b", re.I)
+
+
+def _eff(s, inp, r, c):
+    """A cell as the bill has it: typed on the bill, else the format's value or formula."""
+    k = f"{r},{c}"
+    if k in inp:
+        return inp[k]
+    x = s["cells"].get(k) or {}
+    return x["v"] if "v" in x else (("=" + x["f"]) if x.get("f") else None)
+
+
+def _empty(v):
+    return v is None or (isinstance(v, str) and not v.strip())
+
+
+def fee_rows(model, inputs, t):
+    """The rows of a fees table this bill shows (not hidden in the format or on the bill), each
+    (row, kind): "head" (a bill's heading, no amount), "line" (something typed) or "blank"."""
+    s = next((x for x in model["sheets"] if x["name"] == t["sheet"]), None)
+    if not s:
+        return []
+    inp = (inputs or {}).get(t["sheet"]) or {}
+    hid = set(s.get("hidden_rows") or []) | set(int(x) for x in inp.get("_hide") or [])
+    cols = t["cols"]
+    out = []
+    for r in range(t["head_row"] + 1, t["total_row"]):
+        if r in hid:
+            continue
+        d, ref, a = (_eff(s, inp, r, cols[k]) if cols.get(k) else None for k in ("desc", "ref", "amount"))
+        if _empty(d) and _empty(ref) and _empty(a):
+            out.append((r, "blank"))
+        elif isinstance(d, str) and FEE_HEAD_RE.match(d) and _empty(ref) and (_empty(a) or a == 0):
+            out.append((r, "head"))
+        else:
+            out.append((r, "line"))
+    return out
+
+
+def blank_rows(model, inputs):
+    """{sheet: [rows]} left out of the printed bill: empty lines of the fees and previous-payments tables, and a
+    fee heading with no line under it."""
+    out = {}
+    for t in (model.get("map") or {}).get("fees", []):
+        rows = fee_rows(model, inputs, t)
+        drop = [r for r, k in rows if k == "blank"]
+        for i, (r, k) in enumerate(rows):
+            if k != "head":
+                continue
+            nxt = next((kk for _, kk in rows[i + 1:] if kk != "blank"), None)
+            if nxt != "line":                                 # the next thing under it is another heading, or the total
+                drop.append(r)
+        if drop:
+            out.setdefault(t["sheet"], set()).update(drop)
+    for p in (model.get("map") or {}).get("payments", []):
+        s = next((x for x in model["sheets"] if x["name"] == p["sheet"]), None)
+        if not s:
+            continue
+        inp = (inputs or {}).get(p["sheet"]) or {}
+        hid = set(s.get("hidden_rows") or []) | set(int(x) for x in inp.get("_hide") or [])
+        sn = pay_sn_col(model, p)
+        cols = [c for c in p["cols"].values() if c]
+        if not cols:
+            continue
+        lo, hi = min(cols + ([sn] if sn else [])), max(cols)
+        for r in range(p["head_row"] + 1, p["total_row"]):
+            if r in hid:
+                continue
+            # every cell of the line empty (an SN worked out by the app does not count)
+            if all(_empty(_eff(s, inp, r, c)) or c == sn for c in range(lo, hi + 1)):
+                out.setdefault(p["sheet"], set()).add(r)
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def with_fee_numbers(model, inputs):
+    """The SN of the authority fees worked out: 1, 2, 3 for the lines under each heading; a heading or empty line
+    has none. Rows hidden on the bill (earlier bills' lines) keep what they had. Returns a copy when anything changes."""
+    out = None
+    for t in (model.get("map") or {}).get("fees", []):
+        sn = t["cols"].get("sn")
+        if not sn:
+            continue
+        s = next((x for x in model["sheets"] if x["name"] == t["sheet"]), None)
+        inp = (inputs or {}).get(t["sheet"]) or {}
+        n = 0
+        for r, k in fee_rows(model, inputs, t):
+            if k == "head":
+                n = 0
+            want = None
+            if k == "line":
+                n += 1
+                want = n
+            have = _eff(s, inp, r, sn)
+            if want is not None and isinstance(have, (int, float)) and not isinstance(have, bool) and float(have) == want:
+                continue
+            if want is None and _empty(have):
+                continue
+            if out is None:
+                out = {kk: (dict(v) if isinstance(v, dict) else v) for kk, v in (inputs or {}).items()}
+            out.setdefault(t["sheet"], {})[f"{r},{sn}"] = want if want is not None else ""
+    return inputs if out is None else out
+
+
+def with_blanks(model, inputs):
+    """The inputs with each sheet's "_blank" (rows left out of the print, see blank_rows) worked out afresh."""
+    want = blank_rows(model, inputs)
+    have = {sh: v.get("_blank") for sh, v in (inputs or {}).items() if isinstance(v, dict) and v.get("_blank")}
+    if want == have:
+        return inputs
+    out = {k: (dict(v) if isinstance(v, dict) else v) for k, v in (inputs or {}).items()}
+    for sh, v in out.items():
+        if isinstance(v, dict):
+            v.pop("_blank", None)
+    for sh, rows in want.items():
+        out.setdefault(sh, {})["_blank"] = rows
+    return out
 
 
 # ---- previous payments marked Pending (10 Nov 2026) ------------------------------------------------------------

@@ -727,9 +727,7 @@ function lineMenu(btn) {
     closeLineMenu();
     if (d.dataset.do === "edit") return lineForm(sh, { kind: head ? "head" : "line", edit: it });
     if (d.dataset.do === "line" || d.dataset.do === "head") return lineForm(sh, { kind: d.dataset.do, after: r });
-    const what = head ? `the section ${it.item || ""} ${it.desc || ""}` : `the line ${it.item || ""} ${it.desc || ""}`;
-    if (!(await confirmDelete(`Remove ${what.replace(/\s+/g, " ").trim()}?`, "It was added on this bill and has not been billed - it comes out of the bill and its totals."))) return;
-    try { IPA.bill = await POST(`/store/est/ipa/bill/${IPA.bill.id}/line/remove`, { sheet: sh, r }); redrawWork(); toast(head ? "Section removed" : "Line removed"); } catch (er) { fail(er); }
+    try { IPA.bill = await POST(`/store/est/ipa/bill/${IPA.bill.id}/line/remove`, { sheet: sh, r }); redrawWork(); undoRefresh(); toast(head ? "Section removed" : "Line removed", { undo: () => undoBill(false) }); } catch (er) { fail(er); }
   };
 }
 function redrawWork(focus) {
@@ -846,15 +844,11 @@ function ipaDrawPay(m) {
   $$("[data-paydel]", m).forEach(x => x.onclick = async () => {
     const [pi, rr] = x.dataset.paydel.split(":").map(Number), p = IPA.bill.payments[pi], r = p && p.rows.find(y => y.r === rr);
     if (!r) return;
-    const name = (r.desc && r.desc.value) || "this line";
-    if (!(await confirmDelete(`Delete ${esc(String(name))}?`, "It comes off this bill's payment summary and out of the total of previous payments.", "Delete"))) return;
+    // the line comes off at once (its Sl No goes with it - the app numbers the rest again); Undo brings it back
     const set = {}; p.cols.forEach(c => { if (r[c]) set[r[c].key] = ""; });
-    if (await save({ set: { [p.sheet]: set } })) {
-      const sn = `${rr},1`;                         // the line's number in the first column, when it is typed
-      if (!p.cols.some(c => r[c] && r[c].key === sn)) { try { await PUT(`/store/est/ipa/bill/${IPA.bill.id}`, { set: { [p.sheet]: { [sn]: "" } } }); } catch (e) {} }
-      IPA.bill = await GET(`/store/est/ipa/bill/${IPA.bill.id}`);
-      toast("Line deleted"); drawBill();
-    }
+    x.disabled = true;
+    if (await save({ set: { [p.sheet]: set }, why: { label: "Line removed", page: "pay" } })) { drawBill(); toast("Line removed", { undo: () => undoBill(false) }); }
+    else x.disabled = false;
   });
 }
 function payCell(p, r, c) {
@@ -970,13 +964,13 @@ function drawFees(m) {
       ${(t.earlier || []).map(e => e.head ? `<tr class="hd old"><td colspan="${t.cols.length + 1}">${esc(e.desc ?? "")} <span class="muted small">earlier bill</span></td></tr>`
           : `<tr class="old">${feeCols(t).map(c => `<td class="${c === "amount" ? "r" : ""}">${c === "amount" ? (e.amount ? money(e.amount, false) : "") : esc(e[c] ?? "")}</td>`).join("")}<td></td></tr>`).join("")}
       ${(t.earlier || []).length ? `<tr class="tot old"><td colspan="${t.cols.length - 1}">Claimed in earlier bills</td><td class="r">${money(t.earlier_total, false)}</td><td></td></tr>` : ""}
-      ${t.rows.map(r => r.carry ? `<tr class="carry">${feeCols(t).map(c => `<td class="${c === "amount" ? "r" : ""}">${c === "amount" ? `<b>${money(r.amount.value, false)}</b>` : c === "desc" ? `${esc(r.desc.value ?? "")}<div class="small muted">Taken from that bill's Authority fees - comes off when its payment is marked Received</div>` : ""}</td>`).join("")}<td class="r"><span class="ipa-pend" title="Read only - set on Payments received">carried</span></td></tr>` : r.head ? `<tr class="hd"><td colspan="${t.cols.length + 1}"><input class="ipa-pin" data-sh="${esc(t.sheet)}" data-pk="${r.desc.key}" data-c="desc" value="${esc(r.desc.value ?? "")}" style="width:200px;font-weight:700"></td></tr>` :
+      ${t.rows.map(r => r.carry ? `<tr class="carry">${feeCols(t).map(c => `<td class="${c === "amount" ? "r" : ""}">${c === "amount" ? `<b>${money(r.amount.value, false)}</b>` : c === "desc" ? `${esc(r.desc.value ?? "")}<div class="small muted">Taken from that bill's Authority fees - comes off when its payment is marked Received</div>` : c === "sn" && r.sn ? `<span class="muted">${esc(r.sn.value ?? "")}</span>` : ""}</td>`).join("")}<td class="r"><span class="ipa-pend" title="Read only - set on Payments received">carried</span></td></tr>` : r.head ? `<tr class="hd"><td colspan="${t.cols.length + 1}"><input class="ipa-pin" data-sh="${esc(t.sheet)}" data-pk="${r.desc.key}" data-c="desc" value="${esc(r.desc.value ?? "")}" style="width:200px;font-weight:700"></td></tr>` :
         `<tr>${feeCols(t).map(c => { const x = r[c]; if (!x) return "<td></td>";
           const at = `data-sh="${esc(t.sheet)}" data-pk="${x.key}" data-c="${c}"`;
           if (c === "amount") return `<td class="r"><input class="ipa-pin amt" data-noclear ${at} data-raw="${esc(x.raw === null || x.raw === undefined ? "" : String(x.raw).replace(/^=/, ""))}" value="${typeof x.value === "number" && x.value ? money(x.value, false) : ""}"></td>`;
-          if (c === "sn") return `<td><input class="ipa-pin" ${at} value="${esc(x.value ?? "")}" style="width:50px"></td>`;
+          if (c === "sn") return `<td class="muted" title="Numbered by the app">${esc(x.value ?? "")}</td>`;   // SN: the app's, 1, 2, 3 under the heading
           return `<td><input class="ipa-pin ${c === "desc" ? "wide" : ""}" data-spell="off" ${at} value="${esc(x.value ?? "")}" ${c === "desc" ? 'placeholder="e.g. DM: Building permit fee"' : 'placeholder="e.g. WIFBP2017904 dtd 14.09.2026"'} style="${c === "ref" ? "width:230px" : ""}"></td>`; }).join("")}
-          <td class="r"><button class="btn btn-plain btn-sm" title="Clear this line" data-clear="${r.r}" data-sh="${esc(t.sheet)}" data-ti="${ti}">&times;</button></td></tr>`).join("")}
+          <td class="r"><button class="btn btn-plain btn-sm" title="Remove this line" aria-label="Remove this line" data-clear="${r.r}" data-sh="${esc(t.sheet)}" data-ti="${ti}">&times;</button></td></tr>`).join("")}
       <tr class="tot"><td colspan="${t.cols.length - 1}">Sub-total this bill</td><td class="r">${money(t.total, false)}</td><td></td></tr>
       </tbody></table></div>
       <button class="btn btn-plain btn-sm" data-addfee="${ti}" style="margin-top:10px">+ Add a line</button></div>`).join("") + nextBtn("fees");
@@ -995,10 +989,15 @@ function drawFees(m) {
       if (nr) { const i = $(`.ipa-pin[data-pk="${nr.desc.key}"]`); if (i) i.focus(); }
     } catch (e) { fail(e); }
   });
+  // x: the line comes off at once (a row of the format is kept in the file, not shown or printed) - Undo brings it back
   $$("[data-clear]", m).forEach(x => x.onclick = async () => {
-    const t = b.fees[+x.dataset.ti], r = t.rows.find(rr => rr.r === +x.dataset.clear); if (!r) return;
-    const set = {}; t.cols.forEach(c => { if (r[c]) set[r[c].key] = null; });
-    if (await save({ set: { [t.sheet]: set } })) { toast("Line cleared"); drawBill(); }
+    const t = b.fees[+x.dataset.ti]; if (!t || x.disabled) return;
+    x.disabled = true;
+    try {
+      IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/fee/remove`, { sheet: t.sheet, r: +x.dataset.clear });
+      redrawWork(); undoRefresh();
+      toast("Line removed", { undo: () => undoBill(false) });
+    } catch (e) { x.disabled = false; fail(e); }
   });
 }
 

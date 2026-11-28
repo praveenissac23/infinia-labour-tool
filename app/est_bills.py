@@ -805,6 +805,8 @@ def _refresh_carry(db, b, fmt, inputs):
         before = json.dumps(inputs, sort_keys=True)
         new = _sync_carry(db, b, fmt, json.loads(before))
         new = BE.with_pay_numbers(_bill_model(fmt, new), new)   # a line without its Sl No is numbered on opening too
+        new = _drop_blank_fees(_bill_model(fmt, new), new)      # empty fee lines off (28/11/2026)
+        new = _print_ready(_bill_model(fmt, new), new)
         if json.dumps(new, sort_keys=True) == before:
             return inputs
         model = _bill_model(fmt, new)
@@ -1087,7 +1089,7 @@ def _fees(model, values, inputs):
         s = next(x for x in model["sheets"] if x["name"] == sh)
         vals = values.get(sh, {})
         inp = inputs.get(sh, {})
-        hid = set(s.get("hidden_rows") or []) | BE.hidden_extra(inputs, sh)
+        hid = set(s.get("hidden_rows") or []) | set(int(x) for x in inp.get("_hide") or [])   # not the empty lines: typed into here
         rows, earlier = [], []
         for r in range(t["head_row"] + 1, t["total_row"]):
             if r in hid:
@@ -1121,6 +1123,8 @@ def _fees(model, values, inputs):
                     ev["amount"] = ev["amount"] if isinstance(ev.get("amount"), (int, float)) else None
                     earlier.append(ev)
             rows = rows[last_head:]
+        # a heading of an earlier bill with no line under it ("IPA 10" when nothing was paid that month): not shown
+        earlier = [e for i, e in enumerate(earlier) if not e["head"] or next((not x["head"] for x in earlier[i + 1:]), False)]
         total = vals.get(f"{t['total_row']},{cols['amount']}")
         out.append({"sheet": sh, "cols": list(cols.keys()), "rows": rows, "total": total if isinstance(total, (int, float)) else None,
                     "total_row": t["total_row"], "hidden": len([r for r in range(t["head_row"] + 1, t["total_row"]) if r in hid]),
@@ -1529,8 +1533,34 @@ def _save_totals(b, model, values):
 
 def _calc(model, inputs):
     inputs = BE.with_pay_numbers(model, inputs)          # Sl No of the previous payments: always the app's (28/11/2026)
+    inputs = BE.with_fee_numbers(model, inputs)          # SN of the authority fees: 1, 2, 3 under each heading (28/11/2026)
     inputs = BE.with_words(model, inputs)
+    inputs = BE.with_blanks(model, inputs)               # empty lines left out of every sheet, PDF and Excel
     return inputs, BE.calculate(model, inputs)
+
+
+def _print_ready(model, inputs):
+    """A bill as it prints, also one saved before 28/11/2026: fee SN worked out, empty lines left out."""
+    return BE.with_blanks(model, BE.with_fee_numbers(model, inputs))
+
+
+def _drop_blank_fees(model, inputs):
+    """A bill still being made is opened: the empty lines of this bill's authority fees are taken off (kept in the
+    file, not shown) - one is kept to type in when the bill has no fee yet. Returns the inputs (changed or not)."""
+    out = inputs
+    for t in model.get("map", {}).get("fees", []):
+        rows = BE.fee_rows(model, out, t)
+        heads = [i for i, (_, k) in enumerate(rows) if k == "head"]
+        mine = rows[heads[-1] + 1:] if heads else rows
+        blanks = [r for r, k in mine if k == "blank"]
+        if not any(k == "line" for _, k in mine):
+            blanks = blanks[1:]                          # nothing typed yet: one empty line stays, ready to type
+        if blanks:
+            if out is inputs:
+                out = json.loads(json.dumps(inputs))
+            inp = out.setdefault(t["sheet"], {})
+            inp["_hide"] = sorted(set(int(x) for x in inp.get("_hide") or []) | set(blanks))
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------- reading
@@ -1700,6 +1730,7 @@ def bill_sheet(bid: int, i: int, db: Session = Depends(get_db), user: models.Use
     model = _bill_model(fmt, inputs)
     if not (0 <= i < len(model["sheets"])):
         raise HTTPException(404, "No such sheet.")
+    inputs = _print_ready(model, inputs)
     book = BE.Book(model, inputs)
     values = book.all_values()
     s = model["sheets"][i]
@@ -2444,6 +2475,44 @@ def remove_line(bid: int, payload: dict = Body(...), db: Session = Depends(get_d
     _save_totals(b, model, values)
     db.commit()
     E.M.log_action(db, user.id, "est_bill_line", f"bill #{bid}: row {r} of {sh} taken out")
+    users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
+    return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
+
+
+@router.post("/store/est/ipa/bill/{bid}/fee/remove")
+def remove_fee_line(bid: int, payload: dict = Body(...), db: Session = Depends(get_db), user: models.User = E.VIEW):
+    """The x on an Authority fees line: the line comes off the bill at once ({"sheet", "r"}). A row put in on the
+    bill is taken out; a row of the format is emptied and kept in the file, not shown or printed. Undo brings it
+    back (the bill's history). Before 28/11/2026 the x only emptied the cells and the row stayed on APP B."""
+    b = _get(db, EstBill, bid)
+    _why("Line removed", "fees", str(payload.get("sheet") or ""))
+    if b.status == "Paid" and user.role != "admin":
+        raise HTTPException(400, "A paid bill cannot be changed.")
+    _guard(b, user)
+    fmt = _get(db, EstBillFormat, b.format_id)
+    inputs = _inputs(b)
+    model = _bill_model(fmt, inputs)
+    sh, r = str(payload.get("sheet") or ""), int(payload.get("r") or 0)
+    t = next((x for x in model.get("map", {}).get("fees", []) if x["sheet"] == sh), None)
+    if not t or not (t["head_row"] < r < t["total_row"]):
+        raise HTTPException(400, "That line is not on the authority fees any more - refresh the page.")
+    sx = next(x for x in model["sheets"] if x["name"] == sh)
+    if CARRY_RE.match(str(BE._eff(sx, inputs.get(sh) or {}, r, t["cols"]["desc"]) or "")):
+        raise HTTPException(400, "This line is carried from a Pending bill - it goes when that bill is marked Received.")
+    new = BE.drop_added(inputs, sh, r)
+    if new is None:
+        inp = inputs.setdefault(sh, {})
+        for c in t["cols"].values():
+            inp[f"{r},{c}"] = ""
+        inp["_hide"] = sorted(set(int(x) for x in inp.get("_hide") or []) | {r})
+    else:
+        inputs = new
+    model = _bill_model(fmt, inputs)
+    inputs, values = _calc(model, inputs)
+    b.inputs = json.dumps(inputs); b.updated_by = user.id
+    _save_totals(b, model, values)
+    db.commit()
+    E.M.log_action(db, user.id, "est_bill_line", f"bill #{bid}: authority fee line (row {r} of {sh}) removed")
     users = {u.id: (u.full_name or u.username) for u in db.query(models.User).all()}
     return _bill_out(b, fmt, model, values, inputs, users, _sig_store(db))
 
@@ -3402,6 +3471,7 @@ def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, d
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
     model = _bill_model(fmt, inputs)
+    inputs = _print_ready(model, inputs)
     values = BE.calculate(model, inputs)
     p = db.query(E.EstProject).get(b.project_id)
     code = p.code if p else ""
