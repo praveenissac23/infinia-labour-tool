@@ -804,6 +804,7 @@ def _refresh_carry(db, b, fmt, inputs):
     try:
         before = json.dumps(inputs, sort_keys=True)
         new = _sync_carry(db, b, fmt, json.loads(before))
+        new = BE.with_pay_numbers(_bill_model(fmt, new), new)   # a line without its Sl No is numbered on opening too
         if json.dumps(new, sort_keys=True) == before:
             return inputs
         model = _bill_model(fmt, new)
@@ -1527,6 +1528,7 @@ def _save_totals(b, model, values):
 
 
 def _calc(model, inputs):
+    inputs = BE.with_pay_numbers(model, inputs)          # Sl No of the previous payments: always the app's (28/11/2026)
     inputs = BE.with_words(model, inputs)
     return inputs, BE.calculate(model, inputs)
 

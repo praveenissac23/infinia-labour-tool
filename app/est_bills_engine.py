@@ -3979,6 +3979,73 @@ def add_pages_xlsx(data: bytes, inputs):
     return out.getvalue()
 
 
+# ---- Sl No of the previous payments, always worked out (28/11/2026) -------------------------------------------
+# A line put in (Payment Application No 10 on row 20) had no Sl No. Now the app numbers the column itself on every
+# save - typed, added by the app at roll-over, removed or moved: a payment line (words in the description AND
+# something in the amount) gets the next number from 1; a heading or blank line ("Previous Payments", no amount)
+# gets none and the count carries on past it; the total row and everything under it is never touched.
+
+_SN_HEAD = re.compile(r"^\s*(s\.?\s*l\.?|s\.?\s*n\.?|s\.?\s*r\.?|sr|sl|sn|no\.?|#)\s*(no\.?)?\s*$", re.I)
+
+
+def pay_sn_col(model, p):
+    """The Sl No column of a previous-payments table: a column left of the description headed Sl No / S.No / Sr /
+    No, or else the first column when it holds numbers on the table's lines. None when there is none."""
+    s = next((x for x in model["sheets"] if x["name"] == p["sheet"]), None)
+    dc = p["cols"].get("desc")
+    if not s or not dc or dc <= 1:
+        return None
+    for r in (p["head_row"], p["head_row"] + 1, p["head_row"] - 1):
+        for c in range(1, dc):
+            t = _text(s, r, c)
+            if t and _SN_HEAD.match(t):
+                return c
+    nums = 0
+    for r in range(p["head_row"] + 1, p["total_row"]):
+        x = s["cells"].get(f"{r},1") or {}
+        if isinstance(x.get("v"), (int, float)) and not isinstance(x.get("v"), bool) or ("f" in x and re.fullmatch(r"\s*\$?A\$?\d+\s*\+\s*1\s*", x["f"] or "")):
+            nums += 1
+    return 1 if nums else None
+
+
+def with_pay_numbers(model, inputs):
+    """The inputs with the Sl No of every previous-payments table worked out (see above). The inputs are returned
+    as they were when nothing changes; otherwise a copy."""
+    out = None
+    for p in (model.get("map") or {}).get("payments", []):
+        sn = pay_sn_col(model, p)
+        dc, ac = p["cols"].get("desc"), p["cols"].get("amount")
+        if not (sn and dc and ac) or sn in p["cols"].values():
+            continue
+        s = next((x for x in model["sheets"] if x["name"] == p["sheet"]), None)
+        inp = (inputs or {}).get(p["sheet"]) or {}
+        def cell(r, c):
+            k = f"{r},{c}"
+            if k in inp:
+                return inp[k]
+            x = s["cells"].get(k) or {}
+            return x["v"] if "v" in x else (("=" + x["f"]) if x.get("f") else None)
+        n = 0
+        for r in range(p["head_row"] + 1, p["total_row"]):
+            d, a = cell(r, dc), cell(r, ac)
+            pay = isinstance(d, str) and bool(re.search(r"[A-Za-z]", d)) and a not in (None, "") and not (isinstance(a, str) and not a.strip())
+            want = None
+            if pay:
+                n += 1
+                want = n
+            have = cell(r, sn)
+            if pay and isinstance(have, (int, float)) and not isinstance(have, bool) and float(have) == n and f"{r},{sn}" not in inp:
+                continue                                   # the workbook's own number is already right
+            if not pay and have in (None, ""):
+                continue
+            if pay and inp.get(f"{r},{sn}") == want:
+                continue
+            if out is None:
+                out = {k: (dict(v) if isinstance(v, dict) else v) for k, v in (inputs or {}).items()}
+            out.setdefault(p["sheet"], {})[f"{r},{sn}"] = want if pay else ""
+    return inputs if out is None else out
+
+
 # ---- previous payments marked Pending (10 Nov 2026) ------------------------------------------------------------
 # A bill submitted but not paid yet: its Received on reads "Pending". Its amount stays on the line but is left out of
 # the total of previous payments - the total's SUM(E7:E22) becomes SUMIF(D7:D22,"<>Pending",E7:E22) (a single cell
