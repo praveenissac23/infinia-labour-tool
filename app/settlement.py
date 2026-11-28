@@ -354,7 +354,7 @@ def settlement(db, emp_no, q):
     total_ded = round(sum(v for _, v in deductions), 2)
     net = float(math.floor(total_pay - total_ded + 0.5))   # whole dirhams, as on the paper
     if exact:
-        net = M.pcyc.fils_down(sum(v for _, v in payables) - sum(v for _, v in deductions))
+        net = M.pcyc.dirham(sum(v for _, v in payables) - sum(v for _, v in deductions))   # nearest dirham (28/11/2026)
         total_pay = M.pcyc.fils_down(sum(v for _, v in payables))
         total_ded = M.pcyc.fils_up(sum(v for _, v in deductions))
         payables = [(k, M.pcyc.fils_down(v)) for k, v in payables]
@@ -376,7 +376,16 @@ def settlement(db, emp_no, q):
         deductions = [(k, om.take_up(v)) for k, v in deductions]
         total_pay = om.add2(*[v for _, v in payables])
         total_ded = om.add2(*[v for _, v in deductions])
-        net = om.add2(total_pay, -total_ded)
+        net = M.pcyc.dirham(om.add2(total_pay, -total_ded))     # the payable to the nearest dirham (owner, 28/11/2026)
+    # The lines keep their fils; the payable is a whole dirham. The difference (up to 50 fils) is a line of its own,
+    # so the paper still adds up: Gross payable - Total deductions = net.
+    if exact or e.staff:
+        ro = round(net - (total_pay - total_ded), 2)
+        if ro >= 0.005:
+            payables.append((M.pcyc.ROUND_OFF_LABEL, ro)); total_pay = round(total_pay + ro, 2)
+        elif ro <= -0.005:
+            deductions = [x for x in deductions if x[0] != "No deductions"] + [(M.pcyc.ROUND_OFF_LABEL, -ro)]
+            total_ded = round(total_ded - ro, 2)
 
     notes = []
     if g["entitled"] and not grat:

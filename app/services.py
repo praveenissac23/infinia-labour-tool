@@ -328,6 +328,9 @@ def adjusted_final_salary(summary: models.EmployeeSummary) -> float:
     total = summary.final_salary
     for adj in summary.adjustments:
         total += (-adj.amount if adj.is_deduction else adj.amount)
+    import payroll_cycle as _pc                 # November 2026 on: what is paid is a whole dirham (28/11/2026)
+    if _pc.exact_fils(getattr(summary, "month_year", "")):
+        return _pc.dirham(round(total, 2))
     return round(total, 2)
 
 

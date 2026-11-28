@@ -399,9 +399,9 @@ def recalculate_from_daily_rows(daily_rows, total_salary, basic_pay_input=0.0,
     raw_total = (total_salary_component + ot_amount + bh_amount + allowances
                  - deduction - other_deduction)
     if exact_fils:
-        # From the November 2026 cycle (payroll_cycle.exact_fils): the salary to the exact fils, never a fraction
-        # extra. The same sum again in exact fractions (no floating-point noise, no rounding on the way), cut DOWN
-        # to the fils once, at the end - 1,472.50 stays 1,472.50; 1,472.508 is 1,472.50; -175.501 is -175.51.
+        # From the November 2026 cycle (payroll_cycle.exact_fils): the same sum again in exact fractions (no
+        # floating-point noise, no rounding on the way), brought to the nearest whole dirham once, at the end
+        # (payroll_cycle.dirham, Excel ROUND(x,0)): 2,312.50 -> 2,313; 1,824.58 -> 1,825; 2,500.49 -> 2,500.
         from fractions import Fraction as _F
         import payroll_cycle as _pc
         fx = lambda v: _F(str(float(v or 0)))
@@ -418,7 +418,7 @@ def recalculate_from_daily_rows(daily_rows, total_salary, basic_pay_input=0.0,
             ded = day * cnt["Absent"]
         hours = fx(ot_total) + fx(bh_total)
         exact = comp + day / 8 * hours + fx(allowances) - ded - fx(other_deduction)
-        final_salary = _pc.fils_down(exact)
+        final_salary = _pc.dirham(exact)          # to the nearest dirham, once, at the end (owner, 28/11/2026)
     # Sign-aware: Excel's ROUND() rounds half AWAY FROM ZERO, not
     # toward +infinity - a naive floor(x+0.5) would round a negative
     # half-value (e.g. -175.5) up to -175 instead of the correct -176.

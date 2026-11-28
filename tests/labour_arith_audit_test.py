@@ -100,13 +100,15 @@ def expected(db, e, s):
     return {'rate': rate, 'present': cnt['present'], 'absent': cnt['absent'], 'sick': cnt['sick'], 'medical': cnt['medical'],
             'sunday': cnt['sunday'], 'holiday': cnt['holiday'], 'leave': cnt['leave'], 'terminated': cnt['terminated'],
             'paid_days': paid, 'ot_h': ot, 'bh_h': bh, 'comp': comp, 'ded': ded, 'ota': ota, 'bha': bha,
-            'final': final, 'exact': exact, 'adj': adj, 'net': final + adj}
+            'final': final, 'exact': exact, 'adj': adj,
+            # November 2026 on what is paid is a whole dirham too (owner, 28/11/2026): additions with fils are rounded once more
+            'net': half_up(F(str(round(float(final + adj), 2)))) if pcyc.exact_fils(s.month_year) else final + adj}
 
 
 def pay_rule(label, x):
-    """The card's final salary from the exact sum: the whole dirham up to October 2026, the fils (cut down) after."""
-    if pcyc.exact_fils(label):
-        return F((x * 100).__floor__(), 100)
+    """The card's final salary from the exact sum: the whole dirham, half away from zero - up to October 2026 as it was
+    paid, and from November 2026 again (owner, 28/11/2026: nearest dirham, Excel ROUND(x,0); 31/10-27/11 it was cut
+    down to the fils)."""
     return half_up(x)
 
 
@@ -260,9 +262,9 @@ for lab in cycles:
             ck(f'money line: {who} {fld}', near(getattr(s, fld) or 0, x[k]), (getattr(s, fld), float(x[k])))
         ck(f'final salary: {who}', near(s.final_salary, x['final'], 0.0001), (s.final_salary, float(x['final']), float(x['exact'])))
         if pcyc.exact_fils(lab):
-            # to the fils: two decimals at most, never more than the exact amount, less by under a fil
-            ck(f'to the fils, never a fraction extra: {who}', round(s.final_salary * 100, 6) == round(s.final_salary * 100)
-               and F(str(s.final_salary)) <= x['exact'] < F(str(s.final_salary)) + F(1, 100), (s.final_salary, float(x['exact'])))
+            # the nearest whole dirham: no fils, never more than 50 fils from the exact amount; .50 goes up
+            ck(f'to the nearest dirham: {who}', s.final_salary == int(s.final_salary) and abs(F(str(s.final_salary)) - x['exact']) <= F(1, 2)
+               and (x['exact'] - int(x['exact']) != F(1, 2) or s.final_salary == float(int(x['exact']) + 1)), (s.final_salary, float(x['exact'])))
         else:
             ck(f'closed cycle stays at the whole dirham: {who}', s.final_salary == int(s.final_salary), s.final_salary)
         ck(f'final + additions / deductions: {who}', near(services.adjusted_final_salary(s), x['net']), (services.adjusted_final_salary(s), float(x['net'])))
@@ -408,7 +410,7 @@ for lab in cycles:
             rnd_ = export_web.card_rounding(sm_)
             pg_txt = next((pg.extract_text() or '' for pg in pages if re.search(rf'Employee No:\s*{re.escape(no)}\b', pg.extract_text() or '')), '')
             ck(f'card PDF prints the rounding line when the lines do not add up: {no} {lab}',
-               bool(re.search(r'Rounding\s+to\s+the\s+fils', pg_txt)) == bool(rnd_), (rnd_, pg_txt[-300:]))
+               bool(re.search(r'Round\s+off', pg_txt)) == bool(rnd_), (rnd_, pg_txt[-300:]))
         ck(f'card PDF final = card: {no} {lab}', no in pdf_finals and near(pdf_finals[no], x['net']), (pdf_finals.get(no), float(x['net'])))
     vr = c.get(f'/export/{lab}/cards/view', params={'token': dl()})
     ck(f'salary cards preview: {lab}', vr.status_code == 200, vr.text[:200])
@@ -487,7 +489,7 @@ if sm:
         ck('payslip net = payment', near(figs['net'], p.amount), (figs['net'], p.amount))
         e_sum = sum(v for _, v in figs['earnings']) - sum(v for _, v in figs['deductions'])
         ck('payslip lines add up to its net (to the rounding of the card)', abs(e_sum - figs['net']) <= 0.5 + 1e-6, (e_sum, figs['net'], figs['earnings'], figs['deductions']))
-    # November 2026 on: a payslip adds up to the fil (a "Rounding to the fils" line takes up the part of a fil)
+    # November 2026 on: a payslip adds up to the fil (a "Round off" line takes up the difference to the whole dirham)
     smn = db.query(models.EmployeeSummary).filter_by(emp_no='AUD-01', month_year=CUR).first()
     if smn:
         import paystatus as _ps
@@ -502,7 +504,9 @@ if sm:
         db.expire_all()
         carry = db.query(models.PayCarry).filter(models.PayCarry.payment_id == p.id).first()
         if row['pay']['state'] == 'paid':
-            ck('a change after payment is carried to next cycle (12.50)', carry is not None and near(carry.amount, 12.5), carry and carry.amount)
+            # what is paid is a whole dirham (28/11/2026): the carry is the new payable less what was paid
+            want_c = services.adjusted_final_salary(sm) - p.amount
+            ck(f'a change after payment is carried to next cycle (12.50 bonus -> {want_c:+.2f})', carry is not None and near(carry.amount, want_c, 0.0001) and abs(want_c - 12.5) <= 0.5, carry and carry.amount)
 say('mark paid / payslip / carry checked')
 
 # ---- 7b. a final settlement is booked on the card of the cycle his last day is in -------------------------------------
@@ -564,7 +568,9 @@ if sm and T < bounds(CUR)[1]:
         db.expire_all()
         pid = mk.json()['payment']['id']
         carry = db.query(models.PayCarry).filter(models.PayCarry.payment_id == pid).first()
-        ck('a fils change after an early full payment is carried to next cycle (-12.34)', carry is not None and near(carry.amount, -12.34, 0.0001),
+        db.expire_all(); sm = db.query(models.EmployeeSummary).filter_by(emp_no='AUD-01', month_year=CUR).first()
+        want_c = services.adjusted_final_salary(sm) - mk.json()['payment']['amount']
+        ck(f'a fils change after an early full payment is carried to next cycle (-12.34 fine -> {want_c:+.2f})', carry is not None and near(carry.amount, want_c, 0.0001) and abs(want_c + 12.34) <= 0.5,
            carry and carry.amount)
     say('early full cycle checked')
 

@@ -89,6 +89,8 @@ def office_to_date(db, r, l):
     earned = (l.fixed_salary or 0) * done / days
     if M._om.exact_month(r.month_year):      # November 2026 on: down to the fils, as the sheet (office_money)
         earned = M._om.pay_down(M._om.D(l.fixed_salary) * done / days)
+        return M.pcyc.dirham(_r2(earned - (l.deduction or 0) - (l.statutory or 0) + (l.other_allowance or 0)
+                                 + (l.leave_salary or 0) + (l.air_ticket or 0)))     # paid as a whole dirham (28/11/2026)
     return _r2(earned - (l.deduction or 0) - (l.statutory or 0) + (l.other_allowance or 0) + (l.leave_salary or 0) + (l.air_ticket or 0))
 
 
@@ -312,7 +314,10 @@ def office_figures(db, r, l, e):
         earn.append(("Air Ticket", l.air_ticket))
     ded = [("Loss of Pay" + (f" ({M.dmy_text(l.deduction_note, r.month_year)})" if l.deduction_note else ""), l.deduction),
            ("Salary Advance / Loan", l.loan_deduction), ("Other Deductions", l.statutory)]
-    return {"period": r.month_year, "earnings": [(k, _r2(v)) for k, v in earn if v or k in ("Basic Salary", "Allowance")],
+    ro = M._line_round_off(l, r.month_year)            # November 2026 on: net to the nearest dirham - its own line
+    if ro:
+        (earn if ro > 0 else ded).append((M.pcyc.ROUND_OFF_LABEL, abs(ro)))
+    return {"period": r.month_year, "earnings": [(k, _r2(v)) for k, v in earn if v or k in ("Basic Salary", "Allowance") or k == M.pcyc.ROUND_OFF_LABEL],
             "deductions": [(k, _r2(v)) for k, v in ded], "net": _r2(l.net_pay), "attendance": [],
             "remarks": M.dmy_text(l.remarks or "", r.month_year)}
 
@@ -335,13 +340,13 @@ def labour_figures(db, card):
            ("Sick / medical", f"{(card.sick_days or 0) + (card.medical_days or 0):g}"), ("Leave", f"{card.leave_days or 0:g}"),
            ("Absent", f"{card.absent_days or 0:g}"), ("Overtime hours", f"{card.ot_hours or 0:g}")]
     earn, ded, net = [(k, _r2(v)) for k, v in earn], [(k, _r2(v)) for k, v in ded], services.adjusted_final_salary(card)
-    # November 2026 on the salary is the exact sum cut down to the fils once (payroll_cycle.fils_down), while each
-    # line here is shown to the nearest fil - so the lines can come to a fil or two more than is paid. That
-    # difference is shown as its own line, so the slip adds up to exactly what is paid.
+    # November 2026 on the salary is brought to the nearest whole dirham once (payroll_cycle.dirham), while each
+    # line here is shown to the fils - so the lines can differ from what is paid by up to 50 fils. That difference
+    # is shown as its own "Round off" line, so the slip adds up to exactly what is paid.
     if M.pcyc.exact_fils(card.month_year):
         diff = _r2(sum(v for _, v in earn) - sum(v for _, v in ded) - net)
         if abs(diff) >= 0.005:
-            (ded if diff > 0 else earn).append(("Rounding to the fils", abs(diff)))
+            (ded if diff > 0 else earn).append((M.pcyc.ROUND_OFF_LABEL, abs(diff)))
     return {"period": f"{card.month_year} cycle", "earnings": earn,
             "deductions": ded, "net": net, "attendance": att, "remarks": ""}
 

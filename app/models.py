@@ -240,9 +240,15 @@ class EmployeeSummary(Base):
         exposed as a method here so the Report Builder's generic
         aggregation engine (build_custom_report) can call it uniformly
         alongside plain columns like final_salary."""
-        return self.final_salary + sum(
+        total = self.final_salary + sum(
             -a.amount if a.is_deduction else a.amount for a in self.adjustments
         )
+        # November 2026 on what is paid is a whole dirham (owner, 28/11/2026) - the same rule as
+        # services.adjusted_final_salary, so reports and the pay screens never differ
+        import payroll_cycle as _pc
+        if _pc.exact_fils(self.month_year or ""):
+            return _pc.dirham(round(total, 2))
+        return total
 
     __table_args__ = (
         UniqueConstraint("emp_no", "month_year", name="uix_emp_cycle"),

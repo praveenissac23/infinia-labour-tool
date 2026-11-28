@@ -13879,7 +13879,7 @@ def _fill_line(db, l, e, month_year, a, b):
         l.remarks = _auto_remark(items, l.deduction_note, l.loan_deduction,
                                  round(max(owed - (l.loan_deduction or 0), 0), 2)
                                  if l.loan_deduction else None)
-    l.net_pay = _line_net(l)
+    l.net_pay = _line_net(l, month_year)
 
 
 def _refresh_run(db, r):
@@ -14080,13 +14080,29 @@ def _part_month(e, a, b, gross):
     return round(amount, 2), f"{' / '.join(notes).capitalize()} - {out} day(s) not employed"
 
 
-def _line_net(l):
+def _line_sum(l):
+    """The office line's figures added up, to the fils (before the net is brought to a whole dirham)."""
     # Pension is not in here. The one local-staff statement on file pays
     # Khadija 6,000 net with her 700 pension in a column of its own, so
     # it is carried on the line and printed, but never added to the pay.
     return round((l.fixed_salary or 0) - (l.deduction or 0) - (l.statutory or 0)
                  - (l.loan_deduction or 0) + (l.other_allowance or 0)
                  + (l.leave_salary or 0) + (l.air_ticket or 0), 2)
+
+
+def _line_net(l, month_year=None):
+    """Net pay. November 2026 on: to the nearest whole dirham (payroll_cycle.dirham, owner 28/11/2026); the line's
+    figures keep their fils and the difference is the line's round off (_line_round_off)."""
+    total = _line_sum(l)
+    if _om.exact_month(month_year or _line_month(l)):
+        return pcyc.dirham(total)
+    return total
+
+
+def _line_round_off(l, month_year=None):
+    """Net pay less the line's figures added up: up to 50 fils either way (0.0 before November 2026)."""
+    d = round((l.net_pay or 0) - _line_sum(l), 2)
+    return d if _om.exact_month(month_year or _line_month(l)) and abs(d) >= 0.005 else 0.0
 
 
 def _line_month(l):
@@ -14114,7 +14130,7 @@ def _line_dict(l, e):
             "pension": round(l.pension or 0, 2),
             "payable": round((l.fixed_salary or 0) + (l.other_allowance or 0)
                              - (l.deduction or 0) - (l.statutory or 0), 2),
-            "net_pay": round(l.net_pay or 0, 2), "remarks": dmy_text(l.remarks or "", _line_month(l)),
+            "net_pay": round(l.net_pay or 0, 2), "round_off": _line_round_off(l), "remarks": dmy_text(l.remarks or "", _line_month(l)),
             "loan_edited": bool(l.loan_edited), "remark_edited": bool(l.remark_edited),
             "held": bool(l.held)}
 
@@ -14199,6 +14215,8 @@ def _run_dict(r, db):
         l["earned_to_date"] = earned
         l["to_date"] = round(earned - l["deduction"] - l["statutory"] + l["other_allowance"]
                              + l["leave_salary"] + l["air_ticket"], 2)
+        if exact:                                   # paid like the net: a whole dirham (28/11/2026)
+            l["to_date"] = pcyc.dirham(l["to_date"])
     # Paid early (the 1st is a holiday, or local staff before month end):
     # once "Pay full month" is pressed, or the sheet is approved, every
     # figure is the whole month's, never the salary to date.
@@ -14630,6 +14648,10 @@ def _statement_rows(lines, consolidated=False, progress=None, pick=None):
             "Add / Ded.": adj,
             "Absent Ded.": l["deduction"],
             "Loan": l["loan_deduction"],
+        })
+        if any(x.get("round_off") for x in lines) and not running:
+            r["Round Off"] = l.get("round_off") or 0           # November 2026 on: net to the nearest dirham
+        r.update({
             # While the month runs the sheet shows what has been earned so
             # far in place of the month's net pay.
             "Salary To Date" if running else "Net Pay": l.get("to_date", 0) if running else l["net_pay"],
@@ -14641,7 +14663,7 @@ def _statement_rows(lines, consolidated=False, progress=None, pick=None):
     return out
 
 
-STATEMENT_MONEY = ["Gross Salary", "Add / Ded.", "Absent Ded.", "Loan", "Net Pay", "Salary To Date", "Pension"]
+STATEMENT_MONEY = ["Gross Salary", "Add / Ded.", "Absent Ded.", "Loan", "Round Off", "Net Pay", "Salary To Date", "Pension"]
 
 
 def _route_line(by_route):

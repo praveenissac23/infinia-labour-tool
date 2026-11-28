@@ -326,9 +326,9 @@ SUMMARY_FIELDS = [
 
 
 def card_rounding(summary):
-    """November 2026 on (payroll_cycle.exact_fils) the final salary is the exact sum cut DOWN to the fils once, while
-    each line on the card is shown to the nearest fil - so the lines as printed can differ from the final by a fil or
-    two. That difference is printed as its own "Rounding to the fils" line, so every card adds up exactly: Payable -
+    """November 2026 on (payroll_cycle.exact_fils) the final salary is the exact sum brought to the nearest whole
+    dirham once (28/11/2026), while each line on the card is shown to the fils - so the lines as printed can differ
+    from the final by up to 50 fils. That difference is printed as its own "Round off" line, so every card adds up exactly: Payable -
     Absence + OT + BH + additions - deductions + rounding = Final. 0.0 for a closed cycle (whole-dirham rule, its
     cards printed as they always were) or when the shown lines already add up."""
     import payroll_cycle as _pc
@@ -342,14 +342,12 @@ def card_rounding(summary):
     return diff if abs(diff) >= 0.005 else 0.0
 
 
-ROUNDING_LABEL = "Rounding to the fils"
+ROUNDING_LABEL = "Round off"              # November 2026 on: the payable to the nearest dirham (payroll_cycle.dirham)
 
 
 def _adjusted_final_salary(summary):
-    total = summary.final_salary
-    for adj in summary.adjustments:
-        total += (-adj.amount if adj.is_deduction else adj.amount)
-    return round(total, 2)
+    import services as _sv                      # one rule: services.adjusted_final_salary (whole dirham from November 2026)
+    return _sv.adjusted_final_salary(summary)
 
 
 def _rows_by_date(daily_rows):
@@ -1271,7 +1269,7 @@ REPORT_COLUMNS_META = {
 
 def _report_row_value(item, key):
     if key == "adjusted_final_salary":
-        return item.final_salary + sum(-a.amount if a.is_deduction else a.amount for a in item.adjustments)
+        return _adjusted_final_salary(item)                    # the payable, by the same rule as the pay screens
     if key == "adjustments":
         return "; ".join(f"{a.description}: {'-' if a.is_deduction else '+'}{a.amount}" for a in item.adjustments) or "-"
     return getattr(item, key, "")

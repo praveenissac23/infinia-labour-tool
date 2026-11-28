@@ -63,6 +63,31 @@ def is_date_in_cycle(d, cycle_start, cycle_end):
 FILS_FROM_CYCLE_END = date(2026, 11, 25)
 
 
+# ---- The payable amount to the nearest dirham (owner, 28/11/2026) ---------------------------------------------------
+# Accounts: "the payroll amounts are displaying decimal values ... round all final payable salary amounts to the nearest
+# whole AED: below 50 fils down, 50 fils and above up (Excel =ROUND(x,0))". From the same November 2026 cycle the
+# figures are still worked out exactly (no rounding on the way), but the amount PAYABLE - a labour card's final salary
+# and what is paid after its additions/deductions, an office line's net pay and salary to date, a final settlement's
+# net - is brought to the nearest whole dirham once, at the end: 2,500.49 -> 2,500; 2,500.50 -> 2,501; a negative
+# half goes away from zero (-175.50 -> -176), as Excel's ROUND. The lines above it keep their fils; the difference is
+# shown as its own "Round off" line so every slip still adds up. (This replaces the cut down to the fils of 31/10.)
+def dirham(x):
+    """An exact amount (Fraction, Decimal, int, or a float read as written) to the nearest whole dirham, a half away
+    from zero (Excel ROUND(x,0)). Returns a float (never -0.0)."""
+    from decimal import Decimal, ROUND_HALF_UP
+    from fractions import Fraction
+    if isinstance(x, float):
+        x = Decimal(str(x))
+    elif isinstance(x, Fraction):
+        x = Decimal(x.numerator) / Decimal(x.denominator)
+    elif not isinstance(x, Decimal):
+        x = Decimal(str(x or 0))
+    return float(x.quantize(Decimal(1), rounding=ROUND_HALF_UP)) + 0.0
+
+
+ROUND_OFF_LABEL = "Round off"
+
+
 def cycle_end_of(month_year):
     from datetime import datetime
     try:
