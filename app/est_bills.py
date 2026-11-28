@@ -805,7 +805,9 @@ def _refresh_carry(db, b, fmt, inputs):
         before = json.dumps(inputs, sort_keys=True)
         new = _sync_carry(db, b, fmt, json.loads(before))
         new = BE.with_pay_numbers(_bill_model(fmt, new), new)   # a line without its Sl No is numbered on opening too
-        new = _drop_blank_fees(_bill_model(fmt, new), new)      # empty fee lines off (28/11/2026)
+        carried = json.dumps(new, sort_keys=True) != before
+        new = BE.with_fee_numbers(_bill_model(fmt, new), new)   # numbered first, then the empty fee lines off (28/11/2026)
+        new = _drop_blank_fees(_bill_model(fmt, new), new)
         new = _print_ready(_bill_model(fmt, new), new)
         if json.dumps(new, sort_keys=True) == before:
             return inputs
@@ -815,7 +817,8 @@ def _refresh_carry(db, b, fmt, inputs):
         b.inputs = json.dumps(new)
         _save_totals(b, model, values)
         db.commit()
-        E.M.log_action(db, None, "est_bill_carry", f"bill #{b.id} {b.label}: authority fees of the Pending bills brought onto Appendix B - total due {b.total_due:,.2f}")
+        if carried:
+            E.M.log_action(db, None, "est_bill_carry", f"bill #{b.id} {b.label}: authority fees of the Pending bills brought onto Appendix B - total due {b.total_due:,.2f}")
         return new
     except Exception:
         import logging
@@ -1095,9 +1098,9 @@ def _fees(model, values, inputs):
             if r in hid:
                 # an earlier bill's line: the consultant's sheet keeps it hidden (not printed again) - shown on screen, read only
                 ev = {k: vals.get(f"{r},{c}") for k, c in cols.items()}
-                if any(v not in (None, "") for v in ev.values()):
+                if any(v not in (None, "") for k, v in ev.items() if k != "sn"):
                     d = ev.get("desc")
-                    ev["head"] = bool(isinstance(d, str) and re.match(r"^\s*(ipa|bill|interim|payment (application|certificate)|this bill)\b", d, re.I)) and ev.get("amount") in (None, "", 0)
+                    ev["head"] = bool(isinstance(d, str) and BE.FEE_HEAD_RE.match(d)) and ev.get("amount") in (None, "", 0)
                     ev["amount"] = ev["amount"] if isinstance(ev.get("amount"), (int, float)) else None
                     earlier.append(ev)
                 continue
@@ -1111,7 +1114,7 @@ def _fees(model, values, inputs):
                 row[k] = {"key": key, "value": vals.get(key), "raw": raw}
             d = row["desc"]["value"]
             row["carry"] = bool(isinstance(row["desc"]["raw"], str) and CARRY_RE.match(row["desc"]["raw"]))
-            row["head"] = bool(isinstance(d, str) and re.match(r"^\s*(ipa|bill|interim|payment (application|certificate)|this bill)\b", d, re.I)) and row["amount"]["value"] in (None, "", 0)
+            row["head"] = bool(isinstance(d, str) and BE.FEE_HEAD_RE.match(d)) and row["amount"]["value"] in (None, "", 0)
             rows.append(row)
         # the lines of this bill: from its heading ("IPA 10") on; the spacer rows above are left alone
         last_head = max((i for i, x in enumerate(rows) if x["head"]), default=None)
@@ -1539,9 +1542,35 @@ def _calc(model, inputs):
     return inputs, BE.calculate(model, inputs)
 
 
-def _print_ready(model, inputs):
-    """A bill as it prints, also one saved before 28/11/2026: fee SN worked out, empty lines left out."""
-    return BE.with_blanks(model, BE.with_fee_numbers(model, inputs))
+def _print_ready(model, inputs, status="Draft"):
+    """A bill as it prints, also one saved before 28/11/2026: empty lines left out; the fee SN worked out only on
+    a bill still being made (a bill already sent prints the numbers it went out with)."""
+    if (status or "Draft") in OPEN_STATUS:
+        inputs = BE.with_fee_numbers(model, inputs)
+    return BE.with_blanks(model, inputs)
+
+
+def _this_bill_head(model, inputs, t):
+    """The row of this bill's fee heading (the last heading shown), or None."""
+    return max((r for r, k in BE.fee_rows(model, inputs, t) if k == "head"), default=None)
+
+
+def _unhide_typed_fees(model, inputs, cells_by_sheet):
+    """Something typed into a fee line of this bill that was taken off (an empty line taken off while another tab
+    still showed it): the line is shown again - never a line counted in the sub-total but not printed."""
+    for t in model.get("map", {}).get("fees", []):
+        inp = inputs.get(t["sheet"])
+        typed = cells_by_sheet.get(t["sheet"]) or {}
+        if not inp or not inp.get("_hide") or not typed:
+            continue
+        head = _this_bill_head(model, inputs, t)
+        if head is None:
+            continue
+        hid = set(int(x) for x in inp["_hide"])
+        back = {int(k.split(",")[0]) for k, v in typed.items() if re.match(r"^\d+,\d+$", k) and v not in (None, "")}
+        back = {r for r in back if r in hid and head < r < t["total_row"]}
+        if back:
+            inp["_hide"] = sorted(hid - back)
 
 
 def _drop_blank_fees(model, inputs):
@@ -1730,7 +1759,7 @@ def bill_sheet(bid: int, i: int, db: Session = Depends(get_db), user: models.Use
     model = _bill_model(fmt, inputs)
     if not (0 <= i < len(model["sheets"])):
         raise HTTPException(404, "No such sheet.")
-    inputs = _print_ready(model, inputs)
+    inputs = _print_ready(model, inputs, b.status)
     book = BE.Book(model, inputs)
     values = book.all_values()
     s = model["sheets"][i]
@@ -2022,6 +2051,7 @@ def save_bill(bid: int, payload: dict = Body(...), db: Session = Depends(get_db)
                 inputs.setdefault(sh, {})[k] = _parse(v)
             except BE.BillError:
                 raise HTTPException(400, f"That formula cannot be read: {v}")
+    _unhide_typed_fees(model, inputs, payload.get("set") or {})
     mp = model.get("map", {})
     if payload.get("issue_date") and mp.get("issue_date"):
         try:
@@ -2497,6 +2527,10 @@ def remove_fee_line(bid: int, payload: dict = Body(...), db: Session = Depends(g
     if not t or not (t["head_row"] < r < t["total_row"]):
         raise HTTPException(400, "That line is not on the authority fees any more - refresh the page.")
     sx = next(x for x in model["sheets"] if x["name"] == sh)
+    kind = dict(BE.fee_rows(model, inputs, t)).get(r)
+    head = _this_bill_head(model, inputs, t)
+    if kind is None or kind == "head" or head is None or r < head:
+        raise HTTPException(400, "That line is not on this bill's authority fees any more - refresh the page.")
     if CARRY_RE.match(str(BE._eff(sx, inputs.get(sh) or {}, r, t["cols"]["desc"]) or "")):
         raise HTTPException(400, "This line is carried from a Pending bill - it goes when that bill is marked Received.")
     new = BE.drop_added(inputs, sh, r)
@@ -3471,7 +3505,7 @@ def export_bill(bid: int, token: str, format: str = "preview", embed: int = 0, d
     fmt = _get(db, EstBillFormat, b.format_id)
     inputs = _inputs(b)
     model = _bill_model(fmt, inputs)
-    inputs = _print_ready(model, inputs)
+    inputs = _print_ready(model, inputs, b.status)
     values = BE.calculate(model, inputs)
     p = db.query(E.EstProject).get(b.project_id)
     code = p.code if p else ""

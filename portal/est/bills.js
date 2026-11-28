@@ -993,6 +993,7 @@ function drawFees(m) {
   $$("[data-clear]", m).forEach(x => x.onclick = async () => {
     const t = b.fees[+x.dataset.ti]; if (!t || x.disabled) return;
     x.disabled = true;
+    await SAVING;                                    // a line still being saved (typed, then x straight away) goes first
     try {
       IPA.bill = await POST(`/store/est/ipa/bill/${b.id}/fee/remove`, { sheet: t.sheet, r: +x.dataset.clear });
       redrawWork(); undoRefresh();

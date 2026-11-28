@@ -4052,7 +4052,10 @@ def with_pay_numbers(model, inputs):
 # "Sub - Total from Current Bill". Now: a line with nothing in it (description, reference, amount - or, on the
 # previous-payments table, every column) is left out of every sheet, the PDF and the Excel file; so is a fee
 # heading ("IPA 10") with no line under it. The SN of the fees is the app's: 1, 2, 3 under each heading.
-FEE_HEAD_RE = re.compile(r"^\s*(ipa|bill|interim|payment (application|certificate)|this bill)\b", re.I)
+# a heading names a bill with its number ("IPA 10", "Bill No 9", "Interim Payment Application 11") or reads "This bill";
+# "Bill of entry - customs" is a line, not a heading
+FEE_HEAD_RE = re.compile(r"^\s*(?:(?:ipa|bill|interim(?:\s+(?:bill|payment(?:\s+(?:application|certificate))?))?|payment\s+(?:application|certificate))"
+                         r"\s*(?:no\.?)?\s*[-#:.]?\s*\d+\b|this\s+bill\b)", re.I)
 
 
 def _eff(s, inp, r, c):
@@ -4066,6 +4069,11 @@ def _eff(s, inp, r, c):
 
 def _empty(v):
     return v is None or (isinstance(v, str) and not v.strip())
+
+
+def _zero_formula(v):
+    """An amount typed as "=0": nothing on the line."""
+    return isinstance(v, str) and bool(re.fullmatch(r"\s*=\s*0+(\.0+)?\s*", v))
 
 
 def fee_rows(model, inputs, t):
@@ -4082,7 +4090,7 @@ def fee_rows(model, inputs, t):
         if r in hid:
             continue
         d, ref, a = (_eff(s, inp, r, cols[k]) if cols.get(k) else None for k in ("desc", "ref", "amount"))
-        if _empty(d) and _empty(ref) and _empty(a):
+        if _empty(d) and _empty(ref) and (_empty(a) or _zero_formula(a)):
             out.append((r, "blank"))
         elif isinstance(d, str) and FEE_HEAD_RE.match(d) and _empty(ref) and (_empty(a) or a == 0):
             out.append((r, "head"))
@@ -4116,7 +4124,7 @@ def blank_rows(model, inputs):
         cols = [c for c in p["cols"].values() if c]
         if not cols:
             continue
-        lo, hi = min(cols + ([sn] if sn else [])), max(cols)
+        lo, hi = min(cols + ([sn] if sn else [])), max(cols + [int(s.get("maxc") or 0)])   # a remark right of the amount counts
         for r in range(p["head_row"] + 1, p["total_row"]):
             if r in hid:
                 continue

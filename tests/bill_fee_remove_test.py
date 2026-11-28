@@ -202,6 +202,51 @@ bl.inputs = __import__("json").dumps(inp); db.commit()
 xr = printed_appb("excel")
 ck("an older bill (nothing worked out yet) prints without the empty lines", len(xr) == 4, xr)
 
+# ---- review findings (28/11/2026) ---------------------------------------------------------------------------
+import json as _j
+fe = fees()
+head_r = fe["rows"][0]["r"]
+hidden_earlier = min(r for r in range(5, head_r))          # an earlier bill's line, hidden on this bill
+r = c.post(f"{U}/fee/remove", headers=H, json={"sheet": SH, "r": hidden_earlier})
+ck("review 2: an earlier bill's hidden line cannot be removed (stale tab)", r.status_code == 400, r.text[:200])
+r = c.post(f"{U}/fee/remove", headers=H, json={"sheet": SH, "r": head_r})
+ck("review 2: the heading cannot be removed with x", r.status_code == 400, r.text[:200])
+# 1: an empty line taken off on opening while another tab still shows it - typed into: it comes back, printed and counted
+last = fe["rows"][-1]
+c.post(f"{U}/rows", headers=H, json={"sheet": SH, "at": last["r"] + 1, "n": 1, "like": last["r"]})
+stale_r = last["r"] + 1
+c.get(U, headers=H)                                           # opened elsewhere: the empty line is taken off
+db.expire_all()
+ck("review 1 set-up: the empty line was taken off on opening", stale_r in _j.loads(db.get(EB.EstBill, bid).inputs)[SH].get("_hide", []))
+r = c.put(U, headers=H, json={"set": {SH: {f"{stale_r},2": "DEWA meter", f"{stale_r},4": 410.25}}})
+fe = r.json()["fees"][0]
+xr = printed_appb("excel")
+ck("review 1: typed into it from the stale tab - shown again, printed, and the sub-total matches the printed lines",
+   any(x["desc"]["value"] == "DEWA meter" for x in fe["rows"]) and any(x[1] == "DEWA meter" for x in xr)
+   and round(sum(x[3] for x in xr if isinstance(x[3], (int, float))), 2) == round(fe["total"], 2), (xr, fe["total"]))
+# 5: "Bill of entry" is a line, not a heading
+fe = fees(); last = fe["rows"][-1]
+fe = c.post(f"{U}/rows", headers=H, json={"sheet": SH, "at": last["r"] + 1, "n": 1, "like": last["r"]}).json()["fees"][0]
+nr = next(x for x in fe["rows"] if x["r"] == last["r"] + 1)
+fe = c.put(U, headers=H, json={"set": {SH: {nr["desc"]["key"]: "Bill of entry - customs clearance"}}}).json()["fees"][0]
+xr = printed_appb("excel")
+ck("review 5: 'Bill of entry - customs clearance' typed before its amount is a line (numbered, printed), the heading stays",
+   not next(x for x in fe["rows"] if x["r"] == nr["r"])["head"] and any(x[1] == "Bill of entry - customs clearance" and isinstance(x[0], int) for x in xr) and xr[0][1] == "IPA 11", xr)
+# 4: "=0" on an empty line is an empty line
+fe = c.put(U, headers=H, json={"set": {SH: {nr["desc"]["key"]: None, nr["amount"]["key"]: "=0"}}}).json()["fees"][0]
+xr = printed_appb("excel")
+ck("review 4: an empty line with =0 in the amount is not printed or numbered", not any(x[1] in (None, "") and x[0] not in (None, "") for x in xr), xr)
+# 3: a bill already sent keeps the fee numbers it went out with
+db.expire_all(); bl = db.get(EB.EstBill, bid)
+inp = _j.loads(bl.inputs); fl = [x for x in fees()["rows"] if not x["head"] and x["desc"]["value"]]
+inp[SH][fl[0]["sn"]["key"]] = 4
+bl.inputs = _j.dumps(inp); bl.status = "Submitted"; db.commit()
+xr = printed_appb("excel")
+ck("review 3: a Submitted bill re-downloaded keeps SN 4 as it went out", any(x[0] == 4 and x[1] == fl[0]["desc"]["value"] for x in xr), xr)
+bl.status = "Draft"; db.commit()
+xr = printed_appb("excel")
+ck("...a Draft bill is numbered by the app again", any(x[0] == 1 and x[1] == fl[0]["desc"]["value"] for x in xr), xr)
+
 c.__exit__(None, None, None)
 print("\n" + ("ALL PASS" if not FAIL else f"{len(FAIL)} FAILED: " + "; ".join(FAIL)))
 sys.exit(1 if FAIL else 0)
