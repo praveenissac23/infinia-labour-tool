@@ -136,5 +136,18 @@ ck('...and the paper adds up: gross payable - total deductions = net (Round off 
    abs(d['net'] - (d['total_pay'] - d['total_ded'])) < 0.005
    and (any(x['label'] == 'Round off' for x in d['payables'] + d['deductions']) or abs(d['total_pay'] - d['total_ded'] - round(d['total_pay'] - d['total_ded'])) < 0.005),
    (d['net'], d['total_pay'], d['total_ded'], d['payables'], d['deductions']))
+# a settlement whose last day is before November 2026 keeps the rule it was worked out under (no Round off line)
+so = c.get('/employees/staff/IC001/settlement', params={'last_day': '2026-10-20', 'reason': 'resigned'}, headers=H).json()
+ck('a settlement with its last day in October 2026 is not rounded to the dirham, and has no Round off line',
+   not any(x['label'] == 'Round off' for x in so['payables'] + so['deductions']) and abs(so['net'] - (so['total_pay'] - so['total_ded'])) < 0.005,
+   (so['net'], so['total_pay'], so['total_ded']))
+# the early full-cycle preview uses the rule that is paid
+import paystatus as _ps
+src = open('paystatus.py', encoding='utf-8').read()
+ck('the early full-cycle preview is worked out by the same rule as what is paid', 'return M.pcyc.dirham(_r2(t)) if M.pcyc.exact_fils(month) else _r2(t)' in src)
+ck('a line paid to the fils before this rule is not a change after payment (no carry of a few fils)',
+   'was = M._line_net(l, r.month_year) if M._om.exact_month(r.month_year) else (l.net_pay or 0)' in src)
+page = open('../app.html', encoding='utf-8').read()
+ck('the office sheet on screen rounds the net the same way while typing', 'hrWholeDirham' in page)
 print("\nALL PASS" if not FAIL else f"\n{len(FAIL)} FAILED")
 sys.exit(1 if FAIL else 0)

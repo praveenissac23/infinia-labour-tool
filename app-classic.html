@@ -17395,6 +17395,10 @@ function hrRunFootHtml(R) {
 // Net pay is never typed and never guessed: it is the same sum the
 // server does, shown as soon as a cell changes so nothing is signed off
 // on a figure that has not been added up yet.
+function hrWholeDirham(m) {     // "November 2026" or later (parsed by hand: Safari does not read "1 November 2026")
+  const p = String(m || "").trim().split(/\s+/), k = ["january","february","march","april","may","june","july","august","september","october","november","december"].indexOf((p[0] || "").toLowerCase());
+  return k >= 0 && +p[1] > 0 && (+p[1] * 12 + k) >= 2026 * 12 + 10;
+}
 function recalcLine(id) {
   const l = HR_RUN.lines.find(x => x.id === id);
   if (!l) return;
@@ -17405,6 +17409,8 @@ function recalcLine(id) {
   l.payable = l.fixed_salary + l.other_allowance - l.deduction - l.statutory;
   // Pension is printed beside net pay, never added into it.
   l.net_pay = l.payable - l.loan_deduction + l.leave_salary + l.air_ticket;
+  // November 2026 on the net is a whole dirham, a half away from zero (owner, 28/11/2026) - as the server saves it
+  if (hrWholeDirham(HR_RUN.month_year)) { const x = Math.round(l.net_pay * 100) / 100; l.net_pay = Math.sign(x) * Math.round(Math.abs(x)) + 0; }
   const netEl = scope.querySelector(`#hr-net-${id}`);
   if (netEl && !(HR_RUN.progress && HR_RUN.progress.running)) netEl.textContent = hrMoney(l.net_pay);
   renderRunFoot();

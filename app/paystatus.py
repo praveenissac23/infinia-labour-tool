@@ -249,7 +249,9 @@ def office_carry(db, r, l, e, a, b):
     tmp = models.PayrollLine(employee_id=l.employee_id, loan_edited=True, remark_edited=True,
                              loan_deduction=l.loan_deduction, remarks=l.remarks)
     M._fill_line(db, tmp, e, r.month_year, a, b)
-    diff = _r2(tmp.net_pay - (l.net_pay or 0))
+    # the line as paid, by today's rule (a net to the fils from before the whole-dirham rule is not a change - 28/11/2026)
+    was = M._line_net(l, r.month_year) if M._om.exact_month(r.month_year) else (l.net_pay or 0)
+    diff = _r2(tmp.net_pay - was)
     why = []
     if abs((tmp.deduction or 0) - (l.deduction or 0)) > 0.005:
         why.append(f"absence {_r2(tmp.deduction) - _r2(l.deduction):+,.2f}")
@@ -499,7 +501,9 @@ def _full_cycle_preview(db, e, month, card):
                                           card.allowances or 0.0, card.other_deduction or 0.0,
                                           pay_type=(e.pay_type or "daily"), cycle_days=(ce - cs).days + 1,
                                           exact_fils=M.pcyc.exact_fils(month))
-    return _r2(comp["final_salary"] + sum((-a.amount if a.is_deduction else a.amount) for a in card.adjustments))
+    t = comp["final_salary"] + sum((-a.amount if a.is_deduction else a.amount) for a in card.adjustments)
+    # the same rule as what is paid (services.adjusted_final_salary): November 2026 on a whole dirham (28/11/2026)
+    return M.pcyc.dirham(_r2(t)) if M.pcyc.exact_fils(month) else _r2(t)
 
 
 def mark_paid(db, user, kind, source_id, body):

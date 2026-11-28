@@ -353,8 +353,12 @@ def settlement(db, emp_no, q):
     total_pay = round(sum(v for _, v in payables), 2)
     total_ded = round(sum(v for _, v in deductions), 2)
     net = float(math.floor(total_pay - total_ded + 0.5))   # whole dirhams, as on the paper
+    # the payable to the nearest dirham for a last day in the November 2026 cycle / month on (owner, 28/11/2026);
+    # a settlement for an earlier last day keeps the rule it was worked out under
+    whole = M.pcyc.exact_fils(cycle_label) if not e.staff else M._om.exact_month(f"{last:%B %Y}")
     if exact:
-        net = M.pcyc.dirham(sum(v for _, v in payables) - sum(v for _, v in deductions))   # nearest dirham (28/11/2026)
+        net = M.pcyc.dirham(sum(v for _, v in payables) - sum(v for _, v in deductions)) if whole \
+            else M.pcyc.fils_down(sum(v for _, v in payables) - sum(v for _, v in deductions))
         total_pay = M.pcyc.fils_down(sum(v for _, v in payables))
         total_ded = M.pcyc.fils_up(sum(v for _, v in deductions))
         payables = [(k, M.pcyc.fils_down(v)) for k, v in payables]
@@ -376,10 +380,10 @@ def settlement(db, emp_no, q):
         deductions = [(k, om.take_up(v)) for k, v in deductions]
         total_pay = om.add2(*[v for _, v in payables])
         total_ded = om.add2(*[v for _, v in deductions])
-        net = M.pcyc.dirham(om.add2(total_pay, -total_ded))     # the payable to the nearest dirham (owner, 28/11/2026)
+        net = M.pcyc.dirham(om.add2(total_pay, -total_ded)) if whole else om.add2(total_pay, -total_ded)   # nearest dirham (28/11/2026)
     # The lines keep their fils; the payable is a whole dirham. The difference (up to 50 fils) is a line of its own,
     # so the paper still adds up: Gross payable - Total deductions = net.
-    if exact or e.staff:
+    if whole and (exact or e.staff):
         ro = round(net - (total_pay - total_ded), 2)
         if ro >= 0.005:
             payables.append((M.pcyc.ROUND_OFF_LABEL, ro)); total_pay = round(total_pay + ro, 2)
